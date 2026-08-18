@@ -17,7 +17,11 @@ const { can, ROLES } = require('./permissions');
 const { ensureSeed } = require('./seed');
 
 const app = express();
+app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
 app.use(express.json({ limit: '10mb' }));
+
+// Verificación de salud para plataformas de despliegue
+app.get('/health', (req, res) => res.json({ ok: true }));
 
 // ---------- Autenticación ----------
 app.use('/api/auth', authRouter);

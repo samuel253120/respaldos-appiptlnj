@@ -1,0 +1,19 @@
+# Despliegue con Docker Compose (para un VPS propio).
+# Uso:
+#   1. Copiar .env.ejemplo a .env y definir JWT_SECRET
+#   2. docker compose up -d
+# La aplicación queda en el puerto 3000; ponga Nginx/Caddy delante para HTTPS
+# (ver DESPLIEGUE.md).
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - JWT_SECRET=${JWT_SECRET:?Defina JWT_SECRET en el archivo .env}
+    volumes:
+      - iglesias_data:/data
+
+volumes:
+  iglesias_data:

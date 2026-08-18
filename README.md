@@ -141,9 +141,17 @@ GET    /api/tesoreria/resumen       ingresos, egresos, balance y por categoría
 - Alcance por iglesia aplicado en el servidor (lectura y escritura).
 - Protecciones: no eliminar el propio usuario ni el último administrador; correo de usuario único.
 
+## Uso en teléfonos móviles 📱
+
+La interfaz es totalmente adaptable (menú lateral táctil, formularios de una columna, tablas con desplazamiento) y puede **instalarse como aplicación** en el teléfono: en Android (Chrome) menú ⋮ → *Agregar a la pantalla principal*; en iPhone (Safari) Compartir → *Agregar a pantalla de inicio*.
+
+## Publicar en internet 🌐
+
+Para que el equipo acceda desde cualquier lugar (computador o celular), vea la guía paso a paso en **[DESPLIEGUE.md](DESPLIEGUE.md)** — incluye Railway, Render y servidor propio con Docker (`Dockerfile` y `docker-compose.yml` ya incluidos).
+
 ## Producción (resumen)
 
 1. Definir `JWT_SECRET` con un valor largo y aleatorio.
 2. Cambiar la contraseña del administrador.
-3. Servir detrás de HTTPS (proxy inverso como Nginx/Caddy).
-4. Respaldar la carpeta `data/` periódicamente.
+3. Servir detrás de HTTPS (Railway/Render lo dan automático; en VPS usar Caddy o Nginx).
+4. Respaldar la carpeta de datos (`data/` local o el volumen `/data`) periódicamente.

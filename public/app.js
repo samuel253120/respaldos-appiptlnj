@@ -114,6 +114,8 @@ function route() {
   document.querySelectorAll('.side-link').forEach((el) => el.classList.remove('active'));
   const sb = document.querySelector('.sidebar');
   if (sb) sb.classList.remove('open');
+  const bd = document.getElementById('backdrop');
+  if (bd) bd.classList.remove('show');
 
   if (parts[0] === 'm' && MOD[parts[1]]) {
     const name = parts[1];
@@ -196,9 +198,19 @@ function renderShell() {
         </header>
         <div class="content" id="content"></div>
       </div>
+      <div class="backdrop" id="backdrop"></div>
     </div>`;
   document.getElementById('logoutBtn').addEventListener('click', logout);
-  document.getElementById('menuToggle').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('open'));
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('backdrop');
+  document.getElementById('menuToggle').addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+    backdrop.classList.toggle('show', sidebar.classList.contains('open'));
+  });
+  backdrop.addEventListener('click', () => {
+    sidebar.classList.remove('open');
+    backdrop.classList.remove('show');
+  });
 }
 function content() {
   return document.getElementById('content');
