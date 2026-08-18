@@ -1,0 +1,30 @@
+/** Módulo: Iglesias (congregaciones administradas por el sistema). */
+module.exports = {
+  name: 'iglesias',
+  label: 'Iglesias',
+  labelSingular: 'Iglesia',
+  icon: '⛪',
+  group: 'Organización',
+  order: 10,
+  display: '{nombre}',
+  searchFields: ['nombre', 'codigo', 'ciudad', 'direccion'],
+  listFields: ['nombre', 'codigo', 'ciudad', 'telefono', 'pastor_id', 'estado'],
+  defaultSort: { field: 'nombre', dir: 'asc' },
+  fields: [
+    { name: 'nombre', label: 'Nombre', type: 'text', required: true },
+    { name: 'codigo', label: 'Código', type: 'text', help: 'Identificador corto, ej. IG-001' },
+    { name: 'direccion', label: 'Dirección', type: 'text' },
+    { name: 'ciudad', label: 'Ciudad / Municipio', type: 'text' },
+    { name: 'departamento', label: 'Departamento / Estado', type: 'text' },
+    { name: 'pais', label: 'País', type: 'text' },
+    { name: 'telefono', label: 'Teléfono', type: 'tel' },
+    { name: 'email', label: 'Correo electrónico', type: 'email' },
+    { name: 'fecha_fundacion', label: 'Fecha de fundación', type: 'date' },
+    { name: 'pastor_id', label: 'Pastor principal', type: 'ref', ref: 'pastores' },
+    {
+      name: 'estado', label: 'Estado', type: 'select', default: 'Activa',
+      options: ['Activa', 'Inactiva', 'En formación'],
+    },
+    { name: 'notas', label: 'Notas', type: 'textarea' },
+  ],
+};

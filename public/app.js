@@ -1,0 +1,856 @@
+/* =====================================================================
+ * Sistema de Gestión de Iglesias — Aplicación de una sola página (SPA)
+ *
+ * La interfaz se AUTOGENERA a partir de /api/meta: por cada módulo
+ * registrado en el servidor se crean automáticamente su entrada de menú,
+ * listado (búsqueda, filtros, orden, paginación), formulario y, si el
+ * módulo lo declara, su vista de impresión. Agregar un módulo en
+ * server/modules/ lo hace aparecer aquí sin tocar este archivo.
+ * ===================================================================== */
+'use strict';
+
+let TOKEN = localStorage.getItem('token') || null;
+let USER = null;
+let MODULES = []; // metadatos de módulos visibles para el usuario
+let MOD = {}; // por nombre
+const optionsCache = {}; // opciones {id,label} por módulo referenciado
+const listState = {}; // estado de cada listado (página, búsqueda, filtros…)
+
+const $app = document.getElementById('app');
+
+/* ---------------- utilidades ---------------- */
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function fmtMoney(n) {
+  if (n == null || n === '') return '';
+  return '$ ' + Number(n).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+function fmtDate(s) {
+  if (!s) return '';
+  return String(s).slice(0, 10);
+}
+function fechaLarga(s) {
+  if (!s) return '____________________';
+  const [y, m, d] = String(s).slice(0, 10).split('-').map(Number);
+  const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  if (!y || !m || !d) return s;
+  return `${d} de ${meses[m - 1]} de ${y}`;
+}
+function toast(msg, isErr) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.className = (isErr ? 'err ' : '') + 'show';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => (t.className = t.className.replace('show', '')), 3200);
+}
+function badgeClass(value) {
+  const v = String(value || '').toLowerCase();
+  if (/(activ|vigente|aprobad|firmad|emitido|entregad|bueno|completad|ingreso|sí)/.test(v)) return 'green';
+  if (/(inactiv|anulad|vencid|rechazad|fallecid|malo|de baja|suspendid|egreso|disciplina)/.test(v)) return 'red';
+  if (/(pendiente|borrador|revisi|solicitad|regular|reparaci)/.test(v)) return 'yellow';
+  return 'blue';
+}
+
+/* ---------------- API ---------------- */
+async function api(method, path, body, isForm) {
+  const opts = { method, headers: {} };
+  if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
+  if (body && !isForm) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  } else if (body) {
+    opts.body = body;
+  }
+  const res = await fetch('/api' + path, opts);
+  if (res.status === 401 && path !== '/auth/login') {
+    logout();
+    throw new Error('Sesión expirada');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Error del servidor');
+  return data;
+}
+async function getOptions(modName, force) {
+  if (!force && optionsCache[modName]) return optionsCache[modName];
+  const rows = await api('GET', `/${modName}/options`);
+  optionsCache[modName] = rows;
+  return rows;
+}
+
+/* ---------------- arranque y enrutador ---------------- */
+async function boot() {
+  if (!TOKEN) return renderLogin();
+  try {
+    const meta = await api('GET', '/meta');
+    MODULES = meta.modules;
+    MOD = {};
+    MODULES.forEach((m) => (MOD[m.name] = m));
+    USER = meta.user;
+    renderShell();
+    route();
+  } catch (e) {
+    renderLogin();
+  }
+}
+function logout() {
+  TOKEN = null;
+  USER = null;
+  localStorage.removeItem('token');
+  location.hash = '';
+  renderLogin();
+}
+window.addEventListener('hashchange', () => {
+  if (TOKEN && USER) route();
+});
+
+function route() {
+  const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  document.querySelectorAll('.side-link').forEach((el) => el.classList.remove('active'));
+  const sb = document.querySelector('.sidebar');
+  if (sb) sb.classList.remove('open');
+
+  if (parts[0] === 'm' && MOD[parts[1]]) {
+    const name = parts[1];
+    const link = document.querySelector(`.side-link[data-mod="${name}"]`);
+    if (link) link.classList.add('active');
+    if (parts[2] === 'new') return viewForm(name, null);
+    if (parts[2] === 'edit' && parts[3]) return viewForm(name, parts[3]);
+    return viewList(name);
+  }
+  if (parts[0] === 'print' && MOD[parts[1]] && parts[2]) return viewPrint(parts[1], parts[2]);
+  const dl = document.querySelector('.side-link[data-mod="_dash"]');
+  if (dl) dl.classList.add('active');
+  return viewDashboard();
+}
+
+/* ---------------- login ---------------- */
+function renderLogin() {
+  $app.innerHTML = `
+    <div class="login-wrap">
+      <form class="login-card" id="loginForm">
+        <div class="logo">⛪</div>
+        <h1>Sistema de Gestión de Iglesias</h1>
+        <p class="sub">Ingrese sus credenciales para continuar</p>
+        <div class="login-error" id="loginError"></div>
+        <input type="email" id="loginEmail" placeholder="Correo electrónico" required autocomplete="username" />
+        <input type="password" id="loginPass" placeholder="Contraseña" required autocomplete="current-password" />
+        <button class="btn" type="submit">Iniciar sesión</button>
+      </form>
+    </div>`;
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = '';
+    try {
+      const data = await api('POST', '/auth/login', {
+        email: document.getElementById('loginEmail').value,
+        password: document.getElementById('loginPass').value,
+      });
+      TOKEN = data.token;
+      localStorage.setItem('token', TOKEN);
+      await boot();
+    } catch (err) {
+      errEl.textContent = err.message;
+    }
+  });
+}
+
+/* ---------------- estructura principal ---------------- */
+function renderShell() {
+  const groups = {};
+  for (const m of MODULES) {
+    (groups[m.group] = groups[m.group] || []).push(m);
+  }
+  const groupsHtml = Object.entries(groups)
+    .map(
+      ([g, mods]) => `
+      <div class="side-group">
+        <div class="group-title">${esc(g)}</div>
+        ${mods.map((m) => `<a class="side-link" data-mod="${m.name}" href="#/m/${m.name}"><span class="ic">${m.icon}</span> ${esc(m.label)}</a>`).join('')}
+      </div>`
+    )
+    .join('');
+
+  const initials = (USER.nombre || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  $app.innerHTML = `
+    <div class="layout">
+      <nav class="sidebar" id="sidebar">
+        <div class="brand"><span class="logo">⛪</span> Gestión de Iglesias</div>
+        <div class="side-group">
+          <a class="side-link" data-mod="_dash" href="#/"><span class="ic">📊</span> Panel de control</a>
+        </div>
+        ${groupsHtml}
+        <div class="side-footer">Conectado como <b>${esc(USER.nombre)}</b><br>Rol: ${esc(USER.rol)}</div>
+      </nav>
+      <div class="main">
+        <header class="topbar">
+          <button class="menu-toggle" id="menuToggle">☰</button>
+          <div class="who"><span class="avatar">${esc(initials)}</span> <span><b>${esc(USER.nombre)}</b><br>${esc(USER.email)}</span></div>
+          <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
+        </header>
+        <div class="content" id="content"></div>
+      </div>
+    </div>`;
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  document.getElementById('menuToggle').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('open'));
+}
+function content() {
+  return document.getElementById('content');
+}
+
+/* ---------------- panel de control ---------------- */
+async function viewDashboard() {
+  content().innerHTML = `<div class="page-head"><h2>📊 Panel de control</h2></div><p>Cargando…</p>`;
+  let d;
+  try {
+    d = await api('GET', '/dashboard');
+  } catch (e) {
+    content().innerHTML = `<p>${esc(e.message)}</p>`;
+    return;
+  }
+  const statDefs = [
+    ['iglesias', '⛪', 'Iglesias', d.counts.iglesias],
+    ['miembros', '🧍', 'Miembros', d.counts.miembros],
+    ['cuerpos', '👥', 'Cuerpos / Grupos', d.counts.cuerpos],
+    ['pastores', '🧑‍💼', 'Pastores / Guías', d.counts.pastores],
+    ['solicitudes', '📨', 'Solicitudes pendientes', d.counts.solicitudes_pendientes],
+    ['certificados', '📜', 'Certificados', d.counts.certificados],
+  ].filter(([name]) => MOD[name]);
+
+  let finHtml = '';
+  if (d.finanzas) {
+    finHtml = `
+      <div class="fin-cards">
+        <div class="fin green"><div class="lbl">Ingresos del mes (${esc(d.finanzas.mes)})</div><div class="num">${fmtMoney(d.finanzas.ingresos_mes)}</div></div>
+        <div class="fin red"><div class="lbl">Egresos del mes</div><div class="num">${fmtMoney(d.finanzas.egresos_mes)}</div></div>
+        <div class="fin blue"><div class="lbl">Balance histórico</div><div class="num">${fmtMoney(d.finanzas.balance_total)}</div></div>
+        <div class="fin slate"><div class="lbl">Ingresos históricos</div><div class="num">${fmtMoney(d.finanzas.ingresos_total)}</div></div>
+      </div>`;
+  }
+
+  content().innerHTML = `
+    <div class="page-head"><h2>📊 Panel de control</h2></div>
+    <div class="stats">
+      ${statDefs.map(([name, ic, lbl, num]) => `
+        <div class="stat" onclick="location.hash='#/m/${name}'">
+          <div class="ic">${ic}</div><div class="num">${num}</div><div class="lbl">${lbl}</div>
+        </div>`).join('')}
+    </div>
+    ${finHtml}
+    <div class="dash-cols">
+      <div class="card">
+        <h3>📋 Últimas asistencias</h3>
+        <ul class="mini-list">
+          ${d.ultimasAsistencias.length ? d.ultimasAsistencias.map((a) => `
+            <li onclick="location.hash='#/m/asistencias/edit/${a.id}'">
+              <span>${esc(a.tipo_reunion)}</span>
+              <span class="mut">${fmtDate(a.fecha)} · ${a.total_general ?? 0} pers.</span>
+            </li>`).join('') : '<li class="mut">Sin registros aún</li>'}
+        </ul>
+      </div>
+      <div class="card">
+        <h3>📨 Solicitudes recientes</h3>
+        <ul class="mini-list">
+          ${d.solicitudesRecientes.length ? d.solicitudesRecientes.map((s) => `
+            <li onclick="location.hash='#/m/solicitudes/edit/${s.id}'">
+              <span>${esc(s.asunto)} <span class="mut">— ${esc(s.solicitante)}</span></span>
+              <span class="badge ${badgeClass(s.estado)}">${esc(s.estado)}</span>
+            </li>`).join('') : '<li class="mut">Sin registros aún</li>'}
+        </ul>
+      </div>
+    </div>`;
+}
+
+/* ---------------- listado genérico ---------------- */
+function stateOf(name) {
+  if (!listState[name]) {
+    const m = MOD[name];
+    listState[name] = { q: '', page: 1, sort: m.defaultSort.field, dir: m.defaultSort.dir, filters: {}, desde: '', hasta: '' };
+  }
+  return listState[name];
+}
+
+async function viewList(name) {
+  const m = MOD[name];
+  const st = stateOf(name);
+  const fieldsBy = {};
+  m.fields.forEach((f) => (fieldsBy[f.name] = f));
+
+  content().innerHTML = `
+    <div class="page-head">
+      <h2>${m.icon} ${esc(m.label)}</h2>
+      <div class="actions">
+        ${m.perms.create ? `<button class="btn" id="btnNew">➕ Nuevo ${esc(m.labelSingular.toLowerCase())}</button>` : ''}
+      </div>
+    </div>
+    ${name === 'tesoreria' ? '<div class="treasury-summary" id="treasurySummary"></div>' : ''}
+    <div class="card">
+      <div class="toolbar" id="toolbar"></div>
+      <div class="table-scroll"><div id="tableWrap"><p style="padding:20px">Cargando…</p></div></div>
+      <div class="pager" id="pager"></div>
+    </div>`;
+
+  if (m.perms.create) document.getElementById('btnNew').addEventListener('click', () => (location.hash = `#/m/${name}/new`));
+
+  // ------- barra de herramientas: búsqueda + filtros -------
+  const tb = document.getElementById('toolbar');
+  const filterFields = m.fields.filter((f) => f.type === 'select').slice(0, 3);
+  const iglesiaField = fieldsBy['iglesia_id'] && !USER.iglesia_id ? fieldsBy['iglesia_id'] : null;
+
+  tb.innerHTML = `
+    <input type="search" id="q" placeholder="Buscar…" value="${esc(st.q)}" />
+    ${iglesiaField ? `<select id="f_iglesia_id"><option value="">— Todas las iglesias —</option></select>` : ''}
+    ${filterFields.map((f) => `
+      <select id="f_${f.name}">
+        <option value="">— ${esc(f.label)} —</option>
+        ${(f.options || []).map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return `<option value="${esc(v)}" ${st.filters[f.name] === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
+        }).join('')}
+      </select>`).join('')}
+    ${m.dateField ? `
+      <label class="range">Desde <input type="date" id="fDesde" value="${esc(st.desde)}" /></label>
+      <label class="range">Hasta <input type="date" id="fHasta" value="${esc(st.hasta)}" /></label>` : ''}
+    <span class="spacer"></span>
+    <button class="btn secondary sm" id="btnReload">⟳ Actualizar</button>`;
+
+  if (iglesiaField) {
+    getOptions('iglesias').then((opts) => {
+      const sel = document.getElementById('f_iglesia_id');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">— Todas las iglesias —</option>' +
+        opts.map((o) => `<option value="${o.id}" ${st.filters.iglesia_id === String(o.id) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
+    });
+  }
+
+  let qTimer;
+  document.getElementById('q').addEventListener('input', (e) => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => {
+      st.q = e.target.value;
+      st.page = 1;
+      load();
+    }, 300);
+  });
+  const bindFilter = (id, key) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      st.filters[key] = el.value;
+      st.page = 1;
+      load();
+    });
+  };
+  if (iglesiaField) bindFilter('f_iglesia_id', 'iglesia_id');
+  filterFields.forEach((f) => bindFilter('f_' + f.name, f.name));
+  if (m.dateField) {
+    document.getElementById('fDesde').addEventListener('change', (e) => { st.desde = e.target.value; st.page = 1; load(); });
+    document.getElementById('fHasta').addEventListener('change', (e) => { st.hasta = e.target.value; st.page = 1; load(); });
+  }
+  document.getElementById('btnReload').addEventListener('click', load);
+
+  // ------- carga y render de la tabla -------
+  async function load() {
+    const params = new URLSearchParams({ page: st.page, sort: st.sort, dir: st.dir });
+    if (st.q) params.set('q', st.q);
+    for (const [k, v] of Object.entries(st.filters)) if (v) params.set('f_' + k, v);
+    if (st.desde) params.set('desde', st.desde);
+    if (st.hasta) params.set('hasta', st.hasta);
+
+    let data;
+    try {
+      data = await api('GET', `/${name}?` + params.toString());
+    } catch (e) {
+      document.getElementById('tableWrap').innerHTML = `<p style="padding:20px;color:var(--danger)">${esc(e.message)}</p>`;
+      return;
+    }
+
+    if (name === 'tesoreria') loadTreasurySummary(params);
+
+    const cols = m.listFields.filter((c) => fieldsBy[c] || c === 'id');
+    const wrap = document.getElementById('tableWrap');
+    if (!data.rows.length) {
+      wrap.innerHTML = `<div class="empty-state"><div class="big">${m.icon}</div>No hay registros${st.q || Object.values(st.filters).some(Boolean) ? ' con los filtros aplicados' : ''}.</div>`;
+    } else {
+      wrap.innerHTML = `
+        <table class="grid">
+          <thead><tr>
+            ${cols.map((c) => {
+              const f = fieldsBy[c];
+              const lbl = c === 'id' ? 'ID' : f.label;
+              const arrow = st.sort === c ? `<span class="arrow">${st.dir === 'asc' ? '▲' : '▼'}</span>` : '';
+              return `<th data-col="${c}">${esc(lbl)} ${arrow}</th>`;
+            }).join('')}
+            <th class="no-sort"></th>
+          </tr></thead>
+          <tbody>
+            ${data.rows.map((r) => `
+              <tr data-id="${r.id}">
+                ${cols.map((c) => `<td>${cellValue(fieldsBy[c], r, c)}</td>`).join('')}
+                <td style="white-space:nowrap;text-align:right">
+                  ${m.printable ? `<button class="btn secondary sm act-print" data-id="${r.id}" title="Imprimir">🖨️</button>` : ''}
+                  ${m.perms.delete ? `<button class="btn danger sm act-del" data-id="${r.id}" title="Eliminar">🗑️</button>` : ''}
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+
+      wrap.querySelectorAll('th[data-col]').forEach((th) => {
+        th.addEventListener('click', () => {
+          const c = th.dataset.col;
+          if (st.sort === c) st.dir = st.dir === 'asc' ? 'desc' : 'asc';
+          else { st.sort = c; st.dir = 'asc'; }
+          load();
+        });
+      });
+      wrap.querySelectorAll('tbody tr').forEach((tr) => {
+        tr.addEventListener('click', (e) => {
+          if (e.target.closest('button')) return;
+          location.hash = `#/m/${name}/edit/${tr.dataset.id}`;
+        });
+      });
+      wrap.querySelectorAll('.act-del').forEach((b) => {
+        b.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
+          try {
+            await api('DELETE', `/${name}/${b.dataset.id}`);
+            toast('Registro eliminado');
+            optionsCache[name] = null;
+            load();
+          } catch (err) {
+            toast(err.message, true);
+          }
+        });
+      });
+      wrap.querySelectorAll('.act-print').forEach((b) => {
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          location.hash = `#/print/${name}/${b.dataset.id}`;
+        });
+      });
+    }
+
+    // paginación
+    const pager = document.getElementById('pager');
+    const btns = [];
+    for (let p = Math.max(1, data.page - 3); p <= Math.min(data.pages, data.page + 3); p++) {
+      btns.push(`<button class="${p === data.page ? 'cur' : ''}" data-p="${p}">${p}</button>`);
+    }
+    pager.innerHTML = `
+      <span>${data.total} registro${data.total === 1 ? '' : 's'}</span>
+      <span class="pages">
+        <button data-p="${data.page - 1}" ${data.page <= 1 ? 'disabled' : ''}>‹</button>
+        ${btns.join('')}
+        <button data-p="${data.page + 1}" ${data.page >= data.pages ? 'disabled' : ''}>›</button>
+      </span>`;
+    pager.querySelectorAll('button[data-p]').forEach((b) => {
+      b.addEventListener('click', () => {
+        st.page = Number(b.dataset.p);
+        load();
+      });
+    });
+  }
+
+  async function loadTreasurySummary(params) {
+    const el = document.getElementById('treasurySummary');
+    if (!el) return;
+    try {
+      const r = await api('GET', '/tesoreria/resumen?' + params.toString());
+      el.innerHTML = `
+        <div class="fin green"><div class="lbl">Ingresos (período filtrado)</div><div class="num">${fmtMoney(r.ingresos)}</div></div>
+        <div class="fin red"><div class="lbl">Egresos</div><div class="num">${fmtMoney(r.egresos)}</div></div>
+        <div class="fin blue"><div class="lbl">Balance</div><div class="num">${fmtMoney(r.balance)}</div></div>
+        <div class="fin slate"><div class="lbl">Movimientos</div><div class="num">${r.movimientos}</div></div>`;
+    } catch (e) {
+      el.innerHTML = '';
+    }
+  }
+
+  load();
+}
+
+function cellValue(f, row, col) {
+  if (col === 'id') return row.id;
+  const v = row[f.name];
+  switch (f.type) {
+    case 'ref':
+      return esc(row[f.name + '_label'] || '');
+    case 'multiref':
+      return esc((row[f.name + '_labels'] || []).slice(0, 3).join(', ')) + ((row[f.name + '_labels'] || []).length > 3 ? '…' : '');
+    case 'money':
+      return fmtMoney(v);
+    case 'boolean':
+      return v ? '<span class="badge green">Sí</span>' : '<span class="badge red">No</span>';
+    case 'date':
+      return fmtDate(v);
+    case 'file':
+      if (!v) return '';
+      if (/\.(jpe?g|png|gif|webp)$/i.test(v)) return `<img class="thumb" src="/uploads/${esc(v)}" alt="" />`;
+      return `<a href="/uploads/${esc(v)}" target="_blank" onclick="event.stopPropagation()">📎 archivo</a>`;
+    case 'select':
+      return v == null || v === '' ? '' : `<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`;
+    default:
+      return esc(v);
+  }
+}
+function selectLabel(f, v) {
+  for (const o of f.options || []) {
+    if (typeof o === 'object' && String(o.value) === String(v)) return o.label;
+  }
+  return v;
+}
+
+/* ---------------- formulario genérico ---------------- */
+async function viewForm(name, id) {
+  const m = MOD[name];
+  const isNew = !id;
+  if (isNew && !m.perms.create) return (location.hash = `#/m/${name}`);
+  const canEdit = isNew ? m.perms.create : m.perms.edit;
+
+  content().innerHTML = `
+    <div class="page-head">
+      <h2>${m.icon} ${isNew ? 'Nuevo' : canEdit ? 'Editar' : 'Ver'} ${esc(m.labelSingular.toLowerCase())}</h2>
+      <div class="actions"><button class="btn secondary" id="btnBack">← Volver</button></div>
+    </div>
+    <div class="card"><form id="recForm"><div class="form-grid" id="formGrid"><p>Cargando…</p></div>
+    <div class="form-error" id="formError"></div>
+    <div class="form-foot" id="formFoot"></div></form></div>`;
+  document.getElementById('btnBack').addEventListener('click', () => (location.hash = `#/m/${name}`));
+
+  let row = {};
+  if (!isNew) {
+    try {
+      row = await api('GET', `/${name}/${id}`);
+    } catch (e) {
+      content().querySelector('#formGrid').innerHTML = `<p style="color:var(--danger)">${esc(e.message)}</p>`;
+      return;
+    }
+  }
+
+  // precargar opciones de todos los ref/multiref del módulo
+  const refMods = [...new Set(m.fields.filter((f) => f.ref).map((f) => f.ref))];
+  await Promise.all(refMods.map((r) => getOptions(r).catch(() => [])));
+
+  const grid = document.getElementById('formGrid');
+  grid.innerHTML = m.fields.map((f) => fieldHtml(f, row, isNew)).join('');
+
+  // Comportamientos de widgets
+  m.fields.forEach((f) => {
+    if (f.type === 'multiref') initMultiref(f, row);
+    if (f.type === 'file') initFileField(f);
+  });
+
+  const foot = document.getElementById('formFoot');
+  foot.innerHTML = `
+    ${!isNew && m.printable ? `<button type="button" class="btn secondary left" id="btnPrint">🖨️ Imprimir</button>` : ''}
+    <button type="button" class="btn secondary" id="btnCancel">Cancelar</button>
+    ${canEdit ? `<button type="submit" class="btn">💾 Guardar</button>` : ''}`;
+  document.getElementById('btnCancel').addEventListener('click', () => (location.hash = `#/m/${name}`));
+  const bp = document.getElementById('btnPrint');
+  if (bp) bp.addEventListener('click', () => (location.hash = `#/print/${name}/${id}`));
+
+  document.getElementById('recForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!canEdit) return;
+    const errEl = document.getElementById('formError');
+    errEl.textContent = '';
+    const data = collectForm(m);
+    try {
+      if (isNew) await api('POST', `/${name}`, data);
+      else await api('PUT', `/${name}/${id}`, data);
+      optionsCache[name] = null; // refrescar selectores que referencien este módulo
+      toast('Guardado correctamente');
+      location.hash = `#/m/${name}`;
+    } catch (err) {
+      errEl.textContent = err.message;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
+}
+
+function fieldHtml(f, row, isNew) {
+  const val = row[f.name] != null ? row[f.name] : isNew && f.default != null ? f.default : '';
+  const req = f.required ? '<span class="req">*</span>' : '';
+  const help = f.help ? `<div class="help">${esc(f.help)}</div>` : '';
+  const wide = f.type === 'textarea' || f.type === 'multiref' ? ' full' : '';
+  let input = '';
+  switch (f.type) {
+    case 'textarea':
+      input = `<textarea name="${f.name}">${esc(val)}</textarea>`;
+      break;
+    case 'select': {
+      const opts = (f.options || []).map((o) => {
+        const v = typeof o === 'object' ? o.value : o;
+        const l = typeof o === 'object' ? o.label : o;
+        return `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
+      });
+      input = `<select name="${f.name}">${f.required ? '' : '<option value="">—</option>'}${opts.join('')}</select>`;
+      break;
+    }
+    case 'ref': {
+      const opts = (optionsCache[f.ref] || []).map((o) => `<option value="${o.id}" ${String(val) === String(o.id) ? 'selected' : ''}>${esc(o.label)}</option>`);
+      input = `<select name="${f.name}"><option value="">—</option>${opts.join('')}</select>`;
+      break;
+    }
+    case 'multiref':
+      input = `<div class="multiref" id="mr_${f.name}" data-name="${f.name}"></div>`;
+      break;
+    case 'boolean':
+      return `<div class="fld check${wide}"><input type="checkbox" id="chk_${f.name}" name="${f.name}" ${val ? 'checked' : ''} /><label for="chk_${f.name}">${esc(f.label)}</label>${help}</div>`;
+    case 'file':
+      input = `
+        <div class="filefld" id="ff_${f.name}">
+          <input type="hidden" name="${f.name}" value="${esc(val)}" />
+          <input type="file" id="file_${f.name}" ${f.accept ? `accept="${esc(f.accept)}"` : ''} />
+          <span class="fname" id="fname_${f.name}">${val ? `<a href="/uploads/${esc(val)}" target="_blank">📎 ${esc(val)}</a>` : ''}</span>
+          ${val && /\.(jpe?g|png|gif|webp)$/i.test(val) ? `<img class="preview" src="/uploads/${esc(val)}" alt="" />` : ''}
+        </div>`;
+      break;
+    case 'password':
+      input = `<input type="password" name="${f.name}" value="" autocomplete="new-password" ${f.required && isNew ? 'required' : ''} />`;
+      break;
+    case 'money':
+    case 'number':
+      input = `<input type="number" step="any" name="${f.name}" value="${esc(val)}" ${f.required ? 'required' : ''} />`;
+      break;
+    case 'date':
+      input = `<input type="date" name="${f.name}" value="${esc(fmtDate(val))}" ${f.required ? 'required' : ''} />`;
+      break;
+    case 'time':
+      input = `<input type="time" name="${f.name}" value="${esc(val)}" />`;
+      break;
+    case 'email':
+      input = `<input type="email" name="${f.name}" value="${esc(val)}" ${f.required ? 'required' : ''} />`;
+      break;
+    case 'tel':
+      input = `<input type="tel" name="${f.name}" value="${esc(val)}" ${f.required ? 'required' : ''} />`;
+      break;
+    default:
+      input = `<input type="text" name="${f.name}" value="${esc(val)}" ${f.required ? 'required' : ''} />`;
+  }
+  return `<div class="fld${wide}"><label>${esc(f.label)} ${req}</label>${input}${help}</div>`;
+}
+
+function initMultiref(f, row) {
+  const box = document.getElementById('mr_' + f.name);
+  if (!box) return;
+  const selected = new Set((Array.isArray(row[f.name]) ? row[f.name] : []).map(Number));
+  const options = optionsCache[f.ref] || [];
+  box.innerHTML = `
+    <input class="mr-search" type="search" placeholder="Filtrar…" />
+    <div class="mr-list"></div>
+    <div class="mr-count"></div>`;
+  const listEl = box.querySelector('.mr-list');
+  const countEl = box.querySelector('.mr-count');
+  const render = (filter) => {
+    const fl = (filter || '').toLowerCase();
+    listEl.innerHTML = options
+      .filter((o) => !fl || o.label.toLowerCase().includes(fl))
+      .map((o) => `
+        <label class="mr-item"><input type="checkbox" data-id="${o.id}" ${selected.has(o.id) ? 'checked' : ''} /> ${esc(o.label)}</label>`)
+      .join('') || '<div class="mr-item" style="color:var(--muted)">Sin opciones</div>';
+    listEl.querySelectorAll('input[type=checkbox]').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const oid = Number(cb.dataset.id);
+        if (cb.checked) selected.add(oid);
+        else selected.delete(oid);
+        box.dataset.value = JSON.stringify([...selected]);
+        countEl.textContent = `${selected.size} seleccionado(s)`;
+      });
+    });
+  };
+  box.dataset.value = JSON.stringify([...selected]);
+  countEl.textContent = `${selected.size} seleccionado(s)`;
+  render('');
+  box.querySelector('.mr-search').addEventListener('input', (e) => render(e.target.value));
+}
+
+function initFileField(f) {
+  const fileInput = document.getElementById('file_' + f.name);
+  if (!fileInput) return;
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('archivo', file);
+    const nameEl = document.getElementById('fname_' + f.name);
+    nameEl.textContent = 'Subiendo…';
+    try {
+      const r = await api('POST', '/upload', fd, true);
+      const hidden = document.querySelector(`#ff_${f.name} input[type=hidden]`);
+      hidden.value = r.filename;
+      nameEl.innerHTML = `<a href="${esc(r.url)}" target="_blank">📎 ${esc(r.original)}</a>`;
+      toast('Archivo subido');
+    } catch (e) {
+      nameEl.textContent = '';
+      toast(e.message, true);
+    }
+  });
+}
+
+function collectForm(m) {
+  const form = document.getElementById('recForm');
+  const data = {};
+  for (const f of m.fields) {
+    if (f.type === 'multiref') {
+      const box = document.getElementById('mr_' + f.name);
+      data[f.name] = box ? JSON.parse(box.dataset.value || '[]') : [];
+    } else if (f.type === 'boolean') {
+      const el = form.querySelector(`[name="${f.name}"]`);
+      data[f.name] = el && el.checked ? 1 : 0;
+    } else {
+      const el = form.querySelector(`[name="${f.name}"]`);
+      if (!el) continue;
+      if (f.type === 'password' && el.value === '') continue; // no cambiar contraseña
+      data[f.name] = el.value;
+    }
+  }
+  return data;
+}
+
+/* ---------------- vistas de impresión ---------------- */
+async function viewPrint(name, id) {
+  const m = MOD[name];
+  let row;
+  try {
+    row = await api('GET', `/${name}/${id}`);
+  } catch (e) {
+    content().innerHTML = `<p>${esc(e.message)}</p>`;
+    return;
+  }
+  let sheet;
+  if (name === 'certificados') sheet = printCertificado(row);
+  else if (name === 'credenciales') sheet = printCredencial(row);
+  else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas');
+  else sheet = printGenerico(m, row);
+
+  content().innerHTML = `
+    <div class="print-actions no-print">
+      <button class="btn secondary" onclick="location.hash='#/m/${name}'">← Volver</button>
+      <button class="btn" onclick="window.print()">🖨️ Imprimir</button>
+    </div>
+    ${sheet}`;
+}
+
+function certTextoEstandar(row) {
+  const tipo = row.tipo || '';
+  const iglesia = row.iglesia_id_label || 'la iglesia';
+  const map = {
+    'Bautismo': `Certifica que fue bautizado(a) en las aguas, en obediencia al mandato de nuestro Señor Jesucristo, el día ${fechaLarga(row.fecha_evento)}, en ${iglesia}.`,
+    'Presentación de niños': `Certifica que fue presentado(a) al Señor el día ${fechaLarga(row.fecha_evento)}, en ${iglesia}, conforme a la enseñanza de las Sagradas Escrituras.`,
+    'Matrimonio': `Certifica la celebración del matrimonio efectuado el día ${fechaLarga(row.fecha_evento)}, en ${iglesia}, delante de Dios y de los testigos presentes.`,
+    'Membresía': `Certifica que es miembro en plena comunión de ${iglesia}.`,
+    'Traslado': `Certifica que ha sido miembro en plena comunión de ${iglesia} y se extiende la presente para los fines de traslado a la congregación que lo(a) reciba.`,
+  };
+  return map[tipo] || `Se extiende el presente certificado de ${tipo.toLowerCase()} en constancia de lo actuado en ${iglesia}.`;
+}
+
+function printCertificado(row) {
+  return `
+    <div class="print-sheet cert-sheet">
+      <div class="cert-inner">
+        <div class="church">${esc(row.iglesia_id_label || 'Iglesia')}</div>
+        <h1>Certificado de ${esc(row.tipo || '')}</h1>
+        <div class="cert-no">N.º ${esc(row.numero || '')}</div>
+        <div class="otorgado">Otorgado a:</div>
+        <div class="titular">${esc(row.nombre_titular || '')}</div>
+        <div class="texto">${esc(row.texto || certTextoEstandar(row))}</div>
+        <div class="cert-firmas">
+          <div class="firma">${esc(row.oficiante_id_label || 'Oficiante')}<br><span style="font-size:11px;color:#a8a29e">Firma</span></div>
+          <div class="firma">Secretaría<br><span style="font-size:11px;color:#a8a29e">Firma y sello</span></div>
+        </div>
+        <div class="cert-fecha">Dado el ${fechaLarga(row.fecha_emision)}</div>
+      </div>
+    </div>`;
+}
+
+function printCredencial(row) {
+  const foto = row.foto
+    ? `<img src="/uploads/${esc(row.foto)}" alt="Foto" />`
+    : `<div class="nofoto">👤</div>`;
+  return `
+    <div class="print-sheet" style="padding:30px;background:transparent;border:none;box-shadow:none">
+      <div class="cred-card">
+        <div class="cred-head">
+          <div>
+            <div class="t">${esc(row.iglesia_id_label || 'Iglesia')}</div>
+            <div class="n">Credencial de ${esc(row.tipo || '')}</div>
+          </div>
+          <div style="font-size:26px">⛪</div>
+        </div>
+        <div class="cred-body">
+          ${foto}
+          <div class="cred-data">
+            <div class="nm">${esc(row.nombre_titular || '')}</div>
+            <div><span class="lbl">Cargo:</span> ${esc(row.cargo || row.tipo || '')}</div>
+            <div><span class="lbl">N.º:</span> ${esc(row.numero || '')}</div>
+            <div><span class="lbl">Emitida:</span> ${fmtDate(row.fecha_emision)}</div>
+            <div><span class="lbl">Vence:</span> ${fmtDate(row.fecha_vencimiento) || 'Indefinida'}</div>
+          </div>
+        </div>
+        <div class="cred-foot">
+          <span>Estado: ${esc(row.estado || '')}</span>
+          <span>Firma autorizada: ______________</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function printActa(m, row, esAsamblea) {
+  const asistentes = (row.asistentes_labels || []).join(' · ');
+  return `
+    <div class="print-sheet acta-sheet">
+      <h1>${esAsamblea ? 'Acta de Asamblea' : 'Acta de Reunión'} N.º ${esc(row.numero_acta || '')}</h1>
+      <div class="sub">${esc(row.iglesia_id_label || '')}${row.cuerpo_id_label ? ' — ' + esc(row.cuerpo_id_label) : ''}</div>
+      <table class="meta-tbl">
+        <tr><td class="k">Fecha</td><td>${fechaLarga(row.fecha)}</td></tr>
+        ${esAsamblea ? `<tr><td class="k">Tipo de asamblea</td><td>${esc(row.tipo || '')}</td></tr>` : ''}
+        <tr><td class="k">Lugar</td><td>${esc(row.lugar || '')}</td></tr>
+        <tr><td class="k">Hora</td><td>${esc(row.hora_inicio || '')}${row.hora_fin ? ' a ' + esc(row.hora_fin) : ''}</td></tr>
+        <tr><td class="k">Presidida por</td><td>${esc(row.presidida_por || '')}</td></tr>
+        <tr><td class="k">Secretario(a)</td><td>${esc(row.secretario || '')}</td></tr>
+        ${esAsamblea ? `<tr><td class="k">Asistentes / Quórum</td><td>${esc(row.total_asistentes ?? '')} asistentes — ${row.hubo_quorum ? 'hubo quórum' : 'sin quórum'}</td></tr>` : ''}
+      </table>
+      ${asistentes ? `<h3>Asistentes</h3><p>${esc(asistentes)}</p>` : ''}
+      ${row.agenda ? `<h3>Agenda / Orden del día</h3><div class="blk">${esc(row.agenda)}</div>` : ''}
+      ${row.desarrollo ? `<h3>Desarrollo</h3><div class="blk">${esc(row.desarrollo)}</div>` : ''}
+      ${row.acuerdos ? `<h3>Acuerdos</h3><div class="blk">${esc(row.acuerdos)}</div>` : ''}
+      <div class="acta-firmas">
+        <div class="firma">${esc(row.presidida_por || 'Preside')}<br>Preside</div>
+        <div class="firma">${esc(row.secretario || 'Secretario(a)')}<br>Secretario(a)</div>
+      </div>
+    </div>`;
+}
+
+function printGenerico(m, row) {
+  return `
+    <div class="print-sheet print-generic">
+      <h1>${m.icon} ${esc(m.labelSingular)}</h1>
+      <div class="sub">Registro N.º ${row.id} — impreso el ${fechaLarga(new Date().toISOString())}</div>
+      <table>
+        ${m.fields
+          .filter((f) => f.type !== 'password')
+          .map((f) => {
+            let v = row[f.name];
+            if (f.type === 'ref') v = row[f.name + '_label'];
+            if (f.type === 'multiref') v = (row[f.name + '_labels'] || []).join(', ');
+            if (f.type === 'money') v = fmtMoney(v);
+            if (f.type === 'boolean') v = v ? 'Sí' : 'No';
+            if (v == null || v === '') return '';
+            return `<tr><td class="k">${esc(f.label)}</td><td>${esc(v)}</td></tr>`;
+          })
+          .join('')}
+      </table>
+    </div>`;
+}
+
+/* ---------------- inicio ---------------- */
+boot();

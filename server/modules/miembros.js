@@ -1,0 +1,41 @@
+/** Módulo: Miembros (membresía de cada iglesia). */
+module.exports = {
+  name: 'miembros',
+  label: 'Miembros',
+  labelSingular: 'Miembro',
+  icon: '🧍',
+  group: 'Personas',
+  order: 20,
+  display: '{nombres} {apellidos}',
+  searchFields: ['nombres', 'apellidos', 'documento_identidad', 'telefono', 'email'],
+  listFields: ['foto', 'nombres', 'apellidos', 'iglesia_id', 'telefono', 'estado'],
+  defaultSort: { field: 'apellidos', dir: 'asc' },
+  fields: [
+    { name: 'nombres', label: 'Nombres', type: 'text', required: true },
+    { name: 'apellidos', label: 'Apellidos', type: 'text', required: true },
+    { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
+    { name: 'documento_identidad', label: 'Documento de identidad', type: 'text' },
+    { name: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date' },
+    {
+      name: 'genero', label: 'Género', type: 'select',
+      options: ['Femenino', 'Masculino'],
+    },
+    {
+      name: 'estado_civil', label: 'Estado civil', type: 'select',
+      options: ['Soltero(a)', 'Casado(a)', 'Unión libre', 'Viudo(a)', 'Divorciado(a)'],
+    },
+    { name: 'telefono', label: 'Teléfono', type: 'tel' },
+    { name: 'email', label: 'Correo electrónico', type: 'email' },
+    { name: 'direccion', label: 'Dirección', type: 'text' },
+    { name: 'ocupacion', label: 'Ocupación', type: 'text' },
+    { name: 'fecha_conversion', label: 'Fecha de conversión', type: 'date' },
+    { name: 'fecha_bautismo', label: 'Fecha de bautismo', type: 'date' },
+    { name: 'fecha_ingreso', label: 'Fecha de ingreso a la iglesia', type: 'date' },
+    {
+      name: 'estado', label: 'Estado', type: 'select', default: 'Activo',
+      options: ['Activo', 'Inactivo', 'En disciplina', 'Trasladado', 'Fallecido'],
+    },
+    { name: 'foto', label: 'Foto', type: 'file', accept: 'image/*' },
+    { name: 'notas', label: 'Notas', type: 'textarea' },
+  ],
+};
