@@ -23,6 +23,25 @@ Esta guía explica cómo publicar el sistema en internet para que usted y su equ
 
 Cada vez que suba cambios al repositorio, Railway vuelve a desplegar solo.
 
+### Terminar la configuración desde la terminal (alternativa al panel)
+
+Si el panel web se le dificulta (por ejemplo desde un celular), los pasos 4-6 también pueden hacerse con el CLI de Railway desde cualquier computador con Node.js:
+
+```bash
+npm install -g @railway/cli
+railway login                 # abre el navegador para iniciar sesión
+railway link                  # seleccione su proyecto y servicio
+railway volume add -m /data   # crea el volumen persistente
+railway variables --set "JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('hex'))")"
+railway domain                # genera la URL pública
+```
+
+### Verificación final (muy recomendada)
+
+1. Abra la URL, entre y cree un registro de prueba (ej. un miembro).
+2. En Railway haga **Redeploy** del servicio.
+3. Vuelva a entrar: si el registro de prueba sigue ahí, el volumen quedó bien y ya puede registrar información real. Si desapareció, el volumen no está montado en `/data`.
+
 ## Opción B — Render (~7 USD/mes con disco persistente)
 
 1. Cree una cuenta en https://render.com e inicie sesión con GitHub.
