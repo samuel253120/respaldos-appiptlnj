@@ -1,11 +1,11 @@
 {
-  "name": "Sistema de Gestión de Iglesias",
-  "short_name": "Iglesias",
-  "description": "Gestión integral de iglesias: miembros, cuerpos, tesorería, actas, certificados y más.",
+  "name": "IPT La Nueva Jerusalén — Sistema de Gestión",
+  "short_name": "La Nueva Jerusalén",
+  "description": "Sistema de gestión de la Iglesia Pentecostal Triunfante \"La Nueva Jerusalén\": miembros, cuerpos, tesorería, actas, certificados y más.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1e293b",
-  "theme_color": "#1e293b",
+  "background_color": "#ffffff",
+  "theme_color": "#16265c",
   "lang": "es",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },

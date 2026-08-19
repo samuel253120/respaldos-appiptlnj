@@ -1,8 +1,8 @@
 /* ============ Sistema de Gestión de Iglesias — estilos ============ */
 :root {
-  --sidebar-bg: #1e293b;
+  --sidebar-bg: #16265c;
   --sidebar-fg: #cbd5e1;
-  --sidebar-active: #334155;
+  --sidebar-active: #24397f;
   --accent: #2563eb;
   --accent-dark: #1d4ed8;
   --bg: #f1f5f9;
@@ -13,6 +13,11 @@
   --danger: #dc2626;
   --success: #16a34a;
   --warning: #d97706;
+  /* Colores institucionales tomados del emblema de la iglesia */
+  --marca-azul: #16265c;
+  --marca-azul-claro: #24397f;
+  --marca-oro: #e8b52c;
+  --marca-oro-oscuro: #a97d12;
   --radius: 10px;
   --shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.05);
 }
@@ -31,16 +36,17 @@ a:hover { text-decoration: underline; }
 /* ---------- Login ---------- */
 .login-wrap {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #1e293b 0%, #334155 60%, #475569 100%);
+  background: linear-gradient(135deg, #101c45 0%, var(--marca-azul) 55%, var(--marca-azul-claro) 100%);
   padding: 20px;
 }
 .login-card {
   background: var(--card); border-radius: 16px; padding: 40px 36px; width: 100%;
   max-width: 400px; box-shadow: 0 20px 50px rgba(0,0,0,0.35); text-align: center;
 }
-.login-card .logo { font-size: 52px; }
-.login-card h1 { font-size: 20px; margin: 10px 0 4px; }
-.login-card p.sub { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+.login-card .logo { width: 116px; height: 116px; object-fit: contain; }
+.login-card h1 { font-size: 18px; margin: 12px 0 2px; letter-spacing: 0.2px; color: var(--marca-azul); }
+.login-card p.lema { color: var(--marca-oro-oscuro); font-size: 13.5px; font-weight: 600; margin-bottom: 6px; }
+.login-card p.sub { color: var(--muted); margin-bottom: 22px; font-size: 13px; }
 .login-card input {
   width: 100%; padding: 11px 14px; margin-bottom: 12px; border: 1px solid var(--border);
   border-radius: 8px; font-size: 14.5px;
@@ -56,10 +62,16 @@ a:hover { text-decoration: underline; }
   flex-shrink: 0; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto;
 }
 .sidebar .brand {
-  display: flex; align-items: center; gap: 10px; padding: 18px 16px; font-weight: 700;
-  color: #fff; font-size: 15px; border-bottom: 1px solid rgba(255,255,255,0.08);
+  display: flex; align-items: center; gap: 11px; padding: 16px 14px;
+  color: #fff; border-bottom: 1px solid rgba(255,255,255,0.08);
 }
-.sidebar .brand .logo { font-size: 26px; }
+.sidebar .brand .logo {
+  width: 42px; height: 42px; object-fit: contain; flex: none;
+  background: #fff; border-radius: 50%; padding: 3px;
+}
+.sidebar .brand .txt { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.sidebar .brand .txt b { font-size: 12.5px; font-weight: 700; }
+.sidebar .brand .txt i { font-size: 11.5px; font-style: normal; color: var(--marca-oro); }
 .side-group { margin-top: 14px; }
 .side-group .group-title {
   font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.2px; color: #94a3b8;
@@ -215,13 +227,16 @@ table.grid tr { cursor: pointer; }
   max-width: 900px; padding: 26px; position: relative;
 }
 .cert-inner {
-  border: 3px double #b45309; padding: 40px 48px; text-align: center; position: relative;
+  border: 3px double var(--marca-oro); padding: 40px 48px; text-align: center; position: relative;
 }
-.cert-inner .church { font-size: 15px; letter-spacing: 2px; text-transform: uppercase; color: #78350f; font-weight: 700; }
-.cert-inner h1 { font-family: Georgia, 'Times New Roman', serif; font-size: 34px; color: #92400e; margin: 18px 0 6px; }
-.cert-inner .cert-no { font-size: 12px; color: #a16207; letter-spacing: 1px; }
+.cert-logo { width: 92px; height: 92px; object-fit: contain; margin-bottom: 10px; }
+.cert-inner .church { font-size: 13.5px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--marca-azul); font-weight: 700; line-height: 1.5; }
+.cert-inner .church .lema { font-size: 12px; letter-spacing: 1px; color: var(--marca-oro-oscuro); }
+.cert-inner .local { font-size: 12.5px; color: #78716c; margin-top: 4px; }
+.cert-inner h1 { font-family: Georgia, 'Times New Roman', serif; font-size: 34px; color: var(--marca-azul); margin: 18px 0 6px; }
+.cert-inner .cert-no { font-size: 12px; color: var(--marca-oro-oscuro); letter-spacing: 1px; }
 .cert-inner .otorgado { margin-top: 26px; font-size: 14px; color: #57534e; }
-.cert-inner .titular { font-family: Georgia, serif; font-size: 30px; font-style: italic; margin: 10px 0 4px; border-bottom: 1px solid #d6d3d1; display: inline-block; padding: 0 30px 6px; }
+.cert-inner .titular { font-family: Georgia, serif; font-size: 30px; font-style: italic; color: var(--marca-azul); margin: 10px 0 4px; border-bottom: 1px solid var(--marca-oro); display: inline-block; padding: 0 30px 6px; }
 .cert-inner .texto { max-width: 620px; margin: 18px auto 0; font-size: 14.5px; line-height: 1.7; color: #44403c; white-space: pre-wrap; }
 .cert-firmas { display: flex; justify-content: space-around; margin-top: 60px; }
 .cert-firmas .firma { width: 220px; border-top: 1px solid #78716c; padding-top: 6px; font-size: 13px; color: #57534e; }
@@ -231,8 +246,13 @@ table.grid tr { cursor: pointer; }
   width: 420px; border-radius: 14px; overflow: hidden; margin: 0 auto;
   border: 1px solid var(--border); box-shadow: var(--shadow); background: #fff;
 }
-.cred-head { background: linear-gradient(135deg, #1e3a8a, #2563eb); color: #fff; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; }
-.cred-head .t { font-size: 13px; font-weight: 700; letter-spacing: 0.5px; }
+.cred-head {
+  background: linear-gradient(135deg, var(--marca-azul), var(--marca-azul-claro));
+  color: #fff; padding: 14px 18px; display: flex; justify-content: space-between;
+  align-items: center; border-bottom: 3px solid var(--marca-oro);
+}
+.cred-head .t { font-size: 12.5px; font-weight: 700; letter-spacing: 0.3px; }
+.cred-logo { width: 42px; height: 42px; object-fit: contain; background: #fff; border-radius: 50%; padding: 2px; flex: none; }
 .cred-head .n { font-size: 11px; opacity: 0.85; }
 .cred-body { display: flex; gap: 16px; padding: 16px 18px; }
 .cred-body img, .cred-body .nofoto {
@@ -240,11 +260,18 @@ table.grid tr { cursor: pointer; }
   background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 34px; color: #cbd5e1;
 }
 .cred-data { font-size: 12.5px; line-height: 1.55; }
-.cred-data .nm { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+.cred-data .nm { font-size: 16px; font-weight: 800; margin-bottom: 4px; color: var(--marca-azul); }
 .cred-data .lbl { color: var(--muted); }
 .cred-foot { border-top: 1px solid var(--border); padding: 10px 18px; font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
 
 .acta-sheet { max-width: 820px; padding: 46px 56px; font-size: 14px; line-height: 1.7; }
+.membrete {
+  display: flex; align-items: center; gap: 14px; padding-bottom: 14px; margin-bottom: 20px;
+  border-bottom: 2px solid var(--marca-azul);
+}
+.membrete img { width: 62px; height: 62px; object-fit: contain; flex: none; }
+.membrete b { display: block; font-size: 14px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--marca-azul); }
+.membrete i { font-style: normal; font-size: 12.5px; color: var(--marca-oro-oscuro); font-weight: 600; }
 .acta-sheet h1 { text-align: center; font-size: 19px; text-transform: uppercase; letter-spacing: 1px; }
 .acta-sheet .sub { text-align: center; color: var(--muted); margin-bottom: 26px; font-size: 13px; }
 .acta-sheet .meta-tbl { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }

@@ -1,6 +1,14 @@
-# ⛪ Sistema de Gestión de Iglesias
+# Sistema de Gestión — Iglesia Pentecostal Triunfante «La Nueva Jerusalén»
+
+<img src="public/img/logo-128.png" alt="Emblema de la iglesia" width="110" align="right" />
 
 Sistema web integral para administrar **varias iglesias** desde un solo lugar. Incluye 15 módulos completos, control de usuarios con roles y permisos, alcance multi-iglesia, carga de archivos, impresión de certificados / credenciales / actas y un panel de control con indicadores.
+
+## Identidad institucional
+
+El emblema de la iglesia se usa en la pantalla de acceso, el menú, el ícono de la aplicación y los documentos impresos (certificados, credenciales y actas). Los colores del sistema —azul `#16265c` y dorado `#e8b52c`— se tomaron del propio emblema.
+
+Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/icons/`. Para cambiarlos, reemplace esas imágenes; el nombre y el lema se editan en la constante `IGLESIA` al inicio de `public/app.js`.
 
 ## Módulos incluidos
 

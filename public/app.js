@@ -18,6 +18,13 @@ const listState = {}; // estado de cada listado (página, búsqueda, filtros…)
 
 const $app = document.getElementById('app');
 
+/* Identidad institucional (logo y nombre de la iglesia) */
+const IGLESIA = {
+  nombre: 'Iglesia Pentecostal Triunfante',
+  lema: '«La Nueva Jerusalén»',
+  logo: '/img/logo.png',
+};
+
 /* ---------------- utilidades ---------------- */
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -147,8 +154,9 @@ function renderLogin() {
   $app.innerHTML = `
     <div class="login-wrap">
       <form class="login-card" id="loginForm">
-        <div class="logo">⛪</div>
-        <h1>Sistema de Gestión de Iglesias</h1>
+        <img class="logo" src="${IGLESIA.logo}" alt="${esc(IGLESIA.nombre)}" />
+        <h1>${esc(IGLESIA.nombre)}</h1>
+        <p class="lema">${esc(IGLESIA.lema)}</p>
         <p class="sub">Ingrese con su RUT para continuar</p>
         <div class="login-error" id="loginError"></div>
         <input type="text" id="loginRut" placeholder="RUT (ej: 12.345.678-5)" required autocomplete="username" inputmode="text" />
@@ -208,7 +216,10 @@ function renderShell() {
   $app.innerHTML = `
     <div class="layout">
       <nav class="sidebar" id="sidebar">
-        <div class="brand"><span class="logo">⛪</span> Gestión de Iglesias</div>
+        <div class="brand">
+          <img class="logo" src="${IGLESIA.logo}" alt="" />
+          <span class="txt"><b>${esc(IGLESIA.nombre)}</b><i>${esc(IGLESIA.lema)}</i></span>
+        </div>
         <div class="side-group">
           <a class="side-link" data-mod="_dash" href="#/"><span class="ic">📊</span> Panel de control</a>
         </div>
@@ -807,7 +818,9 @@ function printCertificado(row) {
   return `
     <div class="print-sheet cert-sheet">
       <div class="cert-inner">
-        <div class="church">${esc(row.iglesia_id_label || 'Iglesia')}</div>
+        <img class="cert-logo" src="${IGLESIA.logo}" alt="" />
+        <div class="church">${esc(IGLESIA.nombre)}<br><span class="lema">${esc(IGLESIA.lema)}</span></div>
+        <div class="local">${esc(row.iglesia_id_label || '')}</div>
         <h1>Certificado de ${esc(row.tipo || '')}</h1>
         <div class="cert-no">N.º ${esc(row.numero || '')}</div>
         <div class="otorgado">Otorgado a:</div>
@@ -831,10 +844,10 @@ function printCredencial(row) {
       <div class="cred-card">
         <div class="cred-head">
           <div>
-            <div class="t">${esc(row.iglesia_id_label || 'Iglesia')}</div>
-            <div class="n">Credencial de ${esc(row.tipo || '')}</div>
+            <div class="t">${esc(IGLESIA.nombre)}</div>
+            <div class="n">${esc(row.iglesia_id_label || '')} · Credencial de ${esc(row.tipo || '')}</div>
           </div>
-          <div style="font-size:26px">⛪</div>
+          <img class="cred-logo" src="${IGLESIA.logo}" alt="" />
         </div>
         <div class="cred-body">
           ${foto}
@@ -858,6 +871,13 @@ function printActa(m, row, esAsamblea) {
   const asistentes = (row.asistentes_labels || []).join(' · ');
   return `
     <div class="print-sheet acta-sheet">
+      <div class="membrete">
+        <img src="${IGLESIA.logo}" alt="" />
+        <div>
+          <b>${esc(IGLESIA.nombre)}</b>
+          <i>${esc(IGLESIA.lema)}</i>
+        </div>
+      </div>
       <h1>${esAsamblea ? 'Acta de Asamblea' : 'Acta de Reunión'} N.º ${esc(row.numero_acta || '')}</h1>
       <div class="sub">${esc(row.iglesia_id_label || '')}${row.cuerpo_id_label ? ' — ' + esc(row.cuerpo_id_label) : ''}</div>
       <table class="meta-tbl">
@@ -883,7 +903,11 @@ function printActa(m, row, esAsamblea) {
 function printGenerico(m, row) {
   return `
     <div class="print-sheet print-generic">
-      <h1>${m.icon} ${esc(m.labelSingular)}</h1>
+      <div class="membrete">
+        <img src="${IGLESIA.logo}" alt="" />
+        <div><b>${esc(IGLESIA.nombre)}</b><i>${esc(IGLESIA.lema)}</i></div>
+      </div>
+      <h1>${esc(m.labelSingular)}</h1>
       <div class="sub">Registro N.º ${row.id} — impreso el ${fechaLarga(new Date().toISOString())}</div>
       <table>
         ${m.fields
