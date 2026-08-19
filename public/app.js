@@ -68,6 +68,15 @@ function rutFormatear(v) {
   return c.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + '-' + c.slice(-1);
 }
 
+/** Color del distintivo según el nivel informado por un campo calculado. */
+function nivelClase(nivel) {
+  const n = String(nivel || '').toLowerCase();
+  if (/al d[ií]a|cumple|vigente|ok/.test(n)) return 'green';
+  if (/observ|parcial|por vencer/.test(n)) return 'yellow';
+  if (/pendiente|vencid|incumpl/.test(n)) return 'red';
+  return '';
+}
+
 function badgeClass(value) {
   const v = String(value || '').toLowerCase();
   if (/(activ|vigente|aprobad|firmad|emitido|entregad|bueno|completad|ingreso|sí)/.test(v)) return 'green';
@@ -144,7 +153,11 @@ window.addEventListener('hashchange', () => {
 });
 
 function route() {
-  const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  const [ruta, consulta] = location.hash.replace(/^#\/?/, '').split('?');
+  const parts = ruta.split('/').filter(Boolean);
+  // Valores para precargar un formulario nuevo: #/m/modulo/new?campo=valor
+  const precarga = {};
+  if (consulta) new URLSearchParams(consulta).forEach((v, k) => (precarga[k] = v));
   document.querySelectorAll('.side-link').forEach((el) => el.classList.remove('active'));
   const sb = document.querySelector('.sidebar');
   if (sb) sb.classList.remove('open');
@@ -155,7 +168,7 @@ function route() {
     const name = parts[1];
     const link = document.querySelector(`.side-link[data-mod="${name}"]`);
     if (link) link.classList.add('active');
-    if (parts[2] === 'new') return viewForm(name, null);
+    if (parts[2] === 'new') return viewForm(name, null, precarga);
     if (parts[2] === 'edit' && parts[3]) return viewForm(name, parts[3]);
     return viewList(name);
   }
@@ -486,6 +499,7 @@ async function viewList(name) {
             ${cols.map((c) => {
               const f = fieldsBy[c];
               const lbl = c === 'id' ? 'ID' : f.label;
+              if (f && f.computed) return `<th class="no-sort" style="cursor:default">${esc(lbl)}</th>`;
               const arrow = st.sort === c ? `<span class="arrow">${st.dir === 'asc' ? '▲' : '▼'}</span>` : '';
               return `<th data-col="${c}">${esc(lbl)} ${arrow}</th>`;
             }).join('')}
@@ -581,6 +595,12 @@ async function viewList(name) {
 function cellValue(f, row, col) {
   if (col === 'id') return row.id;
   const v = row[f.name];
+  if (f.computed) {
+    if (v == null || v === '') return '';
+    const texto = typeof v === 'object' ? v.texto : v;
+    const nivel = typeof v === 'object' ? v.nivel : v;
+    return `<span class="badge ${nivelClase(nivel)}">${esc(texto)}</span>`;
+  }
   switch (f.type) {
     case 'ref':
       return esc(row[f.name + '_label'] || '');
@@ -612,7 +632,7 @@ function selectLabel(f, v) {
 }
 
 /* ---------------- formulario genérico ---------------- */
-async function viewForm(name, id) {
+async function viewForm(name, id, precarga) {
   const m = MOD[name];
   const isNew = !id;
   if (isNew && !m.perms.create) return (location.hash = `#/m/${name}`);
@@ -628,7 +648,7 @@ async function viewForm(name, id) {
     <div class="form-foot" id="formFoot"></div></form></div>`;
   document.getElementById('btnBack').addEventListener('click', () => (location.hash = `#/m/${name}`));
 
-  let row = {};
+  let row = isNew && precarga ? { ...precarga } : {};
   if (!isNew) {
     try {
       row = await api('GET', `/${name}/${id}`);
@@ -643,10 +663,10 @@ async function viewForm(name, id) {
   await Promise.all(refMods.map((r) => getOptions(r).catch(() => [])));
 
   const grid = document.getElementById('formGrid');
-  grid.innerHTML = m.fields.map((f) => fieldHtml(f, row, isNew)).join('');
+  grid.innerHTML = m.fields.filter((f) => !f.computed).map((f) => fieldHtml(f, row, isNew)).join('');
 
   // Comportamientos de widgets
-  m.fields.forEach((f) => {
+  m.fields.filter((f) => !f.computed).forEach((f) => {
     if (f.type === 'multiref') initMultiref(f, row);
     if (f.type === 'file') initFileField(f);
     if (f.type === 'rut') {
@@ -658,6 +678,13 @@ async function viewForm(name, id) {
 
   // Campos que solo aplican según el valor de otro (showIf)
   aplicarCondiciones();
+
+  // Cumplimiento y directivas bajo la ficha del cuerpo
+  if (name === 'cuerpos' && !isNew) {
+    const zona = document.createElement('div');
+    content().appendChild(zona);
+    renderPanelesCuerpo(Number(id), zona);
+  }
 
   // Historial del miembro (bitácora) bajo la ficha
   if (name === 'miembros' && !isNew) {
@@ -855,6 +882,7 @@ function collectForm(m) {
   const form = document.getElementById('recForm');
   const data = {};
   for (const f of m.fields) {
+    if (f.computed) continue;
     if (f.type === 'multiref') {
       const box = document.getElementById('mr_' + f.name);
       data[f.name] = box ? JSON.parse(box.dataset.value || '[]') : [];
@@ -1076,7 +1104,7 @@ function adivinarCampo(columna, campos) {
 }
 
 function abrirImportador(m, alTerminar) {
-  const campos = m.fields.filter((f) => f.type !== 'file');
+  const campos = m.fields.filter((f) => f.type !== 'file' && !f.computed);
   let columnas = [];
   let filasArchivo = [];
 
@@ -1459,6 +1487,73 @@ function abrirAnotacion(miembroId, alGuardar) {
       fondo.querySelector('#anError').textContent = e.message;
     }
   });
+}
+
+
+/* =====================================================================
+ * Ficha del cuerpo: estado de cumplimiento e histórico de directivas
+ * ===================================================================== */
+async function renderPanelesCuerpo(cuerpoId, contenedor) {
+  const [cumplimiento, directivas] = await Promise.all([
+    api('GET', `/cuerpos/${cuerpoId}/cumplimiento`).catch(() => null),
+    MOD['directivas']
+      ? api('GET', `/directivas?f_cuerpo_id=${cuerpoId}&sort=fecha_inicio&dir=desc&limit=50`).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+
+  let html = '';
+
+  if (cumplimiento && cumplimiento.items.length) {
+    html += `
+      <div class="card" style="margin-top:18px">
+        <div class="toolbar">
+          <b>✅ Estado de cumplimiento</b>
+          <span class="badge ${nivelClase(cumplimiento.nivel)}">${esc(cumplimiento.texto)}</span>
+        </div>
+        <ul class="cumplimiento">
+          ${cumplimiento.items.map((i) => `
+            <li class="${i.ok ? 'ok' : 'falta'}">
+              <span class="mk">${i.ok ? '✓' : '✗'}</span>
+              <div><b>${esc(i.texto)}</b><span>${esc(i.detalle)}</span></div>
+            </li>`).join('')}
+        </ul>
+      </div>`;
+  }
+
+  if (directivas) {
+    const cargo = (d, campo, etiqueta) =>
+      d[campo + '_label'] ? `<span class="cargo"><i>${etiqueta}:</i> ${esc(d[campo + '_label'])}</span>` : '';
+    html += `
+      <div class="card" style="margin-top:18px">
+        <div class="toolbar">
+          <b>🏅 Directivas</b>
+          <span style="color:var(--muted);font-size:13px">${directivas.total} período(s)</span>
+          <span class="spacer"></span>
+          ${MOD['directivas'].perms.create
+            ? `<a class="btn sm" href="#/m/directivas/new?cuerpo_id=${cuerpoId}">➕ Nueva directiva</a>`
+            : ''}
+        </div>
+        ${directivas.rows.length ? `<ul class="directivas">
+          ${directivas.rows.map((d) => `
+            <li class="${d.estado === 'Vigente' ? 'vigente' : ''}" onclick="location.hash='#/m/directivas/edit/${d.id}'">
+              <div class="dp">
+                <b>${esc(d.periodo)}</b>
+                <span class="badge ${d.estado === 'Vigente' ? 'green' : ''}">${esc(d.estado)}</span>
+              </div>
+              <div class="df">${fmtDate(d.fecha_inicio)}${d.fecha_termino ? ' — ' + fmtDate(d.fecha_termino) : ''}</div>
+              <div class="dc">
+                ${cargo(d, 'presidente_id', 'Presidente(a)')}
+                ${cargo(d, 'vicepresidente_id', 'Vicepresidente(a)')}
+                ${cargo(d, 'secretario_id', 'Secretario(a)')}
+                ${cargo(d, 'tesorero_id', 'Tesorero(a)')}
+                ${d.otros_cargos ? `<span class="cargo">${esc(d.otros_cargos)}</span>` : ''}
+              </div>
+            </li>`).join('')}
+        </ul>` : '<div class="empty-state" style="padding:26px">Todavía no hay directivas registradas.</div>'}
+      </div>`;
+  }
+
+  contenedor.innerHTML = html;
 }
 
 /* ---------------- inicio ---------------- */

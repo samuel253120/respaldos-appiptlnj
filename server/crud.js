@@ -108,6 +108,15 @@ function expandRow(def, row) {
       }
     }
   }
+
+  // Campos calculados: no se guardan, se resuelven al leer
+  for (const c of def.computed || []) {
+    try {
+      out[c.name] = c.calc(row, { db });
+    } catch (e) {
+      out[c.name] = null;
+    }
+  }
   return out;
 }
 

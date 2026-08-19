@@ -14,8 +14,8 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 
 | Grupo | Módulos |
 |---|---|
-| **Organización** | Iglesias · Pastores / Guías · Cuerpos / Grupos |
-| **Personas** | Miembros · Asistencias (con lista nominal de presentes) |
+| **Organización** | Iglesias · Pastores / Guías · Cuerpos / Grupos · Directivas de Cuerpos |
+| **Personas** | Miembros · Asistencias (con lista nominal de presentes) · Bitácora de Miembros |
 | **Finanzas** | Tesorería (ingresos/egresos con resumen y balance) · Ayudas Sociales · Inventarios (de iglesia y de cuerpos) |
 | **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · Documentos · Certificados · Credenciales · Solicitudes |
 | **Administración** | Usuarios (roles y permisos) |
@@ -116,6 +116,29 @@ Al elegir **Cuerpo** aparecen los campos que solo tienen sentido en una entidad 
 | Reglamento (documento) + fecha de aprobación | El reglamento vigente, adjunto |
 | Presidente(a), Secretario(a), Tesorero(a) | La directiva |
 | Período de la directiva | Ej. 2026 – 2027 |
+
+### Histórico de directivas 🏅
+
+Cada cuerpo elige su directiva por períodos, y el módulo **Directivas de Cuerpos** guarda todas: la vigente y las anteriores, con período, fechas, cargos (presidente, vicepresidente, secretario, tesorero), otros cargos y el acta de elección adjunta.
+
+- Al marcar una directiva como **Vigente**, las demás de ese cuerpo pasan solas a *Finalizada*: nunca hay dos vigentes a la vez.
+- El histórico se ve al pie de la ficha del cuerpo, con la vigente destacada, y desde ahí se registra una nueva con el cuerpo ya seleccionado.
+- Cada persona que asume un cargo queda anotada en su **bitácora** ("Asume como Presidente(a) de «Damas» — período 2026 – 2027").
+
+### Estado de cumplimiento ✅
+
+Los cuerpos, por ser entidades formales, muestran un indicador calculado —en el listado y detallado en su ficha— que revisa:
+
+| Requisito | Se cumple cuando |
+|---|---|
+| Reglamento adjunto | El cuerpo tiene cargado su reglamento |
+| Directiva vigente registrada | Existe una directiva en estado Vigente |
+| Directiva dentro de su período | No pasó su fecha de término |
+| Cuerpo activo | Su estado es Activo |
+
+El resultado es **Al día**, **Observado** (falta un requisito) o **Pendiente** (faltan dos o más). Los grupos muestran *No aplica*, porque no tienen exigencias formales.
+
+Este indicador usa otra capacidad general del motor: un módulo puede declarar `computed` —campos que no se guardan, sino que se calculan al leer cada registro— y usarlos en sus listados como cualquier otro campo.
 
 Esto usa una capacidad general del motor: cualquier campo puede declarar `showIf: { field: 'otro_campo', equals: 'valor' }` (o `in: [...]`) para mostrarse solo cuando corresponda. El servidor tampoco exige los campos obligatorios que no apliquen.
 

@@ -6,6 +6,10 @@
  * los expone al resto del sistema: la base de datos crea/migra sus tablas,
  * el CRUD genérico publica su API REST y el frontend genera su interfaz.
  *
+ * Un módulo puede declarar `computed`: campos que no se guardan en la base,
+ * sino que se calculan al leer cada registro (p. ej. un estado de
+ * cumplimiento). Se pueden mostrar en los listados como cualquier otro campo.
+ *
  * Un campo puede declarar `showIf: { field, equals | in }` para mostrarse solo
  * cuando otro campo tenga cierto valor (p. ej. datos que solo aplican a los
  * cuerpos formales y no a los grupos de servicio).
@@ -36,6 +40,12 @@ function normalize(def) {
   def.group = def.group || 'General';
   def.order = def.order == null ? 100 : def.order;
   def.fields = def.fields || [];
+  def.computed = (def.computed || []).map((c) => ({
+    ...c,
+    label: c.label || c.name,
+    type: c.type || 'badge',
+    computed: true,
+  }));
   def.searchFields = def.searchFields || def.fields.filter((f) => f.type === 'text').slice(0, 3).map((f) => f.name);
   def.listFields = def.listFields || def.fields.slice(0, 5).map((f) => f.name);
   def.display = def.display || '{' + (def.fields[0] ? def.fields[0].name : 'id') + '}';

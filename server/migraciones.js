@@ -77,10 +77,61 @@ function normalizarTipoCuerpos() {
   );
 }
 
+
+/**
+ * La directiva de un cuerpo dejó de guardarse en el propio cuerpo para pasar
+ * al módulo "directivas", que guarda el histórico por períodos. Los datos ya
+ * cargados se convierten en la primera directiva vigente de cada cuerpo.
+ */
+function directivaCuerpoAHistorico() {
+  const columnas = db.prepare('PRAGMA table_info("cuerpos")').all().map((c) => c.name);
+  const cargos = ['presidente_id', 'secretario_id', 'tesorero_id'];
+  if (!cargos.some((c) => columnas.includes(c))) return;
+
+  const seleccion = ['id', 'nombre', 'iglesia_id', 'fecha_constitucion']
+    .concat(cargos.filter((c) => columnas.includes(c)))
+    .concat(columnas.includes('periodo_directiva') ? ['periodo_directiva'] : [])
+    .join(', ');
+
+  const filas = db.prepare(`SELECT ${seleccion} FROM cuerpos`).all().filter(
+    (f) => f.presidente_id || f.secretario_id || f.tesorero_id || f.periodo_directiva
+  );
+  if (!filas.length) return;
+
+  let migradas = 0;
+  for (const fila of filas) {
+    const yaTiene = db.prepare('SELECT id FROM directivas WHERE cuerpo_id = ?').get(fila.id);
+    if (yaTiene) continue;
+    db.prepare(
+      `INSERT INTO directivas (cuerpo_id, periodo, fecha_inicio, presidente_id, secretario_id,
+                               tesorero_id, iglesia_id, estado, notas)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Vigente', ?)`
+    ).run(
+      fila.id,
+      fila.periodo_directiva || 'Período inicial',
+      fila.fecha_constitucion || new Date().toISOString().slice(0, 10),
+      fila.presidente_id || null,
+      fila.secretario_id || null,
+      fila.tesorero_id || null,
+      fila.iglesia_id || null,
+      'Directiva registrada antes de llevar el histórico por períodos.'
+    );
+    // Se limpian los campos antiguos del cuerpo para no duplicar el dato
+    for (const c of cargos.filter((c) => columnas.includes(c))) {
+      db.prepare(`UPDATE cuerpos SET "${c}" = NULL WHERE id = ?`).run(fila.id);
+    }
+    migradas++;
+  }
+  if (migradas) {
+    console.log(`🔁 directivas: ${migradas} directiva(s) pasaron al histórico como vigentes.`);
+  }
+}
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
   normalizarTipoCuerpos();
+  directivaCuerpoAHistorico();
 }
 
 module.exports = { ejecutarMigraciones };

@@ -101,7 +101,30 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
     return;
   }
 
-  // 3. Módulos que apuntan a un miembro
+  // 3. Directivas: se anota a cada miembro el cargo que asume
+  if (def.name === 'directivas') {
+    const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(despues.cuerpo_id);
+    const nombreCuerpo = cuerpo ? cuerpo.nombre : 'un cuerpo';
+    const cargos = [
+      ['presidente_id', 'Presidente(a)'],
+      ['vicepresidente_id', 'Vicepresidente(a)'],
+      ['secretario_id', 'Secretario(a)'],
+      ['tesorero_id', 'Tesorero(a)'],
+    ];
+    for (const [campo, cargo] of cargos) {
+      const nuevo = despues[campo];
+      const previo = isNew ? null : antes[campo];
+      if (nuevo && nuevo !== previo) {
+        anotar({
+          miembroId: nuevo, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
+          descripcion: `Asume como ${cargo} de "${nombreCuerpo}" — período ${despues.periodo || ''}.`.trim(),
+        });
+      }
+    }
+    return;
+  }
+
+  // 4. Módulos que apuntan a un miembro
   const relacionados = {
     solicitudes: (r) => ({ tipo: 'Solicitud', texto: `Solicitud "${r.asunto || r.tipo}" (${r.estado || 'Pendiente'}).` }),
     ayudas_sociales: (r) => ({ tipo: 'Ayuda social', texto: `Ayuda social: ${r.tipo_ayuda || ''} — ${r.estado || ''}.` }),
