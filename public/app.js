@@ -154,8 +154,18 @@ function renderLogin() {
         <input type="text" id="loginRut" placeholder="RUT (ej: 12.345.678-5)" required autocomplete="username" inputmode="text" />
         <input type="password" id="loginPass" placeholder="Contraseña" required autocomplete="current-password" />
         <button class="btn" type="submit">Iniciar sesión</button>
+        <div class="login-version" id="loginVersion"></div>
       </form>
     </div>`;
+  // Mostrar la versión en ejecución (ayuda a confirmar que el sistema ya se actualizó)
+  fetch('/health')
+    .then((r) => r.json())
+    .then((d) => {
+      const el = document.getElementById('loginVersion');
+      if (el && d.version) el.textContent = 'versión ' + d.version;
+    })
+    .catch(() => {});
+
   const rutInput = document.getElementById('loginRut');
   rutInput.addEventListener('blur', () => {
     if (rutInput.value && !rutInput.value.includes('@')) rutInput.value = rutFormatear(rutInput.value);

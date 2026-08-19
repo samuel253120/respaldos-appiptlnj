@@ -47,6 +47,7 @@ a:hover { text-decoration: underline; }
 }
 .login-card button { width: 100%; }
 .login-error { color: var(--danger); font-size: 13px; margin-bottom: 10px; min-height: 18px; }
+.login-version { margin-top: 14px; font-size: 11.5px; color: var(--muted); }
 
 /* ---------- Layout ---------- */
 .layout { display: flex; min-height: 100vh; }

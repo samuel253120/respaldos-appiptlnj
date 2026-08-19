@@ -21,8 +21,10 @@ const app = express();
 app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
 app.use(express.json({ limit: '10mb' }));
 
-// Verificación de salud para plataformas de despliegue
-app.get('/health', (req, res) => res.json({ ok: true }));
+// Verificación de salud para plataformas de despliegue.
+// Incluye la versión para poder comprobar qué código está realmente en línea.
+const VERSION = require('../package.json').version;
+app.get('/health', (req, res) => res.json({ ok: true, version: VERSION }));
 
 // ---------- Autenticación ----------
 app.use('/api/auth', authRouter);
@@ -148,6 +150,6 @@ ensureSeed();
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ Sistema de Gestión de Iglesias escuchando en el puerto ${PORT}`);
+  console.log(`✅ Sistema de Gestión de Iglesias v${VERSION} escuchando en el puerto ${PORT}`);
   console.log('   (al publicar en internet, este puerto debe coincidir con el "Target port" del dominio)');
 });
