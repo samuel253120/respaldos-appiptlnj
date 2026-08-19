@@ -74,6 +74,16 @@ const OPCIONES = [
         ayuda: 'Tras ese tiempo sin renovar, se pide iniciar sesión nuevamente.',
       },
       {
+        clave: 'imagen_lado_maximo', label: 'Tamaño máximo de las imágenes (píxeles)', tipo: 'number', defecto: '1600',
+        ayuda:
+          'Al subir una foto (de un miembro, de un documento), el sistema la reduce hasta ese lado mayor ' +
+          'antes de enviarla: carga mucho más rápido y se ve igual. Entre 600 y 4000.',
+      },
+      {
+        clave: 'imagen_calidad', label: 'Calidad de las imágenes (%)', tipo: 'number', defecto: '88',
+        ayuda: 'Qué tanto detalle conserva la foto reducida. 88 conserva la calidad a simple vista; 100 no comprime.',
+      },
+      {
         clave: 'bitacora_automatica', label: 'Registrar automáticamente en la bitácora', tipo: 'boolean', defecto: '1',
         ayuda: 'Anota por sí solo los cambios de datos de miembros, ingresos a cuerpos, solicitudes, ayudas y certificados.',
       },

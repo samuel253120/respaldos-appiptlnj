@@ -16,6 +16,7 @@ let MOD = {}; // por nombre
 const optionsCache = {}; // opciones {id,label} por módulo referenciado
 const listState = {}; // estado de cada listado (página, búsqueda, filtros…)
 let PERMISOS_CATALOGO = null; // módulos y acciones para el editor de permisos
+let AJUSTES = { imagen_lado_maximo: 1600, imagen_calidad: 88 }; // preferencias de la interfaz
 
 const $app = document.getElementById('app');
 
@@ -154,6 +155,7 @@ async function boot() {
     MODULES.forEach((m) => (MOD[m.name] = m));
     USER = meta.user;
     PERMISOS_CATALOGO = meta.permisosCatalogo || null;
+    if (meta.ajustes) AJUSTES = { ...AJUSTES, ...meta.ajustes };
     renderShell();
     route();
   } catch (e) {
@@ -699,6 +701,7 @@ async function viewForm(name, id, precarga) {
     }
     if (f.type === 'permisos') initPermisos(f, row, row.rol);
     if (f.type === 'persona') initPersona(f, row);
+    if (f.mostrarEdad) initEdad(f);
   });
   initCalculados(m);
 
@@ -712,8 +715,11 @@ async function viewForm(name, id, precarga) {
     renderPanelesCuerpo(Number(id), zona);
   }
 
-  // Historial del miembro (bitácora) bajo la ficha
+  // Documentos e historial del miembro, bajo la ficha
   if (name === 'miembros' && !isNew) {
+    const zonaDocs = document.createElement('div');
+    content().appendChild(zonaDocs);
+    renderDocumentosMiembro(Number(id), zonaDocs);
     const zona = document.createElement('div');
     content().appendChild(zona);
     renderHistorialMiembro(Number(id), zona);
@@ -821,7 +827,7 @@ function fieldHtml(f, row, isNew) {
         <div class="filefld" id="ff_${f.name}">
           <input type="hidden" name="${f.name}" value="${esc(val)}" />
           <input type="file" id="file_${f.name}" ${f.accept ? `accept="${esc(f.accept)}"` : ''} />
-          <span class="fname" id="fname_${f.name}">${val ? `<a href="/uploads/${esc(val)}" target="_blank">📎 ${esc(val)}</a>` : ''}</span>
+          <span class="fname" id="fname_${f.name}">${val ? `<a href="/uploads/${esc(val)}" target="_blank">📎 ${esc(nombreArchivo(val))}</a>` : ''}</span>
           ${val && /\.(jpe?g|png|gif|webp)$/i.test(val) ? `<img class="preview" src="/uploads/${esc(val)}" alt="" />` : ''}
         </div>`;
       break;
@@ -944,6 +950,41 @@ function initCalculados(m) {
   recalcular();
 }
 
+/** Años (o meses, para los más pequeños) cumplidos a hoy. */
+function edadDeFecha(iso) {
+  if (!iso) return '';
+  const nace = new Date(String(iso).slice(0, 10) + 'T00:00:00');
+  if (Number.isNaN(nace.getTime())) return '';
+  const hoy = new Date();
+  let anios = hoy.getFullYear() - nace.getFullYear();
+  const dm = hoy.getMonth() - nace.getMonth();
+  if (dm < 0 || (dm === 0 && hoy.getDate() < nace.getDate())) anios--;
+  if (anios < 0 || anios > 130) return '';
+  if (anios > 0) return `${anios} año${anios === 1 ? '' : 's'}`;
+  let meses = (hoy.getFullYear() - nace.getFullYear()) * 12 + dm;
+  if (hoy.getDate() < nace.getDate()) meses--;
+  meses = Math.max(0, meses);
+  return `${meses} mes${meses === 1 ? '' : 'es'}`;
+}
+
+/** Muestra la edad al lado de la fecha de nacimiento, mientras se escribe. */
+function initEdad(f) {
+  const form = document.getElementById('recForm');
+  const campo = form && form.querySelector(`[name="${f.name}"]`);
+  if (!campo) return;
+  const marca = document.createElement('span');
+  marca.className = 'edad-chip';
+  campo.parentNode.insertBefore(marca, campo.nextSibling);
+  const refrescar = () => {
+    const edad = edadDeFecha(campo.value);
+    marca.textContent = edad ? `🎂 ${edad}` : '';
+    marca.style.display = edad ? '' : 'none';
+  };
+  campo.addEventListener('input', refrescar);
+  campo.addEventListener('change', refrescar);
+  refrescar();
+}
+
 function initMultiref(f, row) {
   const box = document.getElementById('mr_' + f.name);
   if (!box) return;
@@ -978,22 +1019,94 @@ function initMultiref(f, row) {
   box.querySelector('.mr-search').addEventListener('input', (e) => render(e.target.value));
 }
 
+/** Nombre del archivo tal como lo subió el usuario, sin el prefijo interno. */
+function nombreArchivo(guardado) {
+  return String(guardado || '').replace(/^\d+-[0-9a-f]{6,}-/, '');
+}
+
+/** Tamaño legible: 1.2 MB, 340 KB… */
+function tamanoLegible(bytes) {
+  if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1).replace('.', ',') + ' MB';
+  return Math.round(bytes / 1024) + ' KB';
+}
+
+/**
+ * Reduce una foto antes de subirla: la deja con su lado mayor en el tamaño
+ * configurado, conservando la proporción y el detalle a simple vista. Así una
+ * foto de teléfono de varios MB sube en un instante, sin que se note.
+ *
+ * Si el archivo no es una imagen, o ya es pequeño, se sube tal cual.
+ */
+async function reducirImagen(file) {
+  if (!file.type.startsWith('image/') || /svg|gif/i.test(file.type)) return { file, reducida: false };
+  const lado = Number(AJUSTES.imagen_lado_maximo) || 1600;
+  const calidad = (Number(AJUSTES.imagen_calidad) || 88) / 100;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const mayor = Math.max(bitmap.width, bitmap.height);
+    const escala = mayor > lado ? lado / mayor : 1;
+    // Si ya es chica y liviana, no se toca
+    if (escala === 1 && file.size < 900 * 1024) {
+      bitmap.close();
+      return { file, reducida: false };
+    }
+    const ancho = Math.round(bitmap.width * escala);
+    const alto = Math.round(bitmap.height * escala);
+    const lienzo = document.createElement('canvas');
+    lienzo.width = ancho;
+    lienzo.height = alto;
+    const ctx = lienzo.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#fff'; // el JPEG no tiene transparencia
+    ctx.fillRect(0, 0, ancho, alto);
+    ctx.drawImage(bitmap, 0, 0, ancho, alto);
+    bitmap.close();
+    const blob = await new Promise((res) => lienzo.toBlob(res, 'image/jpeg', calidad));
+    if (!blob || blob.size >= file.size) return { file, reducida: false };
+    const nombre = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    return {
+      file: new File([blob], nombre, { type: 'image/jpeg' }),
+      reducida: true,
+      antes: file.size, despues: blob.size, ancho, alto,
+    };
+  } catch (e) {
+    return { file, reducida: false }; // ante cualquier problema, se sube el original
+  }
+}
+
 function initFileField(f) {
   const fileInput = document.getElementById('file_' + f.name);
   if (!fileInput) return;
   fileInput.addEventListener('change', async () => {
-    const file = fileInput.files[0];
-    if (!file) return;
-    const fd = new FormData();
-    fd.append('archivo', file);
+    const original = fileInput.files[0];
+    if (!original) return;
     const nameEl = document.getElementById('fname_' + f.name);
-    nameEl.textContent = 'Subiendo…';
+    nameEl.textContent = original.type.startsWith('image/') ? 'Preparando la imagen…' : 'Subiendo…';
     try {
+      const ajustada = await reducirImagen(original);
+      const fd = new FormData();
+      fd.append('archivo', ajustada.file);
+      nameEl.textContent = 'Subiendo…';
       const r = await api('POST', '/upload', fd, true);
       const hidden = document.querySelector(`#ff_${f.name} input[type=hidden]`);
       hidden.value = r.filename;
-      nameEl.innerHTML = `<a href="${esc(r.url)}" target="_blank">📎 ${esc(r.original)}</a>`;
-      toast('Archivo subido');
+      const detalle = ajustada.reducida
+        ? `<span class="fmeta">imagen ajustada a ${ajustada.ancho}×${ajustada.alto} — de ${tamanoLegible(ajustada.antes)} a ${tamanoLegible(ajustada.despues)}</span>`
+        : `<span class="fmeta">${tamanoLegible(original.size)}</span>`;
+      nameEl.innerHTML = `<a href="${esc(r.url)}" target="_blank">📎 ${esc(r.original)}</a>${detalle}`;
+      // Vista previa inmediata de la imagen recién subida
+      const caja = document.getElementById('ff_' + f.name);
+      if (caja && /\.(jpe?g|png|webp)$/i.test(r.filename)) {
+        let img = caja.querySelector('img.preview');
+        if (!img) {
+          img = document.createElement('img');
+          img.className = 'preview';
+          caja.appendChild(img);
+        }
+        img.src = r.url;
+      }
+      toast(ajustada.reducida ? 'Imagen ajustada y subida' : 'Archivo subido');
     } catch (e) {
       nameEl.textContent = '';
       toast(e.message, true);
@@ -1587,6 +1700,52 @@ function initPermisos(f, row, rolActual) {
 /* =====================================================================
  * Historial (bitácora) dentro de la ficha del miembro
  * ===================================================================== */
+/** Documentos adjuntos de un miembro (carnet, fichas, certificados…). */
+async function renderDocumentosMiembro(miembroId, contenedor) {
+  const modDocs = MOD['documentos_miembros'];
+  if (!modDocs) return;
+  const esImagen = (a) => /\.(jpe?g|png|webp|gif)$/i.test(a || '');
+  try {
+    const datos = await api('GET', `/documentos_miembros?f_miembro_id=${miembroId}&limit=100&sort=fecha&dir=desc`);
+    contenedor.innerHTML = `
+      <div class="card" style="margin-top:18px">
+        <div class="toolbar">
+          <b>🗂️ Documentos del miembro</b>
+          <span style="color:var(--muted);font-size:13px">${datos.total} documento(s)</span>
+          <span class="spacer"></span>
+          ${modDocs.perms.create ? `<button class="btn sm" id="btnDocNuevo">➕ Agregar documento</button>` : ''}
+        </div>
+        ${datos.rows.length ? `<ul class="documentos">
+          ${datos.rows.map((d) => `
+            <li data-id="${d.id}">
+              <div class="dm">${esImagen(d.archivo)
+                ? `<img src="/uploads/${esc(d.archivo)}" alt="" />`
+                : '<span class="dico">📄</span>'}</div>
+              <div class="dd">
+                <b>${esc(d.nombre || '')}</b>
+                <span class="badge ${badgeClass(d.tipo)}">${esc(d.tipo || '')}</span>
+                <div class="dfe">${d.fecha ? fmtDate(d.fecha) : ''}${d.observaciones ? ' — ' + esc(d.observaciones) : ''}</div>
+              </div>
+              <div class="da">
+                ${d.archivo ? `<a class="btn sm secondary" href="/uploads/${esc(d.archivo)}" target="_blank">Ver</a>` : ''}
+              </div>
+            </li>`).join('')}
+        </ul>` : '<div class="empty-state" style="padding:26px">Todavía no se ha adjuntado ningún documento.</div>'}
+      </div>`;
+
+    const btn = document.getElementById('btnDocNuevo');
+    if (btn) btn.addEventListener('click', () => (location.hash = `#/m/documentos_miembros/new?miembro_id=${miembroId}`));
+    contenedor.querySelectorAll('ul.documentos li').forEach((li) => {
+      li.addEventListener('click', (ev) => {
+        if (ev.target.closest('a')) return; // "Ver" abre el archivo
+        location.hash = `#/m/documentos_miembros/edit/${li.dataset.id}`;
+      });
+    });
+  } catch (e) {
+    contenedor.innerHTML = '';
+  }
+}
+
 async function renderHistorialMiembro(miembroId, contenedor) {
   const modBitacora = MOD['bitacora'];
   if (!modBitacora) return;

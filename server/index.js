@@ -65,10 +65,10 @@ app.get('/api/meta', authRequired, (req, res) => {
       fields: [
         ...m.fields
           .filter((f) => !f.oculto)
-          .map(({ name, label, type, required, options, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula }) => ({
+          .map(({ name, label, type, required, options, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad }) => ({
             name, label, type, required: !!required, options: options || null, ref: ref || null,
             help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
-            optionsRoute: optionsRoute || null, readonly: !!readonly,
+            optionsRoute: optionsRoute || null, readonly: !!readonly, mostrarEdad: !!mostrarEdad,
             calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
             computed: false,
           })),
@@ -115,6 +115,11 @@ app.get('/api/meta', authRequired, (req, res) => {
     modules: mods,
     roles: ROLES,
     permisosCatalogo,
+    // Ajustes que la interfaz necesita para trabajar (no son públicos)
+    ajustes: {
+      imagen_lado_maximo: Math.min(4000, Math.max(600, Number(ajustes.obtener('imagen_lado_maximo')) || 1600)),
+      imagen_calidad: Math.min(100, Math.max(40, Number(ajustes.obtener('imagen_calidad')) || 88)),
+    },
     user: { ...req.user, iglesia_nombre: iglesiaNombre },
   });
 });

@@ -16,7 +16,7 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 |---|---|
 | **Organización** | Iglesias · Pastores / Guías · Cuerpos / Grupos · Directivas de Cuerpos |
 | **Servicios** | Registro de Servicios (cultos: salmo, mensaje, asistencia y ofrenda) |
-| **Personas** | Miembros · Asistencias (con lista nominal de presentes) · Bitácora de Miembros |
+| **Personas** | Miembros · Asistencias (con lista nominal de presentes) · Bitácora de Miembros · Documentos de Miembros |
 | **Finanzas** | Tesorería (ingresos/egresos con resumen y balance) · Ayudas Sociales · Inventarios (de iglesia y de cuerpos) |
 | **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · Documentos · Certificados · Credenciales · Solicitudes |
 | **Administración** | Usuarios (roles y permisos) |
@@ -163,6 +163,28 @@ Este indicador usa otra capacidad general del motor: un módulo puede declarar `
 
 Esto usa una capacidad general del motor: cualquier campo puede declarar `showIf: { field: 'otro_campo', equals: 'valor' }` (o `in: [...]`) para mostrarse solo cuando corresponda. El servidor tampoco exige los campos obligatorios que no apliquen.
 
+## Ficha del miembro 🧍
+
+### Edad al día
+
+Basta con la **fecha de nacimiento**: la edad aparece al lado mientras se escribe y se muestra en el listado. No se guarda —se calcula cada vez que se lee la ficha—, así que nunca queda desactualizada. A los menores de un año se les muestra la edad en meses.
+
+### Estado civil y matrimonio
+
+Al elegir **Casado(a)** aparecen dos campos más: **fecha de matrimonio civil** y **fecha de matrimonio por la iglesia**. Con cualquier otro estado civil no se muestran. Si más adelante cambia el estado, las fechas no se pierden: quedan guardadas, solo dejan de mostrarse.
+
+### Fotos y documentos que suben rápido
+
+Al subir una **imagen** —la foto del miembro, la foto de un carnet— el sistema la **ajusta de tamaño antes de enviarla**: la deja con su lado mayor en 1600 píxeles conservando el detalle a simple vista. Una foto de teléfono de varios MB queda en unos cientos de KB y sube en un instante, aun con señal mala. Debajo del archivo se indica lo que pasó: *«imagen ajustada a 1600×1200 — de 4,2 MB a 180 KB»*.
+
+El tamaño y la calidad se cambian en **Configuración → Preferencias**. Los archivos que no son imágenes (PDF, Word) suben tal cual.
+
+### Documentos del miembro 🗂️
+
+Cada miembro puede tener **todos los documentos que hagan falta**: carnet de identidad, ficha de registro, ficha de actualización, certificados, cartas de traslado o cualquier otro. Cada documento guarda **el archivo y su nombre**, para reconocerlo sin abrirlo, más su tipo, su fecha y observaciones.
+
+Se ven y se agregan **al pie de la ficha del miembro**, con la miniatura de cada uno; al agregar uno, el miembro viene puesto. Cada documento adjuntado queda anotado solo en el **historial del miembro**.
+
 ## Registro de Servicios 🕊️
 
 Deja constancia de cada servicio (culto) realizado: cuándo empezó y terminó, quién coordinó, quién leyó el salmo y cuál fue, quién predicó y sobre qué pasaje, cuánta gente asistió y cuánto se ofrendó.
@@ -208,7 +230,7 @@ Los administradores tienen en el menú la entrada **Configuración**, con opcion
 - **Mantenimiento** — deja el sistema en mantenimiento y define el aviso que verán los usuarios.
 - **Identidad** — nombre y lema de la institución.
 - **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores de los cuerpos) y porcentaje de la ofrenda que se aparta para el otro fondo.
-- **Preferencias** — símbolo de moneda, registros por página, duración de la sesión y si la bitácora registra automáticamente.
+- **Preferencias** — símbolo de moneda, registros por página, duración de la sesión, tamaño y calidad de las imágenes al subirlas, y si la bitácora registra automáticamente.
 
 ### Modo mantenimiento
 

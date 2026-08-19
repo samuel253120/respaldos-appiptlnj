@@ -27,7 +27,7 @@ module.exports = {
       name: 'tipo', label: 'Tipo de registro', type: 'select', required: true, default: 'Anotación',
       options: [
         'Anotación', 'Cambio de datos', 'Ingreso a cuerpo', 'Salida de cuerpo',
-        'Solicitud', 'Ayuda social', 'Certificado', 'Credencial', 'Bautismo',
+        'Solicitud', 'Ayuda social', 'Certificado', 'Credencial', 'Documento', 'Bautismo',
         'Cambio de estado', 'Visita', 'Disciplina', 'Reconocimiento', 'Otro',
       ],
     },
