@@ -52,9 +52,35 @@ function documentoIdentidadARut(tabla) {
   }
 }
 
+
+/**
+ * El campo "tipo" de cuerpos/grupos pasó a tener solo dos valores: Cuerpo y
+ * Grupo (antes se usaba para el nombre: Damas, Caballeros, Jóvenes…). Los
+ * registros anteriores se dejan como "Cuerpo" y se informa cuáles fueron,
+ * para que se revisen y ajusten a "Grupo" los que corresponda.
+ */
+function normalizarTipoCuerpos() {
+  const columnas = db.prepare('PRAGMA table_info("cuerpos")').all().map((c) => c.name);
+  if (!columnas.includes('tipo')) return;
+
+  const antiguos = db
+    .prepare(`SELECT id, nombre, tipo FROM cuerpos WHERE tipo IS NOT NULL AND tipo NOT IN ('Cuerpo', 'Grupo')`)
+    .all();
+  if (!antiguos.length) return;
+
+  const actualizar = db.prepare(`UPDATE cuerpos SET tipo = 'Cuerpo' WHERE id = ?`);
+  for (const fila of antiguos) actualizar.run(fila.id);
+  console.log(
+    `🔁 cuerpos: ${antiguos.length} registro(s) quedaron como "Cuerpo" (antes el tipo guardaba el nombre): ` +
+      antiguos.map((f) => `${f.nombre} [era "${f.tipo}"]`).join(', ') +
+      '\n   Revise cuáles corresponden a "Grupo" y ajústelos en el módulo Cuerpos / Grupos.'
+  );
+}
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
+  normalizarTipoCuerpos();
 }
 
 module.exports = { ejecutarMigraciones };
