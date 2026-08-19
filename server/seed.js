@@ -29,6 +29,23 @@ function ensureSeed() {
     console.log('⛪ Iglesia de ejemplo creada: Iglesia Central (IG-001)');
   }
 
+  // Tesorería: la cuenta general de la corporación y la de cada iglesia, para
+  // que se pueda registrar el primer movimiento sin tener que crearlas a mano.
+  const cuentas = db.prepare('SELECT COUNT(*) AS c FROM cuentas_tesoreria').get().c;
+  if (cuentas === 0) {
+    const crear = db.prepare(
+      `INSERT INTO cuentas_tesoreria (nombre, ambito, iglesia_id, tipo, estado, saldo_inicial, descripcion)
+       VALUES (?, ?, ?, 'General', 'Activa', 0, ?)`
+    );
+    crear.run('Tesorería general de la corporación', 'Corporación', null, 'Tesorería general de toda la organización.');
+    let creadas = 1;
+    for (const ig of db.prepare('SELECT id, nombre FROM iglesias').all()) {
+      crear.run(`Tesorería general — ${ig.nombre}`, 'Iglesia local', ig.id, 'Tesorería general de la iglesia local.');
+      creadas++;
+    }
+    console.log(`🏦 ${creadas} cuenta(s) de tesorería general creadas (corporación e iglesias).`);
+  }
+
   const sinRut = db.prepare("SELECT nombre, email FROM usuarios WHERE rut IS NULL OR rut = ''").all();
   if (sinRut.length) {
     console.log(

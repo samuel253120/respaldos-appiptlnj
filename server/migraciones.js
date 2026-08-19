@@ -226,6 +226,63 @@ function oficialSupervisorAMiembro() {
 }
 
 
+/**
+ * La tesorería pasó a llevarse por cuentas: la general de la corporación, la
+ * general de cada iglesia local y las cuentas de proyecto de cada nivel.
+ *
+ * Los movimientos ya registrados se asignan a la cuenta general que les
+ * corresponde según su iglesia (o a la de la corporación si no tenían una),
+ * creándola si hace falta. Nada se pierde ni se mueve de nivel.
+ */
+function movimientosACuentas() {
+  const columnas = db.prepare('PRAGMA table_info("tesoreria")').all().map((c) => c.name);
+  if (!columnas.includes('cuenta_id')) return;
+
+  const sinCuenta = db
+    .prepare('SELECT id, iglesia_id FROM tesoreria WHERE cuenta_id IS NULL')
+    .all();
+  if (!sinCuenta.length) return;
+
+  const buscarGeneral = (iglesiaId) =>
+    iglesiaId
+      ? db.prepare(`SELECT id FROM cuentas_tesoreria WHERE tipo = 'General' AND iglesia_id = ?`).get(iglesiaId)
+      : db.prepare(`SELECT id FROM cuentas_tesoreria WHERE tipo = 'General' AND iglesia_id IS NULL`).get();
+
+  const crearGeneral = (iglesiaId) => {
+    const nombre = iglesiaId
+      ? (db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(iglesiaId) || {}).nombre
+      : null;
+    const info = db
+      .prepare(
+        `INSERT INTO cuentas_tesoreria (nombre, ambito, iglesia_id, tipo, estado, saldo_inicial, descripcion)
+         VALUES (?, ?, ?, 'General', 'Activa', 0, ?)`
+      )
+      .run(
+        iglesiaId ? `Tesorería general — ${nombre || 'iglesia #' + iglesiaId}` : 'Tesorería general de la corporación',
+        iglesiaId ? 'Iglesia local' : 'Corporación',
+        iglesiaId || null,
+        'Creada al ordenar la tesorería por cuentas; recibe los movimientos que ya estaban registrados.'
+      );
+    return { id: info.lastInsertRowid };
+  };
+
+  const cache = new Map();
+  const generalDe = (iglesiaId) => {
+    const clave = iglesiaId || 0;
+    if (!cache.has(clave)) cache.set(clave, buscarGeneral(iglesiaId) || crearGeneral(iglesiaId));
+    return cache.get(clave);
+  };
+
+  const asignar = db.prepare('UPDATE tesoreria SET cuenta_id = ? WHERE id = ?');
+  for (const mov of sinCuenta) asignar.run(generalDe(mov.iglesia_id).id, mov.id);
+
+  console.log(
+    `🔁 tesorería: ${sinCuenta.length} movimiento(s) asignados a su cuenta general ` +
+      `(${cache.size} cuenta(s) involucradas).`
+  );
+}
+
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
@@ -233,6 +290,7 @@ function ejecutarMigraciones() {
   directivaCuerpoAHistorico();
   renombrarCargosDirectiva();
   oficialSupervisorAMiembro();
+  movimientosACuentas();
 }
 
 module.exports = { ejecutarMigraciones };

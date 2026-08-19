@@ -121,6 +121,18 @@ function sincronizarPersonas(def, data, existing) {
 }
 
 /**
+ * Al crear, los campos que no vengan toman el valor por defecto declarado en
+ * el módulo. Así la interfaz, la importación y la API se comportan igual.
+ */
+function aplicarDefectos(def, data) {
+  for (const f of def.fields) {
+    if (f.default === undefined || f.default === null) continue;
+    const v = data[f.name];
+    if (v === undefined || v === null || v === '') data[f.name] = coerce(f, f.default);
+  }
+}
+
+/**
  * Resuelve los campos que se calculan solos a partir de otros (`calcula`).
  * El valor se guarda en la base, para poder filtrarlo, ordenarlo y sumarlo
  * como cualquier otro campo.
@@ -330,6 +342,7 @@ function buildRouter() {
           const v = coerce(f, req.body[f.name]);
           if (v !== undefined) data[f.name] = v;
         }
+        if (isNew) aplicarDefectos(def, data);
         sincronizarPersonas(def, data, existing);
         // Alcance: forzar la iglesia del usuario
         if (isChurchScoped(def) && req.user.iglesia_id) data.iglesia_id = req.user.iglesia_id;
@@ -431,4 +444,4 @@ function buildRouter() {
   return router;
 }
 
-module.exports = { buildRouter, coerce, sincronizarPersonas, aplicarCalculos };
+module.exports = { buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos };

@@ -17,7 +17,7 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 | **Organización** | Iglesias · Pastores / Guías · Cuerpos / Grupos · Directivas de Cuerpos |
 | **Servicios** | Registro de Servicios (cultos: salmo, mensaje, asistencia y ofrenda) |
 | **Personas** | Miembros · Asistencias (con lista nominal de presentes) · Bitácora de Miembros · Documentos de Miembros |
-| **Finanzas** | Tesorería (ingresos/egresos con resumen y balance) · Ayudas Sociales · Inventarios (de iglesia y de cuerpos) |
+| **Finanzas** | Cuentas de Tesorería (corporación e iglesias) · Tesorería (ingresos/egresos con resumen y balance) · Ayudas Sociales · Inventarios (de iglesia y de cuerpos) |
 | **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · Documentos · Certificados · Credenciales · Solicitudes |
 | **Administración** | Usuarios (roles y permisos) |
 
@@ -93,7 +93,7 @@ Roles disponibles (editables en `server/permissions.js`):
 - **Administrador** — acceso total, incluido el módulo Usuarios.
 - **Pastor / Guía** — acceso total excepto Usuarios.
 - **Secretario** — gestiona membresía, servicios, actas, documentos, certificados, etc.; sin acceso a Tesorería.
-- **Tesorero** — gestiona Tesorería, Ayudas Sociales e Inventarios; consulta el resto.
+- **Tesorero** — gestiona Cuentas de Tesorería, Tesorería, Ayudas Sociales e Inventarios; consulta el resto.
 - **Solo consulta** — lectura, sin Tesorería.
 
 **Iglesia local a la vista**: la barra superior y el panel de control muestran siempre en qué congregación se está trabajando — la asignada al usuario o, si administra varias, "Todas las iglesias". Cuando el sistema administra una sola iglesia, se muestra su nombre aunque el usuario no tenga ninguna asignada.
@@ -197,6 +197,52 @@ El tamaño y la calidad se cambian en **Configuración → Preferencias**. Los a
 Cada miembro puede tener **todos los documentos que hagan falta**: carnet de identidad, ficha de registro, ficha de actualización, certificados, cartas de traslado o cualquier otro. Cada documento guarda **el archivo y su nombre**, para reconocerlo sin abrirlo, más su tipo, su fecha y observaciones.
 
 Se ven y se agregan **al pie de la ficha del miembro**, con la miniatura de cada uno; al agregar uno, el miembro viene puesto. Cada documento adjuntado queda anotado solo en el **historial del miembro**.
+
+## Tesorería por cuentas 🏦
+
+El dinero se lleva en **cuentas**, en dos niveles:
+
+```
+Corporación            Tesorería general de la corporación
+                       + una cuenta por cada proyecto o trabajo de la corporación
+
+Cada iglesia local     Tesorería general de la iglesia
+                       + una cuenta por cada proyecto o trabajo de esa iglesia
+```
+
+Cada movimiento de Tesorería se registra **en una cuenta**, y el saldo de cada una se calcula solo: *saldo inicial + ingresos − egresos*.
+
+### Cómo se ordena
+
+| Campo de la cuenta | Para qué |
+|---|---|
+| Nivel | **Corporación** o **Iglesia local** |
+| Iglesia | A cuál pertenece (solo si el nivel es Iglesia local) |
+| Tipo | **General** (la tesorería del nivel) o **Proyecto / Trabajo** |
+| Responsable, fecha de apertura, saldo inicial, descripción | Datos de la cuenta |
+| Estado | **Activa** o **Cerrada** |
+
+Reglas que el sistema hace cumplir:
+
+- **Una sola cuenta General por nivel**: una para la corporación y una para cada iglesia. Las demás son de proyecto o trabajo.
+- Una cuenta de la corporación **no pertenece a ninguna iglesia**; una cuenta local exige indicar cuál.
+- La **iglesia de cada movimiento se toma de su cuenta** — no se escribe a mano —, así el alcance por iglesia siempre calza con el nivel de la cuenta.
+- Una **cuenta cerrada** no recibe movimientos nuevos, pero los que ya tiene se pueden corregir.
+- Una cuenta **con movimientos no se puede eliminar**: se cierra.
+
+### Qué se ve
+
+- **Cuentas de Tesorería** lista todas con su **saldo**, y se filtra por nivel, tipo y estado.
+- Al abrir una cuenta, al pie aparece su **estado**: saldo inicial, ingresos, egresos, saldo actual y sus últimos movimientos, con botones para registrar uno nuevo o ver todos los suyos.
+- El listado de **Tesorería** muestra arriba el **saldo de cada cuenta** además del resumen del período, y se filtra por cuenta, tipo y categoría.
+
+### Alcance por iglesia
+
+Un usuario asignado a una iglesia solo ve —y solo puede mover— las cuentas de **su** iglesia: las de la corporación no le aparecen ni en los listados ni en el selector de un movimiento, y el servidor rechaza el intento aunque se haga por fuera de la pantalla. Un usuario sin iglesia asignada (por ejemplo el tesorero de la corporación) opera sobre todas.
+
+### Al actualizar el sistema
+
+Los movimientos que ya estaban registrados **no se pierden ni cambian de nivel**: cada uno pasa a la cuenta general que le corresponde según su iglesia (o a la de la corporación si no tenía), creándola si hacía falta. Queda anotado en el arranque: *«🔁 tesorería: 4 movimiento(s) asignados a su cuenta general»*.
 
 ## Registro de Servicios 🕊️
 

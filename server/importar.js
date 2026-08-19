@@ -18,7 +18,7 @@ const express = require('express');
 const { db } = require('./db');
 const { getModule, displayOf } = require('./registry');
 const { authRequired, requirePerm } = require('./auth');
-const { coerce, sincronizarPersonas, aplicarCalculos } = require('./crud');
+const { coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos } = require('./crud');
 const rut = require('./rut');
 
 const MAX_FILAS = 5000;
@@ -148,6 +148,7 @@ function prepararFila(def, fila, user) {
     }
   }
 
+  aplicarDefectos(def, datos);
   sincronizarPersonas(def, datos, null);
   aplicarCalculos(def, datos, null);
 

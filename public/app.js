@@ -197,7 +197,7 @@ function route() {
     if (link) link.classList.add('active');
     if (parts[2] === 'new') return viewForm(name, null, precarga);
     if (parts[2] === 'edit' && parts[3]) return viewForm(name, parts[3]);
-    return viewList(name);
+    return viewList(name, precarga);
   }
   if (parts[0] === 'config' && USER.rol === 'admin') {
     const cl = document.querySelector('.side-link[data-mod="_config"]');
@@ -440,11 +440,21 @@ function stateOf(name) {
   return listState[name];
 }
 
-async function viewList(name) {
+async function viewList(name, filtrosIniciales) {
   const m = MOD[name];
   const st = stateOf(name);
   const fieldsBy = {};
   m.fields.forEach((f) => (fieldsBy[f.name] = f));
+
+  // Filtros que vienen en la dirección: #/m/tesoreria?f_cuenta_id=3
+  for (const [clave, valor] of Object.entries(filtrosIniciales || {})) {
+    if (!clave.startsWith('f_')) continue;
+    const campo = clave.slice(2);
+    if (fieldsBy[campo]) {
+      st.filters[campo] = String(valor);
+      st.page = 1;
+    }
+  }
 
   content().innerHTML = `
     <div class="page-head">
@@ -468,7 +478,9 @@ async function viewList(name) {
 
   // ------- barra de herramientas: búsqueda + filtros -------
   const tb = document.getElementById('toolbar');
-  const filterFields = m.fields.filter((f) => f.type === 'select').slice(0, 3);
+  const filterFields = (m.filterFields || [])
+    .map((n) => fieldsBy[n])
+    .filter((f) => f && (f.type === 'select' || f.type === 'ref'));
   const iglesiaField = fieldsBy['iglesia_id'] && !USER.iglesia_id ? fieldsBy['iglesia_id'] : null;
 
   tb.innerHTML = `
@@ -516,6 +528,16 @@ async function viewList(name) {
       load();
     });
   };
+  // Los filtros que apuntan a otro módulo se llenan con sus registros
+  filterFields.filter((f) => f.type === 'ref').forEach((f) => {
+    getOptions(rutaOpciones(f)).then((opts) => {
+      const sel = document.getElementById('f_' + f.name);
+      if (!sel) return;
+      sel.innerHTML = `<option value="">— ${esc(f.label)} —</option>` +
+        opts.map((o) => `<option value="${o.id}" ${st.filters[f.name] === String(o.id) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
+    });
+  });
+
   if (iglesiaField) bindFilter('f_iglesia_id', 'iglesia_id');
   filterFields.forEach((f) => bindFilter('f_' + f.name, f.name));
   if (m.dateField) {
@@ -633,11 +655,25 @@ async function viewList(name) {
     if (!el) return;
     try {
       const r = await api('GET', '/tesoreria/resumen?' + params.toString());
+      const cuentas = (r.porCuenta || []);
       el.innerHTML = `
         <div class="fin green"><div class="lbl">Ingresos (período filtrado)</div><div class="num">${fmtMoney(r.ingresos)}</div></div>
         <div class="fin red"><div class="lbl">Egresos</div><div class="num">${fmtMoney(r.egresos)}</div></div>
         <div class="fin blue"><div class="lbl">Balance</div><div class="num">${fmtMoney(r.balance)}</div></div>
-        <div class="fin slate"><div class="lbl">Movimientos</div><div class="num">${r.movimientos}</div></div>`;
+        <div class="fin slate"><div class="lbl">Movimientos</div><div class="num">${r.movimientos}</div></div>
+        ${cuentas.length ? `
+          <div class="saldos-cuentas">
+            <div class="sc-tit">Saldo de cada cuenta <span class="mut">(no depende del período filtrado)</span></div>
+            <ul>
+              ${cuentas.map((c) => `
+                <li onclick="location.hash='#/m/cuentas_tesoreria/edit/${c.id}'">
+                  <span class="sc-n">${esc(c.nombre)}
+                    <span class="badge ${c.tipo === 'General' ? 'blue' : ''}">${esc(c.ambito)}</span>
+                  </span>
+                  <b class="${Number(c.saldo) < 0 ? 'saldo-negativo' : ''}">${fmtMoney(c.saldo)}</b>
+                </li>`).join('')}
+            </ul>
+          </div>` : ''}`;
     } catch (e) {
       el.innerHTML = '';
     }
@@ -652,6 +688,7 @@ function cellValue(f, row, col) {
   if (f.computed) {
     if (v == null || v === '') return '';
     if (f.type === 'texto') return esc(v);
+    if (f.type === 'money') return `<span class="${Number(v) < 0 ? 'saldo-negativo' : ''}">${fmtMoney(v)}</span>`;
     const texto = typeof v === 'object' ? v.texto : v;
     const nivel = typeof v === 'object' ? v.nivel : v;
     return `<span class="badge ${nivelClase(nivel)}">${esc(texto)}</span>`;
@@ -740,6 +777,13 @@ async function viewForm(name, id, precarga) {
 
   // Campos que solo aplican según el valor de otro (showIf)
   aplicarCondiciones();
+
+  // Estado de la cuenta de tesorería bajo su ficha
+  if (name === 'cuentas_tesoreria' && !isNew) {
+    const zona = document.createElement('div');
+    content().appendChild(zona);
+    renderEstadoCuenta(Number(id), zona);
+  }
 
   // Cumplimiento y directivas bajo la ficha del cuerpo
   if (name === 'cuerpos' && !isNew) {
@@ -1733,6 +1777,45 @@ function initPermisos(f, row, rolActual) {
 /* =====================================================================
  * Historial (bitácora) dentro de la ficha del miembro
  * ===================================================================== */
+/** Estado de una cuenta de tesorería: saldo, totales y últimos movimientos. */
+async function renderEstadoCuenta(cuentaId, contenedor) {
+  const modMov = MOD['tesoreria'];
+  try {
+    const e = await api('GET', `/cuentas_tesoreria/${cuentaId}/estado`);
+    contenedor.innerHTML = `
+      <div class="card" style="margin-top:18px">
+        <div class="toolbar">
+          <b>💰 Estado de la cuenta</b>
+          <span class="spacer"></span>
+          ${modMov && modMov.perms.create && e.estado !== 'Cerrada'
+            ? `<button class="btn sm" id="btnMovNuevo">➕ Registrar movimiento</button>`
+            : e.estado === 'Cerrada' ? '<span class="badge red">Cuenta cerrada</span>' : ''}
+          ${modMov ? `<button class="btn sm secondary" id="btnVerMovs">Ver todos los movimientos</button>` : ''}
+        </div>
+        <div class="fin-cards" style="padding:0 18px 6px">
+          <div class="fin slate"><div class="lbl">Saldo inicial</div><div class="num">${fmtMoney(e.saldo_inicial)}</div></div>
+          <div class="fin green"><div class="lbl">Ingresos</div><div class="num">${fmtMoney(e.ingresos)}</div></div>
+          <div class="fin red"><div class="lbl">Egresos</div><div class="num">${fmtMoney(e.egresos)}</div></div>
+          <div class="fin blue"><div class="lbl">Saldo actual</div><div class="num ${e.saldo < 0 ? 'saldo-negativo' : ''}">${fmtMoney(e.saldo)}</div></div>
+        </div>
+        ${e.ultimos.length ? `<ul class="mini-list mov-list">
+          ${e.ultimos.map((m) => `
+            <li onclick="location.hash='#/m/tesoreria/edit/${m.id}'">
+              <span>${fmtDate(m.fecha)} · ${esc(m.concepto)} <span class="mut">— ${esc(m.categoria || '')}</span></span>
+              <b class="${m.tipo === 'Egreso' ? 'monto-egreso' : 'monto-ingreso'}">${m.tipo === 'Egreso' ? '−' : '+'} ${fmtMoney(m.monto)}</b>
+            </li>`).join('')}
+        </ul>` : '<div class="empty-state" style="padding:26px">Esta cuenta todavía no tiene movimientos.</div>'}
+      </div>`;
+
+    const bn = document.getElementById('btnMovNuevo');
+    if (bn) bn.addEventListener('click', () => (location.hash = `#/m/tesoreria/new?cuenta_id=${cuentaId}`));
+    const bv = document.getElementById('btnVerMovs');
+    if (bv) bv.addEventListener('click', () => (location.hash = `#/m/tesoreria?f_cuenta_id=${cuentaId}`));
+  } catch (err) {
+    contenedor.innerHTML = '';
+  }
+}
+
 /** Documentos adjuntos de un miembro (carnet, fichas, certificados…). */
 async function renderDocumentosMiembro(miembroId, contenedor) {
   const modDocs = MOD['documentos_miembros'];

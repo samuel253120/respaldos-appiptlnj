@@ -1,5 +1,12 @@
 /**
- * Módulo: Tesorería (ingresos y egresos por iglesia y cuerpo).
+ * Módulo: Tesorería (ingresos y egresos).
+ *
+ * Cada movimiento pertenece a una **cuenta de tesorería** (ver el módulo
+ * Cuentas de Tesorería): la general de la corporación, la general de una
+ * iglesia local, o alguna de las cuentas de proyecto de cualquiera de los dos
+ * niveles. La iglesia del movimiento se toma de su cuenta, para que el
+ * alcance por iglesia calce siempre con el nivel de la cuenta.
+ *
  * Incluye ruta extra GET /api/tesoreria/resumen con totales y balance.
  */
 module.exports = {
@@ -12,7 +19,8 @@ module.exports = {
   display: '{tipo}: {concepto}',
   dateField: 'fecha',
   searchFields: ['concepto', 'categoria', 'notas'],
-  listFields: ['fecha', 'tipo', 'categoria', 'concepto', 'monto', 'iglesia_id'],
+  listFields: ['fecha', 'cuenta_id', 'tipo', 'categoria', 'concepto', 'monto'],
+  filterFields: ['cuenta_id', 'tipo', 'categoria'],
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
     { name: 'fecha', label: 'Fecha', type: 'date', required: true },
@@ -33,11 +41,43 @@ module.exports = {
       name: 'metodo', label: 'Método', type: 'select', default: 'Efectivo',
       options: ['Efectivo', 'Transferencia', 'Cheque', 'Otro'],
     },
-    { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
+    {
+      name: 'cuenta_id', label: 'Cuenta de tesorería', type: 'ref', ref: 'cuentas_tesoreria', required: true,
+      optionsRoute: '/cuentas_tesoreria/activas',
+      help: 'En qué cuenta entra o sale este dinero: la general de la corporación o de la iglesia, o una cuenta de proyecto. Solo se ofrecen las cuentas activas.',
+    },
+    {
+      name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true,
+      help: 'Se toma de la cuenta elegida. Las cuentas de la corporación no pertenecen a una iglesia.',
+    },
     { name: 'cuerpo_id', label: 'Cuerpo / Grupo (si aplica)', type: 'ref', ref: 'cuerpos' },
     { name: 'comprobante', label: 'Comprobante (imagen o PDF)', type: 'file' },
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],
+  hooks: {
+    beforeSave(data, { user, existing, db }) {
+      // La iglesia del movimiento es la de su cuenta (o ninguna, si es de la corporación)
+      const cuentaId = data.cuenta_id !== undefined ? data.cuenta_id : existing ? existing.cuenta_id : null;
+      if (!cuentaId) return 'Indique la cuenta de tesorería del movimiento';
+      const cuenta = db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(cuentaId);
+      if (!cuenta) return 'La cuenta de tesorería indicada no existe';
+
+      // Un usuario asignado a una iglesia solo mueve dinero de las cuentas de esa iglesia
+      if (user.iglesia_id && (cuenta.iglesia_id || null) !== user.iglesia_id) {
+        return `La cuenta "${cuenta.nombre}" no pertenece a su iglesia`;
+      }
+
+      // Una cuenta cerrada no recibe movimientos nuevos, pero los suyos se pueden corregir
+      const cambiaDeCuenta = !existing || String(existing.cuenta_id) !== String(cuentaId);
+      if (cuenta.estado === 'Cerrada' && cambiaDeCuenta) {
+        return `La cuenta "${cuenta.nombre}" está cerrada: no admite nuevos movimientos`;
+      }
+
+      data.iglesia_id = cuenta.iglesia_id || null;
+      return null;
+    },
+  },
+
   extraRoutes(router, { db, requirePerm, scopeClause }) {
     // Resumen financiero: totales generales, del período filtrado y por categoría.
     router.get('/tesoreria/resumen', requirePerm('tesoreria', 'view'), (req, res) => {
@@ -52,6 +92,10 @@ module.exports = {
       if (req.query.f_cuerpo_id) {
         where.push('cuerpo_id = ?');
         params.push(req.query.f_cuerpo_id);
+      }
+      if (req.query.f_cuenta_id) {
+        where.push('cuenta_id = ?');
+        params.push(req.query.f_cuenta_id);
       }
       if (req.query.desde) {
         where.push('fecha >= ?');
@@ -70,7 +114,26 @@ module.exports = {
         .all(...params);
       const ingresos = (totals.find((t) => t.tipo === 'Ingreso') || {}).total || 0;
       const egresos = (totals.find((t) => t.tipo === 'Egreso') || {}).total || 0;
-      res.json({ ingresos, egresos, balance: ingresos - egresos, movimientos: totals.reduce((a, t) => a + t.n, 0), porCategoria });
+      // Saldo por cuenta, para ver de un vistazo cómo está repartido el dinero
+      const porCuenta = db
+        .prepare(
+          `SELECT c.id, c.nombre, c.ambito, c.tipo,
+                  COALESCE(c.saldo_inicial, 0)
+                    + COALESCE(SUM(CASE WHEN t.tipo = 'Ingreso' THEN t.monto ELSE 0 END), 0)
+                    - COALESCE(SUM(CASE WHEN t.tipo = 'Egreso'  THEN t.monto ELSE 0 END), 0) AS saldo
+             FROM cuentas_tesoreria c
+             LEFT JOIN tesoreria t ON t.cuenta_id = c.id
+            ${req.user.iglesia_id ? 'WHERE c.iglesia_id = ?' : ''}
+            GROUP BY c.id
+            ORDER BY c.ambito, c.tipo DESC, c.nombre`
+        )
+        .all(...(req.user.iglesia_id ? [req.user.iglesia_id] : []));
+
+      res.json({
+        ingresos, egresos, balance: ingresos - egresos,
+        movimientos: totals.reduce((a, t) => a + t.n, 0),
+        porCategoria, porCuenta,
+      });
     });
   },
 };

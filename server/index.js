@@ -61,6 +61,7 @@ app.get('/api/meta', authRequired, (req, res) => {
       dateField: m.dateField || null,
       searchFields: m.searchFields,
       listFields: m.listFields,
+      filterFields: m.filterFields,
       defaultSort: m.defaultSort,
       fields: [
         ...m.fields

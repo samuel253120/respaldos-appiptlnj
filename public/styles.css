@@ -557,6 +557,23 @@ ul.cumple-list .dt .mut { font-size: 12.5px; color: var(--muted); }
   ul.cumple-list .av { flex-basis: 36px; width: 36px; height: 36px; font-size: 14px; }
 }
 
+/* Saldos por cuenta en el listado de Tesorería */
+.saldos-cuentas { grid-column: 1 / -1; background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
+.saldos-cuentas .sc-tit { font-size: 13px; font-weight: 700; color: var(--marca-azul); margin-bottom: 6px; }
+.saldos-cuentas .sc-tit .mut { font-weight: 500; color: var(--muted); font-size: 12px; }
+.saldos-cuentas ul { list-style: none; margin: 0; padding: 0; }
+.saldos-cuentas li {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 7px 0; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13.5px;
+}
+.saldos-cuentas li:last-child { border-bottom: none; }
+.saldos-cuentas li:hover .sc-n { color: var(--marca-azul); }
+.saldos-cuentas .sc-n { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.saldos-cuentas b { font-variant-numeric: tabular-nums; }
+.saldo-negativo { color: var(--danger); }
+ul.mov-list .monto-ingreso { color: #166534; font-variant-numeric: tabular-nums; }
+ul.mov-list .monto-egreso { color: var(--danger); font-variant-numeric: tabular-nums; }
+
 /* Toast */
 #toast {
   position: fixed; bottom: 24px; right: 24px; background: #0f172a; color: #fff;

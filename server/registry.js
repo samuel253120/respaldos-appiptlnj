@@ -19,6 +19,10 @@
  * ofrecer todos los registros referenciados: sirve para acotar la lista a los
  * que corresponden (p. ej. solo los integrantes del cuerpo de oficiales).
  *
+ * Un módulo puede declarar `filterFields`: los campos que aparecen como
+ * filtros en la barra del listado (de tipo select o ref). Si no se declara,
+ * se usan los primeros campos de tipo select.
+ *
  * Un campo de tipo `persona` guarda el nombre de alguien que puede o no estar
  * registrado: se busca en el módulo indicado en `ref` (normalmente miembros),
  * pero también admite un nombre escrito a mano. Se guarda en dos columnas: el
@@ -83,6 +87,9 @@ function normalize(def) {
   }));
   def.searchFields = def.searchFields || def.fields.filter((f) => f.type === 'text' && !f.oculto).slice(0, 3).map((f) => f.name);
   def.listFields = def.listFields || def.fields.filter((f) => !f.oculto).slice(0, 5).map((f) => f.name);
+  // Filtros de la barra del listado: los declarados, o los primeros select
+  def.filterFields = def.filterFields
+    || def.fields.filter((f) => f.type === 'select' && !f.oculto).slice(0, 3).map((f) => f.name);
   def.display = def.display || '{' + (def.fields[0] ? def.fields[0].name : 'id') + '}';
   def.defaultSort = def.defaultSort || { field: 'id', dir: 'desc' };
   for (const f of def.fields) {
