@@ -52,6 +52,31 @@ El identificador de acceso es el **RUT**, no el correo: no cambia y es único po
 
 Al actualizar un sistema que ya tenía datos, los valores del antiguo campo "Documento de identidad" se convierten solos: los que son RUT válidos pasan al campo RUT y el resto se conserva en *Otro documento*. La conversión se informa al iniciar y no repite trabajo.
 
+## Importar datos desde otro sistema o desde Excel 📥
+
+Cada módulo tiene el botón **⬆️ Importar** (junto a "Nuevo"), que carga datos masivamente desde un archivo **CSV**:
+
+1. **Descargar plantilla** — genera un CSV con las columnas correctas del módulo.
+2. **Elegir el archivo** — se aceptan separadores `,` `;` o tabulador, con o sin comillas, en UTF-8.
+3. **Indicar a qué campo corresponde cada columna** — el sistema propone la correspondencia comparando los encabezados; se puede corregir a mano y descartar columnas que no interesen.
+4. **Revisar** — valida todo *sin guardar nada* e informa fila por fila qué está mal.
+5. **Importar** — guarda solo las filas correctas; las que tienen problemas se omiten y quedan listadas para corregirlas y reintentar.
+
+Facilidades pensadas para archivos venidos de otros sistemas:
+
+| Dato | Cómo se acepta |
+|---|---|
+| Relaciones (iglesia, cuerpo, miembro…) | Por **nombre** ("Iglesia Central") o por número interno |
+| Varias relaciones (integrantes, asistentes) | Separados por `\|` o `;` — "Juan Pérez\|Ana Soto" |
+| Fechas | `dd/mm/aaaa` o `aaaa-mm-dd` |
+| Montos | `1.250.500`, `45.990,50`, `$ 25.000` o `1234.56` |
+| Sí/No | sí, si, no, 1, 0, true, false, x |
+| RUT | Con o sin puntos; se valida el dígito verificador |
+
+Límite: 5.000 filas por archivo (divida el archivo si tiene más). La importación se hace dentro de una transacción: si algo falla a mitad de camino, no queda información a medias.
+
+**Si el sistema de origen no exporta CSV**, casi siempre se puede: copiar la tabla en pantalla y pegarla en Excel o Google Sheets, y desde ahí *Guardar como CSV*.
+
 ## Usuarios, roles y alcance por iglesia
 
 Roles disponibles (editables en `server/permissions.js`):
@@ -144,6 +169,7 @@ POST   /api/<modulo>
 PUT    /api/<modulo>/:id
 DELETE /api/<modulo>/:id
 GET    /api/tesoreria/resumen       ingresos, egresos, balance y por categoría
+POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importación masiva
 ```
 
 ## Seguridad

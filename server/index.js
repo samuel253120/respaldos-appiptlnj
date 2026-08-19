@@ -16,6 +16,7 @@ const { allModules } = require('./registry');
 const { can, ROLES } = require('./permissions');
 const { ensureSeed } = require('./seed');
 const { ejecutarMigraciones } = require('./migraciones');
+const { router: importarRouter } = require('./importar');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
@@ -127,6 +128,9 @@ app.post('/api/upload', authRequired, upload.single('archivo'), (req, res) => {
 });
 
 app.use('/uploads', express.static(UPLOADS_DIR));
+
+// ---------- Importación masiva desde archivos ----------
+app.use('/api/importar', importarRouter);
 
 // ---------- CRUD genérico de todos los módulos ----------
 app.use('/api', buildRouter());

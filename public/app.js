@@ -323,6 +323,7 @@ async function viewList(name) {
     <div class="page-head">
       <h2>${m.icon} ${esc(m.label)}</h2>
       <div class="actions">
+        ${m.perms.create ? `<button class="btn secondary" id="btnImportar">⬆️ Importar</button>` : ''}
         ${m.perms.create ? `<button class="btn" id="btnNew">➕ Nuevo ${esc(m.labelSingular.toLowerCase())}</button>` : ''}
       </div>
     </div>
@@ -333,7 +334,10 @@ async function viewList(name) {
       <div class="pager" id="pager"></div>
     </div>`;
 
-  if (m.perms.create) document.getElementById('btnNew').addEventListener('click', () => (location.hash = `#/m/${name}/new`));
+  if (m.perms.create) {
+    document.getElementById('btnNew').addEventListener('click', () => (location.hash = `#/m/${name}/new`));
+    document.getElementById('btnImportar').addEventListener('click', () => abrirImportador(m, () => load()));
+  }
 
   // ------- barra de herramientas: búsqueda + filtros -------
   const tb = document.getElementById('toolbar');
@@ -897,6 +901,215 @@ function printGenerico(m, row) {
           .join('')}
       </table>
     </div>`;
+}
+
+
+/* =====================================================================
+ * Importación de datos desde archivos CSV
+ *
+ * Flujo: elegir archivo → indicar a qué campo corresponde cada columna →
+ * revisión previa (no guarda nada) → importar.
+ * ===================================================================== */
+
+/** Lee texto CSV respetando comillas, saltos de línea y separador , ; o tabulador. */
+function leerCSV(texto) {
+  texto = texto.replace(/^﻿/, ''); // quitar marca de orden de bytes
+  const primeraLinea = texto.split(/\r?\n/)[0] || '';
+  const cuenta = (c) => (primeraLinea.match(new RegExp('\\' + c, 'g')) || []).length;
+  const sep = cuenta(';') > cuenta(',') ? ';' : cuenta('\t') > cuenta(',') ? '\t' : ',';
+
+  const filas = [];
+  let campo = '';
+  let fila = [];
+  let enComillas = false;
+  for (let i = 0; i < texto.length; i++) {
+    const c = texto[i];
+    if (enComillas) {
+      if (c === '"') {
+        if (texto[i + 1] === '"') { campo += '"'; i++; }
+        else enComillas = false;
+      } else campo += c;
+      continue;
+    }
+    if (c === '"') { enComillas = true; continue; }
+    if (c === sep) { fila.push(campo); campo = ''; continue; }
+    if (c === '\n') { fila.push(campo); filas.push(fila); fila = []; campo = ''; continue; }
+    if (c === '\r') continue;
+    campo += c;
+  }
+  if (campo !== '' || fila.length) { fila.push(campo); filas.push(fila); }
+  return filas.filter((f) => f.some((v) => String(v).trim() !== ''));
+}
+
+/** Sugiere a qué campo corresponde una columna, comparando nombres y etiquetas. */
+function adivinarCampo(columna, campos) {
+  const normal = (t) => String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const col = normal(columna);
+  if (!col) return '';
+  let mejor = campos.find((f) => normal(f.name) === col || normal(f.label) === col);
+  if (mejor) return mejor.name;
+  mejor = campos.find((f) => normal(f.label).startsWith(col) || col.startsWith(normal(f.name)));
+  return mejor ? mejor.name : '';
+}
+
+function abrirImportador(m, alTerminar) {
+  const campos = m.fields.filter((f) => f.type !== 'file');
+  let columnas = [];
+  let filasArchivo = [];
+
+  const fondo = document.createElement('div');
+  fondo.className = 'modal-fondo';
+  fondo.innerHTML = `
+    <div class="modal">
+      <div class="modal-head">
+        <h3>⬆️ Importar ${esc(m.label.toLowerCase())}</h3>
+        <button class="cerrar" title="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body" id="impBody">
+        <div class="paso">
+          <h4>1 · Elija el archivo</h4>
+          <p style="font-size:13.5px;color:var(--muted);margin-bottom:10px">
+            Archivo <b>CSV</b> con una fila de encabezados. Desde Excel: <i>Archivo → Guardar como → CSV</i>.
+          </p>
+          <input type="file" id="impArchivo" accept=".csv,.txt,text/csv" />
+          <button class="btn secondary sm" id="impPlantilla" style="margin-left:10px">⬇️ Descargar plantilla</button>
+        </div>
+        <div id="impResto"></div>
+      </div>
+      <div class="modal-foot">
+        <span class="left" id="impEstado" style="font-size:13px;color:var(--muted)"></span>
+        <button class="btn secondary" id="impCancelar">Cerrar</button>
+        <button class="btn" id="impRevisar" style="display:none">🔎 Revisar</button>
+        <button class="btn" id="impGuardar" style="display:none">💾 Importar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(fondo);
+
+  const cerrar = () => fondo.remove();
+  fondo.querySelector('.cerrar').addEventListener('click', cerrar);
+  fondo.querySelector('#impCancelar').addEventListener('click', cerrar);
+  fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(); });
+
+  // Plantilla CSV con los encabezados del módulo
+  fondo.querySelector('#impPlantilla').addEventListener('click', () => {
+    const encabezados = campos.map((f) => f.label);
+    const ejemplo = campos.map((f) => (f.type === 'ref' ? 'nombre del registro' : f.required ? '(obligatorio)' : ''));
+    const csv = '﻿' + [encabezados, ejemplo].map((f) => f.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
+    const enlace = document.createElement('a');
+    enlace.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    enlace.download = `plantilla-${m.name}.csv`;
+    enlace.click();
+    URL.revokeObjectURL(enlace.href);
+  });
+
+  fondo.querySelector('#impArchivo').addEventListener('change', (e) => {
+    const archivo = e.target.files[0];
+    if (!archivo) return;
+    const lector = new FileReader();
+    lector.onload = () => {
+      const filas = leerCSV(String(lector.result));
+      if (filas.length < 2) {
+        fondo.querySelector('#impResto').innerHTML = '<div class="resultado err">El archivo no tiene encabezados y al menos una fila de datos.</div>';
+        return;
+      }
+      columnas = filas[0].map((c) => String(c).trim());
+      filasArchivo = filas.slice(1);
+      dibujarMapeo();
+    };
+    lector.readAsText(archivo, 'UTF-8');
+  });
+
+  function dibujarMapeo() {
+    const opciones = (sel) =>
+      '<option value="">— no importar —</option>' +
+      campos.map((f) => `<option value="${f.name}" ${sel === f.name ? 'selected' : ''}>${esc(f.label)}${f.required ? ' *' : ''}</option>`).join('');
+
+    fondo.querySelector('#impResto').innerHTML = `
+      <div class="paso">
+        <h4>2 · Indique a qué campo corresponde cada columna</h4>
+        <div class="mapeo">
+          ${columnas.map((c, i) => `
+            <div class="par">
+              <span class="col" title="${esc(c)}">${esc(c || '(sin nombre)')}</span> →
+              <select data-col="${i}">${opciones(adivinarCampo(c, campos))}</select>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="paso">
+        <h4>3 · Vista previa (primeras 5 filas de ${filasArchivo.length})</h4>
+        <div class="previa">
+          <table>
+            <thead><tr>${columnas.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${filasArchivo.slice(0, 5).map((f) => `<tr>${columnas.map((_, i) => `<td>${esc(f[i] || '')}</td>`).join('')}</tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div id="impResultado"></div>`;
+    fondo.querySelector('#impRevisar').style.display = '';
+    fondo.querySelector('#impGuardar').style.display = 'none';
+    fondo.querySelector('#impEstado').textContent = `${filasArchivo.length} fila(s) leídas`;
+  }
+
+  function construirFilas() {
+    const mapa = {};
+    fondo.querySelectorAll('.mapeo select').forEach((sel) => {
+      if (sel.value) mapa[Number(sel.dataset.col)] = sel.value;
+    });
+    return filasArchivo.map((f) => {
+      const obj = {};
+      for (const [idx, campo] of Object.entries(mapa)) obj[campo] = f[Number(idx)] ?? '';
+      return obj;
+    });
+  }
+
+  async function enviar(prueba) {
+    const filas = construirFilas();
+    if (!filas.length || !Object.keys(filas[0]).length) {
+      toast('Indique al menos una columna a importar', true);
+      return;
+    }
+    const estado = fondo.querySelector('#impEstado');
+    estado.textContent = prueba ? 'Revisando…' : 'Importando…';
+    try {
+      const r = await api('POST', `/importar/${m.name}`, { filas, prueba });
+      mostrarResultado(r);
+      estado.textContent = '';
+    } catch (e) {
+      fondo.querySelector('#impResultado').innerHTML = `<div class="resultado err">${esc(e.message)}</div>`;
+      estado.textContent = '';
+    }
+  }
+
+  function mostrarResultado(r) {
+    const clase = r.conError === 0 ? 'ok' : r.correctas > 0 ? 'warn' : 'err';
+    const titulo = r.prueba
+      ? `Revisión: ${r.correctas} de ${r.total} fila(s) están listas para importar`
+      : `Importación terminada: ${r.correctas} de ${r.total} fila(s) guardadas`;
+    fondo.querySelector('#impResultado').innerHTML = `
+      <div class="resultado ${clase}">
+        <b>${esc(titulo)}</b>
+        ${r.conError ? `<div style="margin-top:6px">${r.conError} fila(s) con problemas${r.prueba ? ' — se omitirán al importar' : ''}:</div>` : ''}
+        ${r.errores.length ? `<div class="lista-errores">
+          ${r.errores.map((e) => `<div><b>Fila ${e.fila}:</b> ${esc(e.errores.join(' · '))}</div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    if (r.prueba) {
+      fondo.querySelector('#impGuardar').style.display = r.correctas > 0 ? '' : 'none';
+    } else {
+      fondo.querySelector('#impRevisar').style.display = 'none';
+      fondo.querySelector('#impGuardar').style.display = 'none';
+      optionsCache[m.name] = null;
+      if (alTerminar) alTerminar();
+      toast(`${r.correctas} registro(s) importado(s)`);
+    }
+  }
+
+  fondo.querySelector('#impRevisar').addEventListener('click', () => enviar(true));
+  fondo.querySelector('#impGuardar').addEventListener('click', () => {
+    if (confirm('¿Importar las filas correctas? Las filas con problemas se omitirán.')) enviar(false);
+  });
 }
 
 /* ---------------- inicio ---------------- */
