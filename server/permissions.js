@@ -59,13 +59,51 @@ const MATRIX = {
   },
 };
 
-/** ¿Puede el rol ejecutar la acción sobre el módulo? */
-function can(role, moduleName, action) {
-  const perms = MATRIX[role];
-  if (!perms) return false;
-  const specific = perms[moduleName];
-  const actions = specific !== undefined ? specific : perms['*'] || [];
-  return actions.includes(action);
+const ACCIONES = [
+  { value: 'view', label: 'Ver' },
+  { value: 'create', label: 'Crear' },
+  { value: 'edit', label: 'Editar' },
+  { value: 'delete', label: 'Eliminar' },
+];
+
+/** Permisos que otorga un rol sobre un módulo. */
+function permisosDelRol(rol, moduleName) {
+  const perms = MATRIX[rol];
+  if (!perms) return [];
+  const especifico = perms[moduleName];
+  return especifico !== undefined ? especifico : perms['*'] || [];
 }
 
-module.exports = { ROLES, MATRIX, can };
+/** Permisos personalizados de un usuario, si tiene. */
+function permisosPropios(usuario) {
+  if (!usuario || !usuario.permisos) return null;
+  try {
+    const p = typeof usuario.permisos === 'string' ? JSON.parse(usuario.permisos) : usuario.permisos;
+    return p && typeof p === 'object' ? p : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * ¿Puede ejecutar la acción sobre el módulo?
+ *
+ * Acepta el usuario completo (con sus permisos personalizados) o solo el
+ * nombre del rol. Los permisos personalizados reemplazan a los del rol
+ * únicamente en los módulos donde estén definidos; en el resto sigue
+ * mandando el rol.
+ */
+function can(usuarioOrRol, moduleName, action) {
+  const esUsuario = usuarioOrRol && typeof usuarioOrRol === 'object';
+  const rol = esUsuario ? usuarioOrRol.rol : usuarioOrRol;
+
+  if (esUsuario) {
+    const propios = permisosPropios(usuarioOrRol);
+    if (propios && Array.isArray(propios[moduleName])) {
+      return propios[moduleName].includes(action);
+    }
+  }
+  return permisosDelRol(rol, moduleName).includes(action);
+}
+
+module.exports = { ROLES, ACCIONES, MATRIX, can, permisosDelRol, permisosPropios };

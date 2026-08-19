@@ -17,9 +17,24 @@ const bcrypt = require('bcryptjs');
 const { db } = require('./db');
 const { can } = require('./permissions');
 const rutUtil = require('./rut');
+const ajustes = require('./ajustes');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'cambiar-esta-clave-en-produccion';
-const TOKEN_TTL = '12h';
+
+/** Duración de la sesión, configurable desde la pantalla de configuración. */
+function duracionSesion() {
+  return `${ajustes.numero('sesion_horas', 1, 720)}h`;
+}
+
+/**
+ * Con el sistema en mantenimiento solo entran los administradores.
+ * Devuelve el aviso a mostrar, o null si el paso está permitido.
+ */
+function bloqueoPorMantenimiento(usuario) {
+  if (!ajustes.activo('mantenimiento_activo')) return null;
+  if (usuario && usuario.rol === 'admin') return null;
+  return ajustes.obtener('mantenimiento_mensaje') || 'El sistema está en mantenimiento.';
+}
 
 function publicUser(u) {
   if (!u) return null;
@@ -35,6 +50,10 @@ function authRequired(req, res, next) {
     const payload = jwt.verify(token, JWT_SECRET);
     const user = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(payload.id);
     if (!user || user.activo === 0) return res.status(401).json({ error: 'Usuario inactivo o inexistente' });
+
+    const aviso = bloqueoPorMantenimiento(user);
+    if (aviso) return res.status(503).json({ error: aviso, mantenimiento: true });
+
     req.user = publicUser(user);
     next();
   } catch (e) {
@@ -45,7 +64,7 @@ function authRequired(req, res, next) {
 function requirePerm(moduleName, action) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'No autenticado' });
-    if (!can(req.user.rol, moduleName, action)) {
+    if (!can(req.user, moduleName, action)) {
       return res.status(403).json({ error: 'No tiene permiso para esta acción' });
     }
     next();
@@ -77,7 +96,11 @@ router.post('/login', (req, res) => {
     return res.status(401).json({ error: 'Credenciales incorrectas' });
   }
   if (user.activo === 0) return res.status(403).json({ error: 'El usuario está inactivo' });
-  const token = jwt.sign({ id: user.id, rol: user.rol }, JWT_SECRET, { expiresIn: TOKEN_TTL });
+
+  const aviso = bloqueoPorMantenimiento(user);
+  if (aviso) return res.status(503).json({ error: aviso, mantenimiento: true });
+
+  const token = jwt.sign({ id: user.id, rol: user.rol }, JWT_SECRET, { expiresIn: duracionSesion() });
   res.json({ token, user: publicUser(user) });
 });
 
@@ -85,4 +108,4 @@ router.get('/me', authRequired, (req, res) => {
   res.json({ user: req.user });
 });
 
-module.exports = { router, authRequired, requirePerm, JWT_SECRET };
+module.exports = { router, authRequired, requirePerm, JWT_SECRET, bloqueoPorMantenimiento };

@@ -99,6 +99,50 @@ Roles disponibles (editables en `server/permissions.js`):
 
 **Alcance multi-iglesia**: a cada usuario se le puede asignar una iglesia. Un usuario con iglesia asignada solo ve y modifica registros de esa iglesia (el sistema lo garantiza en el servidor, no solo en la interfaz). Un usuario sin iglesia asignada opera sobre todas.
 
+## Configuración del sistema ⚙️
+
+Los administradores tienen en el menú la entrada **Configuración**, con opciones agrupadas:
+
+- **Mantenimiento** — deja el sistema en mantenimiento y define el aviso que verán los usuarios.
+- **Identidad** — nombre y lema de la institución.
+- **Preferencias** — símbolo de moneda, registros por página, duración de la sesión y si la bitácora registra automáticamente.
+
+### Modo mantenimiento
+
+Al activarlo, **solo los administradores pueden ingresar**. A los demás:
+
+- Se les impide iniciar sesión, mostrando el aviso configurado.
+- Si estaban trabajando, la siguiente acción los devuelve a la pantalla de acceso con ese mismo aviso (la restricción se aplica en el servidor, no solo en la interfaz).
+
+Para agregar más opciones, añadirlas al arreglo `OPCIONES` de `server/ajustes.js`: aparecen solas en la pantalla, con su tipo de campo y valor por defecto.
+
+## Permisos personalizados por usuario 🔑
+
+Además del rol, cada usuario puede tener permisos propios. En su ficha hay una tabla de **módulos × acciones** (ver, crear, editar, eliminar):
+
+- Los módulos sin marcar siguen lo que otorga el rol.
+- Al marcar **Personalizar** en un módulo, ese usuario pasa a regirse por lo que se marque ahí — sirve tanto para **dar** permisos que el rol no da (ej. un secretario que sí puede ver Tesorería) como para **quitar** los que sí da.
+- Todo se verifica en el servidor en cada petición.
+
+## Bitácora de miembros 🗒️
+
+Cada miembro tiene un **historial** que se ve al pie de su ficha, con dos tipos de registro:
+
+**Automáticos** (mientras la opción esté activa en Configuración):
+
+| Hecho | Queda registrado como |
+|---|---|
+| Alta del miembro | Anotación |
+| Cambio de sus datos | Cambio de datos (detalla campo, valor anterior y nuevo) |
+| Cambio de estado | Cambio de estado |
+| Entrada o salida de un cuerpo | Ingreso / Salida de cuerpo |
+| Queda como líder de un cuerpo | Anotación |
+| Solicitud, ayuda social, certificado o credencial | Su tipo correspondiente (al crearse y al cambiar de estado) |
+
+**Manuales**: el botón *Agregar anotación* permite registrar visitas, disciplinas, reconocimientos u observaciones, con su fecha y tipo.
+
+El módulo **Bitácora de Miembros** también aparece en el menú, con búsqueda y filtros sobre todos los registros.
+
 ## Arquitectura (expandible y modificable)
 
 ```

@@ -40,6 +40,10 @@ module.exports = {
     { name: 'email', label: 'Correo electrónico (contacto, opcional)', type: 'email' },
     { name: 'telefono', label: 'Teléfono (opcional)', type: 'tel' },
     { name: 'activo', label: 'Activo', type: 'boolean', default: 1 },
+    {
+      name: 'permisos', label: 'Permisos personalizados', type: 'permisos',
+      help: 'Opcional. Ajusta módulo por módulo lo que este usuario puede hacer; donde no se ajuste nada, manda su rol.',
+    },
   ],
   hooks: {
     beforeSave(data, { isNew, id, db }) {

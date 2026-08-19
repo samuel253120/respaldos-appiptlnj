@@ -13,10 +13,11 @@ const { db, UPLOADS_DIR } = require('./db');
 const { router: authRouter, authRequired } = require('./auth');
 const { buildRouter } = require('./crud');
 const { allModules } = require('./registry');
-const { can, ROLES } = require('./permissions');
+const { can, ROLES, ACCIONES, MATRIX, permisosDelRol } = require('./permissions');
 const { ensureSeed } = require('./seed');
 const { ejecutarMigraciones } = require('./migraciones');
 const { router: importarRouter } = require('./importar');
+const { router: configuracionRouter } = require('./configuracion');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
@@ -30,10 +31,13 @@ app.get('/health', (req, res) => res.json({ ok: true, version: VERSION }));
 // ---------- Autenticación ----------
 app.use('/api/auth', authRouter);
 
+// ---------- Configuración del sistema ----------
+app.use('/api/configuracion', configuracionRouter);
+
 // ---------- Metadatos: módulos visibles para el usuario y sus esquemas ----------
 app.get('/api/meta', authRequired, (req, res) => {
   const mods = allModules()
-    .filter((m) => can(req.user.rol, m.name, 'view'))
+    .filter((m) => can(req.user, m.name, 'view'))
     .map((m) => ({
       name: m.name,
       label: m.label,
@@ -51,10 +55,10 @@ app.get('/api/meta', authRequired, (req, res) => {
         name, label, type, required: !!required, options: options || null, ref: ref || null, help: help || null, default: def ?? null, accept: accept || null,
       })),
       perms: {
-        view: can(req.user.rol, m.name, 'view'),
-        create: can(req.user.rol, m.name, 'create'),
-        edit: can(req.user.rol, m.name, 'edit'),
-        delete: can(req.user.rol, m.name, 'delete'),
+        view: can(req.user, m.name, 'view'),
+        create: can(req.user, m.name, 'create'),
+        edit: can(req.user, m.name, 'edit'),
+        delete: can(req.user, m.name, 'delete'),
       },
     }));
   // Iglesia local en la que trabaja el usuario. Si no tiene una asignada pero
@@ -68,7 +72,27 @@ app.get('/api/meta', authRequired, (req, res) => {
     if (iglesias.length === 1) iglesiaNombre = iglesias[0].nombre;
   }
 
-  res.json({ modules: mods, roles: ROLES, user: { ...req.user, iglesia_nombre: iglesiaNombre } });
+  // Catálogo para el editor de permisos personalizados (solo administradores)
+  let permisosCatalogo = null;
+  if (req.user.rol === 'admin') {
+    permisosCatalogo = {
+      acciones: ACCIONES,
+      modulos: allModules().map((m) => ({ name: m.name, label: m.label, group: m.group })),
+      porRol: Object.fromEntries(
+        ROLES.map((r) => [
+          r.value,
+          Object.fromEntries(allModules().map((m) => [m.name, permisosDelRol(r.value, m.name)])),
+        ])
+      ),
+    };
+  }
+
+  res.json({
+    modules: mods,
+    roles: ROLES,
+    permisosCatalogo,
+    user: { ...req.user, iglesia_nombre: iglesiaNombre },
+  });
 });
 
 // ---------- Panel de control ----------
@@ -93,7 +117,7 @@ app.get('/api/dashboard', authRequired, (req, res) => {
   };
 
   let finanzas = null;
-  if (can(req.user.rol, 'tesoreria', 'view')) {
+  if (can(req.user, 'tesoreria', 'view')) {
     const mes = new Date().toISOString().slice(0, 7); // YYYY-MM
     const w = iglesiaId ? 'AND iglesia_id = ?' : '';
     const p = iglesiaId ? [iglesiaId] : [];

@@ -26,6 +26,7 @@ const { getModule, allModules, displayOf } = require('./registry');
 const { authRequired, requirePerm } = require('./auth');
 const rut = require('./rut');
 const { can } = require('./permissions');
+const bitacora = require('./bitacora');
 
 function fieldMap(def) {
   const m = {};
@@ -59,6 +60,12 @@ function coerce(field, value) {
     }
     case 'rut':
       return rut.canonico(value);
+    case 'permisos': {
+      // Se guarda como JSON { modulo: ['view','create',...] }
+      if (typeof value === 'string') return value.trim() ? value : null;
+      if (value && typeof value === 'object' && Object.keys(value).length) return JSON.stringify(value);
+      return null;
+    }
     default:
       return String(value);
   }
@@ -93,6 +100,13 @@ function expandRow(def, row) {
       }
     }
     if (f.type === 'password') delete out[f.name];
+    if (f.type === 'permisos') {
+      try {
+        out[f.name] = row[f.name] ? JSON.parse(row[f.name]) : null;
+      } catch (e) {
+        out[f.name] = null;
+      }
+    }
   }
   return out;
 }
@@ -173,8 +187,14 @@ function buildRouter() {
 
       const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
       const total = db.prepare(`SELECT COUNT(*) AS c FROM "${def.name}" ${whereSql}`).get(...params).c;
+      // Se desempata por id para que el orden sea estable y cronológico
+      // cuando varios registros comparten el mismo valor (p. ej. la misma fecha).
       const rows = db
-        .prepare(`SELECT * FROM "${def.name}" ${whereSql} ORDER BY "${sortField}" ${sortDir} LIMIT ? OFFSET ?`)
+        .prepare(
+          `SELECT * FROM "${def.name}" ${whereSql}
+           ORDER BY "${sortField}" ${sortDir}${sortField === 'id' ? '' : `, id ${sortDir}`}
+           LIMIT ? OFFSET ?`
+        )
         .all(...params, limit, offset);
 
       res.json({ rows: rows.map((r) => expandRow(def, r)), total, page, pages: Math.max(1, Math.ceil(total / limit)) });
@@ -250,6 +270,7 @@ function buildRouter() {
                        VALUES (${keys.map(() => '?').join(',')}${keys.length ? ',' : ''} ?)`;
           const info = db.prepare(sql).run(...keys.map((k) => data[k]), req.user.id);
           const row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(info.lastInsertRowid);
+          bitacora.registrarGuardado(def, { isNew: true, antes: {}, despues: row, datos: data, user: req.user });
           return res.status(201).json(expandRow(def, row));
         } else {
           const keys = Object.keys(data);
@@ -258,6 +279,7 @@ function buildRouter() {
             db.prepare(sql).run(...keys.map((k) => data[k]), id);
           }
           const row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
+          bitacora.registrarGuardado(def, { isNew: false, antes: existing, despues: row, datos: data, user: req.user });
           return res.json(expandRow(def, row));
         }
       } catch (e) {

@@ -43,7 +43,8 @@ function sqlType(field) {
     case 'ref':
       return 'INTEGER';
     default:
-      // text, textarea, date, time, select, multiref (JSON), file, email, tel, password
+      // text, textarea, date, time, select, multiref (JSON), file, email,
+      // tel, password, rut, permisos (JSON)
       return 'TEXT';
   }
 }

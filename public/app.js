@@ -15,6 +15,7 @@ let MODULES = []; // metadatos de módulos visibles para el usuario
 let MOD = {}; // por nombre
 const optionsCache = {}; // opciones {id,label} por módulo referenciado
 const listState = {}; // estado de cada listado (página, búsqueda, filtros…)
+let PERMISOS_CATALOGO = null; // módulos y acciones para el editor de permisos
 
 const $app = document.getElementById('app');
 
@@ -90,6 +91,20 @@ async function api(method, path, body, isForm) {
     logout();
     throw new Error('Sesión expirada');
   }
+  if (res.status === 503) {
+    const info = await res.json().catch(() => ({}));
+    if (info.mantenimiento) {
+      TOKEN = null;
+      USER = null;
+      localStorage.removeItem('token');
+      renderLogin();
+      setTimeout(() => {
+        const errEl = document.getElementById('loginError');
+        if (errEl) errEl.innerHTML = `<div class="aviso-mantenimiento">🛠️ ${esc(info.error)}</div>`;
+      }, 200);
+      throw new Error(info.error);
+    }
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Error del servidor');
   return data;
@@ -110,6 +125,7 @@ async function boot() {
     MOD = {};
     MODULES.forEach((m) => (MOD[m.name] = m));
     USER = meta.user;
+    PERMISOS_CATALOGO = meta.permisosCatalogo || null;
     renderShell();
     route();
   } catch (e) {
@@ -143,6 +159,11 @@ function route() {
     if (parts[2] === 'edit' && parts[3]) return viewForm(name, parts[3]);
     return viewList(name);
   }
+  if (parts[0] === 'config' && USER.rol === 'admin') {
+    const cl = document.querySelector('.side-link[data-mod="_config"]');
+    if (cl) cl.classList.add('active');
+    return viewConfiguracion();
+  }
   if (parts[0] === 'print' && MOD[parts[1]] && parts[2]) return viewPrint(parts[1], parts[2]);
   const dl = document.querySelector('.side-link[data-mod="_dash"]');
   if (dl) dl.classList.add('active');
@@ -165,6 +186,20 @@ function renderLogin() {
         <div class="login-version" id="loginVersion"></div>
       </form>
     </div>`;
+  // Aviso de mantenimiento (si está activo) e identidad configurada
+  fetch('/api/configuracion/publica')
+    .then((r) => r.json())
+    .then((c) => {
+      if (String(c.mantenimiento_activo) === '1') {
+        const errEl = document.getElementById('loginError');
+        if (errEl) {
+          errEl.innerHTML = `<div class="aviso-mantenimiento">🛠️ ${esc(c.mantenimiento_mensaje || 'Sistema en mantenimiento.')}
+            <span>Solo los administradores pueden ingresar.</span></div>`;
+        }
+      }
+    })
+    .catch(() => {});
+
   // Mostrar la versión en ejecución (ayuda a confirmar que el sistema ya se actualizó)
   fetch('/health')
     .then((r) => r.json())
@@ -224,6 +259,11 @@ function renderShell() {
           <a class="side-link" data-mod="_dash" href="#/"><span class="ic">📊</span> Panel de control</a>
         </div>
         ${groupsHtml}
+        ${USER.rol === 'admin' ? `
+        <div class="side-group">
+          <div class="group-title">Sistema</div>
+          <a class="side-link" data-mod="_config" href="#/config"><span class="ic">⚙️</span> Configuración</a>
+        </div>` : ''}
         <div class="side-footer">Conectado como <b>${esc(USER.nombre)}</b><br>Rol: ${esc(USER.rol)}</div>
       </nav>
       <div class="main">
@@ -613,7 +653,15 @@ async function viewForm(name, id) {
       const el = document.querySelector(`#recForm [name="${f.name}"]`);
       if (el) el.addEventListener('blur', () => { if (el.value) el.value = rutFormatear(el.value); });
     }
+    if (f.type === 'permisos') initPermisos(f, row, row.rol);
   });
+
+  // Historial del miembro (bitácora) bajo la ficha
+  if (name === 'miembros' && !isNew) {
+    const zona = document.createElement('div');
+    content().appendChild(zona);
+    renderHistorialMiembro(Number(id), zona);
+  }
 
   const foot = document.getElementById('formFoot');
   foot.innerHTML = `
@@ -647,7 +695,7 @@ function fieldHtml(f, row, isNew) {
   const val = row[f.name] != null ? row[f.name] : isNew && f.default != null ? f.default : '';
   const req = f.required ? '<span class="req">*</span>' : '';
   const help = f.help ? `<div class="help">${esc(f.help)}</div>` : '';
-  const wide = f.type === 'textarea' || f.type === 'multiref' ? ' full' : '';
+  const wide = f.type === 'textarea' || f.type === 'multiref' || f.type === 'permisos' ? ' full' : '';
   let input = '';
   switch (f.type) {
     case 'textarea':
@@ -686,6 +734,9 @@ function fieldHtml(f, row, isNew) {
       break;
     case 'rut':
       input = `<input type="text" name="${f.name}" value="${esc(rutFormatear(val))}" placeholder="12.345.678-5" ${f.required ? 'required' : ''} />`;
+      break;
+    case 'permisos':
+      input = `<div class="permisos-editor" id="perm_${f.name}"></div>`;
       break;
     case 'money':
     case 'number':
@@ -773,6 +824,11 @@ function collectForm(m) {
     if (f.type === 'multiref') {
       const box = document.getElementById('mr_' + f.name);
       data[f.name] = box ? JSON.parse(box.dataset.value || '[]') : [];
+    } else if (f.type === 'permisos') {
+      const box = document.getElementById('perm_' + f.name);
+      let v = {};
+      try { v = JSON.parse(box ? box.dataset.value || '{}' : '{}'); } catch (e) { v = {}; }
+      data[f.name] = Object.keys(v).length ? v : null;
     } else if (f.type === 'boolean') {
       const el = form.querySelector(`[name="${f.name}"]`);
       data[f.name] = el && el.checked ? 1 : 0;
@@ -1142,6 +1198,232 @@ function abrirImportador(m, alTerminar) {
   fondo.querySelector('#impRevisar').addEventListener('click', () => enviar(true));
   fondo.querySelector('#impGuardar').addEventListener('click', () => {
     if (confirm('¿Importar las filas correctas? Las filas con problemas se omitirán.')) enviar(false);
+  });
+}
+
+
+/* =====================================================================
+ * Configuración del sistema (solo administradores)
+ * ===================================================================== */
+async function viewConfiguracion() {
+  content().innerHTML = `<div class="page-head"><h2>⚙️ Configuración del sistema</h2></div><p>Cargando…</p>`;
+  let datos;
+  try {
+    datos = await api('GET', '/configuracion');
+  } catch (e) {
+    content().innerHTML = `<div class="page-head"><h2>⚙️ Configuración</h2></div><p style="color:var(--danger)">${esc(e.message)}</p>`;
+    return;
+  }
+
+  const campo = (o) => {
+    if (o.tipo === 'boolean') {
+      return `<div class="fld check full">
+        <input type="checkbox" id="cfg_${o.clave}" data-clave="${o.clave}" data-tipo="boolean" ${String(o.valor) === '1' ? 'checked' : ''} />
+        <label for="cfg_${o.clave}">${esc(o.label)}</label>
+        ${o.ayuda ? `<div class="help" style="flex-basis:100%">${esc(o.ayuda)}</div>` : ''}
+      </div>`;
+    }
+    const tipo = o.tipo === 'number' ? 'number' : 'text';
+    const control = o.tipo === 'textarea'
+      ? `<textarea data-clave="${o.clave}" data-tipo="textarea">${esc(o.valor || '')}</textarea>`
+      : `<input type="${tipo}" data-clave="${o.clave}" data-tipo="${o.tipo}" value="${esc(o.valor || '')}" />`;
+    return `<div class="fld${o.tipo === 'textarea' ? ' full' : ''}">
+      <label>${esc(o.label)}</label>${control}
+      ${o.ayuda ? `<div class="help">${esc(o.ayuda)}</div>` : ''}
+    </div>`;
+  };
+
+  content().innerHTML = `
+    <div class="page-head">
+      <h2>⚙️ Configuración del sistema</h2>
+      <div class="actions"><button class="btn" id="cfgGuardar">💾 Guardar cambios</button></div>
+    </div>
+    ${datos.grupos.map((g) => `
+      <div class="card" style="margin-bottom:18px">
+        <div class="toolbar"><b>${esc(g.grupo)}</b></div>
+        <div class="form-grid">${g.items.map(campo).join('')}</div>
+      </div>`).join('')}
+    <div id="cfgEstado"></div>`;
+
+  document.getElementById('cfgGuardar').addEventListener('click', async () => {
+    const cambios = {};
+    content().querySelectorAll('[data-clave]').forEach((el) => {
+      cambios[el.dataset.clave] = el.dataset.tipo === 'boolean' ? el.checked : el.value;
+    });
+    const mantenimiento = cambios.mantenimiento_activo === true;
+    if (mantenimiento && !confirm('¿Activar el modo mantenimiento?\n\nSolo los administradores podrán ingresar; el resto verá el aviso y se cerrará su sesión.')) return;
+    try {
+      await api('PUT', '/configuracion', cambios);
+      toast('Configuración guardada');
+      document.getElementById('cfgEstado').innerHTML = mantenimiento
+        ? `<div class="resultado warn"><b>🛠️ El sistema quedó en mantenimiento.</b> Solo los administradores pueden ingresar. Desactive esta opción para volver a la normalidad.</div>`
+        : '';
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+}
+
+/* =====================================================================
+ * Editor de permisos personalizados por usuario
+ * ===================================================================== */
+function initPermisos(f, row, rolActual) {
+  const caja = document.getElementById('perm_' + f.name);
+  if (!caja || !PERMISOS_CATALOGO) return;
+
+  const asignados = row[f.name] && typeof row[f.name] === 'object' ? { ...row[f.name] } : {};
+  const { acciones, modulos, porRol } = PERMISOS_CATALOGO;
+
+  const dibujar = () => {
+    const rol = document.querySelector('#recForm [name="rol"]') ? document.querySelector('#recForm [name="rol"]').value : rolActual;
+    const delRol = porRol[rol] || {};
+    caja.innerHTML = `
+      <div class="perm-cabecera">
+        <span>Los módulos sin marcar siguen el rol seleccionado. Marque uno para darle permisos propios a este usuario.</span>
+        <button type="button" class="btn secondary sm" id="permLimpiar">Quitar todos los ajustes</button>
+      </div>
+      <div class="table-scroll">
+        <table class="perm-tabla">
+          <thead>
+            <tr>
+              <th>Módulo</th>
+              <th class="c">Personalizar</th>
+              ${acciones.map((a) => `<th class="c">${esc(a.label)}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${modulos.map((m) => {
+              const propio = Array.isArray(asignados[m.name]);
+              const efectivos = propio ? asignados[m.name] : (delRol[m.name] || []);
+              return `<tr class="${propio ? 'personalizado' : ''}">
+                <td>${esc(m.label)} <span class="grp">${esc(m.group)}</span></td>
+                <td class="c"><input type="checkbox" class="perm-on" data-mod="${m.name}" ${propio ? 'checked' : ''} /></td>
+                ${acciones.map((a) => `
+                  <td class="c">
+                    <input type="checkbox" class="perm-acc" data-mod="${m.name}" data-acc="${a.value}"
+                      ${efectivos.includes(a.value) ? 'checked' : ''} ${propio ? '' : 'disabled'} />
+                  </td>`).join('')}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    caja.dataset.value = JSON.stringify(asignados);
+
+    caja.querySelectorAll('.perm-on').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const mod = cb.dataset.mod;
+        if (cb.checked) asignados[mod] = [...(delRol[mod] || [])];
+        else delete asignados[mod];
+        dibujar();
+      });
+    });
+    caja.querySelectorAll('.perm-acc').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const mod = cb.dataset.mod;
+        if (!Array.isArray(asignados[mod])) return;
+        const set = new Set(asignados[mod]);
+        if (cb.checked) set.add(cb.dataset.acc);
+        else set.delete(cb.dataset.acc);
+        asignados[mod] = [...set];
+        caja.dataset.value = JSON.stringify(asignados);
+      });
+    });
+    const limpiar = document.getElementById('permLimpiar');
+    if (limpiar) limpiar.addEventListener('click', () => {
+      Object.keys(asignados).forEach((k) => delete asignados[k]);
+      dibujar();
+    });
+  };
+
+  dibujar();
+  const selRol = document.querySelector('#recForm [name="rol"]');
+  if (selRol) selRol.addEventListener('change', dibujar);
+}
+
+/* =====================================================================
+ * Historial (bitácora) dentro de la ficha del miembro
+ * ===================================================================== */
+async function renderHistorialMiembro(miembroId, contenedor) {
+  const modBitacora = MOD['bitacora'];
+  if (!modBitacora) return;
+  try {
+    const datos = await api('GET', `/bitacora?f_miembro_id=${miembroId}&limit=100&sort=fecha&dir=desc`);
+    contenedor.innerHTML = `
+      <div class="card" style="margin-top:18px">
+        <div class="toolbar">
+          <b>🗒️ Historial del miembro</b>
+          <span style="color:var(--muted);font-size:13px">${datos.total} registro(s)</span>
+          <span class="spacer"></span>
+          ${modBitacora.perms.create ? `<button class="btn sm" id="btnAnotar">➕ Agregar anotación</button>` : ''}
+        </div>
+        <div id="histLista">
+          ${datos.rows.length ? `<ul class="historial">
+            ${datos.rows.map((r) => `
+              <li class="${r.origen === 'Automático' ? 'auto' : 'manual'}">
+                <div class="hf">${fmtDate(r.fecha)}</div>
+                <div class="hc">
+                  <span class="badge ${badgeClass(r.tipo)}">${esc(r.tipo)}</span>
+                  <div class="hd">${esc(r.descripcion)}</div>
+                  <div class="hm">${r.origen === 'Automático' ? '⚙️ automático' : '✍️ ' + esc(r.registrado_por || '')}</div>
+                </div>
+              </li>`).join('')}
+          </ul>` : '<div class="empty-state" style="padding:26px">Sin registros en el historial todavía.</div>'}
+        </div>
+      </div>`;
+
+    const btn = document.getElementById('btnAnotar');
+    if (btn) btn.addEventListener('click', () => abrirAnotacion(miembroId, () => renderHistorialMiembro(miembroId, contenedor)));
+  } catch (e) {
+    contenedor.innerHTML = '';
+  }
+}
+
+function abrirAnotacion(miembroId, alGuardar) {
+  const tipos = (MOD['bitacora'].fields.find((f) => f.name === 'tipo').options || []).map((o) => (typeof o === 'object' ? o.value : o));
+  const fondo = document.createElement('div');
+  fondo.className = 'modal-fondo';
+  fondo.innerHTML = `
+    <div class="modal" style="max-width:560px">
+      <div class="modal-head"><h3>➕ Nueva anotación</h3><button class="cerrar">&times;</button></div>
+      <div class="modal-body">
+        <div class="fld"><label>Fecha</label><input type="date" id="anFecha" value="${new Date().toISOString().slice(0, 10)}" /></div>
+        <div class="fld" style="margin-top:12px"><label>Tipo</label>
+          <select id="anTipo">${tipos.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
+        </div>
+        <div class="fld" style="margin-top:12px"><label>Descripción</label><textarea id="anDesc" placeholder="Qué se quiere dejar registrado…"></textarea></div>
+        <div class="form-error" id="anError" style="padding:0"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn secondary" id="anCancelar">Cancelar</button>
+        <button class="btn" id="anGuardar">💾 Guardar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(fondo);
+  const cerrar = () => fondo.remove();
+  fondo.querySelector('.cerrar').addEventListener('click', cerrar);
+  fondo.querySelector('#anCancelar').addEventListener('click', cerrar);
+  fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(); });
+
+  fondo.querySelector('#anGuardar').addEventListener('click', async () => {
+    const descripcion = fondo.querySelector('#anDesc').value.trim();
+    if (!descripcion) {
+      fondo.querySelector('#anError').textContent = 'Escriba la descripción.';
+      return;
+    }
+    try {
+      await api('POST', '/bitacora', {
+        miembro_id: miembroId,
+        fecha: fondo.querySelector('#anFecha').value,
+        tipo: fondo.querySelector('#anTipo').value,
+        descripcion,
+      });
+      toast('Anotación guardada');
+      cerrar();
+      if (alGuardar) alGuardar();
+    } catch (e) {
+      fondo.querySelector('#anError').textContent = e.message;
+    }
   });
 }
 
