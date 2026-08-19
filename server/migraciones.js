@@ -283,6 +283,40 @@ function movimientosACuentas() {
 }
 
 
+/**
+ * Cada iglesia local necesita su «Fondo para la corporación»: la cuenta donde
+ * aparta lo que le corresponde a la corporación hasta traspasarlo. Se crea
+ * para las iglesias que todavía no lo tienen.
+ */
+function fondoParaLaCorporacion() {
+  const hayCuentas = db.prepare('SELECT COUNT(*) AS c FROM cuentas_tesoreria').get().c;
+  if (!hayCuentas) return; // instalación nueva: lo crea la semilla
+
+  const sinFondo = db
+    .prepare(
+      `SELECT i.id, i.nombre FROM iglesias i
+        WHERE NOT EXISTS (
+          SELECT 1 FROM cuentas_tesoreria c
+           WHERE c.iglesia_id = i.id AND c.tipo = 'Fondo para la corporación')`
+    )
+    .all();
+  if (!sinFondo.length) return;
+
+  const crear = db.prepare(
+    `INSERT INTO cuentas_tesoreria (nombre, ambito, iglesia_id, tipo, estado, saldo_inicial, descripcion)
+     VALUES (?, 'Iglesia local', ?, 'Fondo para la corporación', 'Activa', 0, ?)`
+  );
+  for (const ig of sinFondo) {
+    crear.run(
+      `Fondo para la corporación — ${ig.nombre}`,
+      ig.id,
+      'Donde la iglesia aparta lo que le corresponde a la corporación, hasta traspasarlo.'
+    );
+  }
+  console.log(`🏦 ${sinFondo.length} fondo(s) para la corporación creados: ${sinFondo.map((i) => i.nombre).join(', ')}.`);
+}
+
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
@@ -291,6 +325,7 @@ function ejecutarMigraciones() {
   renombrarCargosDirectiva();
   oficialSupervisorAMiembro();
   movimientosACuentas();
+  fondoParaLaCorporacion();
 }
 
 module.exports = { ejecutarMigraciones };

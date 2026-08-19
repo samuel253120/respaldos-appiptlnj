@@ -778,6 +778,9 @@ async function viewForm(name, id, precarga) {
   // Campos que solo aplican según el valor de otro (showIf)
   aplicarCondiciones();
 
+  // Al traspasar, se muestra cuánto hay en la cuenta de origen
+  if (name === 'traspasos') mostrarSaldoOrigen();
+
   // Estado de la cuenta de tesorería bajo su ficha
   if (name === 'cuentas_tesoreria' && !isNew) {
     const zona = document.createElement('div');
@@ -1777,6 +1780,35 @@ function initPermisos(f, row, rolActual) {
 /* =====================================================================
  * Historial (bitácora) dentro de la ficha del miembro
  * ===================================================================== */
+/**
+ * En el formulario de traspaso, muestra el saldo de la cuenta de origen al
+ * elegirla: así se ve de inmediato con cuánto se cuenta antes de traspasar.
+ */
+function mostrarSaldoOrigen() {
+  const form = document.getElementById('recForm');
+  const select = form && form.querySelector('[name="cuenta_origen_id"]');
+  if (!select) return;
+  const marca = document.createElement('div');
+  marca.className = 'saldo-origen';
+  select.parentNode.insertBefore(marca, select.nextSibling);
+
+  const refrescar = async () => {
+    if (!select.value) {
+      marca.textContent = '';
+      return;
+    }
+    marca.textContent = 'Consultando el saldo…';
+    try {
+      const e = await api('GET', `/cuentas_tesoreria/${select.value}/estado`);
+      marca.innerHTML = `Saldo disponible: <b class="${e.saldo < 0 ? 'saldo-negativo' : ''}">${fmtMoney(e.saldo)}</b>`;
+    } catch (err) {
+      marca.textContent = '';
+    }
+  };
+  select.addEventListener('change', refrescar);
+  refrescar();
+}
+
 /** Estado de una cuenta de tesorería: saldo, totales y últimos movimientos. */
 async function renderEstadoCuenta(cuentaId, contenedor) {
   const modMov = MOD['tesoreria'];

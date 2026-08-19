@@ -5,14 +5,17 @@
  *
  *   Corporación          → su tesorería general + una cuenta por cada
  *                          proyecto o trabajo de la corporación.
- *   Cada iglesia local   → su tesorería general + una cuenta por cada
- *                          proyecto o trabajo de esa iglesia.
+ *   Cada iglesia local   → su tesorería general, su fondo para la corporación
+ *                          (donde aparta el porcentaje de las ofrendas hasta
+ *                          traspasarlo) + una cuenta por cada proyecto o
+ *                          trabajo de esa iglesia.
  *
  * Cada movimiento de Tesorería se registra en una de estas cuentas, y el
  * saldo de cada una se calcula solo: saldo inicial + ingresos − egresos.
  *
- * Regla: en cada nivel hay una sola cuenta "General" (la tesorería del
- * nivel). Las demás son cuentas de proyecto o trabajo.
+ * Reglas: en cada nivel hay una sola cuenta "General" (la tesorería del
+ * nivel), y cada iglesia local tiene un solo "Fondo para la corporación".
+ * Las demás son cuentas de proyecto o trabajo.
  */
 
 /** Ingresos, egresos y saldo de una cuenta. */
@@ -69,8 +72,10 @@ module.exports = {
     },
     {
       name: 'tipo', label: 'Tipo de cuenta', type: 'select', required: true, default: 'Proyecto / Trabajo',
-      options: ['General', 'Proyecto / Trabajo'],
-      help: 'La cuenta «General» es la tesorería del nivel; hay una sola por corporación y una por iglesia.',
+      options: ['General', 'Fondo para la corporación', 'Proyecto / Trabajo'],
+      help:
+        'La cuenta «General» es la tesorería del nivel (una por corporación y una por iglesia). ' +
+        'El «Fondo para la corporación» es donde cada iglesia aparta lo que después le traspasa a la corporación.',
     },
     { name: 'responsable', label: 'Responsable', type: 'persona', ref: 'miembros' },
     { name: 'fecha_apertura', label: 'Fecha de apertura', type: 'date' },
@@ -101,14 +106,21 @@ module.exports = {
         return 'Indique a qué iglesia local pertenece la cuenta';
       }
 
-      // Una sola cuenta "General" por nivel
-      if (dato('tipo') === 'General') {
+      // El fondo para la corporación es una cuenta de la iglesia local
+      if (dato('tipo') === 'Fondo para la corporación' && ambito === 'Corporación') {
+        return 'El «Fondo para la corporación» es una cuenta de una iglesia local: es donde la iglesia aparta lo que después traspasa a la corporación';
+      }
+
+      // Una sola cuenta "General" y un solo "Fondo para la corporación" por nivel
+      const unicas = { General: 'la cuenta general', 'Fondo para la corporación': 'el fondo para la corporación' };
+      const tipo = dato('tipo');
+      if (unicas[tipo]) {
         const iglesiaId = ambito === 'Corporación' ? null : dato('iglesia_id');
         const otra = iglesiaId
-          ? db.prepare(`SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = 'General' AND iglesia_id = ? AND id != ?`).get(iglesiaId, id || 0)
-          : db.prepare(`SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = 'General' AND iglesia_id IS NULL AND id != ?`).get(id || 0);
+          ? db.prepare(`SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND iglesia_id = ? AND id != ?`).get(tipo, iglesiaId, id || 0)
+          : db.prepare(`SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND iglesia_id IS NULL AND id != ?`).get(tipo, id || 0);
         if (otra) {
-          return `Ya existe la cuenta general de ese nivel ("${otra.nombre}"). Las demás cuentas deben ser de tipo «Proyecto / Trabajo».`;
+          return `Ya existe ${unicas[tipo]} de ese nivel ("${otra.nombre}"). Las demás cuentas deben ser de tipo «Proyecto / Trabajo».`;
         }
       }
 
@@ -126,6 +138,22 @@ module.exports = {
   },
 
   extraRoutes(router, { db, requirePerm, scopeClause }) {
+    // Destinos posibles de un traspaso: las cuentas de la corporación —una
+    // iglesia le traspasa lo que apartó— y las de la propia iglesia. Las de
+    // otras congregaciones no se ofrecen ni se muestran.
+    router.get('/cuentas_tesoreria/destinos', (req, res) => {
+      const params = [];
+      let where = "estado = 'Activa'";
+      if (req.user.iglesia_id) {
+        where += ' AND (iglesia_id IS NULL OR iglesia_id = ?)';
+        params.push(req.user.iglesia_id);
+      }
+      const filas = db
+        .prepare(`SELECT id, nombre, ambito FROM cuentas_tesoreria WHERE ${where} ORDER BY ambito, nombre`)
+        .all(...params);
+      res.json(filas.map((c) => ({ id: c.id, label: `${c.nombre} · ${c.ambito}` })));
+    });
+
     // Opciones para el selector de cuenta de un movimiento: solo las activas
     // (una cuenta cerrada ya no recibe dinero) y solo las del alcance del usuario.
     router.get('/cuentas_tesoreria/activas', (req, res) => {

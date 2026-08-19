@@ -35,15 +35,19 @@ function ensureSeed() {
   if (cuentas === 0) {
     const crear = db.prepare(
       `INSERT INTO cuentas_tesoreria (nombre, ambito, iglesia_id, tipo, estado, saldo_inicial, descripcion)
-       VALUES (?, ?, ?, 'General', 'Activa', 0, ?)`
+       VALUES (?, ?, ?, ?, 'Activa', 0, ?)`
     );
-    crear.run('Tesorería general de la corporación', 'Corporación', null, 'Tesorería general de toda la organización.');
+    crear.run('Tesorería general de la corporación', 'Corporación', null, 'General', 'Tesorería general de toda la organización.');
     let creadas = 1;
     for (const ig of db.prepare('SELECT id, nombre FROM iglesias').all()) {
-      crear.run(`Tesorería general — ${ig.nombre}`, 'Iglesia local', ig.id, 'Tesorería general de la iglesia local.');
-      creadas++;
+      crear.run(`Tesorería general — ${ig.nombre}`, 'Iglesia local', ig.id, 'General', 'Tesorería general de la iglesia local.');
+      crear.run(
+        `Fondo para la corporación — ${ig.nombre}`, 'Iglesia local', ig.id, 'Fondo para la corporación',
+        'Donde la iglesia aparta lo que le corresponde a la corporación, hasta traspasarlo.'
+      );
+      creadas += 2;
     }
-    console.log(`🏦 ${creadas} cuenta(s) de tesorería general creadas (corporación e iglesias).`);
+    console.log(`🏦 ${creadas} cuenta(s) de tesorería creadas (generales y fondos para la corporación).`);
   }
 
   const sinRut = db.prepare("SELECT nombre, email FROM usuarios WHERE rut IS NULL OR rut = ''").all();

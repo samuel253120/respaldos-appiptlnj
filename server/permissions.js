@@ -46,12 +46,14 @@ const MATRIX = {
     ayudas_sociales: RW,
     tesoreria: [],
     cuentas_tesoreria: [],
+    traspasos: [],
     usuarios: [],
   },
   tesorero: {
     '*': RO,
     tesoreria: ALL,
     cuentas_tesoreria: ALL,
+    traspasos: ALL,
     ayudas_sociales: ALL,
     inventarios: RW,
     usuarios: [],
@@ -60,6 +62,7 @@ const MATRIX = {
     '*': RO,
     tesoreria: [],
     cuentas_tesoreria: [],
+    traspasos: [],
     usuarios: [],
   },
 };

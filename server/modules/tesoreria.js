@@ -32,7 +32,7 @@ module.exports = {
       name: 'categoria', label: 'Categoría', type: 'select', required: true, default: 'Ofrendas',
       options: [
         'Diezmos', 'Ofrendas', 'Primicias', 'Pro-Templo', 'Donaciones', 'Actividades',
-        'Servicios públicos', 'Mantenimiento', 'Compras', 'Ayuda social', 'Honorarios', 'Viáticos', 'Otro',
+        'Servicios públicos', 'Mantenimiento', 'Compras', 'Ayuda social', 'Honorarios', 'Viáticos', 'Traspaso', 'Otro',
       ],
     },
     { name: 'concepto', label: 'Concepto / Descripción', type: 'text', required: true },
@@ -53,9 +53,17 @@ module.exports = {
     { name: 'cuerpo_id', label: 'Cuerpo / Grupo (si aplica)', type: 'ref', ref: 'cuerpos' },
     { name: 'comprobante', label: 'Comprobante (imagen o PDF)', type: 'file' },
     { name: 'notas', label: 'Notas', type: 'textarea' },
+    // Movimientos generados por un traspaso entre cuentas (se manejan desde allá)
+    { name: 'traspaso_id', type: 'number', oculto: true, readonly: true },
   ],
   hooks: {
     beforeSave(data, { user, existing, db }) {
+      // Los dos movimientos de un traspaso se corrigen desde el traspaso, para
+      // que los dos lados queden siempre por el mismo monto y la misma fecha.
+      if (existing && existing.traspaso_id) {
+        return 'Este movimiento lo generó un traspaso entre cuentas: modifíquelo en «Traspasos entre Cuentas»';
+      }
+
       // La iglesia del movimiento es la de su cuenta (o ninguna, si es de la corporación)
       const cuentaId = data.cuenta_id !== undefined ? data.cuenta_id : existing ? existing.cuenta_id : null;
       if (!cuentaId) return 'Indique la cuenta de tesorería del movimiento';
@@ -74,6 +82,13 @@ module.exports = {
       }
 
       data.iglesia_id = cuenta.iglesia_id || null;
+      return null;
+    },
+
+    beforeDelete(fila) {
+      if (fila.traspaso_id) {
+        return 'Este movimiento lo generó un traspaso entre cuentas: elimine el traspaso y los dos lados se van juntos';
+      }
       return null;
     },
   },

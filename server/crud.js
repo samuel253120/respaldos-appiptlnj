@@ -18,7 +18,9 @@
  * - Campos multiref se almacenan como JSON (arreglo de ids) y se devuelven
  *   como arreglo, con `<campo>_labels`.
  * - Hooks por módulo: beforeSave(data, { user, isNew, id }) permite validar o
- *   transformar (p. ej. usuarios cifra la contraseña).
+ *   transformar (p. ej. usuarios cifra la contraseña); afterSave(fila, { user,
+ *   isNew, db }) actúa con el registro ya guardado (p. ej. un traspaso deja al
+ *   día sus dos movimientos).
  */
 const express = require('express');
 const { db } = require('./db');
@@ -398,7 +400,11 @@ function buildRouter() {
           const sql = `INSERT INTO "${def.name}" (${keys.map((k) => `"${k}"`).join(',')}${keys.length ? ',' : ''} created_by)
                        VALUES (${keys.map(() => '?').join(',')}${keys.length ? ',' : ''} ?)`;
           const info = db.prepare(sql).run(...keys.map((k) => data[k]), req.user.id);
-          const row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(info.lastInsertRowid);
+          let row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(info.lastInsertRowid);
+          if (def.hooks && def.hooks.afterSave) {
+            def.hooks.afterSave(row, { user: req.user, isNew: true, db });
+            row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(row.id);
+          }
           bitacora.registrarGuardado(def, { isNew: true, antes: {}, despues: row, datos: data, user: req.user });
           return res.status(201).json(expandRow(def, row));
         } else {
@@ -407,7 +413,11 @@ function buildRouter() {
             const sql = `UPDATE "${def.name}" SET ${keys.map((k) => `"${k}" = ?`).join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`;
             db.prepare(sql).run(...keys.map((k) => data[k]), id);
           }
-          const row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
+          let row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
+          if (def.hooks && def.hooks.afterSave) {
+            def.hooks.afterSave(row, { user: req.user, isNew: false, db });
+            row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
+          }
           bitacora.registrarGuardado(def, { isNew: false, antes: existing, despues: row, datos: data, user: req.user });
           return res.json(expandRow(def, row));
         }
