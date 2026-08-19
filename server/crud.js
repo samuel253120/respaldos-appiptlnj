@@ -60,6 +60,8 @@ function coerce(field, value) {
     }
     case 'rut':
       return rut.canonico(value);
+    case 'persona':
+      return String(value).trim() || null;
     case 'permisos': {
       // Se guarda como JSON { modulo: ['view','create',...] }
       if (typeof value === 'string') return value.trim() ? value : null;
@@ -68,6 +70,88 @@ function coerce(field, value) {
     }
     default:
       return String(value);
+  }
+}
+
+/**
+ * Deja coherentes los campos de tipo "persona": el nombre visible y el enlace
+ * al registro (miembro) cuando esa persona sí está en el sistema.
+ *
+ * - Si se eligió un registro, el nombre pasa a ser el de ese registro.
+ * - Si solo se escribió un nombre y coincide exactamente con un registro (y
+ *   con uno solo), se enlaza igual; si no, queda como nombre suelto.
+ */
+function sincronizarPersonas(def, data, existing) {
+  for (const f of def.fields) {
+    if (f.type !== 'persona') continue;
+    const enlace = `${f.name}_id`;
+    const refDef = getModule(f.ref || 'miembros');
+    if (!refDef) continue;
+
+    const tocaNombre = data[f.name] !== undefined;
+    const tocaEnlace = data[enlace] !== undefined;
+    const enlaceGuardado = existing ? existing[enlace] : null;
+    if (!tocaNombre && !tocaEnlace && !enlaceGuardado) continue;
+
+    const id = tocaEnlace ? data[enlace] : enlaceGuardado;
+    const nombre = tocaNombre ? data[f.name] : existing ? existing[f.name] : null;
+
+    if (id) {
+      const fila = db.prepare(`SELECT * FROM "${refDef.name}" WHERE id = ?`).get(id);
+      if (fila) {
+        data[enlace] = fila.id;
+        data[f.name] = displayOf(refDef, fila);
+        continue;
+      }
+    }
+    data[enlace] = null;
+    data[f.name] = nombre || null;
+    if (!nombre) continue;
+
+    // ¿Ese nombre corresponde, sin lugar a dudas, a un registro existente?
+    const candidatos = db
+      .prepare(`SELECT * FROM "${refDef.name}"`)
+      .all()
+      .filter((r) => displayOf(refDef, r).toLowerCase() === String(nombre).toLowerCase());
+    if (candidatos.length === 1) {
+      data[enlace] = candidatos[0].id;
+      data[f.name] = displayOf(refDef, candidatos[0]);
+    }
+  }
+}
+
+/**
+ * Resuelve los campos que se calculan solos a partir de otros (`calcula`).
+ * El valor se guarda en la base, para poder filtrarlo, ordenarlo y sumarlo
+ * como cualquier otro campo.
+ */
+function porcentajeDe(calcula) {
+  if (calcula.opcion) {
+    const ajustes = require('./ajustes'); // tardío: ajustes usa la base
+    const n = Number(ajustes.obtener(calcula.opcion));
+    if (Number.isFinite(n)) return n;
+  }
+  return Number(calcula.porcentaje) || 0;
+}
+
+function aplicarCalculos(def, data, existing) {
+  const numero = (nombre) => {
+    const v = data[nombre] !== undefined ? data[nombre] : existing ? existing[nombre] : null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const redondear = (n) => Math.round(n * 100) / 100;
+
+  for (const f of def.fields) {
+    const c = f.calcula;
+    if (!c) continue;
+    if (c.tipo === 'suma') {
+      data[f.name] = redondear(c.campos.reduce((acc, n) => acc + numero(n), 0));
+    } else if (c.tipo === 'resta') {
+      data[f.name] = redondear(c.campos.reduce((acc, n, i) => (i === 0 ? numero(n) : acc - numero(n)), 0));
+    } else if (c.tipo === 'porcentaje') {
+      data[f.name] = redondear((numero(c.campo) * porcentajeDe(c)) / 100);
+    }
   }
 }
 
@@ -107,6 +191,14 @@ function expandRow(def, row) {
         out[f.name] = null;
       }
     }
+  }
+
+  // Campos de persona: si están enlazados a una ficha, se muestra el nombre
+  // que esa ficha tiene hoy (la etiqueta ya se resolvió con el campo de enlace).
+  for (const f of def.fields) {
+    if (f.type !== 'persona') continue;
+    const etiqueta = out[`${f.name}_id_label`];
+    if (etiqueta && !String(etiqueta).startsWith('#')) out[f.name] = etiqueta;
   }
 
   // Campos calculados: no se guardan, se resuelven al leer
@@ -238,6 +330,7 @@ function buildRouter() {
           const v = coerce(f, req.body[f.name]);
           if (v !== undefined) data[f.name] = v;
         }
+        sincronizarPersonas(def, data, existing);
         // Alcance: forzar la iglesia del usuario
         if (isChurchScoped(def) && req.user.iglesia_id) data.iglesia_id = req.user.iglesia_id;
 
@@ -279,6 +372,8 @@ function buildRouter() {
             }
           }
         }
+
+        aplicarCalculos(def, data, existing);
 
         if (def.hooks && def.hooks.beforeSave) {
           const err = def.hooks.beforeSave(data, { user: req.user, isNew, id, existing, db });
@@ -336,4 +431,4 @@ function buildRouter() {
   return router;
 }
 
-module.exports = { buildRouter, coerce };
+module.exports = { buildRouter, coerce, sincronizarPersonas, aplicarCalculos };

@@ -18,7 +18,7 @@ const express = require('express');
 const { db } = require('./db');
 const { getModule, displayOf } = require('./registry');
 const { authRequired, requirePerm } = require('./auth');
-const { coerce } = require('./crud');
+const { coerce, sincronizarPersonas, aplicarCalculos } = require('./crud');
 const rut = require('./rut');
 
 const MAX_FILAS = 5000;
@@ -147,6 +147,9 @@ function prepararFila(def, fila, user) {
       if (dup) errores.push(`${f.label}: "${valor}" ya existe (registro #${dup.id})`);
     }
   }
+
+  sincronizarPersonas(def, datos, null);
+  aplicarCalculos(def, datos, null);
 
   if (!errores.length && def.hooks && def.hooks.beforeSave) {
     const err = def.hooks.beforeSave(datos, { user, isNew: true, id: null, existing: null, db });

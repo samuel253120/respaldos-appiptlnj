@@ -15,6 +15,7 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 | Grupo | Módulos |
 |---|---|
 | **Organización** | Iglesias · Pastores / Guías · Cuerpos / Grupos · Directivas de Cuerpos |
+| **Servicios** | Registro de Servicios (cultos: salmo, mensaje, asistencia y ofrenda) |
 | **Personas** | Miembros · Asistencias (con lista nominal de presentes) · Bitácora de Miembros |
 | **Finanzas** | Tesorería (ingresos/egresos con resumen y balance) · Ayudas Sociales · Inventarios (de iglesia y de cuerpos) |
 | **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · Documentos · Certificados · Credenciales · Solicitudes |
@@ -91,7 +92,7 @@ Roles disponibles (editables en `server/permissions.js`):
 
 - **Administrador** — acceso total, incluido el módulo Usuarios.
 - **Pastor / Guía** — acceso total excepto Usuarios.
-- **Secretario** — gestiona membresía, actas, documentos, certificados, etc.; sin acceso a Tesorería.
+- **Secretario** — gestiona membresía, servicios, actas, documentos, certificados, etc.; sin acceso a Tesorería.
 - **Tesorero** — gestiona Tesorería, Ayudas Sociales e Inventarios; consulta el resto.
 - **Solo consulta** — lectura, sin Tesorería.
 
@@ -162,13 +163,51 @@ Este indicador usa otra capacidad general del motor: un módulo puede declarar `
 
 Esto usa una capacidad general del motor: cualquier campo puede declarar `showIf: { field: 'otro_campo', equals: 'valor' }` (o `in: [...]`) para mostrarse solo cuando corresponda. El servidor tampoco exige los campos obligatorios que no apliquen.
 
+## Registro de Servicios 🕊️
+
+Deja constancia de cada servicio (culto) realizado: cuándo empezó y terminó, quién coordinó, quién leyó el salmo y cuál fue, quién predicó y sobre qué pasaje, cuánta gente asistió y cuánto se ofrendó.
+
+### Personas que pueden o no estar registradas
+
+**Coordinador(a)**, **salmista** y **predicador(a)** se escriben en un campo que sugiere a los miembros registrados mientras se escribe:
+
+- Si la persona **está registrada**, se elige de la lista y el registro queda enlazado a su ficha (aparece marcada con ✓ *registrado*). Si más adelante cambia su nombre en Miembros, el servicio muestra el nombre actualizado.
+- Si **no está registrada** (una visita, un predicador invitado), se escribe el nombre y queda guardado igual, sin enlace.
+- Si se escribe a mano un nombre que coincide exactamente con un miembro —y con uno solo—, el enlace se hace igual, sin tener que elegirlo de la lista. Esto vale también al importar desde CSV.
+
+Esto usa otra capacidad general del motor: el tipo de campo **`persona`**, disponible para cualquier módulo. Guarda el nombre en su columna y el enlace en `<campo>_id`, que el sistema agrega solo.
+
+### Salmo y mensaje
+
+Ambos se citan igual: **libro** (los 66 de la Reina-Valera 1960, en orden del canon), **capítulo**, **versículo inicial** y **versículo final**. En el listado y al imprimir se muestran armados: *Salmos 23:1-6*, *Juan 10:11-18*.
+
+### Asistencia y ofrenda
+
+| Campo | Cómo se obtiene |
+|---|---|
+| Asistencia de adultos / de niños | Se escriben |
+| **Total general de asistencia** | Se suma solo |
+| Ofrenda recibida (total) | Se escribe |
+| **Aparte para el fondo** | El porcentaje configurado (10% por defecto), calculado solo — es lo que va al otro fondo de tesorería |
+| **Queda para la iglesia** | El total menos lo apartado |
+
+Los tres campos calculados se actualizan **mientras se escribe** y no se pueden editar a mano: el servidor los vuelve a calcular al guardar, así que nunca quedan descuadrados. El porcentaje se cambia en **Configuración → Organización → Porcentaje de la ofrenda que se aparta**.
+
+> El sistema calcula y deja registrada la separación, pero **no crea movimientos en Tesorería por su cuenta**, para no duplicar lo que se registre allí a mano.
+
+Esta es también una capacidad general del motor: cualquier campo puede declarar `calcula` —`suma`, `resta` o `porcentaje` (fijo o tomado de una opción de configuración)— y el sistema lo resuelve en el servidor y en pantalla.
+
+### Al imprimir
+
+Cada servicio tiene su hoja con el membrete de la iglesia, los datos agrupados (salmo, mensaje, asistencia, ofrenda) y espacio para las firmas del coordinador y del predicador.
+
 ## Configuración del sistema ⚙️
 
 Los administradores tienen en el menú la entrada **Configuración**, con opciones agrupadas:
 
 - **Mantenimiento** — deja el sistema en mantenimiento y define el aviso que verán los usuarios.
 - **Identidad** — nombre y lema de la institución.
-- **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores de los cuerpos).
+- **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores de los cuerpos) y porcentaje de la ofrenda que se aparta para el otro fondo.
 - **Preferencias** — símbolo de moneda, registros por página, duración de la sesión y si la bitácora registra automáticamente.
 
 ### Modo mantenimiento

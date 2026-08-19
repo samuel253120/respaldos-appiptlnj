@@ -124,7 +124,7 @@ async function api(method, path, body, isForm) {
  * propia ruta (`optionsRoute`) para acotar la lista.
  */
 function rutaOpciones(f) {
-  return f.optionsRoute || f.ref;
+  return f.optionsRoute || f.ref || 'miembros';
 }
 async function getOptions(clave, force) {
   if (!force && optionsCache[clave]) return optionsCache[clave];
@@ -616,6 +616,7 @@ function cellValue(f, row, col) {
   const v = row[f.name];
   if (f.computed) {
     if (v == null || v === '') return '';
+    if (f.type === 'texto') return esc(v);
     const texto = typeof v === 'object' ? v.texto : v;
     const nivel = typeof v === 'object' ? v.nivel : v;
     return `<span class="badge ${nivelClase(nivel)}">${esc(texto)}</span>`;
@@ -633,6 +634,10 @@ function cellValue(f, row, col) {
       return fmtDate(v);
     case 'rut':
       return esc(rutFormatear(v));
+    case 'persona':
+      return row[f.name + '_id']
+        ? `<span class="persona-chip">${esc(v || '')}</span>`
+        : esc(v || '');
     case 'file':
       if (!v) return '';
       if (/\.(jpe?g|png|gif|webp)$/i.test(v)) return `<img class="thumb" src="/uploads/${esc(v)}" alt="" />`;
@@ -678,7 +683,7 @@ async function viewForm(name, id, precarga) {
   }
 
   // precargar opciones de todos los ref/multiref del módulo
-  const listas = [...new Set(m.fields.filter((f) => f.ref).map(rutaOpciones))];
+  const listas = [...new Set(m.fields.filter((f) => f.ref || f.type === 'persona').map(rutaOpciones))];
   await Promise.all(listas.map((r) => getOptions(r).catch(() => [])));
 
   const grid = document.getElementById('formGrid');
@@ -693,7 +698,9 @@ async function viewForm(name, id, precarga) {
       if (el) el.addEventListener('blur', () => { if (el.value) el.value = rutFormatear(el.value); });
     }
     if (f.type === 'permisos') initPermisos(f, row, row.rol);
+    if (f.type === 'persona') initPersona(f, row);
   });
+  initCalculados(m);
 
   // Campos que solo aplican según el valor de otro (showIf)
   aplicarCondiciones();
@@ -768,6 +775,11 @@ function aplicarCondiciones() {
   evaluar();
 }
 
+/** Marca un control como de solo lectura (campos que se calculan solos). */
+function marcarSoloLectura(html) {
+  return html.replace(/<(input|textarea|select)\b/g, '<$1 readonly disabled data-solo-lectura="1"');
+}
+
 function fieldHtml(f, row, isNew) {
   const val = row[f.name] != null ? row[f.name] : isNew && f.default != null ? f.default : '';
   const req = f.required ? '<span class="req">*</span>' : '';
@@ -819,6 +831,20 @@ function fieldHtml(f, row, isNew) {
     case 'rut':
       input = `<input type="text" name="${f.name}" value="${esc(rutFormatear(val))}" placeholder="12.345.678-5" ${f.required ? 'required' : ''} />`;
       break;
+    case 'persona': {
+      // Se puede elegir de la lista (queda enlazado al registro) o escribir un
+      // nombre cualquiera, para quien no está registrado.
+      const enlace = row[f.name + '_id'] || '';
+      input = `
+        <div class="personafld" id="pf_${f.name}">
+          <input type="text" name="${f.name}" list="dlp_${f.name}" value="${esc(val)}" autocomplete="off"
+                 placeholder="Escriba el nombre o elíjalo de la lista" ${f.required ? 'required' : ''} />
+          <datalist id="dlp_${f.name}"></datalist>
+          <input type="hidden" name="${f.name}_id" value="${esc(enlace)}" />
+          <span class="persona-estado" id="pe_${f.name}"></span>
+        </div>`;
+      break;
+    }
     case 'permisos':
       input = `<div class="permisos-editor" id="perm_${f.name}"></div>`;
       break;
@@ -844,7 +870,78 @@ function fieldHtml(f, row, isNew) {
   const cond = f.showIf
     ? ` data-showif-field="${esc(f.showIf.field)}" data-showif-valor="${esc(f.showIf.equals !== undefined ? f.showIf.equals : (f.showIf.in || []).join('|'))}"`
     : '';
-  return `<div class="fld${wide}"${cond}><label>${esc(f.label)} ${req}</label>${input}${help}</div>`;
+  if (f.readonly) input = marcarSoloLectura(input);
+  return `<div class="fld${wide}${f.readonly ? ' calculado' : ''}"${cond}><label>${esc(f.label)} ${req}</label>${input}${help}</div>`;
+}
+
+/**
+ * Campo de persona: sugiere los registros del módulo referenciado, pero deja
+ * escribir cualquier nombre. Si lo escrito coincide con un registro, se guarda
+ * el enlace; si no, queda como nombre suelto.
+ */
+function initPersona(f, row) {
+  const caja = document.getElementById('pf_' + f.name);
+  if (!caja) return;
+  const texto = caja.querySelector(`input[name="${f.name}"]`);
+  const enlace = caja.querySelector(`input[name="${f.name}_id"]`);
+  const estado = document.getElementById('pe_' + f.name);
+  const lista = optionsCache[rutaOpciones(f)] || [];
+  caja.querySelector('datalist').innerHTML = lista.map((o) => `<option value="${esc(o.label)}"></option>`).join('');
+
+  const revisar = () => {
+    const valor = (texto.value || '').trim().toLowerCase();
+    const coincidencias = lista.filter((o) => o.label.toLowerCase() === valor);
+    if (coincidencias.length === 1) {
+      enlace.value = coincidencias[0].id;
+      estado.className = 'persona-estado enlazado';
+      estado.textContent = '✓ registrado';
+    } else {
+      enlace.value = '';
+      estado.className = 'persona-estado libre';
+      estado.textContent = texto.value.trim() ? 'no está en el registro' : '';
+    }
+  };
+  texto.addEventListener('input', revisar);
+  texto.addEventListener('change', revisar);
+  revisar();
+}
+
+/**
+ * Campos que se calculan solos (totales, porcentajes): se actualizan mientras
+ * se escribe, con la misma regla que aplica el servidor al guardar.
+ */
+function initCalculados(m) {
+  const form = document.getElementById('recForm');
+  if (!form) return;
+  const calculados = m.fields.filter((f) => f.calcula && !f.computed);
+  if (!calculados.length) return;
+
+  const num = (nombre) => {
+    const el = form.querySelector(`[name="${nombre}"]`);
+    const n = Number(el ? el.value : 0);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const redondear = (n) => Math.round(n * 100) / 100;
+
+  const recalcular = () => {
+    for (const f of calculados) {
+      const c = f.calcula;
+      let v = null;
+      if (c.tipo === 'suma') v = redondear(c.campos.reduce((a, n) => a + num(n), 0));
+      else if (c.tipo === 'resta') v = redondear(c.campos.reduce((a, n, i) => (i === 0 ? num(n) : a - num(n)), 0));
+      else if (c.tipo === 'porcentaje') v = redondear((num(c.campo) * (Number(c.porcentaje) || 0)) / 100);
+      const el = form.querySelector(`[name="${f.name}"]`);
+      if (el && v !== null) el.value = v;
+    }
+  };
+
+  const origenes = new Set();
+  calculados.forEach((f) => (f.calcula.campos || [f.calcula.campo]).forEach((n) => origenes.add(n)));
+  origenes.forEach((n) => {
+    const el = form.querySelector(`[name="${n}"]`);
+    if (el) el.addEventListener('input', recalcular);
+  });
+  recalcular();
 }
 
 function initMultiref(f, row) {
@@ -925,6 +1022,10 @@ function collectForm(m) {
       if (!el) continue;
       if (f.type === 'password' && el.value === '') continue; // no cambiar contraseña
       data[f.name] = el.value;
+      if (f.type === 'persona') {
+        const enlace = form.querySelector(`[name="${f.name}_id"]`);
+        data[f.name + '_id'] = enlace ? enlace.value : '';
+      }
     }
   }
   return data;
@@ -944,6 +1045,7 @@ async function viewPrint(name, id) {
   if (name === 'certificados') sheet = printCertificado(row);
   else if (name === 'credenciales') sheet = printCredencial(row);
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas');
+  else if (name === 'servicios') sheet = printServicio(m, row);
   else sheet = printGenerico(m, row);
 
   content().innerHTML = `
@@ -1053,6 +1155,58 @@ function printActa(m, row, esAsamblea) {
     </div>`;
 }
 
+/** Hoja de un servicio: los datos agrupados como se viven en el culto. */
+function printServicio(m, row) {
+  const fila = (k, v) => (v == null || v === '' ? '' : `<tr><td class="k">${esc(k)}</td><td>${esc(v)}</td></tr>`);
+  return `
+    <div class="print-sheet print-generic">
+      <div class="membrete">
+        <img src="${IGLESIA.logo}" alt="" />
+        <div><b>${esc(IGLESIA.nombre)}</b><i>${esc(IGLESIA.lema)}</i></div>
+      </div>
+      <h1>Registro de Servicio</h1>
+      <div class="sub">${esc(row.iglesia_id_label || '')} — ${fechaLarga(row.fecha)}</div>
+      <table class="meta-tbl">
+        ${fila('Tipo de servicio', row.tipo)}
+        ${fila('Horario', [row.hora_inicio, row.hora_termino].filter(Boolean).join(' a '))}
+        ${fila('Coordinador(a)', row.coordinador)}
+      </table>
+
+      <h3>Salmo</h3>
+      <table class="meta-tbl">
+        ${fila('Salmista', row.salmista)}
+        ${fila('Pasaje leído', row.cita_salmo)}
+      </table>
+
+      <h3>Mensaje</h3>
+      <table class="meta-tbl">
+        ${fila('Predicador(a)', row.predicador)}
+        ${fila('Tema', row.mensaje_titulo)}
+        ${fila('Pasaje', row.cita_mensaje)}
+      </table>
+
+      <h3>Asistencia</h3>
+      <table class="meta-tbl">
+        ${fila('Adultos', row.asistencia_adultos)}
+        ${fila('Niños', row.asistencia_ninos)}
+        ${fila('Total general', row.asistencia_total)}
+      </table>
+
+      <h3>Ofrenda</h3>
+      <table class="meta-tbl">
+        ${fila('Recibida (total)', fmtMoney(row.ofrenda_total))}
+        ${fila('Aparte para el fondo', fmtMoney(row.ofrenda_fondo))}
+        ${fila('Queda para la iglesia', fmtMoney(row.ofrenda_iglesia))}
+      </table>
+
+      ${row.observaciones ? `<h3>Observaciones</h3><div class="blk">${esc(row.observaciones)}</div>` : ''}
+      <div class="acta-firmas">
+        <div class="firma">${esc(row.coordinador || 'Coordinador(a)')}<br>Coordinador(a)</div>
+        <div class="firma">${esc(row.predicador || 'Predicador(a)')}<br>Predicador(a)</div>
+      </div>
+    </div>`;
+}
+
 function printGenerico(m, row) {
   return `
     <div class="print-sheet print-generic">
@@ -1067,6 +1221,7 @@ function printGenerico(m, row) {
           .filter((f) => f.type !== 'password')
           .map((f) => {
             let v = row[f.name];
+            if (f.computed && v && typeof v === 'object') v = v.texto; // p. ej. estado de cumplimiento
             if (f.type === 'ref') v = row[f.name + '_label'];
             if (f.type === 'multiref') v = (row[f.name + '_labels'] || []).join(', ');
             if (f.type === 'money') v = fmtMoney(v);

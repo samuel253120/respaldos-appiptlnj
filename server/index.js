@@ -18,6 +18,7 @@ const { ensureSeed } = require('./seed');
 const { ejecutarMigraciones } = require('./migraciones');
 const { router: importarRouter } = require('./importar');
 const { router: configuracionRouter } = require('./configuracion');
+const ajustes = require('./ajustes');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
@@ -35,6 +36,16 @@ app.use('/api/auth', authRouter);
 app.use('/api/configuracion', configuracionRouter);
 
 // ---------- Metadatos: módulos visibles para el usuario y sus esquemas ----------
+/** Porcentaje configurado de un campo que se calcula solo, para mostrarlo en vivo. */
+function porcentajeVigente(calcula) {
+  if (calcula.tipo !== 'porcentaje') return undefined;
+  if (calcula.opcion) {
+    const n = Number(ajustes.obtener(calcula.opcion));
+    if (Number.isFinite(n)) return n;
+  }
+  return Number(calcula.porcentaje) || 0;
+}
+
 app.get('/api/meta', authRequired, (req, res) => {
   const mods = allModules()
     .filter((m) => can(req.user, m.name, 'view'))
@@ -52,15 +63,19 @@ app.get('/api/meta', authRequired, (req, res) => {
       listFields: m.listFields,
       defaultSort: m.defaultSort,
       fields: [
-        ...m.fields.map(({ name, label, type, required, options, ref, help, default: def, accept, showIf, optionsRoute }) => ({
-          name, label, type, required: !!required, options: options || null, ref: ref || null,
-          help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
-          optionsRoute: optionsRoute || null, computed: false,
-        })),
+        ...m.fields
+          .filter((f) => !f.oculto)
+          .map(({ name, label, type, required, options, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula }) => ({
+            name, label, type, required: !!required, options: options || null, ref: ref || null,
+            help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
+            optionsRoute: optionsRoute || null, readonly: !!readonly,
+            calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
+            computed: false,
+          })),
         ...(m.computed || []).map(({ name, label, type, help }) => ({
           name, label, type, help: help || null, computed: true,
           required: false, options: null, ref: null, default: null, accept: null, showIf: null,
-          optionsRoute: null,
+          optionsRoute: null, readonly: true, calcula: null,
         })),
       ],
       perms: {

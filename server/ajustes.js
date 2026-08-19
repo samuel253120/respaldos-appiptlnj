@@ -50,6 +50,12 @@ const OPCIONES = [
           'Nombre del cuerpo cuyos integrantes pueden ser designados oficial supervisor(a) de los demás ' +
           'cuerpos. Mientras ese cuerpo no exista o no tenga integrantes, se puede elegir a cualquier miembro.',
       },
+      {
+        clave: 'ofrenda_porcentaje_fondo', label: 'Porcentaje de la ofrenda que se aparta', tipo: 'number', defecto: '10',
+        ayuda:
+          'En el Registro de Servicios, de cada ofrenda se aparta este porcentaje para el otro fondo de ' +
+          'tesorería y el resto queda para la iglesia local.',
+      },
     ],
   },
   {
