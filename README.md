@@ -263,10 +263,20 @@ Cada miembro tiene un **historial** que se ve al pie de su ficha, con dos tipos 
 | Entrada o salida de un cuerpo | Ingreso / Salida de cuerpo |
 | Queda como líder de un cuerpo | Anotación |
 | Solicitud, ayuda social, certificado o credencial | Su tipo correspondiente (al crearse y al cambiar de estado) |
+| Documento adjuntado al miembro | Documento |
 
 **Manuales**: el botón *Agregar anotación* permite registrar visitas, disciplinas, reconocimientos u observaciones, con su fecha y tipo.
 
-El módulo **Bitácora de Miembros** también aparece en el menú, con búsqueda y filtros sobre todos los registros.
+### Corregir o eliminar un registro
+
+Cada línea del historial tiene sus dos botones: **✏️ editar** y **🗑️ eliminar**.
+
+- **Editar** abre la misma ventana de la anotación, con la fecha, el tipo y el texto ya cargados. Al guardar, la línea queda marcada como *✏️ editado*, para que se sepa que se corrigió.
+- **Eliminar** pide confirmación mostrando el texto del registro. Si es un registro automático, la confirmación lo advierte, porque lo generó el sistema al ocurrir el hecho.
+
+Los botones solo aparecen si el usuario tiene permiso para editar o eliminar en la bitácora —y el servidor lo verifica igual, no solo la pantalla—, así que a un usuario de *solo consulta* no se le muestran.
+
+El módulo **Bitácora de Miembros** también aparece en el menú, con búsqueda y filtros sobre todos los registros. Desde ahí se abre la ficha completa de un registro, que además admite un documento adjunto.
 
 ## Arquitectura (expandible y modificable)
 

@@ -1761,39 +1761,84 @@ async function renderHistorialMiembro(miembroId, contenedor) {
         </div>
         <div id="histLista">
           ${datos.rows.length ? `<ul class="historial">
-            ${datos.rows.map((r) => `
+            ${datos.rows.map((r) => {
+              const editado = r.created_at && r.updated_at && r.created_at !== r.updated_at;
+              return `
               <li class="${r.origen === 'Automático' ? 'auto' : 'manual'}">
                 <div class="hf">${fmtDate(r.fecha)}</div>
                 <div class="hc">
                   <span class="badge ${badgeClass(r.tipo)}">${esc(r.tipo)}</span>
                   <div class="hd">${esc(r.descripcion)}</div>
-                  <div class="hm">${r.origen === 'Automático' ? '⚙️ automático' : '✍️ ' + esc(r.registrado_por || '')}</div>
+                  <div class="hm">${r.origen === 'Automático' ? '⚙️ automático' : '✍️ ' + esc(r.registrado_por || '')}${editado ? ' · ✏️ editado' : ''}</div>
                 </div>
-              </li>`).join('')}
+                <div class="ha">
+                  ${modBitacora.perms.edit ? `<button class="ico" data-editar="${r.id}" title="Editar este registro">✏️</button>` : ''}
+                  ${modBitacora.perms.delete ? `<button class="ico" data-borrar="${r.id}" title="Eliminar este registro">🗑️</button>` : ''}
+                </div>
+              </li>`;
+            }).join('')}
           </ul>` : '<div class="empty-state" style="padding:26px">Sin registros en el historial todavía.</div>'}
         </div>
       </div>`;
 
+    const recargar = () => renderHistorialMiembro(miembroId, contenedor);
     const btn = document.getElementById('btnAnotar');
-    if (btn) btn.addEventListener('click', () => abrirAnotacion(miembroId, () => renderHistorialMiembro(miembroId, contenedor)));
+    if (btn) btn.addEventListener('click', () => abrirAnotacion(miembroId, recargar));
+
+    // Editar un registro del historial
+    contenedor.querySelectorAll('[data-editar]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const registro = datos.rows.find((r) => String(r.id) === b.dataset.editar);
+        if (registro) abrirAnotacion(miembroId, recargar, registro);
+      });
+    });
+
+    // Eliminar un registro del historial
+    contenedor.querySelectorAll('[data-borrar]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const registro = datos.rows.find((r) => String(r.id) === b.dataset.borrar);
+        if (!registro) return;
+        const aviso = registro.origen === 'Automático'
+          ? '\n\nOjo: este registro lo generó el sistema al ocurrir el hecho.'
+          : '';
+        if (!confirm(`¿Eliminar este registro del historial?\n\n"${registro.descripcion}"${aviso}\n\nEsta acción no se puede deshacer.`)) return;
+        try {
+          await api('DELETE', `/bitacora/${registro.id}`);
+          toast('Registro eliminado');
+          recargar();
+        } catch (e) {
+          toast(e.message, true);
+        }
+      });
+    });
   } catch (e) {
     contenedor.innerHTML = '';
   }
 }
 
-function abrirAnotacion(miembroId, alGuardar) {
+/**
+ * Ventana para escribir una anotación en el historial de un miembro.
+ * Si se le pasa un registro, edita ese en vez de crear uno nuevo.
+ */
+function abrirAnotacion(miembroId, alGuardar, registro) {
   const tipos = (MOD['bitacora'].fields.find((f) => f.name === 'tipo').options || []).map((o) => (typeof o === 'object' ? o.value : o));
+  const editando = !!registro;
+  const valor = (campo, porDefecto) => (editando && registro[campo] != null ? registro[campo] : porDefecto);
   const fondo = document.createElement('div');
   fondo.className = 'modal-fondo';
   fondo.innerHTML = `
     <div class="modal" style="max-width:560px">
-      <div class="modal-head"><h3>➕ Nueva anotación</h3><button class="cerrar">&times;</button></div>
+      <div class="modal-head"><h3>${editando ? '✏️ Editar registro del historial' : '➕ Nueva anotación'}</h3><button class="cerrar">&times;</button></div>
       <div class="modal-body">
-        <div class="fld"><label>Fecha</label><input type="date" id="anFecha" value="${new Date().toISOString().slice(0, 10)}" /></div>
+        ${editando && registro.origen === 'Automático'
+          ? '<div class="aviso-auto">⚙️ Este registro lo generó el sistema al ocurrir el hecho. Se puede corregir su texto, y quedará marcado como editado.</div>'
+          : ''}
+        <div class="fld"><label>Fecha</label><input type="date" id="anFecha" value="${esc(fmtDate(valor('fecha', new Date().toISOString().slice(0, 10))))}" /></div>
         <div class="fld" style="margin-top:12px"><label>Tipo</label>
-          <select id="anTipo">${tipos.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
+          <select id="anTipo">${tipos.map((t) => `<option value="${esc(t)}" ${t === valor('tipo', 'Anotación') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
         </div>
-        <div class="fld" style="margin-top:12px"><label>Descripción</label><textarea id="anDesc" placeholder="Qué se quiere dejar registrado…"></textarea></div>
+        <div class="fld" style="margin-top:12px"><label>Descripción</label><textarea id="anDesc" placeholder="Qué se quiere dejar registrado…">${esc(valor('descripcion', ''))}</textarea></div>
+        ${editando ? `<div class="modal-nota">Para adjuntar un documento a este registro, ábralo en <a href="#/m/bitacora/edit/${registro.id}">su ficha completa</a>.</div>` : ''}
         <div class="form-error" id="anError" style="padding:0"></div>
       </div>
       <div class="modal-foot">
@@ -1813,14 +1858,16 @@ function abrirAnotacion(miembroId, alGuardar) {
       fondo.querySelector('#anError').textContent = 'Escriba la descripción.';
       return;
     }
+    const datos = {
+      miembro_id: miembroId,
+      fecha: fondo.querySelector('#anFecha').value,
+      tipo: fondo.querySelector('#anTipo').value,
+      descripcion,
+    };
     try {
-      await api('POST', '/bitacora', {
-        miembro_id: miembroId,
-        fecha: fondo.querySelector('#anFecha').value,
-        tipo: fondo.querySelector('#anTipo').value,
-        descripcion,
-      });
-      toast('Anotación guardada');
+      if (editando) await api('PUT', `/bitacora/${registro.id}`, datos);
+      else await api('POST', '/bitacora', datos);
+      toast(editando ? 'Registro actualizado' : 'Anotación guardada');
       cerrar();
       if (alGuardar) alGuardar();
     } catch (e) {
