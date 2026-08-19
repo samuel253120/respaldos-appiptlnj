@@ -125,7 +125,7 @@ Una directiva se compone de:
 
 | Cargo | Se elige entre | Obligatorio |
 |---|---|---|
-| Oficial supervisor(a) | Pastores / Guías | No |
+| Oficial supervisor(a) | Integrantes del **cuerpo de oficiales** | No |
 | Primer jefe / Primera jefa | Miembros | No |
 | Segundo jefe / Segunda jefa | Miembros | No |
 | Secretario(a) | Miembros | No |
@@ -133,6 +133,13 @@ Una directiva se compone de:
 | Consejero(a) | Miembros | No — cargo adicional, no siempre se designa |
 
 Además hay un campo **Otros cargos** en texto libre, por si el cuerpo designa alguno más.
+
+**El oficial supervisor(a)** no es un cargo interno del cuerpo: es un integrante del **cuerpo de oficiales** designado para supervisar a los demás cuerpos. Por eso su selector no ofrece a todos los miembros, sino solo a los de ese cuerpo (sus integrantes y su líder).
+
+- El cuerpo de oficiales es un cuerpo más, que se crea en *Cuerpos / Grupos* como cualquier otro; sus integrantes son los oficiales.
+- Su nombre se define en **Configuración → Organización → Cuerpo de oficiales** (por defecto «Oficiales»), y se reconoce sin distinguir mayúsculas ni tildes.
+- Mientras ese cuerpo no exista o no tenga integrantes, el selector ofrece a todos los miembros, para no dejar el campo bloqueado.
+- Si quien figuraba como supervisor deja el cuerpo de oficiales, **su nombre se conserva** en las directivas ya registradas.
 
 - Al marcar una directiva como **Vigente**, las demás de ese cuerpo pasan solas a *Finalizada*: nunca hay dos vigentes a la vez.
 - El histórico se ve al pie de la ficha del cuerpo, con la vigente destacada, y desde ahí se registra una nueva con el cuerpo ya seleccionado.
@@ -161,6 +168,7 @@ Los administradores tienen en el menú la entrada **Configuración**, con opcion
 
 - **Mantenimiento** — deja el sistema en mantenimiento y define el aviso que verán los usuarios.
 - **Identidad** — nombre y lema de la institución.
+- **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores de los cuerpos).
 - **Preferencias** — símbolo de moneda, registros por página, duración de la sesión y si la bitácora registra automáticamente.
 
 ### Modo mantenimiento

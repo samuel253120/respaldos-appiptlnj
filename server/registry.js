@@ -14,6 +14,11 @@
  * cuando otro campo tenga cierto valor (p. ej. datos que solo aplican a los
  * cuerpos formales y no a los grupos de servicio).
  *
+ * Un campo de tipo `ref` puede declarar `optionsRoute` para que su selector se
+ * llene desde una ruta propia del módulo (definida en `extraRoutes`) en vez de
+ * ofrecer todos los registros referenciados: sirve para acotar la lista a los
+ * que corresponden (p. ej. solo los integrantes del cuerpo de oficiales).
+ *
  * PARA AGREGAR UN MÓDULO NUEVO: crear un archivo en server/modules/ que
  * exporte la definición (ver cualquier módulo existente como plantilla) y
  * reiniciar el servidor. Tabla, API e interfaz se generan automáticamente.

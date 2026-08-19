@@ -8,9 +8,65 @@
  * jefa, segundo jefe / segunda jefa, secretario(a), tesorero(a) y, cuando se
  * designa, consejero(a).
  *
+ * El oficial supervisor(a) es un integrante del cuerpo de oficiales (su
+ * nombre se define en Configuración → Organización) designado para supervisar
+ * a los demás cuerpos. Por eso su selector no ofrece todos los miembros, sino
+ * los de ese cuerpo; mientras no exista, ofrece a todos para no bloquear.
+ *
  * Regla: un cuerpo tiene como máximo UNA directiva vigente. Al marcar una
  * como vigente, las demás de ese cuerpo pasan a "Finalizada" automáticamente.
  */
+/** Sin distinguir mayúsculas ni tildes, para comparar nombres escritos a mano. */
+function normalizar(texto) {
+  return (texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+/** El cuerpo cuyos integrantes son los oficiales, según Configuración. */
+function cuerpoDeOficiales(db) {
+  const ajustes = require('../ajustes'); // tardío: ajustes usa la base, que a su vez carga este registro
+  const nombre = normalizar(ajustes.obtener('cuerpo_oficiales'));
+  if (!nombre) return null;
+  const filas = db.prepare('SELECT id, nombre, lider_id, integrantes FROM cuerpos').all();
+  return filas.find((c) => normalizar(c.nombre) === nombre) || null;
+}
+
+/**
+ * Miembros que pueden ser oficial supervisor(a): los del cuerpo de oficiales.
+ * Si ese cuerpo todavía no existe o no tiene integrantes, se devuelven todos
+ * los miembros, para no dejar el campo sin opciones.
+ */
+function oficialesDisponibles(db, usuario) {
+  const { getModule, displayOf } = require('../registry'); // tardío: evita ciclo con el registro
+  const miembros = getModule('miembros');
+
+  const iglesiaId = usuario && usuario.iglesia_id;
+  const filas = db
+    .prepare(`SELECT * FROM miembros ${iglesiaId ? 'WHERE iglesia_id = ?' : ''} ORDER BY id DESC LIMIT 1000`)
+    .all(...(iglesiaId ? [iglesiaId] : []));
+
+  const cuerpo = cuerpoDeOficiales(db);
+  let permitidos = null;
+  if (cuerpo) {
+    let ids = [];
+    try {
+      ids = JSON.parse(cuerpo.integrantes || '[]');
+    } catch (e) {
+      ids = [];
+    }
+    if (cuerpo.lider_id) ids.push(cuerpo.lider_id);
+    ids = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter(Boolean))];
+    if (ids.length) permitidos = new Set(ids);
+  }
+
+  return filas
+    .filter((f) => !permitidos || permitidos.has(f.id))
+    .map((f) => ({ id: f.id, label: displayOf(miembros, f) }));
+}
+
 module.exports = {
   name: 'directivas',
   label: 'Directivas de Cuerpos',
@@ -31,8 +87,9 @@ module.exports = {
     { name: 'fecha_termino', label: 'Fecha de término', type: 'date', help: 'Al llegar esta fecha, la directiva figura como vencida en el estado de cumplimiento.' },
     // --- Integrantes de la directiva ---
     {
-      name: 'oficial_supervisor_id', label: 'Oficial supervisor(a)', type: 'ref', ref: 'pastores',
-      help: 'Oficial de la iglesia que supervisa el cuerpo (pastor, guía, anciano, diácono…).',
+      name: 'oficial_supervisor_id', label: 'Oficial supervisor(a)', type: 'ref', ref: 'miembros',
+      optionsRoute: '/directivas/oficiales',
+      help: 'Integrante del cuerpo de oficiales designado para supervisar este cuerpo.',
     },
     { name: 'primer_jefe_id', label: 'Primer jefe / Primera jefa', type: 'ref', ref: 'miembros' },
     { name: 'segundo_jefe_id', label: 'Segundo jefe / Segunda jefa', type: 'ref', ref: 'miembros' },
@@ -48,6 +105,12 @@ module.exports = {
     },
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],
+  extraRoutes(router, { db, base }) {
+    // Opciones del selector "Oficial supervisor(a)" (ver optionsRoute del campo).
+    router.get(`${base}/oficiales`, (req, res) => {
+      res.json(oficialesDisponibles(db, req.user));
+    });
+  },
   hooks: {
     beforeSave(data, { db, id, existing }) {
       const cuerpoId = data.cuerpo_id !== undefined ? data.cuerpo_id : existing && existing.cuerpo_id;

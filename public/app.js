@@ -118,11 +118,30 @@ async function api(method, path, body, isForm) {
   if (!res.ok) throw new Error(data.error || 'Error del servidor');
   return data;
 }
-async function getOptions(modName, force) {
-  if (!force && optionsCache[modName]) return optionsCache[modName];
-  const rows = await api('GET', `/${modName}/options`);
-  optionsCache[modName] = rows;
+/**
+ * Ruta de la que salen las opciones de un campo de referencia. Normalmente es
+ * la lista completa del módulo referenciado, salvo que el campo declare su
+ * propia ruta (`optionsRoute`) para acotar la lista.
+ */
+function rutaOpciones(f) {
+  return f.optionsRoute || f.ref;
+}
+async function getOptions(clave, force) {
+  if (!force && optionsCache[clave]) return optionsCache[clave];
+  const ruta = clave.startsWith('/') ? clave : `/${clave}/options`;
+  const rows = await api('GET', ruta);
+  optionsCache[clave] = rows;
   return rows;
+}
+/**
+ * Descarta las opciones guardadas de un módulo. Las listas a medida se
+ * descartan siempre, porque pueden depender de varios módulos a la vez.
+ */
+function invalidarOpciones(modName) {
+  optionsCache[modName] = null;
+  Object.keys(optionsCache).forEach((k) => {
+    if (k.startsWith('/')) optionsCache[k] = null;
+  });
 }
 
 /* ---------------- arranque y enrutador ---------------- */
@@ -538,7 +557,7 @@ async function viewList(name) {
           try {
             await api('DELETE', `/${name}/${b.dataset.id}`);
             toast('Registro eliminado');
-            optionsCache[name] = null;
+            invalidarOpciones(name);
             load();
           } catch (err) {
             toast(err.message, true);
@@ -659,8 +678,8 @@ async function viewForm(name, id, precarga) {
   }
 
   // precargar opciones de todos los ref/multiref del módulo
-  const refMods = [...new Set(m.fields.filter((f) => f.ref).map((f) => f.ref))];
-  await Promise.all(refMods.map((r) => getOptions(r).catch(() => [])));
+  const listas = [...new Set(m.fields.filter((f) => f.ref).map(rutaOpciones))];
+  await Promise.all(listas.map((r) => getOptions(r).catch(() => [])));
 
   const grid = document.getElementById('formGrid');
   grid.innerHTML = m.fields.filter((f) => !f.computed).map((f) => fieldHtml(f, row, isNew)).join('');
@@ -711,7 +730,7 @@ async function viewForm(name, id, precarga) {
     try {
       if (isNew) await api('POST', `/${name}`, data);
       else await api('PUT', `/${name}/${id}`, data);
-      optionsCache[name] = null; // refrescar selectores que referencien este módulo
+      invalidarOpciones(name); // refrescar selectores que referencien este módulo
       toast('Guardado correctamente');
       location.hash = `#/m/${name}`;
     } catch (err) {
@@ -769,7 +788,14 @@ function fieldHtml(f, row, isNew) {
       break;
     }
     case 'ref': {
-      const opts = (optionsCache[f.ref] || []).map((o) => `<option value="${o.id}" ${String(val) === String(o.id) ? 'selected' : ''}>${esc(o.label)}</option>`);
+      const lista = optionsCache[rutaOpciones(f)] || [];
+      const opts = lista.map((o) => `<option value="${o.id}" ${String(val) === String(o.id) ? 'selected' : ''}>${esc(o.label)}</option>`);
+      // Si el valor guardado ya no figura en la lista (p. ej. quien era oficial
+      // salió del cuerpo de oficiales), se agrega igual para no perderlo al guardar.
+      if (val && !lista.some((o) => String(o.id) === String(val))) {
+        const etiqueta = row[f.name + '_label'] || `#${val}`;
+        opts.unshift(`<option value="${esc(val)}" selected>${esc(etiqueta)}</option>`);
+      }
       input = `<select name="${f.name}"><option value="">—</option>${opts.join('')}</select>`;
       break;
     }
@@ -825,7 +851,7 @@ function initMultiref(f, row) {
   const box = document.getElementById('mr_' + f.name);
   if (!box) return;
   const selected = new Set((Array.isArray(row[f.name]) ? row[f.name] : []).map(Number));
-  const options = optionsCache[f.ref] || [];
+  const options = optionsCache[rutaOpciones(f)] || [];
   box.innerHTML = `
     <input class="mr-search" type="search" placeholder="Filtrar…" />
     <div class="mr-list"></div>
@@ -1251,7 +1277,7 @@ function abrirImportador(m, alTerminar) {
     } else {
       fondo.querySelector('#impRevisar').style.display = 'none';
       fondo.querySelector('#impGuardar').style.display = 'none';
-      optionsCache[m.name] = null;
+      invalidarOpciones(m.name);
       if (alTerminar) alTerminar();
       toast(`${r.correctas} registro(s) importado(s)`);
     }

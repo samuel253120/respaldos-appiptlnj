@@ -52,14 +52,15 @@ app.get('/api/meta', authRequired, (req, res) => {
       listFields: m.listFields,
       defaultSort: m.defaultSort,
       fields: [
-        ...m.fields.map(({ name, label, type, required, options, ref, help, default: def, accept, showIf }) => ({
+        ...m.fields.map(({ name, label, type, required, options, ref, help, default: def, accept, showIf, optionsRoute }) => ({
           name, label, type, required: !!required, options: options || null, ref: ref || null,
           help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
-          computed: false,
+          optionsRoute: optionsRoute || null, computed: false,
         })),
         ...(m.computed || []).map(({ name, label, type, help }) => ({
           name, label, type, help: help || null, computed: true,
           required: false, options: null, ref: null, default: null, accept: null, showIf: null,
+          optionsRoute: null,
         })),
       ],
       perms: {

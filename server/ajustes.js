@@ -42,6 +42,17 @@ const OPCIONES = [
     ],
   },
   {
+    grupo: 'Organización',
+    items: [
+      {
+        clave: 'cuerpo_oficiales', label: 'Cuerpo de oficiales', tipo: 'text', defecto: 'Oficiales',
+        ayuda:
+          'Nombre del cuerpo cuyos integrantes pueden ser designados oficial supervisor(a) de los demás ' +
+          'cuerpos. Mientras ese cuerpo no exista o no tenga integrantes, se puede elegir a cualquier miembro.',
+      },
+    ],
+  },
+  {
     grupo: 'Preferencias',
     items: [
       {

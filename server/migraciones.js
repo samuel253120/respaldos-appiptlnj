@@ -8,6 +8,24 @@ const { db } = require('./db');
 const rut = require('./rut');
 
 /**
+ * Algunas migraciones no se pueden repetir sin dañar los datos (por ejemplo,
+ * cuando un campo cambia de significado y ya no se distingue lo viejo de lo
+ * nuevo). Para esas se deja constancia de que ya corrieron.
+ */
+db.exec(`CREATE TABLE IF NOT EXISTS migraciones (
+  nombre TEXT PRIMARY KEY,
+  aplicada_en TEXT DEFAULT (datetime('now','localtime'))
+)`);
+
+function yaAplicada(nombre) {
+  return !!db.prepare('SELECT nombre FROM migraciones WHERE nombre = ?').get(nombre);
+}
+
+function marcarAplicada(nombre) {
+  db.prepare('INSERT OR IGNORE INTO migraciones (nombre) VALUES (?)').run(nombre);
+}
+
+/**
  * Pasa los valores del antiguo campo "documento_identidad" al nuevo campo
  * "rut" cuando corresponden a un RUT válido. Los que no lo son (pasaporte,
  * documento extranjero) se dejan intactos en su campo, sin perder el dato.
@@ -152,12 +170,69 @@ function renombrarCargosDirectiva() {
   if (movidos) console.log(`🔁 directivas: ${movidos} cargo(s) traspasados a primer/segundo jefe.`);
 }
 
+/**
+ * El oficial supervisor(a) de un cuerpo dejó de elegirse entre los pastores /
+ * guías: es un integrante del cuerpo de oficiales, es decir, un miembro. Los
+ * valores ya guardados apuntaban a la tabla "pastores", así que se busca al
+ * miembro equivalente (mismo RUT y, si no, mismo nombre) y se apunta a él.
+ * Lo que no se puede identificar se deja vacío y se informa, para volver a
+ * elegirlo a mano en vez de dejar una referencia equivocada.
+ */
+function oficialSupervisorAMiembro() {
+  const NOMBRE = 'oficial_supervisor_pastores_a_miembros';
+  if (yaAplicada(NOMBRE)) return;
+
+  const columnas = db.prepare('PRAGMA table_info("directivas")').all().map((c) => c.name);
+  if (!columnas.includes('oficial_supervisor_id')) return;
+
+  const filas = db
+    .prepare('SELECT id, cuerpo_id, oficial_supervisor_id FROM directivas WHERE oficial_supervisor_id IS NOT NULL')
+    .all();
+
+  let convertidos = 0;
+  const sinEquivalente = [];
+  for (const fila of filas) {
+    const pastor = db.prepare('SELECT * FROM pastores WHERE id = ?').get(fila.oficial_supervisor_id);
+    let miembro = null;
+    if (pastor) {
+      if (pastor.rut) miembro = db.prepare('SELECT id FROM miembros WHERE rut = ?').get(rut.canonico(pastor.rut));
+      if (!miembro && pastor.nombres) {
+        miembro = db
+          .prepare(`SELECT id FROM miembros
+                    WHERE lower(nombres) = lower(?) AND lower(COALESCE(apellidos,'')) = lower(?)`)
+          .get(pastor.nombres, pastor.apellidos || '');
+      }
+    }
+    if (miembro) {
+      db.prepare('UPDATE directivas SET oficial_supervisor_id = ? WHERE id = ?').run(miembro.id, fila.id);
+      convertidos++;
+    } else {
+      db.prepare('UPDATE directivas SET oficial_supervisor_id = NULL WHERE id = ?').run(fila.id);
+      sinEquivalente.push(`#${fila.id}${pastor ? ` (${[pastor.nombres, pastor.apellidos].filter(Boolean).join(' ')})` : ''}`);
+    }
+  }
+
+  marcarAplicada(NOMBRE);
+  if (convertidos) {
+    console.log(`🔁 directivas: ${convertidos} oficial(es) supervisor(es) ahora apuntan al miembro correspondiente.`);
+  }
+  if (sinEquivalente.length) {
+    console.log(
+      `ℹ️  directivas: ${sinEquivalente.length} oficial(es) supervisor(es) quedaron sin asignar porque ` +
+        `esa persona no está registrada como miembro: ${sinEquivalente.join(', ')}.\n` +
+        '   Regístrela en Miembros, agréguela al cuerpo de oficiales y vuelva a elegirla en la directiva.'
+    );
+  }
+}
+
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
   normalizarTipoCuerpos();
   directivaCuerpoAHistorico();
   renombrarCargosDirectiva();
+  oficialSupervisorAMiembro();
 }
 
 module.exports = { ejecutarMigraciones };
