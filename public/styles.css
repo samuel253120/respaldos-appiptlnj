@@ -533,6 +533,30 @@ ul.historial li .ha .ico:hover { background: #e2e8f0; }
 .modal-nota { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
 .modal-nota a { color: var(--marca-azul); }
 
+/* Próximos cumpleaños en el panel de control */
+.card.cumples { margin-bottom: 18px; }
+ul.cumple-list { list-style: none; padding: 4px 0; margin: 0; }
+ul.cumple-list li {
+  display: flex; align-items: center; gap: 13px;
+  padding: 11px 18px; border-bottom: 1px solid var(--border); cursor: pointer;
+}
+ul.cumple-list li:last-child { border-bottom: none; }
+ul.cumple-list li:hover { background: #f8fafc; }
+ul.cumple-list li.hoy { background: #fffdf5; border-left: 3px solid var(--marca-oro); }
+ul.cumple-list .av {
+  flex: 0 0 42px; width: 42px; height: 42px; border-radius: 50%; overflow: hidden;
+  background: var(--marca-azul); color: #fff; display: flex; align-items: center;
+  justify-content: center; font-weight: 700; font-size: 16px;
+}
+ul.cumple-list .av img { width: 100%; height: 100%; object-fit: cover; }
+ul.cumple-list .dt { flex: 1; min-width: 0; }
+ul.cumple-list .dt b { display: block; font-size: 14.5px; color: var(--marca-azul); }
+ul.cumple-list .dt .mut { font-size: 12.5px; color: var(--muted); }
+@media (max-width: 700px) {
+  ul.cumple-list li { gap: 10px; padding: 10px 14px; }
+  ul.cumple-list .av { flex-basis: 36px; width: 36px; height: 36px; font-size: 14px; }
+}
+
 /* Toast */
 #toast {
   position: fixed; bottom: 24px; right: 24px; background: #0f172a; color: #fff;

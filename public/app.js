@@ -46,6 +46,12 @@ function fechaLarga(s) {
   if (!y || !m || !d) return s;
   return `${d} de ${meses[m - 1]} de ${y}`;
 }
+/** Día y mes en palabras: "20 de agosto". */
+function diaMes(dia, mes) {
+  const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  return `${dia} de ${meses[mes - 1] || ''}`;
+}
+
 function toast(msg, isErr) {
   let t = document.getElementById('toast');
   if (!t) {
@@ -360,6 +366,32 @@ async function viewDashboard() {
       </div>`;
   }
 
+  // Próximos cumpleaños
+  const cuando = (dias) => (dias === 0 ? 'hoy' : dias === 1 ? 'mañana' : `en ${dias} días`);
+  const cumpleHtml = (d.cumpleanos || []).length
+    ? `
+      <div class="card cumples">
+        <h3>🎂 Próximos cumpleaños</h3>
+        <ul class="cumple-list">
+          ${d.cumpleanos.map((c) => `
+            <li class="${c.dias === 0 ? 'hoy' : ''}" onclick="location.hash='#/m/miembros/edit/${c.id}'">
+              <div class="av">${c.foto
+                ? `<img src="/uploads/${esc(c.foto)}" alt="" />`
+                : `<span>${esc((c.nombre || '?').trim().charAt(0).toUpperCase())}</span>`}</div>
+              <div class="dt">
+                <b>${esc(c.nombre)}</b>
+                <span class="mut">${diaMes(c.dia, c.mes)} · cumple ${c.cumple} año${c.cumple === 1 ? '' : 's'}</span>
+              </div>
+              <span class="badge ${c.dias === 0 ? 'green' : c.dias <= 7 ? 'blue' : ''}">${cuando(c.dias)}</span>
+            </li>`).join('')}
+        </ul>
+      </div>`
+    : `
+      <div class="card cumples">
+        <h3>🎂 Próximos cumpleaños</h3>
+        <ul class="mini-list"><li class="mut">Todavía no hay miembros con fecha de nacimiento registrada</li></ul>
+      </div>`;
+
   content().innerHTML = `
     <div class="page-head">
       <div>
@@ -374,6 +406,7 @@ async function viewDashboard() {
         </div>`).join('')}
     </div>
     ${finHtml}
+    ${MOD['miembros'] ? cumpleHtml : ''}
     <div class="dash-cols">
       <div class="card">
         <h3>📋 Últimas asistencias</h3>

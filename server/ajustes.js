@@ -84,6 +84,10 @@ const OPCIONES = [
         ayuda: 'Qué tanto detalle conserva la foto reducida. 88 conserva la calidad a simple vista; 100 no comprime.',
       },
       {
+        clave: 'cumpleanos_cantidad', label: 'Cumpleaños que muestra el panel', tipo: 'number', defecto: '4',
+        ayuda: 'Cuántos miembros próximos a cumplir años aparecen en la pantalla de inicio (entre 1 y 20).',
+      },
+      {
         clave: 'bitacora_automatica', label: 'Registrar automáticamente en la bitácora', tipo: 'boolean', defecto: '1',
         ayuda: 'Anota por sí solo los cambios de datos de miembros, ingresos a cuerpos, solicitudes, ayudas y certificados.',
       },

@@ -163,6 +163,19 @@ Este indicador usa otra capacidad general del motor: un módulo puede declarar `
 
 Esto usa una capacidad general del motor: cualquier campo puede declarar `showIf: { field: 'otro_campo', equals: 'valor' }` (o `in: [...]`) para mostrarse solo cuando corresponda. El servidor tampoco exige los campos obligatorios que no apliquen.
 
+## Panel de control 📊
+
+La pantalla de inicio muestra los totales del sistema, el resumen financiero del mes (a quien tenga acceso a Tesorería), las últimas asistencias y las solicitudes recientes.
+
+### Próximos cumpleaños 🎂
+
+Una tarjeta lista **los miembros que cumplen años más pronto**, con su foto, la fecha, los años que cumplen y cuánto falta (*hoy*, *mañana*, *en 7 días*). El que cumple hoy queda destacado arriba, y al pinchar cualquiera se abre su ficha.
+
+- Se ordena por lo que falta, mirando solo el día y el mes: cuando el cumpleaños de este año ya pasó, cuenta el del año siguiente.
+- No aparecen los miembros **fallecidos ni trasladados**, ni los que aún no tienen fecha de nacimiento registrada.
+- Quien nació un **29 de febrero** aparece el 28 en los años que no son bisiestos.
+- Cuántos se muestran se cambia en **Configuración → Preferencias → Cumpleaños que muestra el panel** (4 por defecto, hasta 20).
+
 ## Ficha del miembro 🧍
 
 ### Edad al día
@@ -230,7 +243,7 @@ Los administradores tienen en el menú la entrada **Configuración**, con opcion
 - **Mantenimiento** — deja el sistema en mantenimiento y define el aviso que verán los usuarios.
 - **Identidad** — nombre y lema de la institución.
 - **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores de los cuerpos) y porcentaje de la ofrenda que se aparta para el otro fondo.
-- **Preferencias** — símbolo de moneda, registros por página, duración de la sesión, tamaño y calidad de las imágenes al subirlas, y si la bitácora registra automáticamente.
+- **Preferencias** — símbolo de moneda, registros por página, duración de la sesión, tamaño y calidad de las imágenes al subirlas, cuántos cumpleaños muestra el panel y si la bitácora registra automáticamente.
 
 ### Modo mantenimiento
 

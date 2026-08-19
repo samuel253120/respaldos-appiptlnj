@@ -164,6 +164,10 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     finanzas.balance_total = finanzas.ingresos_total - finanzas.egresos_total;
   }
 
+  // Próximos cumpleaños: se calculan desde el mes y el día de nacimiento,
+  // tomando el próximo que venga (hoy cuenta como cumpleaños de hoy).
+  const cumpleanos = proximosCumpleanos(iglesiaId, ajustes.numero('cumpleanos_cantidad', 1, 20));
+
   const w2 = iglesiaId ? 'WHERE iglesia_id = ?' : '';
   const p2 = iglesiaId ? [iglesiaId] : [];
   const ultimasAsistencias = db
@@ -173,8 +177,66 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     .prepare(`SELECT id, fecha, solicitante, asunto, estado FROM solicitudes ${w2} ORDER BY fecha DESC LIMIT 5`)
     .all(...p2);
 
-  res.json({ counts, finanzas, ultimasAsistencias, solicitudesRecientes });
+  res.json({ counts, finanzas, cumpleanos, ultimasAsistencias, solicitudesRecientes });
 });
+
+/**
+ * Los miembros que cumplen años más pronto, ordenados por lo que falta.
+ *
+ * Se mira solo el mes y el día: el año que viene o este, según corresponda.
+ * Quien cumple hoy encabeza la lista. No se incluye a los fallecidos ni a los
+ * trasladados, porque ya no son parte de la congregación.
+ */
+function proximosCumpleanos(iglesiaId, cuantos) {
+  const where = ["fecha_nacimiento IS NOT NULL", "fecha_nacimiento != ''", "(estado IS NULL OR estado NOT IN ('Fallecido', 'Trasladado'))"];
+  const params = [];
+  if (iglesiaId) {
+    where.push('iglesia_id = ?');
+    params.push(iglesiaId);
+  }
+  const filas = db
+    .prepare(`SELECT id, nombres, apellidos, foto, fecha_nacimiento, telefono FROM miembros WHERE ${where.join(' AND ')}`)
+    .all(...params);
+
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const MS_DIA = 24 * 60 * 60 * 1000;
+
+  const conFecha = [];
+  for (const m of filas) {
+    const partes = String(m.fecha_nacimiento).slice(0, 10).split('-');
+    const mes = Number(partes[1]);
+    const dia = Number(partes[2]);
+    const anioNace = Number(partes[0]);
+    if (!mes || !dia || !anioNace) continue;
+
+    // El próximo cumpleaños: este año si aún no pasa, si no el siguiente.
+    // El 29 de febrero se celebra el 28 en los años que no son bisiestos.
+    const armar = (anio) => {
+      const f = new Date(anio, mes - 1, dia);
+      if (f.getMonth() !== mes - 1) f.setDate(0); // 29-feb en año común → 28-feb
+      f.setHours(0, 0, 0, 0);
+      return f;
+    };
+    let proximo = armar(hoy.getFullYear());
+    if (proximo < hoy) proximo = armar(hoy.getFullYear() + 1);
+
+    conFecha.push({
+      id: m.id,
+      nombre: `${m.nombres || ''} ${m.apellidos || ''}`.trim(),
+      foto: m.foto || null,
+      telefono: m.telefono || null,
+      fecha: `${proximo.getFullYear()}-${String(proximo.getMonth() + 1).padStart(2, '0')}-${String(proximo.getDate()).padStart(2, '0')}`,
+      dia,
+      mes,
+      dias: Math.round((proximo - hoy) / MS_DIA),
+      cumple: proximo.getFullYear() - anioNace, // los años que cumplirá
+    });
+  }
+
+  conFecha.sort((a, b) => a.dias - b.dias || a.nombre.localeCompare(b.nombre));
+  return conFecha.slice(0, Math.max(1, Math.min(20, cuantos || 4)));
+}
 
 // ---------- Carga de archivos ----------
 const storage = multer.diskStorage({
