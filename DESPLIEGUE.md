@@ -36,6 +36,16 @@ railway variables --set "JWT_SECRET=$(node -e "console.log(require('crypto').ran
 railway domain                # genera la URL pública
 ```
 
+### Si la construcción falla
+
+Abra la pestaña **Build Logs** del despliegue: la última línea en rojo dice la causa. Casos ya resueltos en este proyecto, por si reaparecen:
+
+| Mensaje | Causa | Solución |
+|---|---|---|
+| `docker VOLUME ... is not supported, use Railway Volumes` | El Dockerfile declaraba `VOLUME` | Railway administra los volúmenes desde su panel; el Dockerfile no debe declararlos |
+| `npm ci can only install packages when package.json and package-lock.json are in sync` | Se editó `package.json` sin regenerar el candado | Ejecutar `npm install --package-lock-only` y subir el cambio |
+| Error compilando `better-sqlite3` | El constructor eligió una versión de Node sin binario precompilado | `engines.node` fijado en `22.x` en `package.json` |
+
 ### Verificación final (muy recomendada)
 
 1. Abra la URL, entre y cree un registro de prueba (ej. un miembro).

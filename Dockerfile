@@ -22,8 +22,9 @@ COPY package.json ./
 COPY server ./server
 COPY public ./public
 
-# /data guarda la base de datos y los archivos subidos:
-# SIEMPRE montar un volumen persistente en esta ruta.
-VOLUME /data
+# /data guarda la base de datos y los archivos subidos. NO se declara aquí
+# con VOLUME: Railway rechaza esa instrucción y exige que el volumen se
+# conecte desde su panel (Mount Path /data). Con Docker Compose el volumen
+# se define en docker-compose.yml.
 
 CMD ["node", "server/index.js"]
