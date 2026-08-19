@@ -379,6 +379,26 @@ function asistenciasNominales() {
 }
 
 
+/**
+ * Una actividad puede convocar a varios cuerpos. Las que tenían un solo
+ * cuerpo pasan a la lista de convocados con ese mismo cuerpo dentro.
+ */
+function actividadesConVariosCuerpos() {
+  const columnas = db.prepare('PRAGMA table_info("asistencias")').all().map((c) => c.name);
+  if (!columnas.includes('cuerpo_id') || !columnas.includes('cuerpos')) return;
+
+  const pendientes = db
+    .prepare(`SELECT id, cuerpo_id FROM asistencias
+               WHERE cuerpo_id IS NOT NULL AND (cuerpos IS NULL OR cuerpos = '' OR cuerpos = '[]')`)
+    .all();
+  if (!pendientes.length) return;
+
+  const actualizar = db.prepare('UPDATE asistencias SET cuerpos = ? WHERE id = ?');
+  for (const fila of pendientes) actualizar.run(JSON.stringify([fila.cuerpo_id]), fila.id);
+  console.log(`🔁 asistencias: ${pendientes.length} actividad(es) pasaron a la lista de cuerpos convocados.`);
+}
+
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
@@ -389,6 +409,7 @@ function ejecutarMigraciones() {
   movimientosACuentas();
   fondoParaLaCorporacion();
   asistenciasNominales();
+  actividadesConVariosCuerpos();
 }
 
 module.exports = { ejecutarMigraciones };

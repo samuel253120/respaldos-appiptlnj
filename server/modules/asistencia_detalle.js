@@ -1,5 +1,10 @@
 /**
- * Módulo: Detalle de Asistencias (la marca de cada persona en una actividad).
+ * Módulo: Toma de Asistencia (la marca de cada persona en una actividad).
+ *
+ * Este módulo manda sobre **quién puede pasar lista**: con permiso para crear
+ * y editar aquí, una persona puede tomar la asistencia de una actividad
+ * aunque no tenga permiso para crear actividades (eso se rige por el módulo
+ * Asistencias).
  *
  * Por cada actividad de un cuerpo queda una fila por integrante, con su
  * estado —Presente, Ausente o Justificado— y, cuando está justificado, el
@@ -14,7 +19,7 @@ const MOTIVOS_CON_DETALLE = ['Emergencia', 'Otra actividad de la iglesia', 'Otro
 
 module.exports = {
   name: 'asistencia_detalle',
-  label: 'Detalle de Asistencias',
+  label: 'Toma de Asistencia',
   labelSingular: 'Marca de asistencia',
   icon: '✔️',
   group: 'Personas',

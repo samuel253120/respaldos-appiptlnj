@@ -16,7 +16,7 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 |---|---|
 | **Organización** | Iglesias · Pastores / Guías · Cuerpos / Grupos · Directivas de Cuerpos |
 | **Servicios** | Registro de Servicios (cultos: salmo, mensaje, asistencia y ofrenda) |
-| **Personas** | Miembros · Asistencias por cuerpo (pasar lista) · Detalle de Asistencias · Bitácora de Miembros · Documentos de Miembros |
+| **Personas** | Miembros · Asistencias (actividades y pasar lista) · Toma de Asistencia · Bitácora de Miembros · Documentos de Miembros |
 | **Informes** | Informes de Asistencia (general, por cuerpo y por persona) |
 | **Finanzas** | Cuentas de Tesorería (corporación e iglesias) · Tesorería (ingresos/egresos con resumen y balance) · Traspasos entre Cuentas · Ayudas Sociales · Inventarios (de iglesia y de cuerpos) |
 | **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · Documentos · Certificados · Credenciales · Solicitudes |
@@ -305,7 +305,11 @@ Al crear una iglesia nueva se le crean solas su **tesorería general** y su **fo
 
 ## Asistencia por cuerpo 📋
 
-La asistencia se toma **por cuerpo y en cada actividad**: la reunión del cuerpo, un ensayo, una salida. Cada actividad guarda su fecha, su cuerpo, la hora y el lugar, y la **lista nominal** de quién estuvo.
+La asistencia se toma **por cuerpo y en cada actividad**: la reunión del cuerpo, un ensayo, una salida. Cada actividad guarda su fecha, la hora, el lugar, **los cuerpos convocados** y la **lista nominal** de quién estuvo.
+
+### Una actividad puede convocar a varios cuerpos
+
+En **Cuerpos convocados** se elige uno o varios: a una actividad conjunta pueden asistir Damas y Caballeros a la vez. Al pasar lista aparecen los integrantes de todos ellos, **agrupados por cuerpo** y con su encabezado, y quien pertenece a dos cuerpos aparece una sola vez. En los informes cada persona sigue contando en **su** cuerpo, así que un encuentro conjunto no mezcla los promedios.
 
 ### Pasar lista 🖐️
 
@@ -323,7 +327,14 @@ Cuando alguien queda **Justificado** se pide el motivo:
 
 El detalle es obligatorio en esos tres casos y el sistema no deja guardar la lista sin él —lo verifica el servidor, no solo la pantalla—, así ninguna justificación queda sin explicación.
 
-Quien pasa lista es cualquier usuario con permiso de edición en Asistencias: el rol **Secretario** lo tiene, y a cualquier otro usuario se le puede dar solo ese permiso desde su ficha (ver *Permisos personalizados*).
+### Crear actividades y pasar lista son dos permisos distintos
+
+- **Asistencias** manda sobre **crear y modificar actividades**.
+- **Toma de Asistencia** manda sobre **pasar lista**.
+
+Así, a alguien se le puede dejar tomar la asistencia sin dejarlo crear actividades: en su ficha de usuario se marca *Asistencias → solo Ver* y *Toma de Asistencia → Ver, Crear y Editar* (ver **Permisos personalizados**). Esa persona entra a la actividad, marca a todos y guarda la lista, pero no ve el botón de crear actividades ni el de guardar la actividad, y si lo intentara por fuera de la pantalla, el servidor lo rechaza.
+
+El rol **Secretario** trae los dos permisos.
 
 En el listado de actividades se ve de un vistazo cuántos hubo de cada tipo y el **porcentaje de asistencia**, con su color: verde desde 80%, amarillo desde 60%, rojo bajo eso.
 

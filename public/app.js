@@ -2210,8 +2210,6 @@ function mostrarSaldoOrigen() {
  * motivo lo exige. Se guardan todas las marcas de una vez.
  */
 async function renderPasarLista(asistenciaId, contenedor) {
-  const m = MOD['asistencias'];
-  const puedeEditar = m && m.perms.edit;
   let datos;
   try {
     datos = await api('GET', `/asistencias/${asistenciaId}/lista`);
@@ -2219,6 +2217,9 @@ async function renderPasarLista(asistenciaId, contenedor) {
     contenedor.innerHTML = '';
     return;
   }
+  // Pasar lista depende del permiso de "Toma de Asistencia", no del de crear
+  // actividades: el servidor lo resuelve y lo dice aquí.
+  const puedeEditar = !!datos.puede_marcar;
   const MOTIVOS = (MOD['asistencia_detalle']
     ? (MOD['asistencia_detalle'].fields.find((f) => f.name === 'motivo') || {}).options
     : null) || ['Trabajo', 'Enfermedad', 'Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
@@ -2248,17 +2249,29 @@ async function renderPasarLista(asistenciaId, contenedor) {
     <div class="card" style="margin-top:18px">
       <div class="toolbar">
         <b>🖐️ Pasar lista</b>
-        <span style="color:var(--muted);font-size:13px">${esc(datos.actividad.cuerpo || 'sin cuerpo')} · ${fmtDate(datos.actividad.fecha)}</span>
+        <span style="color:var(--muted);font-size:13px">${esc((datos.actividad.cuerpos || []).map((c) => c.nombre).join(' + ') || 'sin cuerpos')} · ${fmtDate(datos.actividad.fecha)}</span>
         <span class="spacer"></span>
         ${puedeEditar && datos.personas.length ? `
           <button class="btn secondary sm" id="plTodos">Todos presentes</button>
           <button class="btn sm" id="plGuardar">💾 Guardar lista</button>` : ''}
       </div>
       ${datos.personas.length
-        ? `<ul class="pasar-lista">${datos.personas.map(fila).join('')}</ul>
+        ? `<ul class="pasar-lista">${(() => {
+            // Agrupadas por cuerpo, con su encabezado cuando hay más de uno
+            const variosCuerpos = new Set(datos.personas.map((p) => p.cuerpo || '')).size > 1;
+            let cuerpoActual = null;
+            return datos.personas.map((p) => {
+              let cabecera = '';
+              if (variosCuerpos && p.cuerpo !== cuerpoActual) {
+                cuerpoActual = p.cuerpo;
+                cabecera = `<li class="pl-cuerpo">${esc(p.cuerpo || 'Sin cuerpo')}</li>`;
+              }
+              return cabecera + fila(p);
+            }).join('');
+          })()}</ul>
            <div class="pl-resumen" id="plResumen"></div>`
         : `<div class="empty-state" style="padding:26px">
-             Este cuerpo todavía no tiene integrantes. Agréguelos en Cuerpos / Grupos y vuelva a pasar lista.
+             Los cuerpos convocados todavía no tienen integrantes. Agréguelos en Cuerpos / Grupos y vuelva a pasar lista.
            </div>`}
     </div>`;
 
@@ -2267,7 +2280,7 @@ async function renderPasarLista(asistenciaId, contenedor) {
 
   const resumen = () => {
     const cuenta = { Presente: 0, Ausente: 0, Justificado: 0, sin: 0 };
-    lista.querySelectorAll('li').forEach((li) => {
+    lista.querySelectorAll('li[data-id]').forEach((li) => {
       const on = li.querySelector('.pl-b.on');
       if (on) cuenta[on.dataset.estado]++;
       else cuenta.sin++;
@@ -2305,7 +2318,7 @@ async function renderPasarLista(asistenciaId, contenedor) {
   const btnTodos = document.getElementById('plTodos');
   if (btnTodos) {
     btnTodos.addEventListener('click', () => {
-      lista.querySelectorAll('li').forEach((li) => {
+      lista.querySelectorAll('li[data-id]').forEach((li) => {
         li.querySelectorAll('.pl-b').forEach((x) => x.classList.toggle('on', x.dataset.estado === 'Presente'));
         pintarFila(li);
       });
@@ -2316,7 +2329,7 @@ async function renderPasarLista(asistenciaId, contenedor) {
   const btnGuardar = document.getElementById('plGuardar');
   if (btnGuardar) {
     btnGuardar.addEventListener('click', async () => {
-      const marcas = [...lista.querySelectorAll('li')].map((li) => {
+      const marcas = [...lista.querySelectorAll('li[data-id]')].map((li) => {
         const on = li.querySelector('.pl-b.on');
         return {
           miembro_id: Number(li.dataset.id),

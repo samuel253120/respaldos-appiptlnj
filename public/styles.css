@@ -618,6 +618,11 @@ ul.pasar-lista li {
 }
 ul.pasar-lista li:last-child { border-bottom: none; }
 ul.pasar-lista li.marcado { border-left-color: var(--marca-oro); background: #fffdf8; }
+ul.pasar-lista li.pl-cuerpo {
+  display: block; background: #f1f5f9; color: var(--marca-azul); font-weight: 700;
+  font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.4px; padding: 7px 18px;
+  border-left-color: transparent;
+}
 ul.pasar-lista .pl-quien { flex: 1 1 240px; min-width: 0; }
 ul.pasar-lista .pl-quien b { font-size: 14.5px; color: var(--marca-azul); }
 ul.pasar-lista .pl-quien .mut { display: block; font-size: 12px; color: var(--muted); }

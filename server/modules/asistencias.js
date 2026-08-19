@@ -1,13 +1,18 @@
 /**
  * Módulo: Asistencias (la asistencia se toma por cuerpo, en cada actividad).
  *
- * Cada registro es una actividad de un cuerpo o grupo —su reunión, un ensayo,
- * una salida— con la fecha y el lugar. La lista nominal de quién estuvo se
- * guarda en "Detalle de Asistencias": una fila por integrante, con su estado
+ * Cada registro es una actividad —una reunión, un ensayo, una salida— a la
+ * que asiste **uno o varios cuerpos**. La lista nominal de quién estuvo se
+ * guarda en "Toma de Asistencia": una fila por integrante, con su estado
  * (Presente, Ausente o Justificado) y el motivo cuando corresponde.
  *
  * Al pie de cada actividad está "Pasar lista", que muestra a los integrantes
- * del cuerpo y permite marcarlos a todos de una vez.
+ * de todos los cuerpos convocados, agrupados por cuerpo, y permite marcarlos
+ * de una vez.
+ *
+ * Permisos: crear o modificar actividades se rige por este módulo; **tomar la
+ * asistencia** se rige por "Toma de Asistencia", de modo que a alguien se le
+ * puede dejar pasar lista sin dejarlo crear actividades.
  *
  * Rutas propias:
  *   GET  /asistencias/:id/lista   integrantes del cuerpo con su marca
@@ -16,6 +21,40 @@
  *                                 por persona)
  */
 const MOTIVOS_CON_DETALLE = ['Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
+
+/** Ids de los cuerpos convocados (el multiref se guarda como JSON). */
+function idsDeCuerpos(valor) {
+  if (Array.isArray(valor)) return valor.map(Number).filter(Boolean);
+  try {
+    return JSON.parse(valor || '[]').map(Number).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * Integrantes de todos los cuerpos convocados a una actividad, con el cuerpo
+ * por el que entra cada uno. Quien está en dos cuerpos aparece una sola vez,
+ * en el primero.
+ */
+function integrantesConvocados(actividad, db) {
+  const mapa = new Map();
+  for (const cuerpoId of idsDeCuerpos(actividad.cuerpos)) {
+    const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
+    if (!cuerpo) continue;
+    let ids = [];
+    try {
+      ids = JSON.parse(cuerpo.integrantes || '[]').map(Number).filter(Boolean);
+    } catch (e) {
+      ids = [];
+    }
+    if (cuerpo.lider_id && !ids.includes(cuerpo.lider_id)) ids.unshift(cuerpo.lider_id);
+    for (const id of ids) {
+      if (!mapa.has(id)) mapa.set(id, { cuerpo_id: cuerpo.id, cuerpo: cuerpo.nombre });
+    }
+  }
+  return mapa;
+}
 
 /** Cuenta las marcas de una actividad. */
 function conteo(asistenciaId, db) {
@@ -40,8 +79,8 @@ module.exports = {
   dateField: 'fecha',
   printable: true,
   searchFields: ['tipo_reunion', 'lugar', 'observaciones'],
-  listFields: ['fecha', 'cuerpo_id', 'tipo_reunion', 'presentes', 'ausentes', 'justificados', 'porcentaje'],
-  filterFields: ['cuerpo_id', 'tipo_reunion'],
+  listFields: ['fecha', 'cuerpos', 'tipo_reunion', 'presentes', 'ausentes', 'justificados', 'porcentaje'],
+  filterFields: ['tipo_reunion'],
   defaultSort: { field: 'fecha', dir: 'desc' },
 
   computed: [
@@ -62,8 +101,8 @@ module.exports = {
   fields: [
     { name: 'fecha', label: 'Fecha', type: 'date', required: true },
     {
-      name: 'cuerpo_id', label: 'Cuerpo / Grupo', type: 'ref', ref: 'cuerpos', required: true,
-      help: 'La asistencia se toma por cuerpo: aquí se elige de cuál se pasará lista.',
+      name: 'cuerpos', label: 'Cuerpos convocados', type: 'multiref', ref: 'cuerpos', required: true,
+      help: 'A una actividad puede asistir más de un cuerpo. Se pasará lista a los integrantes de todos los elegidos.',
     },
     {
       name: 'tipo_reunion', label: 'Actividad', type: 'select', required: true, default: 'Reunión de cuerpo',
@@ -83,19 +122,19 @@ module.exports = {
 
   hooks: {
     beforeSave(data, { existing, db }) {
-      // La iglesia se toma del cuerpo, para que la lista y el cuerpo calcen
-      const cuerpoId = data.cuerpo_id !== undefined ? data.cuerpo_id : existing ? existing.cuerpo_id : null;
-      if (cuerpoId) {
-        const cuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
-        if (cuerpo && cuerpo.iglesia_id) data.iglesia_id = cuerpo.iglesia_id;
-      }
+      const ids = idsDeCuerpos(data.cuerpos !== undefined ? data.cuerpos : existing ? existing.cuerpos : null);
+      if (!ids.length) return 'Indique al menos un cuerpo convocado a la actividad';
+      // La iglesia se toma del primer cuerpo, para que la actividad y sus
+      // integrantes queden en la misma congregación
+      const cuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(ids[0]);
+      if (cuerpo && cuerpo.iglesia_id) data.iglesia_id = cuerpo.iglesia_id;
       return null;
     },
 
-    /** Si cambia la fecha o el cuerpo, las marcas quedan al día. */
+    /** Si cambia la fecha, las marcas ya tomadas quedan al día. */
     afterSave(fila, { db }) {
-      db.prepare('UPDATE asistencia_detalle SET fecha = ?, cuerpo_id = ?, iglesia_id = ? WHERE asistencia_id = ?')
-        .run(fila.fecha, fila.cuerpo_id || null, fila.iglesia_id || null, fila.id);
+      db.prepare('UPDATE asistencia_detalle SET fecha = ?, iglesia_id = ? WHERE asistencia_id = ?')
+        .run(fila.fecha, fila.iglesia_id || null, fila.id);
     },
 
     beforeDelete(fila, { db }) {
@@ -104,8 +143,11 @@ module.exports = {
     },
   },
 
-  extraRoutes(router, { db, requirePerm }) {
-    /** Integrantes del cuerpo de una actividad, con la marca que ya tengan. */
+  extraRoutes(router, { db, requirePerm, can }) {
+    /**
+     * Integrantes de todos los cuerpos convocados, con la marca que ya
+     * tengan. Quien pertenece a dos de esos cuerpos aparece una sola vez.
+     */
     router.get('/asistencias/:id(\\d+)/lista', requirePerm('asistencias', 'view'), (req, res) => {
       const actividad = db.prepare('SELECT * FROM asistencias WHERE id = ?').get(req.params.id);
       if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada' });
@@ -113,24 +155,22 @@ module.exports = {
         return res.status(403).json({ error: 'Actividad fuera de su iglesia asignada' });
       }
 
-      const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(actividad.cuerpo_id);
-      let ids = [];
-      if (cuerpo) {
-        try {
-          ids = JSON.parse(cuerpo.integrantes || '[]').map(Number).filter(Boolean);
-        } catch (e) {
-          ids = [];
-        }
-        if (cuerpo.lider_id && !ids.includes(cuerpo.lider_id)) ids.unshift(cuerpo.lider_id);
-      }
-
+      const convocados = integrantesConvocados(actividad, db);
       const marcas = db.prepare('SELECT * FROM asistencia_detalle WHERE asistencia_id = ?').all(actividad.id);
       const porMiembro = new Map(marcas.map((m) => [m.miembro_id, m]));
-      // Quien ya tiene marca pero salió del cuerpo se sigue mostrando
-      for (const m of marcas) if (!ids.includes(m.miembro_id)) ids.push(m.miembro_id);
 
-      const personas = ids
-        .map((id) => {
+      // Quien ya tiene marca pero salió del cuerpo se sigue mostrando
+      for (const m of marcas) {
+        if (convocados.has(m.miembro_id)) continue;
+        const cuerpo = m.cuerpo_id ? db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(m.cuerpo_id) : null;
+        convocados.set(m.miembro_id, {
+          cuerpo_id: m.cuerpo_id || null,
+          cuerpo: cuerpo ? `${cuerpo.nombre} (ya no figura)` : 'Sin cuerpo',
+        });
+      }
+
+      const personas = [...convocados.entries()]
+        .map(([id, donde]) => {
           const p = db.prepare('SELECT id, nombres, apellidos, rut, foto FROM miembros WHERE id = ?').get(id);
           if (!p) return null;
           const marca = porMiembro.get(id) || {};
@@ -139,26 +179,39 @@ module.exports = {
             nombre: `${p.nombres || ''} ${p.apellidos || ''}`.trim(),
             rut: p.rut || null,
             foto: p.foto || null,
+            cuerpo_id: donde.cuerpo_id,
+            cuerpo: donde.cuerpo,
             estado: marca.estado || null,
             motivo: marca.motivo || null,
             detalle: marca.detalle || null,
           };
         })
         .filter(Boolean)
-        .sort((a, b) => a.nombre.localeCompare(b.nombre));
+        .sort((a, b) => (a.cuerpo || '').localeCompare(b.cuerpo || '') || a.nombre.localeCompare(b.nombre));
+
+      const cuerpos = idsDeCuerpos(actividad.cuerpos).map((id) => {
+        const c = db.prepare('SELECT id, nombre FROM cuerpos WHERE id = ?').get(id);
+        return c ? { id: c.id, nombre: c.nombre } : null;
+      }).filter(Boolean);
 
       res.json({
         actividad: {
           id: actividad.id, fecha: actividad.fecha, tipo: actividad.tipo_reunion,
-          cuerpo: cuerpo ? cuerpo.nombre : null, cuerpo_id: actividad.cuerpo_id,
+          cuerpos,
         },
         personas,
         motivos_con_detalle: MOTIVOS_CON_DETALLE,
+        puede_marcar: can(req.user, 'asistencia_detalle', 'create') && can(req.user, 'asistencia_detalle', 'edit'),
       });
     });
 
-    /** Guarda de una vez todas las marcas de la actividad. */
-    router.post('/asistencias/:id(\\d+)/lista', requirePerm('asistencias', 'edit'), (req, res) => {
+    /**
+     * Guarda de una vez todas las marcas de la actividad.
+     *
+     * Se rige por el permiso de "Toma de Asistencia", no por el de crear
+     * actividades: quien solo pasa lista no necesita poder crearlas.
+     */
+    router.post('/asistencias/:id(\\d+)/lista', requirePerm('asistencia_detalle', 'edit'), (req, res) => {
       const actividad = db.prepare('SELECT * FROM asistencias WHERE id = ?').get(req.params.id);
       if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada' });
       if (req.user.iglesia_id && actividad.iglesia_id !== req.user.iglesia_id) {
@@ -182,6 +235,15 @@ module.exports = {
         }
       }
 
+      // A qué cuerpo pertenece cada persona en esta actividad (no se toma del
+      // cliente: se resuelve aquí, con los cuerpos realmente convocados)
+      const convocados = integrantesConvocados(actividad, db);
+      const anteriores = new Map(
+        db.prepare('SELECT miembro_id, cuerpo_id FROM asistencia_detalle WHERE asistencia_id = ?')
+          .all(actividad.id)
+          .map((m) => [m.miembro_id, m.cuerpo_id])
+      );
+
       const guardar = db.transaction(() => {
         const borrar = db.prepare('DELETE FROM asistencia_detalle WHERE asistencia_id = ? AND miembro_id = ?');
         const insertar = db.prepare(
@@ -194,11 +256,13 @@ module.exports = {
           borrar.run(actividad.id, m.miembro_id);
           if (!m.estado) continue; // sin marcar: no queda fila
           const justificado = m.estado === 'Justificado';
+          const donde = convocados.get(Number(m.miembro_id));
           insertar.run(
             actividad.id, m.miembro_id, m.estado,
             justificado ? m.motivo : null,
             justificado && MOTIVOS_CON_DETALLE.includes(m.motivo) ? String(m.detalle).trim() : null,
-            actividad.cuerpo_id || null, actividad.fecha, actividad.iglesia_id || null, req.user.id
+            (donde && donde.cuerpo_id) || anteriores.get(Number(m.miembro_id)) || null,
+            actividad.fecha, actividad.iglesia_id || null, req.user.id
           );
           guardadas++;
         }
