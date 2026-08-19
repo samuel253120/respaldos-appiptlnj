@@ -51,8 +51,9 @@ app.get('/api/meta', authRequired, (req, res) => {
       searchFields: m.searchFields,
       listFields: m.listFields,
       defaultSort: m.defaultSort,
-      fields: m.fields.map(({ name, label, type, required, options, ref, help, default: def, accept }) => ({
-        name, label, type, required: !!required, options: options || null, ref: ref || null, help: help || null, default: def ?? null, accept: accept || null,
+      fields: m.fields.map(({ name, label, type, required, options, ref, help, default: def, accept, showIf }) => ({
+        name, label, type, required: !!required, options: options || null, ref: ref || null,
+        help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
       })),
       perms: {
         view: can(req.user, m.name, 'view'),

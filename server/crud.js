@@ -232,9 +232,21 @@ function buildRouter() {
         // Alcance: forzar la iglesia del usuario
         if (isChurchScoped(def) && req.user.iglesia_id) data.iglesia_id = req.user.iglesia_id;
 
-        // Validación de requeridos
+        /** ¿Aplica este campo, según su condición showIf? */
+        const aplica = (f) => {
+          if (!f.showIf) return true;
+          const actual = data[f.showIf.field] !== undefined
+            ? data[f.showIf.field]
+            : existing
+              ? existing[f.showIf.field]
+              : undefined;
+          if (Array.isArray(f.showIf.in)) return f.showIf.in.includes(actual);
+          return actual === f.showIf.equals;
+        };
+
+        // Validación de requeridos (los campos que no aplican no se exigen)
         for (const f of def.fields) {
-          if (!f.required) continue;
+          if (!f.required || !aplica(f)) continue;
           const val = isNew ? data[f.name] : data[f.name] !== undefined ? data[f.name] : existing[f.name];
           if (val === null || val === undefined || val === '') {
             if (f.type === 'password' && !isNew) continue; // contraseña solo obligatoria al crear

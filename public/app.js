@@ -656,6 +656,9 @@ async function viewForm(name, id) {
     if (f.type === 'permisos') initPermisos(f, row, row.rol);
   });
 
+  // Campos que solo aplican según el valor de otro (showIf)
+  aplicarCondiciones();
+
   // Historial del miembro (bitácora) bajo la ficha
   if (name === 'miembros' && !isNew) {
     const zona = document.createElement('div');
@@ -691,6 +694,34 @@ async function viewForm(name, id) {
   });
 }
 
+/**
+ * Muestra u oculta los campos con condición showIf según el valor actual del
+ * campo que los controla, y se mantiene atento a sus cambios.
+ */
+function aplicarCondiciones() {
+  const form = document.getElementById('recForm');
+  if (!form) return;
+  const condicionales = form.querySelectorAll('[data-showif-field]');
+  if (!condicionales.length) return;
+
+  const evaluar = () => {
+    condicionales.forEach((div) => {
+      const control = form.querySelector(`[name="${div.dataset.showifField}"]`);
+      const actual = control ? (control.type === 'checkbox' ? (control.checked ? '1' : '0') : control.value) : '';
+      const esperados = String(div.dataset.showifValor).split('|');
+      div.style.display = esperados.includes(actual) ? '' : 'none';
+    });
+  };
+
+  const controles = new Set();
+  condicionales.forEach((div) => controles.add(div.dataset.showifField));
+  controles.forEach((nombre) => {
+    const control = form.querySelector(`[name="${nombre}"]`);
+    if (control) control.addEventListener('change', evaluar);
+  });
+  evaluar();
+}
+
 function fieldHtml(f, row, isNew) {
   const val = row[f.name] != null ? row[f.name] : isNew && f.default != null ? f.default : '';
   const req = f.required ? '<span class="req">*</span>' : '';
@@ -719,7 +750,7 @@ function fieldHtml(f, row, isNew) {
       input = `<div class="multiref" id="mr_${f.name}" data-name="${f.name}"></div>`;
       break;
     case 'boolean':
-      return `<div class="fld check${wide}"><input type="checkbox" id="chk_${f.name}" name="${f.name}" ${val ? 'checked' : ''} /><label for="chk_${f.name}">${esc(f.label)}</label>${help}</div>`;
+      return `<div class="fld check${wide}"${f.showIf ? ` data-showif-field="${esc(f.showIf.field)}" data-showif-valor="${esc(f.showIf.equals !== undefined ? f.showIf.equals : (f.showIf.in || []).join('|'))}"` : ''}><input type="checkbox" id="chk_${f.name}" name="${f.name}" ${val ? 'checked' : ''} /><label for="chk_${f.name}">${esc(f.label)}</label>${help}</div>`;
     case 'file':
       input = `
         <div class="filefld" id="ff_${f.name}">
@@ -757,7 +788,10 @@ function fieldHtml(f, row, isNew) {
     default:
       input = `<input type="text" name="${f.name}" value="${esc(val)}" ${f.required ? 'required' : ''} />`;
   }
-  return `<div class="fld${wide}"><label>${esc(f.label)} ${req}</label>${input}${help}</div>`;
+  const cond = f.showIf
+    ? ` data-showif-field="${esc(f.showIf.field)}" data-showif-valor="${esc(f.showIf.equals !== undefined ? f.showIf.equals : (f.showIf.in || []).join('|'))}"`
+    : '';
+  return `<div class="fld${wide}"${cond}><label>${esc(f.label)} ${req}</label>${input}${help}</div>`;
 }
 
 function initMultiref(f, row) {

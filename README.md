@@ -99,6 +99,26 @@ Roles disponibles (editables en `server/permissions.js`):
 
 **Alcance multi-iglesia**: a cada usuario se le puede asignar una iglesia. Un usuario con iglesia asignada solo ve y modifica registros de esa iglesia (el sistema lo garantiza en el servidor, no solo en la interfaz). Un usuario sin iglesia asignada opera sobre todas.
 
+## Cuerpos y Grupos: dos realidades distintas 👥
+
+La organización distingue:
+
+- **Cuerpo** — entidad **formal**: tiene reglamento, deberes y derechos, y su propia directiva (ej. Damas, Caballeros, Jóvenes).
+- **Grupo** — agrupación de **servicio o ayuda**, sin reglamento ni obligaciones formales (ej. equipo de aseo, apoyo social).
+
+El campo **Nombre** guarda el nombre propio (Damas, Coro, Escuela Dominical…) y **Tipo** solo distingue entre esas dos realidades.
+
+Al elegir **Cuerpo** aparecen los campos que solo tienen sentido en una entidad formal, y al elegir **Grupo** desaparecen:
+
+| Campo | Para qué |
+|---|---|
+| Fecha de constitución formal | Cuándo se constituyó |
+| Reglamento (documento) + fecha de aprobación | El reglamento vigente, adjunto |
+| Presidente(a), Secretario(a), Tesorero(a) | La directiva |
+| Período de la directiva | Ej. 2026 – 2027 |
+
+Esto usa una capacidad general del motor: cualquier campo puede declarar `showIf: { field: 'otro_campo', equals: 'valor' }` (o `in: [...]`) para mostrarse solo cuando corresponda. El servidor tampoco exige los campos obligatorios que no apliquen.
+
 ## Configuración del sistema ⚙️
 
 Los administradores tienen en el menú la entrada **Configuración**, con opciones agrupadas:
@@ -198,7 +218,10 @@ Agregar el campo al arreglo `fields` del módulo y reiniciar: la columna se crea
 
 `text` · `textarea` · `number` · `money` · `date` · `time` · `select` (con `options`) · `boolean` · `ref` (relación a otro módulo, con `ref`) · `multiref` (varias relaciones, ej. integrantes/asistentes) · `file` (adjuntos con carga) · `email` · `tel` · `password` · `rut` (valida dígito verificador y guarda normalizado)
 
-Cualquier campo acepta además `unique: true` para impedir valores repetidos.
+Cualquier campo acepta además:
+
+- `unique: true` — impide valores repetidos.
+- `showIf: { field, equals }` o `showIf: { field, in: [...] }` — el campo se muestra (y se exige, si es obligatorio) solo cuando otro campo tenga ese valor.
 
 ### Lógica propia por módulo
 

@@ -6,6 +6,10 @@
  * los expone al resto del sistema: la base de datos crea/migra sus tablas,
  * el CRUD genérico publica su API REST y el frontend genera su interfaz.
  *
+ * Un campo puede declarar `showIf: { field, equals | in }` para mostrarse solo
+ * cuando otro campo tenga cierto valor (p. ej. datos que solo aplican a los
+ * cuerpos formales y no a los grupos de servicio).
+ *
  * PARA AGREGAR UN MÓDULO NUEVO: crear un archivo en server/modules/ que
  * exporte la definición (ver cualquier módulo existente como plantilla) y
  * reiniciar el servidor. Tabla, API e interfaz se generan automáticamente.
