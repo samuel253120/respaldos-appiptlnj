@@ -209,7 +209,7 @@ En la iglesia a cada miembro se le dice de una manera, y el sistema la calcula s
 |---|---|
 | **Hermano** / **Hermana** | A los miembros en general, según su género |
 | **Oficial** | A los **varones** que pertenecen al cuerpo de oficiales |
-| **Pastor** / **Pastora** | A quienes están registrados en *Pastores / Guías* (se reconoce por el RUT) y, si así se usa, a su cónyuge |
+| **Pastor** / **Pastora** | A quienes tienen ficha en *Pastores / Guías* —que son también miembros de su iglesia— y, si así se usa, a su cónyuge |
 
 El trato aparece como columna en el listado y junto al nombre al abrir la ficha. **No se guarda**: se calcula al leer, así que cuando alguien entra al cuerpo de oficiales o queda registrado como pastor, cambia solo.
 
@@ -396,6 +396,18 @@ Cada informe muestra arriba los **promedios**: de **asistencia**, de **inasisten
 | **Por miembro** | Cómo va cada persona |
 
 Cada fila lleva una barra de tres colores (presentes, justificados, ausentes) para comparar de un vistazo, y desde el promedio por miembro se salta al informe personal de esa persona con un clic. El informe por persona agrega el **detalle de todas sus marcas** —fecha, actividad, estado, motivo y detalle— y el recuento de **motivos de justificación**. Todo se imprime con el membrete de la iglesia.
+
+## El pastor y la pastora son también miembros 🧍
+
+El pastor y la pastora de una iglesia local **están en los dos registros**: su ficha en *Pastores / Guías* (su cargo, su ordenación, su ministerio) y su ficha de **miembro** de esa iglesia, como cualquier hermano.
+
+El sistema lo cuida solo:
+
+- Cada ficha de pastor se **enlaza con su ficha de miembro**. Si ya existe una con el mismo RUT, la reconoce y la enlaza sin que haya que hacer nada.
+- Si todavía no existe, el listado de Pastores / Guías lo muestra en una columna —**Registrado** o **Falta registrarlo**— y al pie de su ficha aparece el botón **➕ Crear su ficha de miembro**, que la crea con sus mismos datos (nombres, RUT, iglesia, fecha de nacimiento, contacto y foto) y las deja enlazadas.
+- De ese enlace depende el **trato**: quien tiene ficha en Pastores / Guías es *Pastor* o *Pastora* en todo el sistema, y su cónyuge también.
+
+Así el pastor y la pastora aparecen en la membresía, cuentan en los totales de su iglesia, pueden integrar cuerpos, se les toma asistencia y tienen su bitácora, como corresponde a un miembro más.
 
 ## Registro de Servicios 🕊️
 
