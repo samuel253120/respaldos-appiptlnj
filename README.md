@@ -128,13 +128,19 @@ Una directiva se compone de:
 | Cargo | Se elige entre | Obligatorio |
 |---|---|---|
 | Oficial supervisor(a) | Integrantes del **cuerpo de oficiales** | No |
-| Primer jefe / Primera jefa | Miembros | No |
-| Segundo jefe / Segunda jefa | Miembros | No |
-| Secretario(a) | Miembros | No |
-| Tesorero(a) | Miembros | No |
-| Consejero(a) | Miembros | No — cargo adicional, no siempre se designa |
+| Primer jefe / Primera jefa | Integrantes **del propio cuerpo** | No |
+| Segundo jefe / Segunda jefa | Integrantes **del propio cuerpo** | No |
+| Secretario(a) | Integrantes **del propio cuerpo** | No |
+| Tesorero(a) | Integrantes **del propio cuerpo** | No |
+| Consejero(a) | Integrantes **del propio cuerpo** | No — cargo adicional, no siempre se designa |
 
 Además hay un campo **Otros cargos** en texto libre, por si el cuerpo designa alguno más.
+
+**Los cargos salen del propio cuerpo.** Mientras no se elija el cuerpo, esos selectores dicen *«elija primero el cuerpo»*; al elegirlo ofrecen **solo a sus integrantes** (los de su lista más su líder). Si después se cambia el cuerpo, las designaciones hechas se sueltan solas, para que nadie quede como jefe de un cuerpo al que no pertenece. El servidor lo verifica igual al guardar, y dice a quién se refiere: *«Hector Gallegos no es integrante de "Damas", así que no puede ser Secretario(a) de su directiva. Agréguelo primero al cuerpo.»*
+
+> Esa comprobación se aplica solo al cargo que se está cambiando: si alguien salió del cuerpo después de haber sido electo, su directiva anterior se puede seguir corrigiendo sin tropiezos.
+>
+> El **oficial supervisor(a)** es la excepción, porque supervisa al cuerpo desde fuera: sale del cuerpo de oficiales.
 
 **El oficial supervisor(a)** no es un cargo interno del cuerpo: es un integrante del **cuerpo de oficiales** designado para supervisar a los demás cuerpos. Por eso su selector no ofrece a todos los miembros, sino solo a los de ese cuerpo (sus integrantes y su líder).
 
