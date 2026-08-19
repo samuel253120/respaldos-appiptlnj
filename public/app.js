@@ -130,8 +130,33 @@ async function api(method, path, body, isForm) {
  * la lista completa del módulo referenciado, salvo que el campo declare su
  * propia ruta (`optionsRoute`) para acotar la lista.
  */
-function rutaOpciones(f) {
-  return f.optionsRoute || f.ref || 'miembros';
+function rutaOpciones(f, valores) {
+  const ruta = f.optionsRoute || f.ref || 'miembros';
+  if (!ruta.includes('{')) return ruta;
+  // Una ruta puede depender de otro campo del formulario, como los cargos de
+  // una directiva, que salen de los integrantes del cuerpo elegido:
+  //   '/directivas/integrantes?cuerpo_id={cuerpo_id}'
+  return ruta.replace(/\{(\w+)\}/g, (_, campo) => {
+    const v = valores && valores[campo] != null ? valores[campo] : '';
+    return encodeURIComponent(String(v));
+  });
+}
+
+/** Campos de los que depende el selector de otro campo. */
+function camposDeLaRuta(f) {
+  const ruta = f.optionsRoute || '';
+  return [...ruta.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+}
+
+/** Lo que el formulario tiene escrito ahora mismo, para resolver esas rutas. */
+function valoresDelFormulario() {
+  const form = document.getElementById('recForm');
+  if (!form) return {};
+  const valores = {};
+  form.querySelectorAll('[name]').forEach((el) => {
+    if (valores[el.name] === undefined || el.value) valores[el.name] = el.value;
+  });
+  return valores;
 }
 async function getOptions(clave, force) {
   if (!force && optionsCache[clave]) return optionsCache[clave];
@@ -776,7 +801,9 @@ async function viewForm(name, id, precarga) {
   }
 
   // precargar opciones de todos los ref/multiref del módulo
-  const listas = [...new Set(m.fields.filter((f) => f.ref || f.type === 'persona').map(rutaOpciones))];
+  const listas = [...new Set(
+    m.fields.filter((f) => f.ref || f.type === 'persona').map((f) => rutaOpciones(f, row))
+  )];
   await Promise.all(listas.map((r) => getOptions(r).catch(() => [])));
 
   // Cómo se le trata a esta persona, junto al título de su ficha
@@ -807,6 +834,7 @@ async function viewForm(name, id, precarga) {
     if (f.mostrarEdad) initEdad(f);
   });
   initCalculados(m);
+  initSelectoresDependientes(m, row, isNew);
 
   // Campos que solo aplican según el valor de otro (showIf)
   aplicarCondiciones();
@@ -926,7 +954,8 @@ function fieldHtml(f, row, isNew) {
       break;
     }
     case 'ref': {
-      const lista = optionsCache[rutaOpciones(f)] || [];
+      const ruta = rutaOpciones(f, row);
+      const lista = optionsCache[ruta] || [];
       const etiquetaActual = val
         ? (lista.find((o) => String(o.id) === String(val)) || {}).label || row[f.name + '_label'] || `#${val}`
         : '';
@@ -935,7 +964,7 @@ function fieldHtml(f, row, isNew) {
       // buscador: se escribe parte del nombre, del apellido o del RUT.
       if (usaBuscador(f, lista)) {
         input = `
-          <div class="refbuscar" id="rb_${f.name}" data-ruta="${esc(rutaOpciones(f))}">
+          <div class="refbuscar" id="rb_${f.name}" data-ruta="${esc(ruta)}">
             <input type="hidden" name="${f.name}" value="${esc(val)}" />
             <input type="text" class="rb-txt" autocomplete="off" spellcheck="false"
                    value="${esc(etiquetaActual)}"
@@ -946,13 +975,18 @@ function fieldHtml(f, row, isNew) {
         break;
       }
 
+      const dependeDe = camposDeLaRuta(f);
+      const faltaElegir = dependeDe.length && dependeDe.some((c) => !row[c]);
       const opts = lista.map((o) => `<option value="${o.id}" ${String(val) === String(o.id) ? 'selected' : ''}>${esc(o.label)}</option>`);
       // Si el valor guardado ya no figura en la lista (p. ej. quien era oficial
       // salió del cuerpo de oficiales), se agrega igual para no perderlo al guardar.
       if (val && !lista.some((o) => String(o.id) === String(val))) {
         opts.unshift(`<option value="${esc(val)}" selected>${esc(etiquetaActual)}</option>`);
       }
-      input = `<select name="${f.name}"><option value="">—</option>${opts.join('')}</select>`;
+      const vacio = faltaElegir
+        ? '— elija primero el cuerpo —'
+        : lista.length ? '—' : '— sin opciones —';
+      input = `<select name="${f.name}"><option value="">${esc(vacio)}</option>${opts.join('')}</select>`;
       break;
     }
     case 'multiref':
@@ -1121,6 +1155,51 @@ function initEdad(f) {
   campo.addEventListener('input', refrescar);
   campo.addEventListener('change', refrescar);
   refrescar();
+}
+
+/**
+ * Selectores que dependen de otro campo: al cambiar ese campo se vuelven a
+ * pedir sus opciones. Es lo que hace que los cargos de una directiva ofrezcan
+ * solo a los integrantes del cuerpo elegido.
+ */
+function initSelectoresDependientes(m, row, isNew) {
+  const form = document.getElementById('recForm');
+  if (!form) return;
+  const dependientes = m.fields.filter((f) => !f.computed && camposDeLaRuta(f).length);
+  if (!dependientes.length) return;
+
+  const fuentes = new Set();
+  dependientes.forEach((f) => camposDeLaRuta(f).forEach((c) => fuentes.add(c)));
+
+  const refrescar = async () => {
+    const valores = valoresDelFormulario();
+    for (const f of dependientes) {
+      const ruta = rutaOpciones(f, valores);
+      try {
+        await getOptions(ruta);
+      } catch (e) {
+        optionsCache[ruta] = [];
+      }
+      // Se vuelve a dibujar el campo con la lista nueva. Si quien estaba
+      // elegido ya no figura en ella, se suelta: no puede quedar un cargo en
+      // alguien que no pertenece al cuerpo.
+      const actual = (form.querySelector(`[name="${f.name}"]`) || {}).value || '';
+      const sigueValiendo = (optionsCache[ruta] || []).some((o) => String(o.id) === String(actual));
+      const fila = { ...valores, [f.name]: sigueValiendo ? actual : '' };
+      const contenedor = form.querySelector(`.fld:has([name="${f.name}"])`);
+      if (!contenedor) continue;
+      const nuevo = document.createElement('div');
+      nuevo.innerHTML = fieldHtml(f, fila, isNew);
+      contenedor.replaceWith(nuevo.firstElementChild);
+      if (f.type === 'ref') initRefBuscador(f, fila);
+    }
+    aplicarCondiciones();
+  };
+
+  fuentes.forEach((nombre) => {
+    const el = form.querySelector(`[name="${nombre}"]`);
+    if (el) el.addEventListener('change', refrescar);
+  });
 }
 
 /** Texto comparable: sin tildes, sin mayúsculas y sin puntos ni guiones. */

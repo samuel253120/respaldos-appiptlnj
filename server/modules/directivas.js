@@ -8,10 +8,14 @@
  * jefa, segundo jefe / segunda jefa, secretario(a), tesorero(a) y, cuando se
  * designa, consejero(a).
  *
- * El oficial supervisor(a) es un integrante del cuerpo de oficiales (su
- * nombre se define en Configuración → Organización) designado para supervisar
- * a los demás cuerpos. Por eso su selector no ofrece todos los miembros, sino
- * los de ese cuerpo; mientras no exista, ofrece a todos para no bloquear.
+ * Los cargos los ocupan **integrantes del propio cuerpo**: sus selectores
+ * ofrecen solo a quienes pertenecen al cuerpo elegido, y el servidor lo
+ * verifica al guardar.
+ *
+ * El oficial supervisor(a) es la excepción: viene del cuerpo de oficiales (su
+ * nombre se define en Configuración → Organización), porque supervisa a los
+ * demás cuerpos desde fuera. Mientras ese cuerpo no exista, ofrece a todos
+ * los miembros para no bloquear.
  *
  * Regla: un cuerpo tiene como máximo UNA directiva vigente. Al marcar una
  * como vigente, las demás de ese cuerpo pasan a "Finalizada" automáticamente.
@@ -51,6 +55,46 @@ function oficialesDisponibles(db, usuario) {
     .map((f) => ({ id: f.id, label: displayOf(miembros, f) }));
 }
 
+/** Integrantes de un cuerpo (los de su lista más su líder), como opciones. */
+function integrantesDeCuerpo(db, cuerpoId) {
+  const { getModule, displayOf } = require('../registry'); // tardío: evita ciclo con el registro
+  const miembros = getModule('miembros');
+  const cuerpo = cuerpoId ? db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId) : null;
+  if (!cuerpo) return [];
+
+  let ids = [];
+  try {
+    ids = JSON.parse(cuerpo.integrantes || '[]');
+  } catch (e) {
+    ids = [];
+  }
+  if (cuerpo.lider_id) ids.push(cuerpo.lider_id);
+  ids = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter(Boolean))];
+
+  return ids
+    .map((id) => db.prepare('SELECT * FROM miembros WHERE id = ?').get(id))
+    .filter(Boolean)
+    .map((f) => ({
+      id: f.id,
+      label: displayOf(miembros, f),
+      buscar: `${displayOf(miembros, f)} ${f.rut || ''} ${f.telefono || ''}`.trim(),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** Ids de quienes pueden ocupar un cargo en la directiva de este cuerpo. */
+function idsDeIntegrantes(db, cuerpoId) {
+  return new Set(integrantesDeCuerpo(db, cuerpoId).map((o) => o.id));
+}
+
+const CARGOS_DEL_CUERPO = [
+  ['primer_jefe_id', 'Primer jefe / Primera jefa'],
+  ['segundo_jefe_id', 'Segundo jefe / Segunda jefa'],
+  ['secretario_id', 'Secretario(a)'],
+  ['tesorero_id', 'Tesorero(a)'],
+  ['consejero_id', 'Consejero(a)'],
+];
+
 module.exports = {
   name: 'directivas',
   label: 'Directivas de Cuerpos',
@@ -75,11 +119,19 @@ module.exports = {
       optionsRoute: '/directivas/oficiales',
       help: 'Integrante del cuerpo de oficiales designado para supervisar este cuerpo.',
     },
-    { name: 'primer_jefe_id', label: 'Primer jefe / Primera jefa', type: 'ref', ref: 'miembros' },
-    { name: 'segundo_jefe_id', label: 'Segundo jefe / Segunda jefa', type: 'ref', ref: 'miembros' },
-    { name: 'secretario_id', label: 'Secretario(a)', type: 'ref', ref: 'miembros' },
-    { name: 'tesorero_id', label: 'Tesorero(a)', type: 'ref', ref: 'miembros' },
-    { name: 'consejero_id', label: 'Consejero(a)', type: 'ref', ref: 'miembros', help: 'Cargo adicional, no siempre se designa.' },
+    {
+      name: 'primer_jefe_id', label: 'Primer jefe / Primera jefa', type: 'ref', ref: 'miembros',
+      optionsRoute: '/directivas/integrantes?cuerpo_id={cuerpo_id}',
+      help: 'Se elige entre los integrantes del cuerpo.',
+    },
+    { name: 'segundo_jefe_id', label: 'Segundo jefe / Segunda jefa', type: 'ref', ref: 'miembros',
+      optionsRoute: '/directivas/integrantes?cuerpo_id={cuerpo_id}' },
+    { name: 'secretario_id', label: 'Secretario(a)', type: 'ref', ref: 'miembros',
+      optionsRoute: '/directivas/integrantes?cuerpo_id={cuerpo_id}' },
+    { name: 'tesorero_id', label: 'Tesorero(a)', type: 'ref', ref: 'miembros',
+      optionsRoute: '/directivas/integrantes?cuerpo_id={cuerpo_id}' },
+    { name: 'consejero_id', label: 'Consejero(a)', type: 'ref', ref: 'miembros',
+      optionsRoute: '/directivas/integrantes?cuerpo_id={cuerpo_id}', help: 'Cargo adicional, no siempre se designa.' },
     { name: 'otros_cargos', label: 'Otros cargos', type: 'textarea', help: 'Opcional. Ej: Directora de música: Ana Soto' },
     { name: 'acta_eleccion', label: 'Acta de elección', type: 'file' },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias' },
@@ -94,6 +146,19 @@ module.exports = {
     router.get(`${base}/oficiales`, (req, res) => {
       res.json(oficialesDisponibles(db, req.user));
     });
+
+    // Integrantes del cuerpo elegido: de ahí salen los cargos de su directiva.
+    // Sin cuerpo no hay a quién ofrecer, y el selector lo dice.
+    router.get(`${base}/integrantes`, (req, res) => {
+      const cuerpoId = Number(req.query.cuerpo_id) || null;
+      if (!cuerpoId) return res.json([]);
+      const cuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
+      if (!cuerpo) return res.json([]);
+      if (req.user.iglesia_id && cuerpo.iglesia_id !== req.user.iglesia_id) {
+        return res.status(403).json({ error: 'Cuerpo fuera de su iglesia asignada' });
+      }
+      res.json(integrantesDeCuerpo(db, cuerpoId));
+    });
   },
   hooks: {
     beforeSave(data, { db, id, existing }) {
@@ -104,6 +169,23 @@ module.exports = {
       if (data.iglesia_id === undefined || data.iglesia_id === null) {
         const cuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
         if (cuerpo) data.iglesia_id = cuerpo.iglesia_id;
+      }
+
+      // Los cargos los ocupan integrantes del propio cuerpo. Solo se revisa lo
+      // que se está cambiando ahora: si alguien salió del cuerpo después de
+      // haber sido electo, su directiva anterior se puede seguir corrigiendo.
+      const permitidos = idsDeIntegrantes(db, cuerpoId);
+      for (const [campo, cargo] of CARGOS_DEL_CUERPO) {
+        const valor = data[campo];
+        if (valor === undefined || valor === null || valor === '') continue;
+        const cambia = !existing || String(existing[campo] || '') !== String(valor);
+        if (!cambia) continue;
+        if (!permitidos.has(Number(valor))) {
+          const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(cuerpoId);
+          const persona = db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(valor);
+          const quien = persona ? `${persona.nombres} ${persona.apellidos}`.trim() : `#${valor}`;
+          return `${quien} no es integrante de "${cuerpo ? cuerpo.nombre : 'ese cuerpo'}", así que no puede ser ${cargo} de su directiva. Agréguelo primero al cuerpo.`;
+        }
       }
 
       // Una sola directiva vigente por cuerpo
