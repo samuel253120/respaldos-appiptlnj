@@ -793,6 +793,7 @@ async function viewForm(name, id, precarga) {
     }
     if (f.type === 'permisos') initPermisos(f, row, row.rol);
     if (f.type === 'persona') initPersona(f, row);
+    if (f.type === 'ref') initRefBuscador(f, row);
     if (f.mostrarEdad) initEdad(f);
   });
   initCalculados(m);
@@ -909,12 +910,30 @@ function fieldHtml(f, row, isNew) {
     }
     case 'ref': {
       const lista = optionsCache[rutaOpciones(f)] || [];
+      const etiquetaActual = val
+        ? (lista.find((o) => String(o.id) === String(val)) || {}).label || row[f.name + '_label'] || `#${val}`
+        : '';
+
+      // Con muchas opciones, en vez de una lista larguísima se ofrece un
+      // buscador: se escribe parte del nombre, del apellido o del RUT.
+      if (usaBuscador(f, lista)) {
+        input = `
+          <div class="refbuscar" id="rb_${f.name}" data-ruta="${esc(rutaOpciones(f))}">
+            <input type="hidden" name="${f.name}" value="${esc(val)}" />
+            <input type="text" class="rb-txt" autocomplete="off" spellcheck="false"
+                   value="${esc(etiquetaActual)}"
+                   placeholder="Escriba el nombre, el apellido o el RUT…" ${f.required ? 'required' : ''} />
+            <button type="button" class="rb-x" title="Quitar la selección" ${val ? '' : 'hidden'}>×</button>
+            <ul class="rb-lista" hidden></ul>
+          </div>`;
+        break;
+      }
+
       const opts = lista.map((o) => `<option value="${o.id}" ${String(val) === String(o.id) ? 'selected' : ''}>${esc(o.label)}</option>`);
       // Si el valor guardado ya no figura en la lista (p. ej. quien era oficial
       // salió del cuerpo de oficiales), se agrega igual para no perderlo al guardar.
       if (val && !lista.some((o) => String(o.id) === String(val))) {
-        const etiqueta = row[f.name + '_label'] || `#${val}`;
-        opts.unshift(`<option value="${esc(val)}" selected>${esc(etiqueta)}</option>`);
+        opts.unshift(`<option value="${esc(val)}" selected>${esc(etiquetaActual)}</option>`);
       }
       input = `<select name="${f.name}"><option value="">—</option>${opts.join('')}</select>`;
       break;
@@ -1087,21 +1106,151 @@ function initEdad(f) {
   refrescar();
 }
 
+/** Texto comparable: sin tildes, sin mayúsculas y sin puntos ni guiones. */
+function textoBuscable(v) {
+  return String(v || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[.\-_]/g, '');
+}
+
+/**
+ * ¿Este selector conviene mostrarlo como buscador? Cuando la lista es larga
+ * —como los miembros de una iglesia— buscar es mucho más rápido que
+ * desplegar cientos de opciones. Un campo puede pedirlo con `buscador: true`.
+ */
+function usaBuscador(f, lista) {
+  if (f.buscador === false) return false;
+  return f.buscador === true || (lista || []).length > 20;
+}
+
+/**
+ * Selector con buscador: se escribe parte del nombre, del apellido o del RUT
+ * y aparecen las coincidencias. Todas las palabras escritas tienen que
+ * calzar, así "rosa diaz" o "13724" encuentran a la persona.
+ */
+function initRefBuscador(f, row) {
+  const caja = document.getElementById('rb_' + f.name);
+  if (!caja) return;
+  const oculto = caja.querySelector('input[type=hidden]');
+  const texto = caja.querySelector('.rb-txt');
+  const quitar = caja.querySelector('.rb-x');
+  const lista = caja.querySelector('.rb-lista');
+  const opciones = optionsCache[caja.dataset.ruta] || [];
+  const MAXIMO = 30;
+
+  let marcado = -1;
+
+  const cerrar = () => { lista.hidden = true; marcado = -1; };
+
+  const elegir = (o) => {
+    oculto.value = o.id;
+    texto.value = o.label;
+    quitar.hidden = false;
+    cerrar();
+    texto.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  const pintar = (resultados) => {
+    if (!resultados.length) {
+      lista.innerHTML = '<li class="rb-vacio">Sin coincidencias</li>';
+      lista.hidden = false;
+      return;
+    }
+    lista.innerHTML = resultados
+      .map((o, i) => `<li data-id="${o.id}" class="${i === marcado ? 'marcado' : ''}">${esc(o.label)}${
+        o.detalle ? `<span class="rb-det">${esc(o.detalle)}</span>` : ''
+      }</li>`)
+      .join('');
+    lista.hidden = false;
+    lista.querySelectorAll('li[data-id]').forEach((li) => {
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // antes del blur, para que no se cierre primero
+        elegir(opciones.find((o) => String(o.id) === li.dataset.id));
+      });
+    });
+  };
+
+  const buscar = () => {
+    const palabras = textoBuscable(texto.value).split(/\s+/).filter(Boolean);
+    let resultados = opciones;
+    if (palabras.length) {
+      resultados = opciones.filter((o) => {
+        const donde = textoBuscable(o.buscar || o.label);
+        return palabras.every((p) => donde.includes(p));
+      });
+    }
+    // Se muestra también el dato con el que se encontró (RUT, teléfono…)
+    resultados = resultados.slice(0, MAXIMO).map((o) => {
+      const resto = (o.buscar || '').slice(o.label.length).trim().split(/\s+/).slice(0, 2);
+      // El RUT se muestra con sus puntos, como se lee habitualmente
+      const detalle = resto.map((t) => (/^\d{7,8}-[\dkK]$/.test(t) ? rutFormatear(t) : t)).join(' · ');
+      return { ...o, detalle };
+    });
+    marcado = -1;
+    pintar(resultados);
+  };
+
+  texto.addEventListener('focus', buscar);
+  texto.addEventListener('input', () => {
+    oculto.value = ''; // mientras se escribe, no hay nadie elegido
+    quitar.hidden = true;
+    buscar();
+  });
+  texto.addEventListener('keydown', (e) => {
+    const items = [...lista.querySelectorAll('li[data-id]')];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!items.length) return;
+      marcado = e.key === 'ArrowDown'
+        ? Math.min(items.length - 1, marcado + 1)
+        : Math.max(0, marcado - 1);
+      items.forEach((li, i) => li.classList.toggle('marcado', i === marcado));
+      items[marcado].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      if (!lista.hidden && items.length) {
+        e.preventDefault();
+        const li = items[marcado >= 0 ? marcado : 0];
+        elegir(opciones.find((o) => String(o.id) === li.dataset.id));
+      }
+    } else if (e.key === 'Escape') {
+      cerrar();
+    }
+  });
+  texto.addEventListener('blur', () => {
+    setTimeout(() => {
+      cerrar();
+      // Si se escribió algo pero no se eligió a nadie, se limpia para no
+      // dejar un nombre suelto que el sistema no reconoce.
+      if (!oculto.value) texto.value = '';
+    }, 120);
+  });
+  quitar.addEventListener('click', () => {
+    oculto.value = '';
+    texto.value = '';
+    quitar.hidden = true;
+    texto.focus();
+  });
+}
+
 function initMultiref(f, row) {
   const box = document.getElementById('mr_' + f.name);
   if (!box) return;
   const selected = new Set((Array.isArray(row[f.name]) ? row[f.name] : []).map(Number));
   const options = optionsCache[rutaOpciones(f)] || [];
   box.innerHTML = `
-    <input class="mr-search" type="search" placeholder="Filtrar…" />
+    <input class="mr-search" type="search" placeholder="Buscar por nombre, apellido o RUT…" />
     <div class="mr-list"></div>
     <div class="mr-count"></div>`;
   const listEl = box.querySelector('.mr-list');
   const countEl = box.querySelector('.mr-count');
   const render = (filter) => {
-    const fl = (filter || '').toLowerCase();
+    // Se busca igual que en el selector con buscador: por cualquier palabra,
+    // sin distinguir tildes ni mayúsculas, y también por RUT o teléfono.
+    const palabras = textoBuscable(filter).split(/\s+/).filter(Boolean);
     listEl.innerHTML = options
-      .filter((o) => !fl || o.label.toLowerCase().includes(fl))
+      .filter((o) => !palabras.length || palabras.every((p) => textoBuscable(o.buscar || o.label).includes(p)))
       .map((o) => `
         <label class="mr-item"><input type="checkbox" data-id="${o.id}" ${selected.has(o.id) ? 'checked' : ''} /> ${esc(o.label)}</label>`)
       .join('') || '<div class="mr-item" style="color:var(--muted)">Sin opciones</div>';

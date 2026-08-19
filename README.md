@@ -194,6 +194,19 @@ Cuando a alguien le corresponda otro trato (diácono, diaconisa, anciano…), se
 
 > El cuerpo de oficiales es el que se nombre en **Configuración → Organización → Cuerpo de oficiales** («Oficiales» por defecto), y el trato de *Pastor(a)* para el cónyuge se puede desactivar allí mismo.
 
+### Buscar a una persona en vez de desplegar la lista 🔎
+
+Cuando un campo apunta a un módulo con **muchos registros** —los miembros de una iglesia, por ejemplo— el sistema deja de mostrar una lista desplegable larguísima y ofrece un **buscador**: se escribe parte del **nombre**, de **cualquiera de los apellidos** o del **RUT** y aparecen las coincidencias.
+
+- Basta con que **calcen todas las palabras escritas**, en cualquier orden: *«rosa salazar»*, *«salazar rosa»* y *«zapata rosalia»* funcionan igual.
+- **No importan las tildes ni las mayúsculas**: *muñoz* y *munoz* encuentran lo mismo.
+- El **RUT sirve con o sin puntos y guion**, y basta un pedazo: *15943*, *15943995* o *15.943.995-K*.
+- También encuentra por **teléfono o correo**, porque busca en los mismos datos con que se busca en el listado del módulo.
+- Cada resultado muestra el RUT y el teléfono al lado, para distinguir a dos personas del mismo nombre.
+- Se maneja con el teclado (↑ ↓ para recorrer, Enter para elegir, Esc para cerrar) y con el botón **×** para soltar la selección.
+
+Aparece solo donde hace falta: en listas de **más de 20 registros** o cuando el campo lo pide con `buscador: true`. Con pocas opciones —las iglesias, las cuentas de tesorería— se conserva la lista desplegable de siempre. El campo de **Integrantes** de un cuerpo busca igual, por nombre, RUT o teléfono.
+
 ### Matrimonios vinculados 💍
 
 Cuando dos miembros están casados entre sí, se vinculan: basta elegir al **cónyuge** en la ficha de uno —el campo aparece con estado civil *Casado(a)*, *Unión libre* o *Viudo(a)*— y el vínculo queda **en las dos fichas**.

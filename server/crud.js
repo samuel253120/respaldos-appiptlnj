@@ -256,7 +256,21 @@ function buildRouter() {
       let where = scopeClause(def, req.user, params);
       const sql = `SELECT * FROM "${def.name}" ${where ? 'WHERE ' + where : ''} ORDER BY id DESC LIMIT 1000`;
       const rows = db.prepare(sql).all(...params);
-      res.json(rows.map((r) => ({ id: r.id, label: displayOf(def, r) })));
+      // Además del texto que se muestra, se envía con qué más se puede buscar
+      // (RUT, teléfono, correo…) para que el buscador del selector encuentre
+      // por cualquiera de esos datos sin volver a consultar al servidor.
+      const buscables = (def.searchFields || []).filter((n) => n !== 'password');
+      res.json(
+        rows.map((r) => {
+          const label = displayOf(def, r);
+          const enElTexto = label.toLowerCase();
+          const extra = buscables
+            .map((n) => r[n])
+            .filter((v) => v != null && v !== '' && !enElTexto.includes(String(v).toLowerCase()))
+            .join(' ');
+          return { id: r.id, label, buscar: `${label} ${extra}`.trim() };
+        })
+      );
     });
 
     // ---- listar ----
