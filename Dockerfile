@@ -3,15 +3,22 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Instalar dependencias primero (aprovecha la caché de capas)
+# Instalar dependencias primero (aprovecha la caché de capas).
+# Las herramientas de compilación se instalan y se retiran en el mismo paso:
+# solo hacen falta si la base de datos no tuviera binario precompilado.
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 make g++ \
+    && npm ci --omit=dev \
+    && apt-get purge -y python3 make g++ \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY server ./server
 COPY public ./public
 
+# El puerto lo define la plataforma con la variable PORT; el sistema la respeta.
 ENV NODE_ENV=production \
-    PORT=3000 \
     DATA_DIR=/data
 
 # /data guarda la base de datos SQLite y los archivos subidos:
