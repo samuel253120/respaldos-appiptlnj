@@ -16,7 +16,8 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 |---|---|
 | **Organización** | Iglesias · Pastores / Guías · Cuerpos / Grupos · Directivas de Cuerpos |
 | **Servicios** | Registro de Servicios (cultos: salmo, mensaje, asistencia y ofrenda) |
-| **Personas** | Miembros · Asistencias (con lista nominal de presentes) · Bitácora de Miembros · Documentos de Miembros |
+| **Personas** | Miembros · Asistencias por cuerpo (pasar lista) · Detalle de Asistencias · Bitácora de Miembros · Documentos de Miembros |
+| **Informes** | Informes de Asistencia (general, por cuerpo y por persona) |
 | **Finanzas** | Cuentas de Tesorería (corporación e iglesias) · Tesorería (ingresos/egresos con resumen y balance) · Traspasos entre Cuentas · Ayudas Sociales · Inventarios (de iglesia y de cuerpos) |
 | **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · Documentos · Certificados · Credenciales · Solicitudes |
 | **Administración** | Usuarios (roles y permisos) |
@@ -92,7 +93,7 @@ Roles disponibles (editables en `server/permissions.js`):
 
 - **Administrador** — acceso total, incluido el módulo Usuarios.
 - **Pastor / Guía** — acceso total excepto Usuarios.
-- **Secretario** — gestiona membresía, servicios, actas, documentos, certificados, etc.; sin acceso a Tesorería.
+- **Secretario** — gestiona membresía, asistencias, servicios, actas, documentos, certificados, etc.; sin acceso a Tesorería.
 - **Tesorero** — gestiona Cuentas de Tesorería, Tesorería, Traspasos entre Cuentas, Ayudas Sociales e Inventarios; consulta el resto.
 - **Solo consulta** — lectura, sin Tesorería.
 
@@ -301,6 +302,48 @@ Cada traspaso genera **sus dos movimientos en Tesorería** —un egreso en el or
 ### Al actualizar el sistema
 
 Al crear una iglesia nueva se le crean solas su **tesorería general** y su **fondo para la corporación**. A cada iglesia que no lo tenga se le crea su **Fondo para la corporación**, y los movimientos que ya estaban registrados **no se pierden ni cambian de nivel**: cada uno pasa a la cuenta general que le corresponde según su iglesia (o a la de la corporación si no tenía), creándola si hacía falta. Queda anotado en el arranque: *«🔁 tesorería: 4 movimiento(s) asignados a su cuenta general»*.
+
+## Asistencia por cuerpo 📋
+
+La asistencia se toma **por cuerpo y en cada actividad**: la reunión del cuerpo, un ensayo, una salida. Cada actividad guarda su fecha, su cuerpo, la hora y el lugar, y la **lista nominal** de quién estuvo.
+
+### Pasar lista 🖐️
+
+Al pie de cada actividad está **Pasar lista**: aparecen los integrantes de ese cuerpo, cada uno con tres botones —**Presente**, **Ausente**, **Justificado**— y se guardan todos de una vez. Hay un botón **Todos presentes** para marcar de golpe y corregir solo las excepciones, y abajo se ve el recuento en vivo. Volver a pulsar el mismo botón desmarca a la persona.
+
+Cuando alguien queda **Justificado** se pide el motivo:
+
+| Motivo | ¿Pide detalle? |
+|---|---|
+| Trabajo | No |
+| Enfermedad | No |
+| **Emergencia** | **Sí** |
+| **Otra actividad de la iglesia** | **Sí** |
+| **Otro motivo** | **Sí** |
+
+El detalle es obligatorio en esos tres casos y el sistema no deja guardar la lista sin él —lo verifica el servidor, no solo la pantalla—, así ninguna justificación queda sin explicación.
+
+Quien pasa lista es cualquier usuario con permiso de edición en Asistencias: el rol **Secretario** lo tiene, y a cualquier otro usuario se le puede dar solo ese permiso desde su ficha (ver *Permisos personalizados*).
+
+En el listado de actividades se ve de un vistazo cuántos hubo de cada tipo y el **porcentaje de asistencia**, con su color: verde desde 80%, amarillo desde 60%, rojo bajo eso.
+
+## Informes de asistencia 📈
+
+En **Informes → Informes de Asistencia** se sacan tres informes, acotados por el período que se elija:
+
+- **General** — todo lo registrado.
+- **Por cuerpo** — se elige el cuerpo.
+- **Por persona** — se busca a la persona por nombre o RUT.
+
+Cada informe muestra arriba los **promedios**: de **asistencia**, de **inasistencia** y de **justificación**, además de cuántas actividades y cuántas personas entran en el cálculo. Y abajo, los mismos tres promedios desglosados:
+
+| Desglose | Responde |
+|---|---|
+| **Por día** | Cómo estuvo la asistencia en cada fecha |
+| **Por cuerpo** | Qué cuerpo asiste más y cuál menos |
+| **Por miembro** | Cómo va cada persona |
+
+Cada fila lleva una barra de tres colores (presentes, justificados, ausentes) para comparar de un vistazo, y desde el promedio por miembro se salta al informe personal de esa persona con un clic. El informe por persona agrega el **detalle de todas sus marcas** —fecha, actividad, estado, motivo y detalle— y el recuento de **motivos de justificación**. Todo se imprime con el membrete de la iglesia.
 
 ## Registro de Servicios 🕊️
 

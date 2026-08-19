@@ -172,7 +172,16 @@ app.get('/api/dashboard', authRequired, (req, res) => {
   const w2 = iglesiaId ? 'WHERE iglesia_id = ?' : '';
   const p2 = iglesiaId ? [iglesiaId] : [];
   const ultimasAsistencias = db
-    .prepare(`SELECT id, fecha, tipo_reunion, total_general FROM asistencias ${w2} ORDER BY fecha DESC LIMIT 5`)
+    .prepare(
+      `SELECT a.id, a.fecha, a.tipo_reunion, c.nombre AS cuerpo,
+              COALESCE(SUM(CASE WHEN d.estado = 'Presente' THEN 1 ELSE 0 END), 0) AS presentes,
+              COUNT(d.id) AS marcados
+         FROM asistencias a
+         LEFT JOIN asistencia_detalle d ON d.asistencia_id = a.id
+         LEFT JOIN cuerpos c ON c.id = a.cuerpo_id
+        ${w2 ? w2.replace('WHERE iglesia_id = ?', 'WHERE a.iglesia_id = ?') : ''}
+        GROUP BY a.id ORDER BY a.fecha DESC LIMIT 5`
+    )
     .all(...p2);
   const solicitudesRecientes = db
     .prepare(`SELECT id, fecha, solicitante, asunto, estado FROM solicitudes ${w2} ORDER BY fecha DESC LIMIT 5`)

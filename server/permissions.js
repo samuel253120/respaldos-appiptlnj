@@ -34,6 +34,7 @@ const MATRIX = {
     miembros: RW,
     cuerpos: RW,
     asistencias: RW,
+    asistencia_detalle: RW,
     servicios: RW,
     documentos_miembros: RW,
     actas_reuniones: RW,

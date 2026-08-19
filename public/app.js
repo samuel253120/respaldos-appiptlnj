@@ -199,6 +199,11 @@ function route() {
     if (parts[2] === 'edit' && parts[3]) return viewForm(name, parts[3]);
     return viewList(name, precarga);
   }
+  if (parts[0] === 'informes' && parts[1] === 'asistencia' && MOD['asistencias']) {
+    const il = document.querySelector('.side-link[data-mod="_infoasis"]');
+    if (il) il.classList.add('active');
+    return viewInformeAsistencia(precarga);
+  }
   if (parts[0] === 'config' && USER.rol === 'admin') {
     const cl = document.querySelector('.side-link[data-mod="_config"]');
     if (cl) cl.classList.add('active');
@@ -299,6 +304,11 @@ function renderShell() {
           <a class="side-link" data-mod="_dash" href="#/"><span class="ic">📊</span> Panel de control</a>
         </div>
         ${groupsHtml}
+        ${MOD['asistencias'] ? `
+        <div class="side-group">
+          <div class="group-title">Informes</div>
+          <a class="side-link" data-mod="_infoasis" href="#/informes/asistencia"><span class="ic">📈</span> Informes de Asistencia</a>
+        </div>` : ''}
         ${USER.rol === 'admin' ? `
         <div class="side-group">
           <div class="group-title">Sistema</div>
@@ -413,8 +423,8 @@ async function viewDashboard() {
         <ul class="mini-list">
           ${d.ultimasAsistencias.length ? d.ultimasAsistencias.map((a) => `
             <li onclick="location.hash='#/m/asistencias/edit/${a.id}'">
-              <span>${esc(a.tipo_reunion)}</span>
-              <span class="mut">${fmtDate(a.fecha)} · ${a.total_general ?? 0} pers.</span>
+              <span>${esc(a.tipo_reunion)}${a.cuerpo ? ` <span class="mut">— ${esc(a.cuerpo)}</span>` : ''}</span>
+              <span class="mut">${fmtDate(a.fecha)} · ${a.marcados ? `${a.presentes} de ${a.marcados}` : 'sin lista'}</span>
             </li>`).join('') : '<li class="mut">Sin registros aún</li>'}
         </ul>
       </div>
@@ -803,6 +813,13 @@ async function viewForm(name, id, precarga) {
 
   // Al traspasar, se muestra cuánto hay en la cuenta de origen
   if (name === 'traspasos') mostrarSaldoOrigen();
+
+  // Pasar lista bajo la ficha de la actividad
+  if (name === 'asistencias' && !isNew) {
+    const zona = document.createElement('div');
+    content().appendChild(zona);
+    renderPasarLista(Number(id), zona);
+  }
 
   // Estado de la cuenta de tesorería bajo su ficha
   if (name === 'cuentas_tesoreria' && !isNew) {
@@ -1395,6 +1412,213 @@ function collectForm(m) {
   return data;
 }
 
+/* ---------------- informes de asistencia ---------------- */
+/**
+ * Informes de asistencia: general, por cuerpo o por persona, con los
+ * promedios de asistencia, inasistencia y justificación por día, por cuerpo y
+ * por miembro. Se puede acotar por fechas e imprimir.
+ */
+async function viewInformeAsistencia(precarga) {
+  const st = {
+    tipo: (precarga && precarga.tipo) || 'general',
+    cuerpo_id: (precarga && precarga.cuerpo_id) || '',
+    miembro_id: (precarga && precarga.miembro_id) || '',
+    desde: (precarga && precarga.desde) || '',
+    hasta: (precarga && precarga.hasta) || '',
+  };
+
+  content().innerHTML = `
+    <div class="page-head">
+      <div>
+        <h2>📈 Informes de Asistencia</h2>
+        <p class="sub-iglesia">${esc(USER.iglesia_nombre || 'Todas las iglesias')}</p>
+      </div>
+      <div class="actions"><button class="btn secondary" id="btnImprimirInf">🖨️ Imprimir</button></div>
+    </div>
+    <div class="card">
+      <div class="toolbar" id="infFiltros"></div>
+    </div>
+    <div id="infResultado"><p style="padding:18px">Cargando…</p></div>`;
+
+  document.getElementById('btnImprimirInf').addEventListener('click', () => window.print());
+  await getOptions('cuerpos').catch(() => []);
+  await getOptions('miembros').catch(() => []);
+  const cuerpos = optionsCache['cuerpos'] || [];
+
+  const filtros = document.getElementById('infFiltros');
+  filtros.innerHTML = `
+    <select id="infTipo">
+      <option value="general" ${st.tipo === 'general' ? 'selected' : ''}>Informe general</option>
+      <option value="cuerpo" ${st.tipo === 'cuerpo' ? 'selected' : ''}>Informe por cuerpo</option>
+      <option value="persona" ${st.tipo === 'persona' ? 'selected' : ''}>Informe por persona</option>
+    </select>
+    <select id="infCuerpo" ${st.tipo === 'cuerpo' ? '' : 'hidden'}>
+      <option value="">— Elija el cuerpo —</option>
+      ${cuerpos.map((c) => `<option value="${c.id}" ${String(st.cuerpo_id) === String(c.id) ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
+    </select>
+    <div class="refbuscar inf-persona" id="rb_miembro_id" data-ruta="miembros" ${st.tipo === 'persona' ? '' : 'hidden'}>
+      <input type="hidden" name="miembro_id" value="${esc(st.miembro_id)}" />
+      <input type="text" class="rb-txt" placeholder="Busque a la persona por nombre o RUT…" autocomplete="off" />
+      <button type="button" class="rb-x" title="Quitar" hidden>×</button>
+      <ul class="rb-lista" hidden></ul>
+    </div>
+    <label class="range">Desde <input type="date" id="infDesde" value="${esc(st.desde)}" /></label>
+    <label class="range">Hasta <input type="date" id="infHasta" value="${esc(st.hasta)}" /></label>
+    <span class="spacer"></span>
+    <button class="btn sm" id="infVer">Ver informe</button>`;
+
+  initRefBuscador({ name: 'miembro_id' }, {});
+
+  const sincronizar = () => {
+    st.tipo = document.getElementById('infTipo').value;
+    document.getElementById('infCuerpo').hidden = st.tipo !== 'cuerpo';
+    document.getElementById('rb_miembro_id').hidden = st.tipo !== 'persona';
+    st.cuerpo_id = document.getElementById('infCuerpo').value;
+    st.miembro_id = document.querySelector('#rb_miembro_id input[type=hidden]').value;
+    st.desde = document.getElementById('infDesde').value;
+    st.hasta = document.getElementById('infHasta').value;
+  };
+  document.getElementById('infTipo').addEventListener('change', () => { sincronizar(); cargar(); });
+  document.getElementById('infCuerpo').addEventListener('change', () => { sincronizar(); cargar(); });
+  document.getElementById('rb_miembro_id').addEventListener('change', () => { sincronizar(); cargar(); });
+  document.getElementById('infDesde').addEventListener('change', () => { sincronizar(); cargar(); });
+  document.getElementById('infHasta').addEventListener('change', () => { sincronizar(); cargar(); });
+  document.getElementById('infVer').addEventListener('click', () => { sincronizar(); cargar(); });
+
+  const pct = (n) => `${String(n).replace('.', ',')}%`;
+  const barra = (f) => `
+    <div class="barra" title="${f.presentes} presentes, ${f.ausentes} ausentes, ${f.justificados} justificados">
+      <span class="p" style="width:${f.pct_presente}%"></span>
+      <span class="j" style="width:${f.pct_justificado}%"></span>
+      <span class="a" style="width:${f.pct_ausente}%"></span>
+    </div>`;
+
+  const tabla = (titulo, filas, columna, verMas) => `
+    <div class="card" style="margin-bottom:18px">
+      <h3>${titulo}</h3>
+      ${filas.length ? `
+      <div style="overflow-x:auto">
+      <table class="grid informe">
+        <thead><tr>
+          <th>${columna}</th><th>Presentes</th><th>Ausentes</th><th>Justificados</th>
+          <th>Asistencia</th><th>Inasistencia</th><th>Justificación</th><th class="no-sort">Reparto</th>
+        </tr></thead>
+        <tbody>
+          ${filas.map((f) => `
+            <tr ${verMas ? `data-ver="${verMas(f)}" style="cursor:pointer"` : ''}>
+              <td>${esc(f.etiqueta)}</td>
+              <td>${f.presentes}</td><td>${f.ausentes}</td><td>${f.justificados}</td>
+              <td><b>${pct(f.pct_presente)}</b></td><td>${pct(f.pct_ausente)}</td><td>${pct(f.pct_justificado)}</td>
+              <td style="min-width:140px">${barra(f)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>` : '<div class="empty-state" style="padding:22px">Sin datos en este período.</div>'}
+    </div>`;
+
+  async function cargar() {
+    const caja = document.getElementById('infResultado');
+    if (st.tipo === 'cuerpo' && !st.cuerpo_id) {
+      caja.innerHTML = '<div class="card"><div class="empty-state" style="padding:26px">Elija un cuerpo para ver su informe.</div></div>';
+      return;
+    }
+    if (st.tipo === 'persona' && !st.miembro_id) {
+      caja.innerHTML = '<div class="card"><div class="empty-state" style="padding:26px">Busque a la persona para ver su informe.</div></div>';
+      return;
+    }
+    caja.innerHTML = '<p style="padding:18px">Calculando…</p>';
+    const params = new URLSearchParams({ tipo: st.tipo });
+    if (st.desde) params.set('desde', st.desde);
+    if (st.hasta) params.set('hasta', st.hasta);
+    if (st.tipo === 'cuerpo' && st.cuerpo_id) params.set('cuerpo_id', st.cuerpo_id);
+    if (st.tipo === 'persona' && st.miembro_id) params.set('miembro_id', st.miembro_id);
+
+    let d;
+    try {
+      d = await api('GET', '/asistencias/informe?' + params.toString());
+    } catch (e) {
+      caja.innerHTML = `<p style="padding:18px;color:var(--danger)">${esc(e.message)}</p>`;
+      return;
+    }
+
+    const periodo = d.desde || d.hasta
+      ? `del ${d.desde ? fechaLarga(d.desde) : 'principio'} al ${d.hasta ? fechaLarga(d.hasta) : 'día de hoy'}`
+      : 'de todo lo registrado';
+    const g = d.general;
+
+    const resumen = `
+      <div class="stats informe-stats">
+        <div class="stat"><div class="ic">📋</div><div class="num">${g.actividades}</div><div class="lbl">Actividades</div></div>
+        <div class="stat"><div class="ic">🧍</div><div class="num">${g.personas}</div><div class="lbl">Personas</div></div>
+        <div class="stat"><div class="ic">✅</div><div class="num">${pct(g.pct_presente)}</div><div class="lbl">Promedio de asistencia</div></div>
+        <div class="stat"><div class="ic">❌</div><div class="num">${pct(g.pct_ausente)}</div><div class="lbl">Promedio de inasistencia</div></div>
+        <div class="stat"><div class="ic">📝</div><div class="num">${pct(g.pct_justificado)}</div><div class="lbl">Promedio de justificación</div></div>
+      </div>`;
+
+    const motivos = d.porMotivo.length ? `
+      <div class="card" style="margin-bottom:18px">
+        <h3>Motivos de las justificaciones</h3>
+        <ul class="mini-list">
+          ${d.porMotivo.map((m) => `<li><span>${esc(m.motivo)}</span><span class="mut">${m.n} vez(ces)</span></li>`).join('')}
+        </ul>
+      </div>` : '';
+
+    const conEtiqueta = (arr, campo) => arr.map((f) => ({ ...f, etiqueta: f[campo] || '—' }));
+
+    let cuerpoTexto = '';
+    if (st.tipo === 'cuerpo') cuerpoTexto = (d.porCuerpo[0] || {}).cuerpo || '';
+    if (st.tipo === 'persona') cuerpoTexto = (d.porMiembro[0] || {}).miembro || '';
+
+    caja.innerHTML = `
+      <div class="informe-hoja">
+        <div class="print-only membrete">
+          <img src="${IGLESIA.logo}" alt="" />
+          <div><b>${esc(IGLESIA.nombre)}</b><i>${esc(IGLESIA.lema)}</i></div>
+        </div>
+        <h3 class="informe-tit">
+          ${st.tipo === 'general' ? 'Informe general de asistencia'
+            : st.tipo === 'cuerpo' ? `Informe de asistencia — ${esc(cuerpoTexto)}`
+            : `Informe de asistencia — ${esc(cuerpoTexto)}`}
+          <span class="mut">${esc(periodo)}</span>
+        </h3>
+        ${resumen}
+        ${st.tipo === 'persona' ? `
+          ${tabla('Promedio por día', conEtiqueta(d.porDia.map((x) => ({ ...x, fecha: fmtDate(x.fecha) })), 'fecha'), 'Fecha')}
+          <div class="card" style="margin-bottom:18px">
+            <h3>Detalle de sus marcas</h3>
+            <div style="overflow-x:auto">
+            <table class="grid informe">
+              <thead><tr><th>Fecha</th><th>Cuerpo</th><th>Actividad</th><th>Estado</th><th>Motivo</th><th>Detalle</th></tr></thead>
+              <tbody>
+                ${d.marcas.map((m) => `
+                  <tr>
+                    <td>${fmtDate(m.fecha)}</td><td>${esc(m.cuerpo || '')}</td><td>${esc(m.actividad || '')}</td>
+                    <td><span class="badge ${m.estado === 'Presente' ? 'green' : m.estado === 'Ausente' ? 'red' : 'blue'}">${esc(m.estado)}</span></td>
+                    <td>${esc(m.motivo || '')}</td><td>${esc(m.detalle || '')}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table></div>
+          </div>
+          ${motivos}`
+        : `
+          ${tabla('Promedio por cuerpo', conEtiqueta(d.porCuerpo, 'cuerpo'), 'Cuerpo / Grupo')}
+          ${tabla('Promedio por día', conEtiqueta(d.porDia.map((x) => ({ ...x, fecha: fmtDate(x.fecha) })), 'fecha'), 'Fecha')}
+          ${tabla('Promedio por miembro', conEtiqueta(d.porMiembro, 'miembro'), 'Miembro', (f) => f.miembro_id)}
+          ${motivos}`}
+        <div class="informe-pie mut">Emitido el ${fechaLarga(new Date().toISOString())} · Verde: presentes · Azul: justificados · Rojo: ausentes</div>
+      </div>`;
+
+    // Desde el promedio por miembro se salta a su informe personal
+    caja.querySelectorAll('tr[data-ver]').forEach((tr) => {
+      tr.addEventListener('click', () => {
+        location.hash = `#/informes/asistencia?tipo=persona&miembro_id=${tr.dataset.ver}` +
+          (st.desde ? `&desde=${st.desde}` : '') + (st.hasta ? `&hasta=${st.hasta}` : '');
+      });
+    });
+  }
+
+  cargar();
+}
+
 /* ---------------- vistas de impresión ---------------- */
 async function viewPrint(name, id) {
   const m = MOD[name];
@@ -1978,6 +2202,142 @@ function mostrarSaldoOrigen() {
   };
   select.addEventListener('change', refrescar);
   refrescar();
+}
+
+/**
+ * Pasar lista: los integrantes del cuerpo con sus tres botones —Presente,
+ * Ausente, Justificado—, el motivo cuando se justifica y el detalle cuando el
+ * motivo lo exige. Se guardan todas las marcas de una vez.
+ */
+async function renderPasarLista(asistenciaId, contenedor) {
+  const m = MOD['asistencias'];
+  const puedeEditar = m && m.perms.edit;
+  let datos;
+  try {
+    datos = await api('GET', `/asistencias/${asistenciaId}/lista`);
+  } catch (e) {
+    contenedor.innerHTML = '';
+    return;
+  }
+  const MOTIVOS = (MOD['asistencia_detalle']
+    ? (MOD['asistencia_detalle'].fields.find((f) => f.name === 'motivo') || {}).options
+    : null) || ['Trabajo', 'Enfermedad', 'Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
+  const CON_DETALLE = datos.motivos_con_detalle || [];
+
+  const fila = (p) => `
+    <li data-id="${p.miembro_id}" class="${p.estado ? 'marcado' : ''}">
+      <div class="pl-quien">
+        <b>${esc(p.nombre)}</b>
+        ${p.rut ? `<span class="mut">${esc(rutFormatear(p.rut))}</span>` : ''}
+      </div>
+      <div class="pl-botones">
+        ${['Presente', 'Ausente', 'Justificado'].map((e) => `
+          <button type="button" class="pl-b ${e.toLowerCase()} ${p.estado === e ? 'on' : ''}" data-estado="${e}" ${puedeEditar ? '' : 'disabled'}>${e}</button>`).join('')}
+      </div>
+      <div class="pl-just" ${p.estado === 'Justificado' ? '' : 'hidden'}>
+        <select class="pl-motivo" ${puedeEditar ? '' : 'disabled'}>
+          <option value="">— Motivo —</option>
+          ${MOTIVOS.map((o) => `<option value="${esc(o)}" ${p.motivo === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+        </select>
+        <input type="text" class="pl-detalle" placeholder="Especifique el detalle" value="${esc(p.detalle || '')}"
+               ${CON_DETALLE.includes(p.motivo) ? '' : 'hidden'} ${puedeEditar ? '' : 'disabled'} />
+      </div>
+    </li>`;
+
+  contenedor.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🖐️ Pasar lista</b>
+        <span style="color:var(--muted);font-size:13px">${esc(datos.actividad.cuerpo || 'sin cuerpo')} · ${fmtDate(datos.actividad.fecha)}</span>
+        <span class="spacer"></span>
+        ${puedeEditar && datos.personas.length ? `
+          <button class="btn secondary sm" id="plTodos">Todos presentes</button>
+          <button class="btn sm" id="plGuardar">💾 Guardar lista</button>` : ''}
+      </div>
+      ${datos.personas.length
+        ? `<ul class="pasar-lista">${datos.personas.map(fila).join('')}</ul>
+           <div class="pl-resumen" id="plResumen"></div>`
+        : `<div class="empty-state" style="padding:26px">
+             Este cuerpo todavía no tiene integrantes. Agréguelos en Cuerpos / Grupos y vuelva a pasar lista.
+           </div>`}
+    </div>`;
+
+  const lista = contenedor.querySelector('ul.pasar-lista');
+  if (!lista) return;
+
+  const resumen = () => {
+    const cuenta = { Presente: 0, Ausente: 0, Justificado: 0, sin: 0 };
+    lista.querySelectorAll('li').forEach((li) => {
+      const on = li.querySelector('.pl-b.on');
+      if (on) cuenta[on.dataset.estado]++;
+      else cuenta.sin++;
+    });
+    document.getElementById('plResumen').innerHTML =
+      `<span class="badge green">${cuenta.Presente} presentes</span>
+       <span class="badge red">${cuenta.Ausente} ausentes</span>
+       <span class="badge blue">${cuenta.Justificado} justificados</span>
+       ${cuenta.sin ? `<span class="badge">${cuenta.sin} sin marcar</span>` : ''}`;
+  };
+
+  const pintarFila = (li) => {
+    const estado = (li.querySelector('.pl-b.on') || {}).dataset ? li.querySelector('.pl-b.on').dataset.estado : null;
+    const just = li.querySelector('.pl-just');
+    just.hidden = estado !== 'Justificado';
+    const motivo = li.querySelector('.pl-motivo').value;
+    li.querySelector('.pl-detalle').hidden = !CON_DETALLE.includes(motivo);
+    li.classList.toggle('marcado', !!estado);
+  };
+
+  lista.querySelectorAll('.pl-b').forEach((b) => {
+    b.addEventListener('click', () => {
+      const li = b.closest('li');
+      const yaEstaba = b.classList.contains('on');
+      li.querySelectorAll('.pl-b').forEach((x) => x.classList.remove('on'));
+      if (!yaEstaba) b.classList.add('on'); // volver a pulsarlo la desmarca
+      pintarFila(li);
+      resumen();
+    });
+  });
+  lista.querySelectorAll('.pl-motivo').forEach((sel) => {
+    sel.addEventListener('change', () => pintarFila(sel.closest('li')));
+  });
+
+  const btnTodos = document.getElementById('plTodos');
+  if (btnTodos) {
+    btnTodos.addEventListener('click', () => {
+      lista.querySelectorAll('li').forEach((li) => {
+        li.querySelectorAll('.pl-b').forEach((x) => x.classList.toggle('on', x.dataset.estado === 'Presente'));
+        pintarFila(li);
+      });
+      resumen();
+    });
+  }
+
+  const btnGuardar = document.getElementById('plGuardar');
+  if (btnGuardar) {
+    btnGuardar.addEventListener('click', async () => {
+      const marcas = [...lista.querySelectorAll('li')].map((li) => {
+        const on = li.querySelector('.pl-b.on');
+        return {
+          miembro_id: Number(li.dataset.id),
+          estado: on ? on.dataset.estado : null,
+          motivo: li.querySelector('.pl-motivo').value || null,
+          detalle: li.querySelector('.pl-detalle').value || null,
+        };
+      });
+      btnGuardar.disabled = true;
+      try {
+        const r = await api('POST', `/asistencias/${asistenciaId}/lista`, { marcas });
+        toast(`Lista guardada: ${r.presentes} presentes, ${r.ausentes} ausentes, ${r.justificados} justificados`);
+        renderPasarLista(asistenciaId, contenedor);
+      } catch (e) {
+        toast(e.message, true);
+        btnGuardar.disabled = false;
+      }
+    });
+  }
+
+  resumen();
 }
 
 /** Estado de una cuenta de tesorería: saldo, totales y últimos movimientos. */

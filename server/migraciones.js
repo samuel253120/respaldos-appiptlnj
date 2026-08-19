@@ -317,6 +317,68 @@ function fondoParaLaCorporacion() {
 }
 
 
+/**
+ * La asistencia pasó a tomarse nominalmente por cuerpo: cada actividad tiene
+ * una fila por integrante con su estado. Lo que ya estaba registrado se
+ * traspasa: los miembros marcados como presentes quedan con estado
+ * "Presente", y el conteo general que se llevaba antes (hombres, mujeres,
+ * niños, visitas) se anota en las observaciones para no perderlo.
+ */
+function asistenciasNominales() {
+  const columnas = db.prepare('PRAGMA table_info("asistencias")').all().map((c) => c.name);
+  if (!columnas.includes('miembros_presentes')) return;
+
+  const filas = db.prepare('SELECT * FROM asistencias').all();
+  let conLista = 0;
+  let conConteo = 0;
+
+  const insertar = db.prepare(
+    `INSERT INTO asistencia_detalle (asistencia_id, miembro_id, estado, cuerpo_id, fecha, iglesia_id)
+     VALUES (?, ?, 'Presente', ?, ?, ?)`
+  );
+  const yaTiene = db.prepare('SELECT id FROM asistencia_detalle WHERE asistencia_id = ? AND miembro_id = ?');
+
+  for (const fila of filas) {
+    let ids = [];
+    try {
+      ids = JSON.parse(fila.miembros_presentes || '[]').map(Number).filter(Boolean);
+    } catch (e) {
+      ids = [];
+    }
+    for (const miembroId of ids) {
+      if (yaTiene.get(fila.id, miembroId)) continue;
+      const existe = db.prepare('SELECT id FROM miembros WHERE id = ?').get(miembroId);
+      if (!existe) continue;
+      insertar.run(fila.id, miembroId, fila.cuerpo_id || null, fila.fecha, fila.iglesia_id || null);
+      conLista++;
+    }
+
+    // El conteo general anterior queda escrito, para no perder el dato
+    const partes = [
+      ['hombres', fila.total_hombres], ['mujeres', fila.total_mujeres],
+      ['niños', fila.total_ninos], ['visitas', fila.total_visitas],
+    ].filter(([, n]) => Number(n) > 0).map(([q, n]) => `${n} ${q}`);
+    if ((partes.length || Number(fila.total_general) > 0) && !String(fila.observaciones || '').includes('Conteo anterior')) {
+      const texto = `Conteo anterior: ${partes.join(', ') || ''}${
+        Number(fila.total_general) > 0 ? `${partes.length ? ' — ' : ''}total ${fila.total_general}` : ''
+      }.`;
+      db.prepare('UPDATE asistencias SET observaciones = ? WHERE id = ?')
+        .run(`${fila.observaciones ? fila.observaciones + '\n' : ''}${texto}`, fila.id);
+      conConteo++;
+    }
+
+    db.prepare('UPDATE asistencias SET miembros_presentes = NULL WHERE id = ?').run(fila.id);
+  }
+
+  if (conLista || conConteo) {
+    console.log(
+      `🔁 asistencias: ${conLista} presencia(s) traspasadas a la lista nominal` +
+        (conConteo ? ` y ${conConteo} conteo(s) anteriores anotados en las observaciones` : '') + '.'
+    );
+  }
+}
+
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
@@ -326,6 +388,7 @@ function ejecutarMigraciones() {
   oficialSupervisorAMiembro();
   movimientosACuentas();
   fondoParaLaCorporacion();
+  asistenciasNominales();
 }
 
 module.exports = { ejecutarMigraciones };
