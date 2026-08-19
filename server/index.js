@@ -57,7 +57,18 @@ app.get('/api/meta', authRequired, (req, res) => {
         delete: can(req.user.rol, m.name, 'delete'),
       },
     }));
-  res.json({ modules: mods, roles: ROLES, user: req.user });
+  // Iglesia local en la que trabaja el usuario. Si no tiene una asignada pero
+  // el sistema administra una sola, se muestra esa; con varias, "Todas".
+  let iglesiaNombre = null;
+  if (req.user.iglesia_id) {
+    const ig = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(req.user.iglesia_id);
+    iglesiaNombre = ig ? ig.nombre : null;
+  } else {
+    const iglesias = db.prepare('SELECT id, nombre FROM iglesias LIMIT 2').all();
+    if (iglesias.length === 1) iglesiaNombre = iglesias[0].nombre;
+  }
+
+  res.json({ modules: mods, roles: ROLES, user: { ...req.user, iglesia_nombre: iglesiaNombre } });
 });
 
 // ---------- Panel de control ----------

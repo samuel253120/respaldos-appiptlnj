@@ -95,6 +95,8 @@ Roles disponibles (editables en `server/permissions.js`):
 - **Tesorero** — gestiona Tesorería, Ayudas Sociales e Inventarios; consulta el resto.
 - **Solo consulta** — lectura, sin Tesorería.
 
+**Iglesia local a la vista**: la barra superior y el panel de control muestran siempre en qué congregación se está trabajando — la asignada al usuario o, si administra varias, "Todas las iglesias". Cuando el sistema administra una sola iglesia, se muestra su nombre aunque el usuario no tenga ninguna asignada.
+
 **Alcance multi-iglesia**: a cada usuario se le puede asignar una iglesia. Un usuario con iglesia asignada solo ve y modifica registros de esa iglesia (el sistema lo garantiza en el servidor, no solo en la interfaz). Un usuario sin iglesia asignada opera sobre todas.
 
 ## Arquitectura (expandible y modificable)

@@ -229,6 +229,10 @@ function renderShell() {
       <div class="main">
         <header class="topbar">
           <button class="menu-toggle" id="menuToggle">☰</button>
+          <div class="iglesia-local" title="Iglesia en la que está trabajando">
+            <span class="ic">⛪</span>
+            <span class="nm">${esc(USER.iglesia_nombre || 'Todas las iglesias')}</span>
+          </div>
           <div class="who"><span class="avatar">${esc(initials)}</span> <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></div>
           <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
         </header>
@@ -283,7 +287,12 @@ async function viewDashboard() {
   }
 
   content().innerHTML = `
-    <div class="page-head"><h2>📊 Panel de control</h2></div>
+    <div class="page-head">
+      <div>
+        <h2>📊 Panel de control</h2>
+        <p class="sub-iglesia">${esc(USER.iglesia_nombre || 'Todas las iglesias')}</p>
+      </div>
+    </div>
     <div class="stats">
       ${statDefs.map(([name, ic, lbl, num]) => `
         <div class="stat" onclick="location.hash='#/m/${name}'">

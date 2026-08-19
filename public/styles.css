@@ -91,6 +91,20 @@ a:hover { text-decoration: underline; }
   background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 24px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; top: 0; z-index: 20;
 }
+.iglesia-local {
+  display: flex; align-items: center; gap: 8px; min-width: 0; margin-right: auto;
+  background: #eef2fb; border: 1px solid #dbe3f5; border-radius: 999px; padding: 6px 14px 6px 10px;
+}
+.iglesia-local .ic { font-size: 15px; line-height: 1; }
+.iglesia-local .nm {
+  font-size: 13.5px; font-weight: 700; color: var(--marca-azul);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.page-head .sub-iglesia {
+  font-size: 13.5px; color: var(--marca-azul); font-weight: 600; margin-top: 2px;
+  display: flex; align-items: center; gap: 6px;
+}
+.page-head .sub-iglesia::before { content: '⛪'; font-size: 13px; }
 .topbar .who { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .topbar .who b { color: var(--text); }
 .avatar {
@@ -312,7 +326,9 @@ table.grid tr { cursor: pointer; }
   .side-link { padding: 12px 16px; font-size: 15px; }        /* objetivos táctiles más grandes */
   .content { padding: 14px; }
   .topbar { padding: 10px 14px; }
-  .topbar .who span:last-child { display: none; }             /* ocultar correo en pantallas chicas */
+  .topbar .who span:last-child { display: none; }             /* ocultar datos del usuario en pantallas chicas */
+  .iglesia-local { padding: 5px 10px 5px 8px; }
+  .iglesia-local .nm { max-width: 42vw; font-size: 12.5px; }
   .page-head h2 { font-size: 18px; }
   .stats { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
   .stat { padding: 12px 14px; }
