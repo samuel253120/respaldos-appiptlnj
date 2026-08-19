@@ -106,10 +106,11 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
     const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(despues.cuerpo_id);
     const nombreCuerpo = cuerpo ? cuerpo.nombre : 'un cuerpo';
     const cargos = [
-      ['presidente_id', 'Presidente(a)'],
-      ['vicepresidente_id', 'Vicepresidente(a)'],
+      ['primer_jefe_id', 'Primer jefe / Primera jefa'],
+      ['segundo_jefe_id', 'Segundo jefe / Segunda jefa'],
       ['secretario_id', 'Secretario(a)'],
       ['tesorero_id', 'Tesorero(a)'],
+      ['consejero_id', 'Consejero(a)'],
     ];
     for (const [campo, cargo] of cargos) {
       const nuevo = despues[campo];

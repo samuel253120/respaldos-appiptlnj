@@ -114,16 +114,29 @@ Al elegir **Cuerpo** aparecen los campos que solo tienen sentido en una entidad 
 |---|---|
 | Fecha de constitución formal | Cuándo se constituyó |
 | Reglamento (documento) + fecha de aprobación | El reglamento vigente, adjunto |
-| Presidente(a), Secretario(a), Tesorero(a) | La directiva |
-| Período de la directiva | Ej. 2026 – 2027 |
+
+La directiva no se guarda en el cuerpo, sino en su propio módulo, para conservar también las anteriores (ver más abajo).
 
 ### Histórico de directivas 🏅
 
-Cada cuerpo elige su directiva por períodos, y el módulo **Directivas de Cuerpos** guarda todas: la vigente y las anteriores, con período, fechas, cargos (presidente, vicepresidente, secretario, tesorero), otros cargos y el acta de elección adjunta.
+Cada cuerpo elige su directiva por períodos, y el módulo **Directivas de Cuerpos** guarda todas: la vigente y las anteriores, con su período, sus fechas, sus integrantes y el acta de elección adjunta.
+
+Una directiva se compone de:
+
+| Cargo | Se elige entre | Obligatorio |
+|---|---|---|
+| Oficial supervisor(a) | Pastores / Guías | No |
+| Primer jefe / Primera jefa | Miembros | No |
+| Segundo jefe / Segunda jefa | Miembros | No |
+| Secretario(a) | Miembros | No |
+| Tesorero(a) | Miembros | No |
+| Consejero(a) | Miembros | No — cargo adicional, no siempre se designa |
+
+Además hay un campo **Otros cargos** en texto libre, por si el cuerpo designa alguno más.
 
 - Al marcar una directiva como **Vigente**, las demás de ese cuerpo pasan solas a *Finalizada*: nunca hay dos vigentes a la vez.
 - El histórico se ve al pie de la ficha del cuerpo, con la vigente destacada, y desde ahí se registra una nueva con el cuerpo ya seleccionado.
-- Cada persona que asume un cargo queda anotada en su **bitácora** ("Asume como Presidente(a) de «Damas» — período 2026 – 2027").
+- Cada persona que asume un cargo queda anotada en su **bitácora** ("Asume como Primer jefe / Primera jefa de «Damas» — período 2026 – 2027").
 
 ### Estado de cumplimiento ✅
 

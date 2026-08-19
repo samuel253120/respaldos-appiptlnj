@@ -103,7 +103,7 @@ function directivaCuerpoAHistorico() {
     const yaTiene = db.prepare('SELECT id FROM directivas WHERE cuerpo_id = ?').get(fila.id);
     if (yaTiene) continue;
     db.prepare(
-      `INSERT INTO directivas (cuerpo_id, periodo, fecha_inicio, presidente_id, secretario_id,
+      `INSERT INTO directivas (cuerpo_id, periodo, fecha_inicio, primer_jefe_id, secretario_id,
                                tesorero_id, iglesia_id, estado, notas)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'Vigente', ?)`
     ).run(
@@ -127,11 +127,37 @@ function directivaCuerpoAHistorico() {
   }
 }
 
+
+/**
+ * Los cargos de la directiva pasaron a los que usa la organización:
+ * presidente → primer jefe / primera jefa, y vicepresidente → segundo jefe /
+ * segunda jefa. Se traspasan los valores ya registrados.
+ */
+function renombrarCargosDirectiva() {
+  const columnas = db.prepare('PRAGMA table_info("directivas")').all().map((c) => c.name);
+  const pares = [
+    ['presidente_id', 'primer_jefe_id'],
+    ['vicepresidente_id', 'segundo_jefe_id'],
+  ].filter(([viejo, nuevo]) => columnas.includes(viejo) && columnas.includes(nuevo));
+  if (!pares.length) return;
+
+  let movidos = 0;
+  for (const [viejo, nuevo] of pares) {
+    const info = db
+      .prepare(`UPDATE directivas SET "${nuevo}" = "${viejo}", "${viejo}" = NULL
+                WHERE "${viejo}" IS NOT NULL AND ("${nuevo}" IS NULL)`)
+      .run();
+    movidos += info.changes;
+  }
+  if (movidos) console.log(`🔁 directivas: ${movidos} cargo(s) traspasados a primer/segundo jefe.`);
+}
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
   normalizarTipoCuerpos();
   directivaCuerpoAHistorico();
+  renombrarCargosDirectiva();
 }
 
 module.exports = { ejecutarMigraciones };

@@ -1542,10 +1542,12 @@ async function renderPanelesCuerpo(cuerpoId, contenedor) {
               </div>
               <div class="df">${fmtDate(d.fecha_inicio)}${d.fecha_termino ? ' — ' + fmtDate(d.fecha_termino) : ''}</div>
               <div class="dc">
-                ${cargo(d, 'presidente_id', 'Presidente(a)')}
-                ${cargo(d, 'vicepresidente_id', 'Vicepresidente(a)')}
+                ${cargo(d, 'oficial_supervisor_id', 'Oficial supervisor(a)')}
+                ${cargo(d, 'primer_jefe_id', 'Primer jefe/a')}
+                ${cargo(d, 'segundo_jefe_id', 'Segundo jefe/a')}
                 ${cargo(d, 'secretario_id', 'Secretario(a)')}
                 ${cargo(d, 'tesorero_id', 'Tesorero(a)')}
+                ${cargo(d, 'consejero_id', 'Consejero(a)')}
                 ${d.otros_cargos ? `<span class="cargo">${esc(d.otros_cargos)}</span>` : ''}
               </div>
             </li>`).join('')}
