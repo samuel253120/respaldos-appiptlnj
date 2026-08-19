@@ -1,5 +1,11 @@
 /**
  * Módulo: Usuarios del sistema.
+ *
+ * El identificador de acceso es el RUT: no cambia y es único por persona
+ * (el correo electrónico sí puede cambiar, por eso es solo un dato de
+ * contacto). El RUT se valida con su dígito verificador y se guarda
+ * normalizado como "12345678-9".
+ *
  * - La contraseña se cifra con bcrypt antes de guardar (hook beforeSave).
  * - Al editar, dejar la contraseña vacía la mantiene sin cambios.
  * - No se puede eliminar el propio usuario ni el último administrador.
@@ -16,18 +22,23 @@ module.exports = {
   group: 'Administración',
   order: 90,
   display: '{nombre}',
-  searchFields: ['nombre', 'email'],
-  listFields: ['nombre', 'email', 'rol', 'iglesia_id', 'activo'],
+  searchFields: ['nombre', 'rut', 'email'],
+  listFields: ['rut', 'nombre', 'rol', 'iglesia_id', 'activo'],
   defaultSort: { field: 'nombre', dir: 'asc' },
   fields: [
+    {
+      name: 'rut', label: 'RUT (usuario de acceso)', type: 'rut', required: true, unique: true,
+      help: 'Con o sin puntos, con guion y dígito verificador. Ej: 12.345.678-5',
+    },
     { name: 'nombre', label: 'Nombre completo', type: 'text', required: true },
-    { name: 'email', label: 'Correo electrónico (usuario de acceso)', type: 'email', required: true },
     { name: 'password', label: 'Contraseña', type: 'password', required: true, help: 'Al editar, dejar vacío para no cambiarla' },
     {
       name: 'rol', label: 'Rol', type: 'select', required: true, default: 'consulta',
       options: ROLES.map((r) => ({ value: r.value, label: r.label })),
     },
     { name: 'iglesia_id', label: 'Iglesia asignada (vacío = acceso a todas)', type: 'ref', ref: 'iglesias' },
+    { name: 'email', label: 'Correo electrónico (contacto, opcional)', type: 'email' },
+    { name: 'telefono', label: 'Teléfono (opcional)', type: 'tel' },
     { name: 'activo', label: 'Activo', type: 'boolean', default: 1 },
   ],
   hooks: {

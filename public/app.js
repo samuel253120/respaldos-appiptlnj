@@ -49,6 +49,17 @@ function toast(msg, isErr) {
   clearTimeout(t._h);
   t._h = setTimeout(() => (t.className = t.className.replace('show', '')), 3200);
 }
+/** Deja el RUT solo con dígitos y K. */
+function rutLimpiar(v) {
+  return String(v == null ? '' : v).replace(/[^0-9kK]/g, '').toUpperCase();
+}
+/** Muestra el RUT con puntos y guion: 12.345.678-5 */
+function rutFormatear(v) {
+  const c = rutLimpiar(v);
+  if (c.length < 2) return c;
+  return c.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + '-' + c.slice(-1);
+}
+
 function badgeClass(value) {
   const v = String(value || '').toLowerCase();
   if (/(activ|vigente|aprobad|firmad|emitido|entregad|bueno|completad|ingreso|sí)/.test(v)) return 'green';
@@ -138,20 +149,24 @@ function renderLogin() {
       <form class="login-card" id="loginForm">
         <div class="logo">⛪</div>
         <h1>Sistema de Gestión de Iglesias</h1>
-        <p class="sub">Ingrese sus credenciales para continuar</p>
+        <p class="sub">Ingrese con su RUT para continuar</p>
         <div class="login-error" id="loginError"></div>
-        <input type="email" id="loginEmail" placeholder="Correo electrónico" required autocomplete="username" />
+        <input type="text" id="loginRut" placeholder="RUT (ej: 12.345.678-5)" required autocomplete="username" inputmode="text" />
         <input type="password" id="loginPass" placeholder="Contraseña" required autocomplete="current-password" />
         <button class="btn" type="submit">Iniciar sesión</button>
       </form>
     </div>`;
+  const rutInput = document.getElementById('loginRut');
+  rutInput.addEventListener('blur', () => {
+    if (rutInput.value && !rutInput.value.includes('@')) rutInput.value = rutFormatear(rutInput.value);
+  });
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const errEl = document.getElementById('loginError');
     errEl.textContent = '';
     try {
       const data = await api('POST', '/auth/login', {
-        email: document.getElementById('loginEmail').value,
+        rut: document.getElementById('loginRut').value,
         password: document.getElementById('loginPass').value,
       });
       TOKEN = data.token;
@@ -193,7 +208,7 @@ function renderShell() {
       <div class="main">
         <header class="topbar">
           <button class="menu-toggle" id="menuToggle">☰</button>
-          <div class="who"><span class="avatar">${esc(initials)}</span> <span><b>${esc(USER.nombre)}</b><br>${esc(USER.email)}</span></div>
+          <div class="who"><span class="avatar">${esc(initials)}</span> <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></div>
           <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
         </header>
         <div class="content" id="content"></div>
@@ -503,6 +518,8 @@ function cellValue(f, row, col) {
       return v ? '<span class="badge green">Sí</span>' : '<span class="badge red">No</span>';
     case 'date':
       return fmtDate(v);
+    case 'rut':
+      return esc(rutFormatear(v));
     case 'file':
       if (!v) return '';
       if (/\.(jpe?g|png|gif|webp)$/i.test(v)) return `<img class="thumb" src="/uploads/${esc(v)}" alt="" />`;
@@ -558,6 +575,10 @@ async function viewForm(name, id) {
   m.fields.forEach((f) => {
     if (f.type === 'multiref') initMultiref(f, row);
     if (f.type === 'file') initFileField(f);
+    if (f.type === 'rut') {
+      const el = document.querySelector(`#recForm [name="${f.name}"]`);
+      if (el) el.addEventListener('blur', () => { if (el.value) el.value = rutFormatear(el.value); });
+    }
   });
 
   const foot = document.getElementById('formFoot');
@@ -628,6 +649,9 @@ function fieldHtml(f, row, isNew) {
       break;
     case 'password':
       input = `<input type="password" name="${f.name}" value="" autocomplete="new-password" ${f.required && isNew ? 'required' : ''} />`;
+      break;
+    case 'rut':
+      input = `<input type="text" name="${f.name}" value="${esc(rutFormatear(val))}" placeholder="12.345.678-5" ${f.required ? 'required' : ''} />`;
       break;
     case 'money':
     case 'number':
@@ -855,6 +879,7 @@ function printGenerico(m, row) {
             if (f.type === 'ref') v = row[f.name + '_label'];
             if (f.type === 'multiref') v = (row[f.name + '_labels'] || []).join(', ');
             if (f.type === 'money') v = fmtMoney(v);
+            if (f.type === 'rut') v = rutFormatear(v);
             if (f.type === 'boolean') v = v ? 'Sí' : 'No';
             if (v == null || v === '') return '';
             return `<tr><td class="k">${esc(f.label)}</td><td>${esc(v)}</td></tr>`;

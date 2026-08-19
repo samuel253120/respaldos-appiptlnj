@@ -24,6 +24,7 @@ const express = require('express');
 const { db } = require('./db');
 const { getModule, allModules, displayOf } = require('./registry');
 const { authRequired, requirePerm } = require('./auth');
+const rut = require('./rut');
 const { can } = require('./permissions');
 
 function fieldMap(def) {
@@ -56,6 +57,8 @@ function coerce(field, value) {
       const arr = Array.isArray(value) ? value : [];
       return JSON.stringify(arr.map(Number).filter((n) => Number.isFinite(n) && n > 0));
     }
+    case 'rut':
+      return rut.canonico(value);
     default:
       return String(value);
   }
@@ -216,6 +219,23 @@ function buildRouter() {
           if (val === null || val === undefined || val === '') {
             if (f.type === 'password' && !isNew) continue; // contraseña solo obligatoria al crear
             return res.status(400).json({ error: `El campo "${f.label}" es obligatorio` });
+          }
+        }
+
+        // Validación de RUT (dígito verificador) y de campos únicos
+        for (const f of def.fields) {
+          const val = data[f.name];
+          if (val === undefined || val === null || val === '') continue;
+          if (f.type === 'rut' && !rut.validar(val)) {
+            return res.status(400).json({ error: `El ${f.label} ingresado no es válido: revise el número y su dígito verificador` });
+          }
+          if (f.unique) {
+            const dup = db
+              .prepare(`SELECT id FROM "${def.name}" WHERE lower("${f.name}") = lower(?) AND id != ?`)
+              .get(String(val), id || 0);
+            if (dup) {
+              return res.status(400).json({ error: `Ya existe un registro con ese ${f.label.toLowerCase()}` });
+            }
           }
         }
 

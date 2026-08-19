@@ -16,6 +16,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { db } = require('./db');
 const { can } = require('./permissions');
+const rutUtil = require('./rut');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'cambiar-esta-clave-en-produccion';
 const TOKEN_TTL = '12h';
@@ -54,9 +55,24 @@ function requirePerm(moduleName, action) {
 const router = express.Router();
 
 router.post('/login', (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'Correo y contraseña son requeridos' });
-  const user = db.prepare('SELECT * FROM usuarios WHERE lower(email) = lower(?)').get(String(email).trim());
+  const body = req.body || {};
+  // El identificador de acceso es el RUT. Se acepta también `usuario` o
+  // `email` por compatibilidad con clientes anteriores.
+  const identificador = String(body.rut || body.usuario || body.email || '').trim();
+  const password = body.password;
+  if (!identificador || !password) {
+    return res.status(400).json({ error: 'RUT y contraseña son requeridos' });
+  }
+
+  // Búsqueda por RUT normalizado (acepta con o sin puntos y guion).
+  let user = db.prepare('SELECT * FROM usuarios WHERE rut = ?').get(rutUtil.canonico(identificador));
+
+  // Respaldo: cuentas creadas antes de usar el RUT todavía pueden entrar con
+  // su correo hasta que se les asigne uno.
+  if (!user && identificador.includes('@')) {
+    user = db.prepare('SELECT * FROM usuarios WHERE lower(email) = lower(?)').get(identificador);
+  }
+
   if (!user || !user.password || !bcrypt.compareSync(String(password), user.password)) {
     return res.status(401).json({ error: 'Credenciales incorrectas' });
   }

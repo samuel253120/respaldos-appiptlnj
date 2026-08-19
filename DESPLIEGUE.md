@@ -19,7 +19,7 @@ Esta guía explica cómo publicar el sistema en internet para que usted y su equ
      node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
      ```
 6. En **Settings → Networking → Generate Domain** obtenga la dirección pública, algo como `https://respaldos-appiptlnj-production.up.railway.app`.
-7. Abra esa dirección, entre con `admin@iglesia.local` / `admin123` y **cambie la contraseña de inmediato** (módulo Usuarios).
+7. Abra esa dirección, entre con RUT `11.111.111-1` y contraseña `admin123`, y **cambie la contraseña de inmediato** (módulo Usuarios).
 
 Cada vez que suba cambios al repositorio, Railway vuelve a desplegar solo.
 

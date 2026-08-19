@@ -29,7 +29,7 @@ npm run dev
 
 Al primer arranque se crean automáticamente:
 
-- **Usuario administrador**: `admin@iglesia.local` / `admin123` → **cambiar la contraseña de inmediato** (módulo Usuarios).
+- **Usuario administrador**: RUT `11.111.111-1` / contraseña `admin123` → **cambiar la contraseña de inmediato** (módulo Usuarios).
 - Una iglesia de ejemplo ("Iglesia Central").
 
 ### Variables de entorno
@@ -41,6 +41,12 @@ Al primer arranque se crean automáticamente:
 | `JWT_SECRET` | (insegura) | **Definir en producción**: clave para firmar sesiones |
 
 La base de datos es un único archivo SQLite (`data/iglesias.db`); para respaldar el sistema basta copiar la carpeta `data/`.
+
+## Acceso por RUT
+
+El identificador de acceso es el **RUT**, no el correo: no cambia y es único por persona (el correo es solo un dato de contacto opcional). Se puede escribir con o sin puntos —`12.345.678-5`, `12345678-5` o `123456785` son equivalentes— y el sistema valida el **dígito verificador** e impide RUT repetidos.
+
+> Cuentas creadas antes de este cambio que aún no tengan RUT pueden seguir entrando con su correo hasta que se les asigne uno desde el módulo Usuarios (el servidor lo avisa al iniciar).
 
 ## Usuarios, roles y alcance por iglesia
 
@@ -107,7 +113,9 @@ Agregar el campo al arreglo `fields` del módulo y reiniciar: la columna se crea
 
 ### Tipos de campo disponibles
 
-`text` · `textarea` · `number` · `money` · `date` · `time` · `select` (con `options`) · `boolean` · `ref` (relación a otro módulo, con `ref`) · `multiref` (varias relaciones, ej. integrantes/asistentes) · `file` (adjuntos con carga) · `email` · `tel` · `password`
+`text` · `textarea` · `number` · `money` · `date` · `time` · `select` (con `options`) · `boolean` · `ref` (relación a otro módulo, con `ref`) · `multiref` (varias relaciones, ej. integrantes/asistentes) · `file` (adjuntos con carga) · `email` · `tel` · `password` · `rut` (valida dígito verificador y guarda normalizado)
+
+Cualquier campo acepta además `unique: true` para impedir valores repetidos.
 
 ### Lógica propia por módulo
 
@@ -121,7 +129,7 @@ Agregar el campo al arreglo `fields` del módulo y reiniciar: la columna se crea
 Todas las rutas bajo `/api`, autenticadas con `Authorization: Bearer <token>`:
 
 ```
-POST   /api/auth/login              { email, password } → { token, user }
+POST   /api/auth/login              { rut, password } → { token, user }
 GET    /api/meta                    módulos y esquemas visibles para el usuario
 GET    /api/dashboard               indicadores del panel
 POST   /api/upload                  carga de archivos (multipart, campo "archivo")
@@ -152,6 +160,6 @@ Para que el equipo acceda desde cualquier lugar (computador o celular), vea la g
 ## Producción (resumen)
 
 1. Definir `JWT_SECRET` con un valor largo y aleatorio.
-2. Cambiar la contraseña del administrador.
+2. Cambiar la contraseña del administrador (entra con RUT `11.111.111-1`).
 3. Servir detrás de HTTPS (Railway/Render lo dan automático; en VPS usar Caddy o Nginx).
 4. Respaldar la carpeta de datos (`data/` local o el volumen `/data`) periódicamente.
