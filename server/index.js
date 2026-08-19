@@ -15,6 +15,7 @@ const { buildRouter } = require('./crud');
 const { allModules } = require('./registry');
 const { can, ROLES } = require('./permissions');
 const { ensureSeed } = require('./seed');
+const { ejecutarMigraciones } = require('./migraciones');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
@@ -142,6 +143,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Error interno del servidor' });
 });
 
+ejecutarMigraciones();
 ensureSeed();
 
 const PORT = process.env.PORT || 3000;

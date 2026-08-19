@@ -234,7 +234,7 @@ function buildRouter() {
               .prepare(`SELECT id FROM "${def.name}" WHERE lower("${f.name}") = lower(?) AND id != ?`)
               .get(String(val), id || 0);
             if (dup) {
-              return res.status(400).json({ error: `Ya existe un registro con ese ${f.label.toLowerCase()}` });
+              return res.status(400).json({ error: `Ya existe otro ${def.labelSingular.toLowerCase()} con ese ${f.label}` });
             }
           }
         }
