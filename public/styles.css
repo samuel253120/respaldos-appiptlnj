@@ -579,6 +579,13 @@ ul.mov-list .monto-egreso { color: var(--danger); font-variant-numeric: tabular-
 .saldo-origen b { color: var(--marca-azul); }
 .saldo-origen b.saldo-negativo { color: var(--danger); }
 
+/* Cómo se le trata a la persona, junto al título de su ficha */
+.trato-chip {
+  display: inline-block; margin-left: 10px; padding: 3px 12px; border-radius: 999px;
+  background: #eef2ff; color: var(--marca-azul); font-size: 13.5px; font-weight: 600;
+  vertical-align: middle;
+}
+
 /* Toast */
 #toast {
   position: fixed; bottom: 24px; right: 24px; background: #0f172a; color: #fff;

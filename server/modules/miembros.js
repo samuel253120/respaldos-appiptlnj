@@ -11,7 +11,17 @@
  * Los documentos del miembro (carnet, ficha de registro, ficha de
  * actualización, etc.) van en su propio módulo, para poder adjuntar todos los
  * que hagan falta a una misma persona.
+ *
+ * Trato: cada miembro muestra cómo se le dice —Hermano, Hermana, Oficial,
+ * Pastor o Pastora—, calculado según su género, si pertenece al cuerpo de
+ * oficiales y si está registrado en Pastores / Guías (ver server/tratamiento.js).
+ * Se puede fijar a mano cuando corresponda otro trato.
+ *
+ * Matrimonio: al vincular a dos miembros como cónyuges, el vínculo se
+ * devuelve solo en la ficha del otro, y las fechas de matrimonio se copian a
+ * quien las tenga en blanco, para no registrarlas dos veces.
  */
+const { TRATAMIENTOS, tratamientoDe } = require('../tratamiento');
 
 /** Años cumplidos a la fecha de hoy. */
 function edadEnAnios(fechaNacimiento) {
@@ -43,9 +53,13 @@ module.exports = {
   order: 20,
   display: '{nombres} {apellidos}',
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono', 'email'],
-  listFields: ['foto', 'rut', 'nombres', 'apellidos', 'edad', 'iglesia_id', 'telefono', 'estado'],
+  listFields: ['foto', 'tratamiento', 'nombres', 'apellidos', 'rut', 'edad', 'iglesia_id', 'estado'],
   defaultSort: { field: 'apellidos', dir: 'asc' },
   computed: [
+    {
+      name: 'tratamiento', label: 'Trato', type: 'texto',
+      calc: (r, { db }) => tratamientoDe(r, db),
+    },
     {
       name: 'edad', label: 'Edad', type: 'texto',
       calc: (r) => {
@@ -85,6 +99,11 @@ module.exports = {
       name: 'fecha_matrimonio_religioso', label: 'Fecha de matrimonio por la iglesia', type: 'date',
       showIf: { field: 'estado_civil', equals: 'Casado(a)' },
     },
+    {
+      name: 'conyuge_id', label: 'Cónyuge (miembro)', type: 'ref', ref: 'miembros',
+      showIf: { field: 'estado_civil', in: ['Casado(a)', 'Unión libre', 'Viudo(a)'] },
+      help: 'Si su cónyuge también está registrado, elíjalo aquí: el vínculo queda en las dos fichas.',
+    },
     { name: 'telefono', label: 'Teléfono', type: 'tel' },
     { name: 'email', label: 'Correo electrónico', type: 'email' },
     { name: 'direccion', label: 'Dirección', type: 'text' },
@@ -101,6 +120,62 @@ module.exports = {
       name: 'foto', label: 'Foto', type: 'file', accept: 'image/*',
       help: 'Se puede sacar con el teléfono: al subirla se ajusta sola de tamaño para que cargue rápido.',
     },
+    {
+      name: 'tratamiento_personalizado', label: 'Trato (fijado a mano)', type: 'select',
+      options: TRATAMIENTOS,
+      help: 'Solo si le corresponde un trato distinto del que calcula el sistema. En blanco, se calcula solo.',
+    },
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],
+
+  hooks: {
+    beforeSave(data, { id, existing }) {
+      const conyuge = data.conyuge_id !== undefined ? data.conyuge_id : existing ? existing.conyuge_id : null;
+      if (conyuge && id && Number(conyuge) === Number(id)) {
+        return 'Un miembro no puede figurar como su propio cónyuge';
+      }
+      return null;
+    },
+
+    /**
+     * El matrimonio se ve desde los dos lados: al vincular a alguien, su
+     * cónyuge queda apuntando de vuelta, se sueltan los vínculos anteriores
+     * que quedaran colgando y se copian las fechas de matrimonio a quien las
+     * tenga en blanco.
+     */
+    afterSave(fila, { db }) {
+      const conyugeId = fila.conyuge_id || null;
+
+      // Quien estuviera vinculado a esta persona y ya no corresponda, se suelta
+      db.prepare('UPDATE miembros SET conyuge_id = NULL WHERE conyuge_id = ? AND id != ?')
+        .run(fila.id, conyugeId || 0);
+      if (!conyugeId) return;
+
+      const conyuge = db.prepare('SELECT * FROM miembros WHERE id = ?').get(conyugeId);
+      if (!conyuge) {
+        db.prepare('UPDATE miembros SET conyuge_id = NULL WHERE id = ?').run(fila.id);
+        return;
+      }
+
+      // Si la otra persona venía vinculada a alguien más, ese vínculo se suelta
+      if (conyuge.conyuge_id && Number(conyuge.conyuge_id) !== Number(fila.id)) {
+        db.prepare('UPDATE miembros SET conyuge_id = NULL WHERE id = ?').run(conyuge.conyuge_id);
+      }
+
+      const campos = ['conyuge_id = ?'];
+      const valores = [fila.id];
+      for (const f of ['fecha_matrimonio_civil', 'fecha_matrimonio_religioso']) {
+        if (fila[f] && !conyuge[f]) {
+          campos.push(`"${f}" = ?`);
+          valores.push(fila[f]);
+        }
+      }
+      db.prepare(`UPDATE miembros SET ${campos.join(', ')} WHERE id = ?`).run(...valores, conyuge.id);
+    },
+
+    beforeDelete(fila, { db }) {
+      db.prepare('UPDATE miembros SET conyuge_id = NULL WHERE conyuge_id = ?').run(fila.id);
+      return null;
+    },
+  },
 };

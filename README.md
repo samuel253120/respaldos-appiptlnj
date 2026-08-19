@@ -178,6 +178,33 @@ Una tarjeta lista **los miembros que cumplen años más pronto**, con su foto, l
 
 ## Ficha del miembro 🧍
 
+### Cómo se le trata a cada persona
+
+En la iglesia a cada miembro se le dice de una manera, y el sistema la calcula sola:
+
+| Trato | A quién |
+|---|---|
+| **Hermano** / **Hermana** | A los miembros en general, según su género |
+| **Oficial** | A los **varones** que pertenecen al cuerpo de oficiales |
+| **Pastor** / **Pastora** | A quienes están registrados en *Pastores / Guías* (se reconoce por el RUT) y, si así se usa, a su cónyuge |
+
+El trato aparece como columna en el listado y junto al nombre al abrir la ficha. **No se guarda**: se calcula al leer, así que cuando alguien entra al cuerpo de oficiales o queda registrado como pastor, cambia solo.
+
+Cuando a alguien le corresponda otro trato (diácono, diaconisa, anciano…), se fija a mano en su ficha, en **Trato (fijado a mano)**, y ese manda sobre el cálculo.
+
+> El cuerpo de oficiales es el que se nombre en **Configuración → Organización → Cuerpo de oficiales** («Oficiales» por defecto), y el trato de *Pastor(a)* para el cónyuge se puede desactivar allí mismo.
+
+### Matrimonios vinculados 💍
+
+Cuando dos miembros están casados entre sí, se vinculan: basta elegir al **cónyuge** en la ficha de uno —el campo aparece con estado civil *Casado(a)*, *Unión libre* o *Viudo(a)*— y el vínculo queda **en las dos fichas**.
+
+- Las **fechas de matrimonio** (civil y por la iglesia) se copian al cónyuge que las tenga en blanco: se escriben una sola vez.
+- Si se cambia el vínculo, el anterior se suelta solo: nadie queda apuntando a quien ya no corresponde.
+- Nadie puede figurar como su propio cónyuge, y si se elimina una ficha, el vínculo del otro queda limpio.
+
+Lo mismo en **Pastores / Guías**: el pastor y la pastora se vinculan entre sí, y si el cónyuge está registrado solo como miembro, se indica en el campo *Cónyuge (miembro)*.
+
+
 ### Edad al día
 
 Basta con la **fecha de nacimiento**: la edad aparece al lado mientras se escribe y se muestra en el listado. No se guarda —se calcula cada vez que se lee la ficha—, así que nunca queda desactualizada. A los menores de un año se les muestra la edad en meses.
@@ -319,7 +346,7 @@ Los administradores tienen en el menú la entrada **Configuración**, con opcion
 
 - **Mantenimiento** — deja el sistema en mantenimiento y define el aviso que verán los usuarios.
 - **Identidad** — nombre y lema de la institución.
-- **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores de los cuerpos), porcentaje de la ofrenda que se aparta y si ese reparto se registra solo en tesorería.
+- **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores y quienes reciben el trato de *Oficial*), si el cónyuge del pastor recibe el trato de *Pastor(a)*, porcentaje de la ofrenda que se aparta y si ese reparto se registra solo en tesorería.
 - **Preferencias** — símbolo de moneda, registros por página, duración de la sesión, tamaño y calidad de las imágenes al subirlas, cuántos cumpleaños muestra el panel y si la bitácora registra automáticamente.
 
 ### Modo mantenimiento

@@ -769,6 +769,17 @@ async function viewForm(name, id, precarga) {
   const listas = [...new Set(m.fields.filter((f) => f.ref || f.type === 'persona').map(rutaOpciones))];
   await Promise.all(listas.map((r) => getOptions(r).catch(() => [])));
 
+  // Cómo se le trata a esta persona, junto al título de su ficha
+  if (!isNew && row.tratamiento) {
+    const titulo = content().querySelector('.page-head h2');
+    if (titulo) {
+      titulo.insertAdjacentHTML(
+        'beforeend',
+        ` <span class="trato-chip">${esc(row.tratamiento)} ${esc(`${row.nombres || ''} ${row.apellidos || ''}`.trim())}</span>`
+      );
+    }
+  }
+
   const grid = document.getElementById('formGrid');
   grid.innerHTML = m.fields.filter((f) => !f.computed).map((f) => fieldHtml(f, row, isNew)).join('');
 

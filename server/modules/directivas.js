@@ -16,23 +16,7 @@
  * Regla: un cuerpo tiene como máximo UNA directiva vigente. Al marcar una
  * como vigente, las demás de ese cuerpo pasan a "Finalizada" automáticamente.
  */
-/** Sin distinguir mayúsculas ni tildes, para comparar nombres escritos a mano. */
-function normalizar(texto) {
-  return (texto || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
-
-/** El cuerpo cuyos integrantes son los oficiales, según Configuración. */
-function cuerpoDeOficiales(db) {
-  const ajustes = require('../ajustes'); // tardío: ajustes usa la base, que a su vez carga este registro
-  const nombre = normalizar(ajustes.obtener('cuerpo_oficiales'));
-  if (!nombre) return null;
-  const filas = db.prepare('SELECT id, nombre, lider_id, integrantes FROM cuerpos').all();
-  return filas.find((c) => normalizar(c.nombre) === nombre) || null;
-}
+const { cuerpoDeOficiales } = require('../oficiales');
 
 /**
  * Miembros que pueden ser oficial supervisor(a): los del cuerpo de oficiales.
