@@ -407,6 +407,22 @@ El sistema lo cuida solo:
 - Si todavía no existe, el listado de Pastores / Guías lo muestra en una columna —**Registrado** o **Falta registrarlo**— y al pie de su ficha aparece el botón **➕ Crear su ficha de miembro**, que la crea con sus mismos datos (nombres, RUT, iglesia, fecha de nacimiento, contacto y foto) y las deja enlazadas.
 - De ese enlace depende el **trato**: quien tiene ficha en Pastores / Guías es *Pastor* o *Pastora* en todo el sistema, y su cónyuge también.
 
+### El RUT tiene que coincidir en las dos fichas
+
+El enlace es lo que une las dos fichas, pero **el RUT es la verificación**: si es la misma persona, tiene que ser el mismo número en Pastores / Guías y en Miembros. Al pie de la ficha del pastor se ven los dos, uno debajo del otro, con su estado:
+
+| Estado | Qué significa |
+|---|---|
+| **Registrado** | Tiene su ficha de miembro y el RUT calza en las dos |
+| **Falta el RUT en su ficha** | Su ficha de miembro aún no lo tiene. Un botón lo **copia** desde aquí |
+| **Falta el RUT aquí** | Es la ficha de pastor la que no lo tiene |
+| **RUT distinto** | Los dos números existen y no son el mismo: hay que corregir el equivocado |
+| **Falta registrarlo** | Todavía no tiene ficha de miembro |
+
+El sistema **no deja que se descuadren**: no acepta enlazar dos fichas con RUT distinto, ni cambiar el RUT en una sola de ellas —*«El RUT no coincide con el de su ficha en Pastores / Guías (Ana Vera: 24.333.444-6). Corrija el que esté equivocado.»*—, y al copiar el RUT avisa si ya lo tiene otro miembro. Cualquier otro dato se sigue editando sin estorbo.
+
+> Mientras tanto, quien no tenga RUT en su ficha de miembro **igual recibe su trato de Pastor o Pastora**, porque el enlace basta. El RUT queda como comprobación para cuando se corrijan.
+
 Así el pastor y la pastora aparecen en la membresía, cuentan en los totales de su iglesia, pueden integrar cuerpos, se les toma asistencia y tienen su bitácora, como corresponde a un miembro más.
 
 ## Registro de Servicios 🕊️

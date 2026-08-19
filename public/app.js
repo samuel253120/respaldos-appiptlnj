@@ -2321,30 +2321,48 @@ function mostrarSaldoOrigen() {
 async function renderFichaMiembroPastor(pastorId, row, contenedor) {
   const modMiembros = MOD['miembros'];
   if (!modMiembros) return;
-  const tiene = row.miembro_id;
+  let d;
+  try {
+    d = await api('GET', `/pastores/${pastorId}/ficha-miembro`);
+  } catch (e) {
+    contenedor.innerHTML = '';
+    return;
+  }
+
+  const nivel = { ok: 'green', medio: '', bajo: 'red' }[d.nivel] || '';
+  const rutTexto = (v) => (v ? rutFormatear(v) : '—');
+  const explicacion = {
+    'Registrado': 'Está registrado(a) también como miembro, y el RUT calza en las dos fichas.',
+    'RUT distinto': 'El RUT de esta ficha y el de su ficha de miembro no son el mismo. Corrija el que esté equivocado.',
+    'Falta el RUT en su ficha': 'Su ficha de miembro todavía no tiene RUT. Cuando lo tenga, debe ser el mismo de aquí.',
+    'Falta el RUT aquí': 'Esta ficha no tiene RUT. Debe ser el mismo que el de su ficha de miembro.',
+    'Falta registrarlo': 'El pastor y la pastora de una iglesia local son también miembros de ella. Con el botón de arriba se crea su ficha de miembro con estos mismos datos.',
+  }[d.estado] || '';
 
   contenedor.innerHTML = `
     <div class="card" style="margin-top:18px">
       <div class="toolbar">
         <b>🧍 Su ficha de miembro</b>
         <span class="spacer"></span>
-        ${tiene
-          ? `<button class="btn sm secondary" id="verMiembro">Abrir su ficha de miembro</button>`
-          : modMiembros.perms.create
-            ? `<button class="btn sm" id="crearMiembro">➕ Crear su ficha de miembro</button>`
-            : ''}
+        ${d.miembro ? `<button class="btn sm secondary" id="verMiembro">Abrir su ficha de miembro</button>` : ''}
+        ${!d.miembro && modMiembros.perms.create ? `<button class="btn sm" id="crearMiembro">➕ Crear su ficha de miembro</button>` : ''}
+        ${d.estado === 'Falta el RUT en su ficha' && modMiembros.perms.edit
+          ? `<button class="btn sm" id="copiarRut">Copiar el RUT a su ficha</button>` : ''}
       </div>
       <div style="padding:14px 18px;font-size:13.5px">
-        ${tiene
-          ? `Está registrado(a) también como miembro: <b>${esc(row.miembro_id_label || '')}</b>.`
-          : `<span class="badge red">Falta registrarlo</span>
-             El pastor y la pastora de una iglesia local son también miembros de ella.
-             Con el botón de arriba se crea su ficha de miembro con estos mismos datos.`}
+        <span class="badge ${nivel}">${esc(d.estado)}</span>
+        ${d.miembro ? `<b>${esc(d.miembro.nombre)}</b>` : ''}
+        <div class="mut" style="margin-top:6px">${esc(explicacion)}</div>
+        ${d.miembro ? `
+          <table class="rut-cotejo">
+            <tr><td>RUT en Pastores / Guías</td><td><b>${esc(rutTexto(d.rut_pastor))}</b></td></tr>
+            <tr><td>RUT en su ficha de miembro</td><td><b class="${d.estado === 'RUT distinto' ? 'saldo-negativo' : ''}">${esc(rutTexto(d.miembro.rut))}</b></td></tr>
+          </table>` : ''}
       </div>
     </div>`;
 
   const ver = document.getElementById('verMiembro');
-  if (ver) ver.addEventListener('click', () => (location.hash = `#/m/miembros/edit/${row.miembro_id}`));
+  if (ver) ver.addEventListener('click', () => (location.hash = `#/m/miembros/edit/${d.miembro.id}`));
 
   const crear = document.getElementById('crearMiembro');
   if (crear) {
@@ -2357,6 +2375,21 @@ async function renderFichaMiembroPastor(pastorId, row, contenedor) {
       } catch (e) {
         toast(e.message, true);
         crear.disabled = false;
+      }
+    });
+  }
+
+  const copiar = document.getElementById('copiarRut');
+  if (copiar) {
+    copiar.addEventListener('click', async () => {
+      copiar.disabled = true;
+      try {
+        await api('POST', `/pastores/${pastorId}/copiar-rut`);
+        toast('RUT copiado a su ficha de miembro');
+        renderFichaMiembroPastor(pastorId, row, contenedor);
+      } catch (e) {
+        toast(e.message, true);
+        copiar.disabled = false;
       }
     });
   }

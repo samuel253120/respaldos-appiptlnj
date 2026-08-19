@@ -675,6 +675,11 @@ table.grid.informe td:first-child { white-space: normal; }
 }
 @media (max-width: 700px) { .iglesia-local .cuerpos-chip { display: none; } }
 
+/* Cotejo del RUT entre la ficha de pastor y la de miembro */
+table.rut-cotejo { margin-top: 10px; border-collapse: collapse; font-size: 13px; }
+table.rut-cotejo td { padding: 4px 16px 4px 0; color: var(--muted); }
+table.rut-cotejo td b { color: var(--marca-azul); font-variant-numeric: tabular-nums; }
+
 /* Toast */
 #toast {
   position: fixed; bottom: 24px; right: 24px; background: #0f172a; color: #fff;

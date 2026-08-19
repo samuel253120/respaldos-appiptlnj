@@ -14,6 +14,22 @@
  * en las dos fichas. Si el cónyuge no está en este módulo sino en Miembros,
  * se vincula allá.
  */
+/**
+ * Cómo está el pastor respecto de su ficha de miembro. El enlace vale desde
+ * ya; el RUT es la verificación: cuando está en las dos fichas, tiene que ser
+ * el mismo, porque es la misma persona.
+ */
+function estadoFichaMiembro(pastor, db) {
+  const miembro = fichaDeMiembro(pastor, db);
+  if (!miembro) return { texto: 'Falta registrarlo', nivel: 'bajo', miembro: null };
+  if (pastor.rut && miembro.rut && pastor.rut !== miembro.rut) {
+    return { texto: 'RUT distinto', nivel: 'bajo', miembro };
+  }
+  if (pastor.rut && !miembro.rut) return { texto: 'Falta el RUT en su ficha', nivel: 'medio', miembro };
+  if (!pastor.rut && miembro.rut) return { texto: 'Falta el RUT aquí', nivel: 'medio', miembro };
+  return { texto: 'Registrado', nivel: 'ok', miembro };
+}
+
 /** La ficha de miembro de un pastor: la enlazada, o la que tenga su mismo RUT. */
 function fichaDeMiembro(pastor, db) {
   if (!pastor) return null;
@@ -39,8 +55,8 @@ module.exports = {
     {
       name: 'ficha_miembro', label: 'Ficha de miembro', type: 'badge',
       calc: (r, { db }) => {
-        const m = fichaDeMiembro(r, db);
-        return m ? { texto: 'Registrado', nivel: 'ok' } : { texto: 'Falta registrarlo', nivel: 'bajo' };
+        const { texto, nivel } = estadoFichaMiembro(r, db);
+        return { texto, nivel };
       },
     },
   ],
@@ -117,6 +133,49 @@ module.exports = {
       db.prepare('UPDATE pastores SET miembro_id = ? WHERE id = ?').run(info.lastInsertRowid, pastor.id);
       res.status(201).json({ ok: true, miembro_id: info.lastInsertRowid, creada: true });
     });
+
+    /** Cómo está el enlace con su ficha de miembro, para mostrarlo en su ficha. */
+    router.get('/pastores/:id(\\d+)/ficha-miembro', requirePerm('pastores', 'view'), (req, res) => {
+      const pastor = db.prepare('SELECT * FROM pastores WHERE id = ?').get(req.params.id);
+      if (!pastor) return res.status(404).json({ error: 'Pastor no encontrado' });
+      const estado = estadoFichaMiembro(pastor, db);
+      res.json({
+        estado: estado.texto,
+        nivel: estado.nivel,
+        rut_pastor: pastor.rut || null,
+        miembro: estado.miembro
+          ? {
+              id: estado.miembro.id,
+              nombre: `${estado.miembro.nombres || ''} ${estado.miembro.apellidos || ''}`.trim(),
+              rut: estado.miembro.rut || null,
+            }
+          : null,
+      });
+    });
+
+    /**
+     * Copia el RUT del pastor a su ficha de miembro cuando allá falta. No
+     * pisa un RUT ya escrito: si los dos existen y no calzan, hay que
+     * corregir el que esté equivocado.
+     */
+    router.post('/pastores/:id(\\d+)/copiar-rut', requirePerm('miembros', 'edit'), (req, res) => {
+      const pastor = db.prepare('SELECT * FROM pastores WHERE id = ?').get(req.params.id);
+      if (!pastor) return res.status(404).json({ error: 'Pastor no encontrado' });
+      if (!pastor.rut) return res.status(400).json({ error: 'Esta ficha no tiene RUT que copiar' });
+      const miembro = fichaDeMiembro(pastor, db);
+      if (!miembro) return res.status(400).json({ error: 'Todavía no tiene ficha de miembro' });
+      if (miembro.rut && miembro.rut !== pastor.rut) {
+        return res.status(400).json({ error: 'Su ficha de miembro ya tiene otro RUT: corrija el que esté equivocado' });
+      }
+      const ocupado = db.prepare('SELECT id, nombres, apellidos FROM miembros WHERE rut = ? AND id != ?').get(pastor.rut, miembro.id);
+      if (ocupado) {
+        return res.status(400).json({
+          error: `Ese RUT ya lo tiene otro miembro (${ocupado.nombres} ${ocupado.apellidos}). Revise cuál es el correcto.`,
+        });
+      }
+      db.prepare('UPDATE miembros SET rut = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?').run(pastor.rut, miembro.id);
+      res.json({ ok: true, miembro_id: miembro.id, rut: pastor.rut });
+    });
   },
 
   hooks: {
@@ -128,10 +187,22 @@ module.exports = {
 
       // Si no se indicó su ficha de miembro, se busca por RUT: es la misma persona
       const rut = data.rut !== undefined ? data.rut : existing ? existing.rut : null;
-      const enlace = data.miembro_id !== undefined ? data.miembro_id : existing ? existing.miembro_id : null;
+      let enlace = data.miembro_id !== undefined ? data.miembro_id : existing ? existing.miembro_id : null;
       if (!enlace && rut) {
         const miembro = db.prepare('SELECT id FROM miembros WHERE rut = ?').get(rut);
-        if (miembro) data.miembro_id = miembro.id;
+        if (miembro) {
+          data.miembro_id = miembro.id;
+          enlace = miembro.id;
+        }
+      }
+
+      // El RUT tiene que ser el mismo en las dos fichas: es la misma persona
+      if (enlace && rut) {
+        const miembro = db.prepare('SELECT nombres, apellidos, rut FROM miembros WHERE id = ?').get(enlace);
+        if (miembro && miembro.rut && miembro.rut !== rut) {
+          return `El RUT no coincide con el de su ficha de miembro (${miembro.nombres} ${miembro.apellidos}: ${miembro.rut}). ` +
+            'Corrija el que esté equivocado, o enlace la ficha que corresponda.';
+        }
       }
       return null;
     },

@@ -129,10 +129,21 @@ module.exports = {
   ],
 
   hooks: {
-    beforeSave(data, { id, existing }) {
+    beforeSave(data, { id, existing, db }) {
       const conyuge = data.conyuge_id !== undefined ? data.conyuge_id : existing ? existing.conyuge_id : null;
       if (conyuge && id && Number(conyuge) === Number(id)) {
         return 'Un miembro no puede figurar como su propio cónyuge';
+      }
+
+      // Si esta persona tiene además ficha de pastor, su RUT tiene que ser el
+      // mismo en las dos: es la misma persona en los dos registros.
+      const rut = data.rut !== undefined ? data.rut : existing ? existing.rut : null;
+      if (id && rut) {
+        const pastor = db.prepare('SELECT nombres, apellidos, rut FROM pastores WHERE miembro_id = ?').get(id);
+        if (pastor && pastor.rut && pastor.rut !== rut) {
+          return `El RUT no coincide con el de su ficha en Pastores / Guías (${pastor.nombres} ${pastor.apellidos}: ${pastor.rut}). ` +
+            'Corrija el que esté equivocado.';
+        }
       }
       return null;
     },
