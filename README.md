@@ -346,11 +346,30 @@ En **Informes → Informes de Asistencia** se sacan tres informes, acotados por 
 - **Por cuerpo** — se elige el cuerpo.
 - **Por persona** — se busca a la persona por nombre o RUT.
 
+### Cómo se cuenta cuando alguien está en varios cuerpos
+
+**Cada actividad cuenta por separado.** Quien pertenece a cuatro cuerpos tiene cuatro marcas el día que los cuatro se reúnen, y cada una entra donde corresponde:
+
+> El 9 de agosto hay tres actividades. Ana pertenece a Damas, Coro y Escuela Dominical. Estuvo **presente** en la reunión de Damas, **ausente** en el ensayo del Coro y **justificada** en Escuela Dominical.
+>
+> | Dónde se ve | Qué muestra |
+> |---|---|
+> | Promedio de Damas | Ana cuenta como presente — 100% |
+> | Promedio del Coro | Ana cuenta como ausente — 0% |
+> | Promedio de Escuela Dominical | Ana cuenta como justificada |
+> | Informe de Ana, **por cuerpo** | Damas 100% · Coro 0% (100% inasistencia) · Escuela Dominical 100% justificación |
+> | Informe de Ana, **en total** | 33,3% de asistencia, 33,3% de inasistencia, 33,3% de justificación |
+
+Ningún promedio se contamina con el de otro cuerpo: en el promedio de un cuerpo, cada persona cuenta **solo con las actividades de ese cuerpo**. El porcentaje total de una persona sí junta todo lo suyo, que es lo que corresponde para saber cómo anda en general.
+
+Por eso el informe por persona abre **su asistencia en cada cuerpo** cuando pertenece a más de uno, y todos los informes traen la tabla **actividad por actividad**: si un día tuvo tres actividades, se ven las tres por separado, además de la fila del día que las resume (y que avisa cuántas fueron).
+
 Cada informe muestra arriba los **promedios**: de **asistencia**, de **inasistencia** y de **justificación**, además de cuántas actividades y cuántas personas entran en el cálculo. Y abajo, los mismos tres promedios desglosados:
 
 | Desglose | Responde |
 |---|---|
-| **Por día** | Cómo estuvo la asistencia en cada fecha |
+| **Por día** | Cómo estuvo la asistencia en cada fecha (indica si ese día hubo varias actividades) |
+| **Actividad por actividad** | Cada actividad por separado, para los días con más de una |
 | **Por cuerpo** | Qué cuerpo asiste más y cuál menos |
 | **Por miembro** | Cómo va cada persona |
 

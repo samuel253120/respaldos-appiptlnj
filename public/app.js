@@ -1582,7 +1582,15 @@ async function viewInformeAsistencia(precarga) {
         </h3>
         ${resumen}
         ${st.tipo === 'persona' ? `
-          ${tabla('Promedio por día', conEtiqueta(d.porDia.map((x) => ({ ...x, fecha: fmtDate(x.fecha) })), 'fecha'), 'Fecha')}
+          ${d.porMiembroCuerpo.length > 1
+            ? tabla('Su asistencia en cada cuerpo', conEtiqueta(d.porMiembroCuerpo, 'cuerpo'), 'Cuerpo / Grupo')
+            : ''}
+          ${tabla('Actividad por actividad', d.porActividad.map((x) => ({
+              ...x, etiqueta: `${fmtDate(x.fecha)} · ${x.actividad || ''}`,
+            })), 'Actividad')}
+          ${tabla('Promedio por día', conEtiqueta(d.porDia.map((x) => ({
+              ...x, fecha: `${fmtDate(x.fecha)}${x.actividades > 1 ? ` (${x.actividades} actividades)` : ''}`,
+            })), 'fecha'), 'Fecha')}
           <div class="card" style="margin-bottom:18px">
             <h3>Detalle de sus marcas</h3>
             <div style="overflow-x:auto">
@@ -1601,10 +1609,19 @@ async function viewInformeAsistencia(precarga) {
           ${motivos}`
         : `
           ${tabla('Promedio por cuerpo', conEtiqueta(d.porCuerpo, 'cuerpo'), 'Cuerpo / Grupo')}
-          ${tabla('Promedio por día', conEtiqueta(d.porDia.map((x) => ({ ...x, fecha: fmtDate(x.fecha) })), 'fecha'), 'Fecha')}
+          ${tabla('Promedio por día', conEtiqueta(d.porDia.map((x) => ({
+              ...x, fecha: `${fmtDate(x.fecha)}${x.actividades > 1 ? ` (${x.actividades} actividades)` : ''}`,
+            })), 'fecha'), 'Fecha')}
+          ${tabla('Actividad por actividad', d.porActividad.map((x) => ({
+              ...x, etiqueta: `${fmtDate(x.fecha)} · ${x.actividad || ''}`,
+            })), 'Actividad')}
           ${tabla('Promedio por miembro', conEtiqueta(d.porMiembro, 'miembro'), 'Miembro', (f) => f.miembro_id)}
           ${motivos}`}
-        <div class="informe-pie mut">Emitido el ${fechaLarga(new Date().toISOString())} · Verde: presentes · Azul: justificados · Rojo: ausentes</div>
+        <div class="informe-pie mut">
+          Emitido el ${fechaLarga(new Date().toISOString())} · Verde: presentes · Azul: justificados · Rojo: ausentes.<br>
+          Cada actividad cuenta por separado: quien pertenece a varios cuerpos tiene una marca en cada actividad a la que
+          fue convocado, y en el promedio de cada cuerpo cuenta solo lo de ese cuerpo.
+        </div>
       </div>`;
 
     // Desde el promedio por miembro se salta a su informe personal

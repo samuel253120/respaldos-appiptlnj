@@ -173,16 +173,28 @@ app.get('/api/dashboard', authRequired, (req, res) => {
   const p2 = iglesiaId ? [iglesiaId] : [];
   const ultimasAsistencias = db
     .prepare(
-      `SELECT a.id, a.fecha, a.tipo_reunion, c.nombre AS cuerpo,
+      `SELECT a.id, a.fecha, a.tipo_reunion, a.cuerpos,
               COALESCE(SUM(CASE WHEN d.estado = 'Presente' THEN 1 ELSE 0 END), 0) AS presentes,
               COUNT(d.id) AS marcados
          FROM asistencias a
          LEFT JOIN asistencia_detalle d ON d.asistencia_id = a.id
-         LEFT JOIN cuerpos c ON c.id = a.cuerpo_id
         ${w2 ? w2.replace('WHERE iglesia_id = ?', 'WHERE a.iglesia_id = ?') : ''}
         GROUP BY a.id ORDER BY a.fecha DESC LIMIT 5`
     )
-    .all(...p2);
+    .all(...p2)
+    .map((a) => {
+      // Los cuerpos convocados se guardan como lista: se resuelven sus nombres
+      let ids = [];
+      try {
+        ids = JSON.parse(a.cuerpos || '[]').map(Number).filter(Boolean);
+      } catch (e) {
+        ids = [];
+      }
+      const nombres = ids
+        .map((id) => (db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(id) || {}).nombre)
+        .filter(Boolean);
+      return { ...a, cuerpo: nombres.join(' + ') || null };
+    });
   const solicitudesRecientes = db
     .prepare(`SELECT id, fecha, solicitante, asunto, estado FROM solicitudes ${w2} ORDER BY fecha DESC LIMIT 5`)
     .all(...p2);

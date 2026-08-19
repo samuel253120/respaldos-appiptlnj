@@ -313,8 +313,18 @@ module.exports = {
       );
 
       const porDia = db
-        .prepare(`SELECT d.fecha, ${SUMAS} FROM asistencia_detalle d ${where}
-                  GROUP BY d.fecha ORDER BY d.fecha DESC LIMIT 400`)
+        .prepare(`SELECT d.fecha, ${SUMAS}, COUNT(DISTINCT d.asistencia_id) AS actividades
+                    FROM asistencia_detalle d ${where}
+                   GROUP BY d.fecha ORDER BY d.fecha DESC LIMIT 400`)
+        .all(...params)
+        .map(porcentajes);
+
+      // Una por una: en un mismo día puede haber varias actividades, y quien
+      // pertenece a varios cuerpos puede estar en una y faltar a otra.
+      const porActividad = db
+        .prepare(`SELECT d.asistencia_id, d.fecha, a.tipo_reunion AS actividad, ${SUMAS}
+                    FROM asistencia_detalle d LEFT JOIN asistencias a ON a.id = d.asistencia_id
+                   ${where} GROUP BY d.asistencia_id ORDER BY d.fecha DESC, d.asistencia_id DESC LIMIT 400`)
         .all(...params)
         .map(porcentajes);
 
@@ -339,6 +349,19 @@ module.exports = {
                    GROUP BY d.motivo ORDER BY n DESC`)
         .all(...params);
 
+      // Cuando alguien pertenece a varios cuerpos, su porcentaje se abre por
+      // cuerpo: en uno puede andar al día y en otro no.
+      let porMiembroCuerpo = [];
+      if (miembroId) {
+        porMiembroCuerpo = db
+          .prepare(`SELECT d.cuerpo_id, c.nombre AS cuerpo, ${SUMAS},
+                           COUNT(DISTINCT d.asistencia_id) AS actividades
+                      FROM asistencia_detalle d LEFT JOIN cuerpos c ON c.id = d.cuerpo_id
+                     ${where} GROUP BY d.cuerpo_id ORDER BY c.nombre`)
+          .all(...params)
+          .map(porcentajes);
+      }
+
       // En el informe por persona se detallan sus marcas una por una
       let marcas = [];
       if (tipo === 'persona' && miembroId) {
@@ -351,7 +374,10 @@ module.exports = {
           .all(...params);
       }
 
-      res.json({ tipo, desde: desde || null, hasta: hasta || null, general, porDia, porCuerpo, porMiembro, porMotivo, marcas });
+      res.json({
+        tipo, desde: desde || null, hasta: hasta || null,
+        general, porDia, porActividad, porCuerpo, porMiembro, porMiembroCuerpo, porMotivo, marcas,
+      });
     });
   },
 };
