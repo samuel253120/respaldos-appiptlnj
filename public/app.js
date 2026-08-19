@@ -848,6 +848,13 @@ async function viewForm(name, id, precarga) {
   // Al traspasar, se muestra cuánto hay en la cuenta de origen
   if (name === 'traspasos') mostrarSaldoOrigen();
 
+  // El pastor es también miembro: se avisa si le falta su ficha
+  if (name === 'pastores' && !isNew) {
+    const zona = document.createElement('div');
+    content().appendChild(zona);
+    renderFichaMiembroPastor(Number(id), row, zona);
+  }
+
   // Pasar lista bajo la ficha de la actividad
   if (name === 'asistencias' && !isNew) {
     const zona = document.createElement('div');
@@ -2304,6 +2311,55 @@ function mostrarSaldoOrigen() {
   };
   select.addEventListener('change', refrescar);
   refrescar();
+}
+
+/**
+ * El pastor y la pastora son también miembros de su iglesia. Aquí se muestra
+ * si su ficha de miembro ya existe y, si no, se ofrece crearla con sus mismos
+ * datos.
+ */
+async function renderFichaMiembroPastor(pastorId, row, contenedor) {
+  const modMiembros = MOD['miembros'];
+  if (!modMiembros) return;
+  const tiene = row.miembro_id;
+
+  contenedor.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🧍 Su ficha de miembro</b>
+        <span class="spacer"></span>
+        ${tiene
+          ? `<button class="btn sm secondary" id="verMiembro">Abrir su ficha de miembro</button>`
+          : modMiembros.perms.create
+            ? `<button class="btn sm" id="crearMiembro">➕ Crear su ficha de miembro</button>`
+            : ''}
+      </div>
+      <div style="padding:14px 18px;font-size:13.5px">
+        ${tiene
+          ? `Está registrado(a) también como miembro: <b>${esc(row.miembro_id_label || '')}</b>.`
+          : `<span class="badge red">Falta registrarlo</span>
+             El pastor y la pastora de una iglesia local son también miembros de ella.
+             Con el botón de arriba se crea su ficha de miembro con estos mismos datos.`}
+      </div>
+    </div>`;
+
+  const ver = document.getElementById('verMiembro');
+  if (ver) ver.addEventListener('click', () => (location.hash = `#/m/miembros/edit/${row.miembro_id}`));
+
+  const crear = document.getElementById('crearMiembro');
+  if (crear) {
+    crear.addEventListener('click', async () => {
+      crear.disabled = true;
+      try {
+        const r = await api('POST', `/pastores/${pastorId}/ficha-miembro`);
+        toast(r.creada ? 'Ficha de miembro creada' : 'Ya existía su ficha: quedó enlazada');
+        location.hash = `#/m/miembros/edit/${r.miembro_id}`;
+      } catch (e) {
+        toast(e.message, true);
+        crear.disabled = false;
+      }
+    });
+  }
 }
 
 /**

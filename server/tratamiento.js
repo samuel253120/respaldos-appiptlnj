@@ -20,10 +20,18 @@ const TRATAMIENTOS = ['Hermano', 'Hermana', 'Oficial', 'Pastor', 'Pastora', 'Di�
 
 const esMujer = (genero) => genero === 'Femenino';
 
-/** ¿Esta persona está registrada como pastor(a)? Se busca por su RUT. */
-function estaEnPastores(rut, db) {
-  if (!rut) return false;
-  return !!db.prepare('SELECT id FROM pastores WHERE rut = ?').get(rut);
+/**
+ * ¿Esta persona está registrada como pastor(a)?
+ *
+ * El pastor y la pastora de una iglesia son también miembros de ella: su
+ * ficha de miembro queda enlazada a la de Pastores / Guías. Se reconoce por
+ * ese enlace y, si aún no lo tiene, por el RUT.
+ */
+function estaEnPastores(miembro, db) {
+  if (!miembro) return false;
+  if (miembro.id && db.prepare('SELECT id FROM pastores WHERE miembro_id = ?').get(miembro.id)) return true;
+  if (miembro.rut && db.prepare('SELECT id FROM pastores WHERE rut = ?').get(miembro.rut)) return true;
+  return false;
 }
 
 /** El trato que le corresponde a un miembro. Devuelve '' si no se puede saber. */
@@ -33,12 +41,12 @@ function tratamientoDe(miembro, db) {
 
   const ajustes = require('./ajustes'); // tardío: ajustes usa la base
 
-  if (estaEnPastores(miembro.rut, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
+  if (estaEnPastores(miembro, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
 
   // El cónyuge del pastor o la pastora recibe el mismo trato, si así se usa
   if (miembro.conyuge_id && ajustes.activo('conyuge_pastor_tratamiento')) {
-    const conyuge = db.prepare('SELECT rut FROM miembros WHERE id = ?').get(miembro.conyuge_id);
-    if (conyuge && estaEnPastores(conyuge.rut, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
+    const conyuge = db.prepare('SELECT id, rut FROM miembros WHERE id = ?').get(miembro.conyuge_id);
+    if (conyuge && estaEnPastores(conyuge, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
   }
 
   if (!esMujer(miembro.genero) && miembro.genero && esOficial(miembro.id, db)) return 'Oficial';
