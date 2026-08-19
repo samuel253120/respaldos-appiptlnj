@@ -144,9 +144,10 @@ module.exports = {
     router.get('/cuentas_tesoreria/destinos', (req, res) => {
       const params = [];
       let where = "estado = 'Activa'";
-      if (req.user.iglesia_id) {
-        where += ' AND (iglesia_id IS NULL OR iglesia_id = ?)';
-        params.push(req.user.iglesia_id);
+      const suyas = require('../alcance').iglesiasDe(req.user);
+      if (suyas.length) {
+        where += ` AND (iglesia_id IS NULL OR iglesia_id IN (${suyas.map(() => '?').join(',')}))`;
+        params.push(...suyas);
       }
       const filas = db
         .prepare(`SELECT id, nombre, ambito FROM cuentas_tesoreria WHERE ${where} ORDER BY ambito, nombre`)
@@ -171,8 +172,8 @@ module.exports = {
     router.get('/cuentas_tesoreria/:id(\\d+)/estado', requirePerm('cuentas_tesoreria', 'view'), (req, res) => {
       const cuenta = db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(req.params.id);
       if (!cuenta) return res.status(404).json({ error: 'Cuenta no encontrada' });
-      if (req.user.iglesia_id && cuenta.iglesia_id !== req.user.iglesia_id) {
-        return res.status(403).json({ error: 'Cuenta fuera de su iglesia asignada' });
+      if (!require('../alcance').alcanzaIglesia(req.user, cuenta.iglesia_id)) {
+        return res.status(403).json({ error: 'Esa cuenta está fuera de lo que tiene asignado' });
       }
       const m = movimientosDe(cuenta.id, db);
       const ultimos = db

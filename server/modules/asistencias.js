@@ -151,8 +151,8 @@ module.exports = {
     router.get('/asistencias/:id(\\d+)/lista', requirePerm('asistencias', 'view'), (req, res) => {
       const actividad = db.prepare('SELECT * FROM asistencias WHERE id = ?').get(req.params.id);
       if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada' });
-      if (req.user.iglesia_id && actividad.iglesia_id !== req.user.iglesia_id) {
-        return res.status(403).json({ error: 'Actividad fuera de su iglesia asignada' });
+      if (!require('../alcance').alcanza(module.exports, actividad, req.user)) {
+        return res.status(403).json({ error: 'Esa actividad está fuera de lo que tiene asignado' });
       }
 
       const convocados = integrantesConvocados(actividad, db);
@@ -214,8 +214,8 @@ module.exports = {
     router.post('/asistencias/:id(\\d+)/lista', requirePerm('asistencia_detalle', 'edit'), (req, res) => {
       const actividad = db.prepare('SELECT * FROM asistencias WHERE id = ?').get(req.params.id);
       if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada' });
-      if (req.user.iglesia_id && actividad.iglesia_id !== req.user.iglesia_id) {
-        return res.status(403).json({ error: 'Actividad fuera de su iglesia asignada' });
+      if (!require('../alcance').alcanza(module.exports, actividad, req.user)) {
+        return res.status(403).json({ error: 'Esa actividad está fuera de lo que tiene asignado' });
       }
 
       const marcas = Array.isArray(req.body && req.body.marcas) ? req.body.marcas : null;
@@ -281,9 +281,16 @@ module.exports = {
 
       const cond = ['1 = 1'];
       const params = [];
-      if (req.user.iglesia_id) {
-        cond.push('d.iglesia_id = ?');
-        params.push(req.user.iglesia_id);
+      const alcance = require('../alcance');
+      const suyas = alcance.iglesiasDe(req.user);
+      if (suyas.length) {
+        cond.push(`d.iglesia_id IN (${suyas.map(() => '?').join(',')})`);
+        params.push(...suyas);
+      }
+      const susCuerpos = alcance.cuerposDe(req.user);
+      if (susCuerpos.length) {
+        cond.push(`d.cuerpo_id IN (${susCuerpos.map(() => '?').join(',')})`);
+        params.push(...susCuerpos);
       }
       if (desde) { cond.push('d.fecha >= ?'); params.push(desde); }
       if (hasta) { cond.push('d.fecha <= ?'); params.push(hasta); }

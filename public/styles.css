@@ -668,6 +668,13 @@ table.grid.informe td:first-child { white-space: normal; }
   .card { break-inside: avoid; box-shadow: none; border: 1px solid #d7dbe3; }
 }
 
+/* Cuerpos asignados, junto a la iglesia, en la barra superior */
+.iglesia-local .cuerpos-chip {
+  margin-left: 8px; padding: 2px 9px; border-radius: 999px; background: #eef2ff;
+  color: var(--marca-azul); font-size: 12px; font-weight: 600;
+}
+@media (max-width: 700px) { .iglesia-local .cuerpos-chip { display: none; } }
+
 /* Toast */
 #toast {
   position: fixed; bottom: 24px; right: 24px; background: #0f172a; color: #fff;

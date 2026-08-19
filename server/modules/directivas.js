@@ -154,8 +154,8 @@ module.exports = {
       if (!cuerpoId) return res.json([]);
       const cuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
       if (!cuerpo) return res.json([]);
-      if (req.user.iglesia_id && cuerpo.iglesia_id !== req.user.iglesia_id) {
-        return res.status(403).json({ error: 'Cuerpo fuera de su iglesia asignada' });
+      if (!require('../alcance').alcanzaIglesia(req.user, cuerpo.iglesia_id)) {
+        return res.status(403).json({ error: 'Ese cuerpo está fuera de lo que tiene asignado' });
       }
       res.json(integrantesDeCuerpo(db, cuerpoId));
     });

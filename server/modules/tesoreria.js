@@ -76,8 +76,8 @@ module.exports = {
       if (!cuenta) return 'La cuenta de tesorería indicada no existe';
 
       // Un usuario asignado a una iglesia solo mueve dinero de las cuentas de esa iglesia
-      if (user.iglesia_id && (cuenta.iglesia_id || null) !== user.iglesia_id) {
-        return `La cuenta "${cuenta.nombre}" no pertenece a su iglesia`;
+      if (!require('../alcance').alcanzaIglesia(user, cuenta.iglesia_id)) {
+        return `La cuenta "${cuenta.nombre}" no está entre las iglesias que administra`;
       }
 
       // Una cuenta cerrada no recibe movimientos nuevos, pero los suyos se pueden corregir
@@ -138,6 +138,7 @@ module.exports = {
       const ingresos = (totals.find((t) => t.tipo === 'Ingreso') || {}).total || 0;
       const egresos = (totals.find((t) => t.tipo === 'Egreso') || {}).total || 0;
       // Saldo por cuenta, para ver de un vistazo cómo está repartido el dinero
+      const suyasResumen = require('../alcance').iglesiasDe(req.user);
       const porCuenta = db
         .prepare(
           `SELECT c.id, c.nombre, c.ambito, c.tipo,
@@ -146,11 +147,11 @@ module.exports = {
                     - COALESCE(SUM(CASE WHEN t.tipo = 'Egreso'  THEN t.monto ELSE 0 END), 0) AS saldo
              FROM cuentas_tesoreria c
              LEFT JOIN tesoreria t ON t.cuenta_id = c.id
-            ${req.user.iglesia_id ? 'WHERE c.iglesia_id = ?' : ''}
+            ${suyasResumen.length ? `WHERE c.iglesia_id IN (${suyasResumen.map(() => '?').join(',')})` : ''}
             GROUP BY c.id
             ORDER BY c.ambito, c.tipo DESC, c.nombre`
         )
-        .all(...(req.user.iglesia_id ? [req.user.iglesia_id] : []));
+        .all(...suyasResumen);
 
       res.json({
         ingresos, egresos, balance: ingresos - egresos,

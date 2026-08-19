@@ -127,8 +127,13 @@ function prepararFila(def, fila, user) {
   }
 
   // Alcance por iglesia: se fuerza la del usuario si tiene una asignada
-  if (user.iglesia_id && def.fields.some((f) => f.name === 'iglesia_id')) {
-    datos.iglesia_id = user.iglesia_id;
+  const alcance = require('./alcance');
+  const principal = alcance.iglesiaPrincipal(user);
+  if (principal && def.fields.some((f) => f.name === 'iglesia_id') && !datos.iglesia_id) {
+    datos.iglesia_id = principal;
+  }
+  if (datos.iglesia_id && !alcance.alcanzaIglesia(user, datos.iglesia_id)) {
+    errores.push('Esa iglesia no está entre las que tiene asignadas');
   }
 
   for (const f of def.fields) {

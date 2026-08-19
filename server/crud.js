@@ -29,6 +29,7 @@ const { authRequired, requirePerm } = require('./auth');
 const rut = require('./rut');
 const { can } = require('./permissions');
 const bitacora = require('./bitacora');
+const alcance = require('./alcance');
 
 function fieldMap(def) {
   const m = {};
@@ -227,16 +228,12 @@ function expandRow(def, row) {
 }
 
 /** WHERE de alcance por iglesia para el usuario actual. */
+/**
+ * Acota las consultas a lo que el usuario puede ver: sus iglesias y, si se le
+ * asignaron, sus cuerpos (ver server/alcance.js).
+ */
 function scopeClause(def, user, params) {
-  if (isChurchScoped(def) && user.iglesia_id) {
-    params.push(user.iglesia_id);
-    return def.name === 'iglesias' ? 'id = ?' : 'iglesia_id = ?';
-  }
-  if (def.name === 'iglesias' && user.iglesia_id) {
-    params.push(user.iglesia_id);
-    return 'id = ?';
-  }
-  return null;
+  return alcance.condiciones(def, user, params);
 }
 
 function buildRouter() {
@@ -333,8 +330,8 @@ function buildRouter() {
     router.get(`${base}/:id(\\d+)`, requirePerm(def.name, 'view'), (req, res) => {
       const row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(req.params.id);
       if (!row) return res.status(404).json({ error: 'Registro no encontrado' });
-      if (isChurchScoped(def) && req.user.iglesia_id && row.iglesia_id !== req.user.iglesia_id) {
-        return res.status(403).json({ error: 'Registro fuera de su iglesia asignada' });
+      if (!alcance.alcanza(def, row, req.user)) {
+        return res.status(403).json({ error: 'Ese registro está fuera de lo que tiene asignado' });
       }
       res.json(expandRow(def, row));
     });
@@ -347,8 +344,8 @@ function buildRouter() {
         if (!isNew) {
           existing = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
           if (!existing) return res.status(404).json({ error: 'Registro no encontrado' });
-          if (isChurchScoped(def) && req.user.iglesia_id && existing.iglesia_id !== req.user.iglesia_id) {
-            return res.status(403).json({ error: 'Registro fuera de su iglesia asignada' });
+          if (!alcance.alcanza(def, existing, req.user)) {
+            return res.status(403).json({ error: 'Ese registro está fuera de lo que tiene asignado' });
           }
         }
 
@@ -360,8 +357,20 @@ function buildRouter() {
         }
         if (isNew) aplicarDefectos(def, data);
         sincronizarPersonas(def, data, existing);
-        // Alcance: forzar la iglesia del usuario
-        if (isChurchScoped(def) && req.user.iglesia_id) data.iglesia_id = req.user.iglesia_id;
+        // Alcance: la iglesia tiene que ser una de las suyas. Si no se indica y
+        // trabaja en una sola, se pone esa; si indica otra, se rechaza.
+        if (isChurchScoped(def)) {
+          const suyas = alcance.iglesiasDe(req.user);
+          if (suyas.length) {
+            const elegida = data.iglesia_id !== undefined && data.iglesia_id !== null
+              ? Number(data.iglesia_id)
+              : (existing && existing.iglesia_id) || alcance.iglesiaPrincipal(req.user);
+            if (!alcance.alcanzaIglesia(req.user, elegida)) {
+              return res.status(403).json({ error: 'Esa iglesia no está entre las que tiene asignadas' });
+            }
+            data.iglesia_id = elegida;
+          }
+        }
 
         /** ¿Aplica este campo, según su condición showIf? */
         const aplica = (f) => {
@@ -448,8 +457,8 @@ function buildRouter() {
     router.delete(`${base}/:id(\\d+)`, requirePerm(def.name, 'delete'), (req, res) => {
       const row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(req.params.id);
       if (!row) return res.status(404).json({ error: 'Registro no encontrado' });
-      if (isChurchScoped(def) && req.user.iglesia_id && row.iglesia_id !== req.user.iglesia_id) {
-        return res.status(403).json({ error: 'Registro fuera de su iglesia asignada' });
+      if (!alcance.alcanza(def, row, req.user)) {
+        return res.status(403).json({ error: 'Ese registro está fuera de lo que tiene asignado' });
       }
       if (def.hooks && def.hooks.beforeDelete) {
         const err = def.hooks.beforeDelete(row, { user: req.user, db });

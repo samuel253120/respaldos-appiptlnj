@@ -19,6 +19,7 @@ const { ejecutarMigraciones } = require('./migraciones');
 const { router: importarRouter } = require('./importar');
 const { router: configuracionRouter } = require('./configuracion');
 const ajustes = require('./ajustes');
+const alcance = require('./alcance');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
@@ -89,13 +90,24 @@ app.get('/api/meta', authRequired, (req, res) => {
   // Iglesia local en la que trabaja el usuario. Si no tiene una asignada pero
   // el sistema administra una sola, se muestra esa; con varias, "Todas".
   let iglesiaNombre = null;
-  if (req.user.iglesia_id) {
-    const ig = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(req.user.iglesia_id);
-    iglesiaNombre = ig ? ig.nombre : null;
+  const suyas = alcance.iglesiasDe(req.user);
+  const nombreDe = (id) => (db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(id) || {}).nombre;
+  if (suyas.length === 1) {
+    iglesiaNombre = nombreDe(suyas[0]) || null;
+  } else if (suyas.length > 1) {
+    const principal = alcance.iglesiaPrincipal(req.user);
+    iglesiaNombre = principal
+      ? `${nombreDe(principal)} y ${suyas.length - 1} más`
+      : `${suyas.length} iglesias asignadas`;
   } else {
     const iglesias = db.prepare('SELECT id, nombre FROM iglesias LIMIT 2').all();
     if (iglesias.length === 1) iglesiaNombre = iglesias[0].nombre;
   }
+
+  // Cuerpos asignados: lo que ve el usuario queda acotado a ellos
+  const susCuerpos = alcance.cuerposDe(req.user).map((id) =>
+    (db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(id) || {}).nombre
+  ).filter(Boolean);
 
   // Catálogo para el editor de permisos personalizados (solo administradores)
   let permisosCatalogo = null;
@@ -121,36 +133,65 @@ app.get('/api/meta', authRequired, (req, res) => {
       imagen_lado_maximo: Math.min(4000, Math.max(600, Number(ajustes.obtener('imagen_lado_maximo')) || 1600)),
       imagen_calidad: Math.min(100, Math.max(40, Number(ajustes.obtener('imagen_calidad')) || 88)),
     },
-    user: { ...req.user, iglesia_nombre: iglesiaNombre },
+    user: {
+      ...req.user,
+      iglesia_nombre: iglesiaNombre,
+      iglesias_asignadas: suyas.length,
+      cuerpos_asignados: susCuerpos,
+    },
   });
 });
 
 // ---------- Panel de control ----------
 app.get('/api/dashboard', authRequired, (req, res) => {
-  const iglesiaId = req.user.iglesia_id || null;
-  const scoped = (table, hasIglesia = true) => {
-    if (iglesiaId && hasIglesia) {
-      return db.prepare(`SELECT COUNT(*) AS c FROM "${table}" WHERE iglesia_id = ?`).get(iglesiaId).c;
+  const susIglesias = alcance.iglesiasDe(req.user);
+  const susCuerpos = alcance.cuerposDe(req.user);
+  const iglesiaId = alcance.iglesiaPrincipal(req.user);
+
+  /** `WHERE` que deja solo lo que el usuario tiene asignado. */
+  const filtro = (tabla, campoIglesia = 'iglesia_id') => {
+    const cond = [];
+    const params = [];
+    if (susIglesias.length && campoIglesia) {
+      cond.push(`${campoIglesia} IN (${susIglesias.map(() => '?').join(',')})`);
+      params.push(...susIglesias);
     }
-    return db.prepare(`SELECT COUNT(*) AS c FROM "${table}"`).get().c;
+    if (susCuerpos.length && tabla === 'cuerpos') {
+      cond.push(`id IN (${susCuerpos.map(() => '?').join(',')})`);
+      params.push(...susCuerpos);
+    }
+    if (susCuerpos.length && tabla === 'miembros') {
+      const ids = alcance.miembrosDeCuerpos(susCuerpos);
+      cond.push(ids.length ? `id IN (${ids.map(() => '?').join(',')})` : '1 = 0');
+      params.push(...ids);
+    }
+    return { sql: cond.length ? 'WHERE ' + cond.join(' AND ') : '', params };
+  };
+
+  const scoped = (table, hasIglesia = true) => {
+    const { sql, params } = filtro(table, hasIglesia ? 'iglesia_id' : null);
+    return db.prepare(`SELECT COUNT(*) AS c FROM "${table}" ${sql}`).get(...params).c;
   };
 
   const counts = {
-    iglesias: iglesiaId ? 1 : scoped('iglesias', false),
+    iglesias: susIglesias.length || scoped('iglesias', false),
     miembros: scoped('miembros'),
     cuerpos: scoped('cuerpos'),
     pastores: scoped('pastores'),
-    solicitudes_pendientes: iglesiaId
-      ? db.prepare("SELECT COUNT(*) AS c FROM solicitudes WHERE estado IN ('Pendiente','En revisión') AND iglesia_id = ?").get(iglesiaId).c
-      : db.prepare("SELECT COUNT(*) AS c FROM solicitudes WHERE estado IN ('Pendiente','En revisión')").get().c,
+    solicitudes_pendientes: (() => {
+      const { sql, params } = filtro('solicitudes');
+      const donde = sql ? `${sql} AND` : 'WHERE';
+      return db.prepare(`SELECT COUNT(*) AS c FROM solicitudes ${donde} estado IN ('Pendiente','En revisión')`).get(...params).c;
+    })(),
     certificados: scoped('certificados'),
   };
 
   let finanzas = null;
   if (can(req.user, 'tesoreria', 'view')) {
     const mes = new Date().toISOString().slice(0, 7); // YYYY-MM
-    const w = iglesiaId ? 'AND iglesia_id = ?' : '';
-    const p = iglesiaId ? [iglesiaId] : [];
+    const marcas = susIglesias.map(() => '?').join(',');
+    const w = susIglesias.length ? `AND iglesia_id IN (${marcas})` : '';
+    const p = susIglesias;
     const row = (tipo, mesOnly) =>
       db
         .prepare(`SELECT COALESCE(SUM(monto),0) AS t FROM tesoreria WHERE tipo = ? ${mesOnly ? "AND substr(fecha,1,7) = ?" : ''} ${w}`)
@@ -167,10 +208,11 @@ app.get('/api/dashboard', authRequired, (req, res) => {
 
   // Próximos cumpleaños: se calculan desde el mes y el día de nacimiento,
   // tomando el próximo que venga (hoy cuenta como cumpleaños de hoy).
-  const cumpleanos = proximosCumpleanos(iglesiaId, ajustes.numero('cumpleanos_cantidad', 1, 20));
+  const cumpleanos = proximosCumpleanos(susIglesias, susCuerpos, ajustes.numero('cumpleanos_cantidad', 1, 20));
 
-  const w2 = iglesiaId ? 'WHERE iglesia_id = ?' : '';
-  const p2 = iglesiaId ? [iglesiaId] : [];
+  const marcas2 = susIglesias.map(() => '?').join(',');
+  const w2 = susIglesias.length ? `WHERE iglesia_id IN (${marcas2})` : '';
+  const p2 = susIglesias;
   const ultimasAsistencias = db
     .prepare(
       `SELECT a.id, a.fecha, a.tipo_reunion, a.cuerpos,
@@ -178,7 +220,7 @@ app.get('/api/dashboard', authRequired, (req, res) => {
               COUNT(d.id) AS marcados
          FROM asistencias a
          LEFT JOIN asistencia_detalle d ON d.asistencia_id = a.id
-        ${w2 ? w2.replace('WHERE iglesia_id = ?', 'WHERE a.iglesia_id = ?') : ''}
+        ${w2 ? w2.replace('WHERE iglesia_id', 'WHERE a.iglesia_id') : ''}
         GROUP BY a.id ORDER BY a.fecha DESC LIMIT 5`
     )
     .all(...p2)
@@ -209,12 +251,17 @@ app.get('/api/dashboard', authRequired, (req, res) => {
  * Quien cumple hoy encabeza la lista. No se incluye a los fallecidos ni a los
  * trasladados, porque ya no son parte de la congregación.
  */
-function proximosCumpleanos(iglesiaId, cuantos) {
+function proximosCumpleanos(iglesias, cuerpos, cuantos) {
   const where = ["fecha_nacimiento IS NOT NULL", "fecha_nacimiento != ''", "(estado IS NULL OR estado NOT IN ('Fallecido', 'Trasladado'))"];
   const params = [];
-  if (iglesiaId) {
-    where.push('iglesia_id = ?');
-    params.push(iglesiaId);
+  if (iglesias.length) {
+    where.push(`iglesia_id IN (${iglesias.map(() => '?').join(',')})`);
+    params.push(...iglesias);
+  }
+  if (cuerpos.length) {
+    const ids = alcance.miembrosDeCuerpos(cuerpos);
+    where.push(ids.length ? `id IN (${ids.map(() => '?').join(',')})` : '1 = 0');
+    params.push(...ids);
   }
   const filas = db
     .prepare(`SELECT id, nombres, apellidos, foto, fecha_nacimiento, telefono FROM miembros WHERE ${where.join(' AND ')}`)

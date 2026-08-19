@@ -9,7 +9,11 @@
  * - La contraseña se cifra con bcrypt antes de guardar (hook beforeSave).
  * - Al editar, dejar la contraseña vacía la mantiene sin cambios.
  * - No se puede eliminar el propio usuario ni el último administrador.
- * - Si el usuario tiene iglesia asignada, solo opera sobre esa iglesia.
+ *
+ * Alcance: a cada usuario se le puede asignar **una o varias iglesias** y,
+ * dentro de ellas, **uno o varios cuerpos**. Solo ve y administra los datos de
+ * lo que tenga asignado; sin iglesias asignadas ve todas, y sin cuerpos
+ * asignados ve todos los de sus iglesias (ver server/alcance.js).
  */
 const bcrypt = require('bcryptjs');
 const { ROLES } = require('../permissions');
@@ -23,7 +27,7 @@ module.exports = {
   order: 90,
   display: '{nombre}',
   searchFields: ['nombre', 'rut', 'email'],
-  listFields: ['rut', 'nombre', 'rol', 'iglesia_id', 'activo'],
+  listFields: ['rut', 'nombre', 'rol', 'iglesias', 'cuerpos', 'activo'],
   defaultSort: { field: 'nombre', dir: 'asc' },
   fields: [
     {
@@ -36,7 +40,18 @@ module.exports = {
       name: 'rol', label: 'Rol', type: 'select', required: true, default: 'consulta',
       options: ROLES.map((r) => ({ value: r.value, label: r.label })),
     },
-    { name: 'iglesia_id', label: 'Iglesia asignada (vacío = acceso a todas)', type: 'ref', ref: 'iglesias' },
+    {
+      name: 'iglesias', label: 'Iglesias que administra', type: 'multiref', ref: 'iglesias',
+      help: 'Solo verá los datos de estas iglesias. Sin ninguna marcada, ve todas.',
+    },
+    {
+      name: 'iglesia_id', label: 'Iglesia principal', type: 'ref', ref: 'iglesias',
+      help: 'Con cuál trabaja por omisión (la que se propone al crear registros). Tiene que estar entre las de arriba.',
+    },
+    {
+      name: 'cuerpos', label: 'Cuerpos que administra', type: 'multiref', ref: 'cuerpos',
+      help: 'Opcional. Marcando alguno, dentro de sus iglesias solo verá lo de esos cuerpos: sus integrantes, actividades, actas, inventario y directivas. Sin ninguno, ve todos los de sus iglesias.',
+    },
     { name: 'email', label: 'Correo electrónico (contacto, opcional)', type: 'email' },
     { name: 'telefono', label: 'Teléfono (opcional)', type: 'tel' },
     { name: 'activo', label: 'Activo', type: 'boolean', default: 1 },
@@ -46,7 +61,39 @@ module.exports = {
     },
   ],
   hooks: {
-    beforeSave(data, { isNew, id, db }) {
+    beforeSave(data, { isNew, id, existing, db }) {
+      const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
+      const lista = (v) => {
+        if (Array.isArray(v)) return v.map(Number).filter(Boolean);
+        try {
+          return JSON.parse(v || '[]').map(Number).filter(Boolean);
+        } catch (e) {
+          return [];
+        }
+      };
+
+      const iglesias = lista(dato('iglesias'));
+      const principal = dato('iglesia_id') ? Number(dato('iglesia_id')) : null;
+
+      // La iglesia principal tiene que ser una de las asignadas
+      if (principal && iglesias.length && !iglesias.includes(principal)) {
+        const ig = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(principal);
+        return `La iglesia principal (${ig ? ig.nombre : '#' + principal}) tiene que estar entre las iglesias que administra`;
+      }
+      // Con una sola iglesia asignada, esa queda de principal sin tener que repetirla
+      if (!principal && iglesias.length === 1) data.iglesia_id = iglesias[0];
+
+      // Los cuerpos asignados tienen que ser de sus iglesias
+      const cuerpos = lista(dato('cuerpos'));
+      if (cuerpos.length && iglesias.length) {
+        for (const cuerpoId of cuerpos) {
+          const c = db.prepare('SELECT nombre, iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
+          if (c && c.iglesia_id && !iglesias.includes(Number(c.iglesia_id))) {
+            return `El cuerpo "${c.nombre}" no pertenece a las iglesias que administra este usuario`;
+          }
+        }
+      }
+
       if (data.email) {
         data.email = String(data.email).trim().toLowerCase();
         const dup = db

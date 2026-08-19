@@ -344,9 +344,12 @@ function renderShell() {
       <div class="main">
         <header class="topbar">
           <button class="menu-toggle" id="menuToggle">☰</button>
-          <div class="iglesia-local" title="Iglesia en la que está trabajando">
+          <div class="iglesia-local" title="Lo que tiene asignado para ver y administrar">
             <span class="ic">⛪</span>
             <span class="nm">${esc(USER.iglesia_nombre || 'Todas las iglesias')}</span>
+            ${(USER.cuerpos_asignados || []).length
+              ? `<span class="cuerpos-chip" title="Solo ve lo de estos cuerpos">👥 ${esc(USER.cuerpos_asignados.join(' · '))}</span>`
+              : ''}
           </div>
           <div class="who"><span class="avatar">${esc(initials)}</span> <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></div>
           <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
@@ -516,7 +519,10 @@ async function viewList(name, filtrosIniciales) {
   const filterFields = (m.filterFields || [])
     .map((n) => fieldsBy[n])
     .filter((f) => f && (f.type === 'select' || f.type === 'ref'));
-  const iglesiaField = fieldsBy['iglesia_id'] && !USER.iglesia_id ? fieldsBy['iglesia_id'] : null;
+  // El filtro por iglesia se ofrece cuando el usuario administra más de una
+  const iglesiaField = fieldsBy['iglesia_id'] && (USER.iglesias_asignadas || 0) !== 1
+    ? fieldsBy['iglesia_id']
+    : null;
 
   tb.innerHTML = `
     <input type="search" id="q" placeholder="Buscar…" value="${esc(st.q)}" />

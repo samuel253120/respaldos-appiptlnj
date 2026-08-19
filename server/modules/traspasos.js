@@ -84,8 +84,8 @@ module.exports = {
       if (!destino) return 'La cuenta de destino indicada no existe';
 
       // Se traspasa desde una cuenta propia; el destino puede ser de otro nivel
-      if (user.iglesia_id && (origen.iglesia_id || null) !== user.iglesia_id) {
-        return `La cuenta "${origen.nombre}" no pertenece a su iglesia`;
+      if (!require('../alcance').alcanzaIglesia(user, origen.iglesia_id)) {
+        return `La cuenta "${origen.nombre}" no está entre las iglesias que administra`;
       }
       if (origen.estado === 'Cerrada') return `La cuenta "${origen.nombre}" está cerrada: no puede salir dinero de ella`;
       if (destino.estado === 'Cerrada') return `La cuenta "${destino.nombre}" está cerrada: no puede entrar dinero en ella`;

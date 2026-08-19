@@ -99,7 +99,23 @@ Roles disponibles (editables en `server/permissions.js`):
 
 **Iglesia local a la vista**: la barra superior y el panel de control muestran siempre en qué congregación se está trabajando — la asignada al usuario o, si administra varias, "Todas las iglesias". Cuando el sistema administra una sola iglesia, se muestra su nombre aunque el usuario no tenga ninguna asignada.
 
-**Alcance multi-iglesia**: a cada usuario se le puede asignar una iglesia. Un usuario con iglesia asignada solo ve y modifica registros de esa iglesia (el sistema lo garantiza en el servidor, no solo en la interfaz). Un usuario sin iglesia asignada opera sobre todas.
+### Qué ve cada usuario: iglesias y cuerpos asignados 🔒
+
+En la ficha de cada usuario, el administrador decide **hasta dónde llega**:
+
+| Campo | Qué hace |
+|---|---|
+| **Iglesias que administra** | Una o varias. Solo ve los datos de esas congregaciones. Sin ninguna marcada, ve todas. |
+| **Iglesia principal** | Con cuál trabaja por omisión (la que se propone al crear registros). Tiene que estar entre las de arriba; con una sola asignada, queda esa. |
+| **Cuerpos que administra** | Uno o varios. Marcando alguno, dentro de sus iglesias **solo ve lo de esos cuerpos**. Sin ninguno, ve todos los de sus iglesias. |
+
+**Con cuerpos asignados**, el usuario ve únicamente: esos cuerpos, **sus integrantes** (y de ellos su bitácora, documentos, certificados, solicitudes…), sus **actividades y asistencias**, sus **directivas**, sus **actas** y su **inventario**. Lo demás de la iglesia —los otros cuerpos, los miembros que no son de los suyos, la tesorería general— no le aparece.
+
+Todo esto **lo verifica el servidor en cada consulta y en cada guardado**, no solo la pantalla: quien tiene dos iglesias asignadas no puede crear un registro en una tercera («Esa iglesia no está entre las que tiene asignadas»), y quien tiene un cuerpo asignado no puede abrir la ficha de un miembro de otro («Ese registro está fuera de lo que tiene asignado»).
+
+La barra superior muestra siempre lo que la persona tiene asignado: *⛪ Iglesia Central 👥 Coro*.
+
+> Los usuarios creados antes de esto siguen funcionando igual: la iglesia que tenían asignada se toma como su única iglesia.
 
 ## Cuerpos y Grupos: dos realidades distintas 👥
 
