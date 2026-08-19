@@ -146,5 +146,6 @@ ensureSeed();
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ Sistema de Gestión de Iglesias escuchando en http://localhost:${PORT}`);
+  console.log(`✅ Sistema de Gestión de Iglesias escuchando en el puerto ${PORT}`);
+  console.log('   (al publicar en internet, este puerto debe coincidir con el "Target port" del dominio)');
 });

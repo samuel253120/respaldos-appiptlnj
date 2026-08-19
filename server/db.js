@@ -14,11 +14,23 @@ const { allModules } = require('./registry');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-const db = new Database(path.join(DATA_DIR, 'iglesias.db'));
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+let db;
+try {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  db = new Database(path.join(DATA_DIR, 'iglesias.db'));
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  console.log(`💾 Datos en: ${DATA_DIR}`);
+} catch (e) {
+  console.error(
+    `\n❌ No se pudo abrir la base de datos en "${DATA_DIR}".\n` +
+      '   Revise que la variable DATA_DIR apunte exactamente a la ruta (Mount Path)\n' +
+      '   del volumen del servicio y que esa carpeta permita escritura.\n' +
+      `   Detalle técnico: ${e.message}\n`
+  );
+  process.exit(1);
+}
 
 /** Tipo de columna SQL para cada tipo de campo del sistema. */
 function sqlType(field) {
