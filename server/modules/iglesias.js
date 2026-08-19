@@ -1,4 +1,9 @@
-/** Módulo: Iglesias (congregaciones administradas por el sistema). */
+/**
+ * Módulo: Iglesias (congregaciones administradas por el sistema).
+ *
+ * Al crear una iglesia se le crean solas sus dos cuentas de tesorería: la
+ * general y el fondo donde aparta lo que le corresponde a la corporación.
+ */
 module.exports = {
   name: 'iglesias',
   label: 'Iglesias',
@@ -27,4 +32,24 @@ module.exports = {
     },
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],
+  hooks: {
+    afterSave(fila, { isNew, db }) {
+      if (!isNew) return;
+      const crear = db.prepare(
+        `INSERT INTO cuentas_tesoreria (nombre, ambito, iglesia_id, tipo, estado, saldo_inicial, descripcion)
+         VALUES (?, 'Iglesia local', ?, ?, 'Activa', 0, ?)`
+      );
+      const falta = (tipo) =>
+        !db.prepare('SELECT id FROM cuentas_tesoreria WHERE iglesia_id = ? AND tipo = ?').get(fila.id, tipo);
+      if (falta('General')) {
+        crear.run(`Tesorería general — ${fila.nombre}`, fila.id, 'General', 'Tesorería general de la iglesia local.');
+      }
+      if (falta('Fondo para la corporación')) {
+        crear.run(
+          `Fondo para la corporación — ${fila.nombre}`, fila.id, 'Fondo para la corporación',
+          'Donde la iglesia aparta lo que le corresponde a la corporación, hasta traspasarlo.'
+        );
+      }
+    },
+  },
 };

@@ -53,8 +53,15 @@ const OPCIONES = [
       {
         clave: 'ofrenda_porcentaje_fondo', label: 'Porcentaje de la ofrenda que se aparta', tipo: 'number', defecto: '10',
         ayuda:
-          'En el Registro de Servicios, de cada ofrenda se aparta este porcentaje para el otro fondo de ' +
-          'tesorería y el resto queda para la iglesia local.',
+          'En el Registro de Servicios, de cada ofrenda se aparta este porcentaje para el fondo de la ' +
+          'corporación y el resto queda para la iglesia local.',
+      },
+      {
+        clave: 'ofrenda_registra_tesoreria', label: 'Registrar la ofrenda en tesorería', tipo: 'boolean', defecto: '1',
+        ayuda:
+          'Al guardar un servicio con ofrenda, el sistema anota solo dos ingresos: el porcentaje apartado en el ' +
+          '«Fondo para la corporación» de esa iglesia y el resto en su tesorería general. Apáguelo si prefiere ' +
+          'ingresar las ofrendas a mano en Tesorería.',
       },
     ],
   },

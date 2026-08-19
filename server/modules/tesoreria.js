@@ -53,8 +53,10 @@ module.exports = {
     { name: 'cuerpo_id', label: 'Cuerpo / Grupo (si aplica)', type: 'ref', ref: 'cuerpos' },
     { name: 'comprobante', label: 'Comprobante (imagen o PDF)', type: 'file' },
     { name: 'notas', label: 'Notas', type: 'textarea' },
-    // Movimientos generados por un traspaso entre cuentas (se manejan desde allá)
+    // Movimientos generados por un traspaso o por la ofrenda de un servicio
+    // (se manejan desde allá, para que los dos lados queden siempre cuadrados)
     { name: 'traspaso_id', type: 'number', oculto: true, readonly: true },
+    { name: 'servicio_id', type: 'number', oculto: true, readonly: true },
   ],
   hooks: {
     beforeSave(data, { user, existing, db }) {
@@ -62,6 +64,9 @@ module.exports = {
       // que los dos lados queden siempre por el mismo monto y la misma fecha.
       if (existing && existing.traspaso_id) {
         return 'Este movimiento lo generó un traspaso entre cuentas: modifíquelo en «Traspasos entre Cuentas»';
+      }
+      if (existing && existing.servicio_id) {
+        return 'Este movimiento lo generó la ofrenda de un servicio: modifíquelo en «Registro de Servicios»';
       }
 
       // La iglesia del movimiento es la de su cuenta (o ninguna, si es de la corporación)
@@ -88,6 +93,9 @@ module.exports = {
     beforeDelete(fila) {
       if (fila.traspaso_id) {
         return 'Este movimiento lo generó un traspaso entre cuentas: elimine el traspaso y los dos lados se van juntos';
+      }
+      if (fila.servicio_id) {
+        return 'Este movimiento lo generó la ofrenda de un servicio: cambie la ofrenda en el servicio y el movimiento se ajusta solo';
       }
       return null;
     },

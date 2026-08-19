@@ -587,7 +587,9 @@ async function viewList(name, filtrosIniciales) {
                 ${cols.map((c) => `<td>${cellValue(fieldsBy[c], r, c)}</td>`).join('')}
                 <td style="white-space:nowrap;text-align:right">
                   ${m.printable ? `<button class="btn secondary sm act-print" data-id="${r.id}" title="Imprimir">🖨️</button>` : ''}
-                  ${m.perms.delete ? `<button class="btn danger sm act-del" data-id="${r.id}" title="Eliminar">🗑️</button>` : ''}
+                  ${m.perms.delete && !generadoPorOtroModulo(r)
+                    ? `<button class="btn danger sm act-del" data-id="${r.id}" title="Eliminar">🗑️</button>`
+                    : ''}
                 </td>
               </tr>`).join('')}
           </tbody>
@@ -680,6 +682,15 @@ async function viewList(name, filtrosIniciales) {
   }
 
   load();
+}
+
+/**
+ * ¿Este registro lo generó otro módulo? (los movimientos de un traspaso o de
+ * la ofrenda de un servicio). Se manejan desde allá, así que no se ofrece
+ * eliminarlos por separado.
+ */
+function generadoPorOtroModulo(row) {
+  return !!(row.traspaso_id || row.servicio_id);
 }
 
 function cellValue(f, row, col) {

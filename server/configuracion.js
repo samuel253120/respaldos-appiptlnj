@@ -39,7 +39,11 @@ router.put('/', authRequired, (req, res) => {
     if (!POR_CLAVE[clave]) continue;
     const opcion = POR_CLAVE[clave];
     let v = valor;
-    if (opcion.tipo === 'boolean') v = valor ? '1' : '0';
+    // Ojo: "0" es una cadena, y toda cadena es verdadera en JavaScript; hay que
+    // mirar el valor, si no un "0" enviado por la API dejaría la opción activa.
+    if (opcion.tipo === 'boolean') {
+      v = valor === true || valor === 1 || valor === '1' || valor === 'true' ? '1' : '0';
+    }
     if (opcion.tipo === 'number' && !Number.isFinite(Number(valor))) continue;
     guardar(clave, v, req.user.id);
   }

@@ -254,11 +254,13 @@ Cada traspaso genera **sus dos movimientos en Tesorería** —un egreso en el or
 - Si se elimina el traspaso, se van los dos movimientos y los saldos vuelven a como estaban.
 - Esos dos movimientos **no se editan ni se borran por separado** desde Tesorería: el sistema remite al traspaso, para que nunca quede un lado sin el otro.
 
+**De dónde sale el dinero del fondo**: cada servicio con ofrenda deja el porcentaje apartado en el *Fondo para la corporación* de su iglesia (ver *Registro de Servicios*). El traspaso es el paso siguiente: vaciar ese fondo hacia la corporación cuando corresponda.
+
 **Quién puede traspasar qué**: el dinero sale siempre de una cuenta propia (el servidor rechaza sacarlo de una ajena, aunque se intente por fuera de la pantalla) y puede entrar en una cuenta de la corporación o en otra de la misma iglesia. A un tesorero local no se le ofrecen —ni se le muestran— las cuentas de otras congregaciones.
 
 ### Al actualizar el sistema
 
-A cada iglesia que no lo tenga se le crea su **Fondo para la corporación**, y los movimientos que ya estaban registrados **no se pierden ni cambian de nivel**: cada uno pasa a la cuenta general que le corresponde según su iglesia (o a la de la corporación si no tenía), creándola si hacía falta. Queda anotado en el arranque: *«🔁 tesorería: 4 movimiento(s) asignados a su cuenta general»*.
+Al crear una iglesia nueva se le crean solas su **tesorería general** y su **fondo para la corporación**. A cada iglesia que no lo tenga se le crea su **Fondo para la corporación**, y los movimientos que ya estaban registrados **no se pierden ni cambian de nivel**: cada uno pasa a la cuenta general que le corresponde según su iglesia (o a la de la corporación si no tenía), creándola si hacía falta. Queda anotado en el arranque: *«🔁 tesorería: 4 movimiento(s) asignados a su cuenta general»*.
 
 ## Registro de Servicios 🕊️
 
@@ -290,7 +292,20 @@ Ambos se citan igual: **libro** (los 66 de la Reina-Valera 1960, en orden del ca
 
 Los tres campos calculados se actualizan **mientras se escribe** y no se pueden editar a mano: el servidor los vuelve a calcular al guardar, así que nunca quedan descuadrados. El porcentaje se cambia en **Configuración → Organización → Porcentaje de la ofrenda que se aparta**.
 
-> El sistema calcula y deja registrada la separación, pero **no crea movimientos en Tesorería por su cuenta**, para no duplicar lo que se registre allí a mano.
+### La ofrenda queda registrada sola en tesorería
+
+Al guardar un servicio con ofrenda, el sistema anota **dos ingresos en Tesorería**, en las cuentas de **esa misma iglesia**:
+
+| Ingreso | En qué cuenta | Concepto |
+|---|---|---|
+| El porcentaje apartado (10%) | **Fondo para la corporación** de la iglesia | *Aparte para la corporación — ofrenda de culto general del 5 de agosto de 2026* |
+| El resto | **Tesorería general** de la iglesia | *Ofrenda de culto general del 5 de agosto de 2026* |
+
+El concepto se arma solo con el tipo de servicio y su fecha, así se reconoce sin abrir nada. Ese porcentaje queda guardado en la iglesia hasta que se **traspasa a la corporación** (ver *Traspasos entre cuentas*).
+
+Los dos movimientos se mantienen al día con el servicio: si se corrige la ofrenda, la fecha o el tipo, se corrigen; si la ofrenda queda en cero, desaparecen; y si se elimina el servicio, se van con él. Tampoco se editan ni se borran por separado desde Tesorería —el sistema remite al servicio—, y en esas filas ni siquiera se ofrece el botón de eliminar.
+
+> Se puede apagar en **Configuración → Organización → Registrar la ofrenda en tesorería**, si prefieren seguir ingresando las ofrendas a mano.
 
 Esta es también una capacidad general del motor: cualquier campo puede declarar `calcula` —`suma`, `resta` o `porcentaje` (fijo o tomado de una opción de configuración)— y el sistema lo resuelve en el servidor y en pantalla.
 
@@ -304,7 +319,7 @@ Los administradores tienen en el menú la entrada **Configuración**, con opcion
 
 - **Mantenimiento** — deja el sistema en mantenimiento y define el aviso que verán los usuarios.
 - **Identidad** — nombre y lema de la institución.
-- **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores de los cuerpos) y porcentaje de la ofrenda que se aparta para el otro fondo.
+- **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores de los cuerpos), porcentaje de la ofrenda que se aparta y si ese reparto se registra solo en tesorería.
 - **Preferencias** — símbolo de moneda, registros por página, duración de la sesión, tamaño y calidad de las imágenes al subirlas, cuántos cumpleaños muestra el panel y si la bitácora registra automáticamente.
 
 ### Modo mantenimiento
