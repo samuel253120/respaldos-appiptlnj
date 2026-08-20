@@ -399,6 +399,91 @@ function actividadesConVariosCuerpos() {
 }
 
 
+/**
+ * En Pastores / Guías había dos campos de cónyuge —uno hacia otro pastor y
+ * otro hacia un miembro— cuando el cónyuge es uno solo. Ahora es un único
+ * campo hacia Miembros, porque el pastor y la pastora son también miembros.
+ *
+ * Lo registrado se traspasa: si apuntaba a otro pastor, se usa la ficha de
+ * miembro de ese pastor; si apuntaba a un miembro, se conserva tal cual.
+ */
+function conyugeUnicoDePastores() {
+  const columnas = db.prepare('PRAGMA table_info("pastores")').all().map((c) => c.name);
+  if (!columnas.includes('conyuge_miembro_id')) return;
+
+  const filas = db.prepare('SELECT id, conyuge_id, conyuge_miembro_id, rut FROM pastores').all();
+  let movidos = 0;
+  const sinFicha = [];
+
+  for (const fila of filas) {
+    let miembroId = fila.conyuge_miembro_id || null;
+
+    // Lo que apuntaba a otro pastor: se busca la ficha de miembro de ese pastor
+    if (!miembroId && fila.conyuge_id) {
+      const otro = db.prepare('SELECT id, nombres, apellidos, rut, miembro_id FROM pastores WHERE id = ?').get(fila.conyuge_id);
+      if (otro) {
+        if (otro.miembro_id) miembroId = otro.miembro_id;
+        else if (otro.rut) {
+          const m = db.prepare('SELECT id FROM miembros WHERE rut = ?').get(otro.rut);
+          if (m) miembroId = m.id;
+        }
+        if (!miembroId) sinFicha.push(`${otro.nombres} ${otro.apellidos}`);
+      }
+    }
+
+    if (miembroId && Number(miembroId) !== Number(fila.conyuge_id || 0)) {
+      db.prepare('UPDATE pastores SET conyuge_id = ? WHERE id = ?').run(miembroId, fila.id);
+      movidos++;
+    } else if (!miembroId && fila.conyuge_id) {
+      // Apuntaba a un pastor sin ficha de miembro: se suelta para no dejar un
+      // enlace que ahora significaría otra cosa
+      db.prepare('UPDATE pastores SET conyuge_id = NULL WHERE id = ?').run(fila.id);
+    }
+    db.prepare('UPDATE pastores SET conyuge_miembro_id = NULL WHERE id = ?').run(fila.id);
+  }
+
+  if (movidos) console.log(`🔁 pastores: ${movidos} vínculo(s) de cónyuge quedaron en un solo campo, hacia Miembros.`);
+  if (sinFicha.length) {
+    console.log(
+      `ℹ️  pastores: el cónyuge de ${sinFicha.length} ficha(s) todavía no tiene ficha de miembro ` +
+        `(${sinFicha.join(', ')}). Créela desde su ficha y vuelva a indicarlo.`
+    );
+  }
+}
+
+
+/**
+ * Los cargos del ministerio pasaron a la escala de la organización: guía de
+ * obra, pastor probando, pastor diácono, pastor presbítero y pastor
+ * presidente. "Guía" calza con "Guía de obra"; los demás cargos antiguos se
+ * conservan tal cual y se informan, para que se les ponga el que corresponde.
+ */
+function cargosDePastores() {
+  const nuevos = ['Guía de obra', 'Pastor probando', 'Pastor diácono', 'Pastor presbítero', 'Pastor presidente'];
+  const filas = db.prepare('SELECT id, nombres, apellidos, cargo FROM pastores').all();
+  const porRevisar = [];
+  let renombrados = 0;
+
+  for (const fila of filas) {
+    if (!fila.cargo || nuevos.includes(fila.cargo)) continue;
+    if (fila.cargo === 'Guía') {
+      db.prepare(`UPDATE pastores SET cargo = 'Guía de obra' WHERE id = ?`).run(fila.id);
+      renombrados++;
+      continue;
+    }
+    porRevisar.push(`${fila.nombres} ${fila.apellidos} (${fila.cargo})`);
+  }
+
+  if (renombrados) console.log(`🔁 pastores: ${renombrados} "Guía" pasaron a "Guía de obra".`);
+  if (porRevisar.length) {
+    console.log(
+      `ℹ️  pastores: ${porRevisar.length} ficha(s) tienen un cargo de la lista anterior y se conservan como estaban ` +
+        `(${porRevisar.join(', ')}).\n   Ábralas y elija el cargo que corresponde en la escala nueva.`
+    );
+  }
+}
+
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
@@ -410,6 +495,8 @@ function ejecutarMigraciones() {
   fondoParaLaCorporacion();
   asistenciasNominales();
   actividadesConVariosCuerpos();
+  conyugeUnicoDePastores();
+  cargosDePastores();
 }
 
 module.exports = { ejecutarMigraciones };

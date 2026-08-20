@@ -15,6 +15,14 @@
  * se vincula allá.
  */
 /**
+ * Los cargos del ministerio, de menor a mayor. El de Pastor presidente lo
+ * ocupa una sola persona en toda la organización; de los demás puede haber
+ * varios a la vez.
+ */
+const CARGOS = ['Guía de obra', 'Pastor probando', 'Pastor diácono', 'Pastor presbítero', 'Pastor presidente'];
+const CARGO_UNICO = 'Pastor presidente';
+
+/**
  * Cómo está el pastor respecto de su ficha de miembro. El enlace vale desde
  * ya; el RUT es la verificación: cuando está en las dos fichas, tiene que ser
  * el mismo, porque es la misma persona.
@@ -65,8 +73,9 @@ module.exports = {
     { name: 'nombres', label: 'Nombres', type: 'text', required: true },
     { name: 'apellidos', label: 'Apellidos', type: 'text', required: true },
     {
-      name: 'cargo', label: 'Cargo', type: 'select', required: true, default: 'Pastor',
-      options: ['Pastor', 'Pastora', 'Guía', 'Anciano', 'Diácono', 'Diaconisa', 'Evangelista', 'Misionero', 'Otro'],
+      name: 'cargo', label: 'Cargo', type: 'select', required: true, default: 'Guía de obra',
+      options: CARGOS,
+      help: 'De menor a mayor. El de Pastor presidente lo ocupa una sola persona en toda la organización.',
     },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias' },
     {
@@ -84,12 +93,8 @@ module.exports = {
       help: 'El pastor y la pastora son también miembros de su iglesia. Si tienen el mismo RUT, el sistema la reconoce sola.',
     },
     {
-      name: 'conyuge_id', label: 'Cónyuge (pastor / guía)', type: 'ref', ref: 'pastores',
-      help: 'Si su cónyuge también está registrado aquí, elíjalo: el vínculo queda en las dos fichas. Si solo está en Miembros, vincúlelo desde allá.',
-    },
-    {
-      name: 'conyuge_miembro_id', label: 'Cónyuge (miembro)', type: 'ref', ref: 'miembros',
-      help: 'Si su cónyuge está registrado como miembro y no como pastor(a).',
+      name: 'conyuge_id', label: 'Cónyuge', type: 'ref', ref: 'miembros',
+      help: 'Se elige entre los miembros, porque toda persona de la iglesia lo es — incluida la pastora. El vínculo queda también en las fichas de miembro de ambos.',
     },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Activo',
@@ -180,9 +185,16 @@ module.exports = {
 
   hooks: {
     beforeSave(data, { id, existing, db }) {
-      const conyuge = data.conyuge_id !== undefined ? data.conyuge_id : existing ? existing.conyuge_id : null;
-      if (conyuge && id && Number(conyuge) === Number(id)) {
-        return 'Un pastor no puede figurar como su propio cónyuge';
+      // Un solo Pastor presidente en toda la organización
+      const cargo = data.cargo !== undefined ? data.cargo : existing ? existing.cargo : null;
+      if (cargo === CARGO_UNICO) {
+        const otro = db
+          .prepare(`SELECT nombres, apellidos FROM pastores WHERE cargo = ? AND id != ? AND (estado IS NULL OR estado = 'Activo')`)
+          .get(CARGO_UNICO, id || 0);
+        if (otro) {
+          return `Ya hay un ${CARGO_UNICO}: ${otro.nombres} ${otro.apellidos}. ` +
+            'Cámbiele el cargo o su estado antes de designar a otro.';
+        }
       }
 
       // Si no se indicó su ficha de miembro, se busca por RUT: es la misma persona
@@ -196,6 +208,12 @@ module.exports = {
         }
       }
 
+      // Nadie es su propio cónyuge
+      const conyuge = data.conyuge_id !== undefined ? data.conyuge_id : existing ? existing.conyuge_id : null;
+      if (conyuge && enlace && Number(conyuge) === Number(enlace)) {
+        return 'Un pastor no puede figurar como su propio cónyuge';
+      }
+
       // El RUT tiene que ser el mismo en las dos fichas: es la misma persona
       if (enlace && rut) {
         const miembro = db.prepare('SELECT nombres, apellidos, rut FROM miembros WHERE id = ?').get(enlace);
@@ -207,22 +225,27 @@ module.exports = {
       return null;
     },
 
-    /** El vínculo del matrimonio queda en las dos fichas. */
+    /**
+     * El matrimonio vive en las fichas de miembro: al indicar aquí al cónyuge,
+     * el vínculo queda también entre la ficha de miembro del pastor y la de
+     * su cónyuge, en los dos sentidos.
+     */
     afterSave(fila, { db }) {
       const conyugeId = fila.conyuge_id || null;
-      db.prepare('UPDATE pastores SET conyuge_id = NULL WHERE conyuge_id = ? AND id != ?')
-        .run(fila.id, conyugeId || 0);
       if (!conyugeId) return;
 
-      const conyuge = db.prepare('SELECT * FROM pastores WHERE id = ?').get(conyugeId);
-      if (!conyuge) {
-        db.prepare('UPDATE pastores SET conyuge_id = NULL WHERE id = ?').run(fila.id);
-        return;
+      const suyaDeMiembro = fichaDeMiembro(fila, db);
+      if (!suyaDeMiembro || Number(suyaDeMiembro.id) === Number(conyugeId)) return;
+
+      // Se sueltan los vínculos anteriores que quedaran colgando
+      db.prepare('UPDATE miembros SET conyuge_id = NULL WHERE conyuge_id = ? AND id != ?')
+        .run(suyaDeMiembro.id, conyugeId);
+      const otro = db.prepare('SELECT conyuge_id FROM miembros WHERE id = ?').get(conyugeId);
+      if (otro && otro.conyuge_id && Number(otro.conyuge_id) !== Number(suyaDeMiembro.id)) {
+        db.prepare('UPDATE miembros SET conyuge_id = NULL WHERE id = ?').run(otro.conyuge_id);
       }
-      if (conyuge.conyuge_id && Number(conyuge.conyuge_id) !== Number(fila.id)) {
-        db.prepare('UPDATE pastores SET conyuge_id = NULL WHERE id = ?').run(conyuge.conyuge_id);
-      }
-      db.prepare('UPDATE pastores SET conyuge_id = ? WHERE id = ?').run(fila.id, conyuge.id);
+      db.prepare('UPDATE miembros SET conyuge_id = ? WHERE id = ?').run(conyugeId, suyaDeMiembro.id);
+      db.prepare('UPDATE miembros SET conyuge_id = ? WHERE id = ?').run(suyaDeMiembro.id, conyugeId);
     },
 
     beforeDelete(fila, { db }) {

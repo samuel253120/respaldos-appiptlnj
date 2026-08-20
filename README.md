@@ -238,7 +238,7 @@ Cuando dos miembros están casados entre sí, se vinculan: basta elegir al **có
 - Si se cambia el vínculo, el anterior se suelta solo: nadie queda apuntando a quien ya no corresponde.
 - Nadie puede figurar como su propio cónyuge, y si se elimina una ficha, el vínculo del otro queda limpio.
 
-Lo mismo en **Pastores / Guías**: el pastor y la pastora se vinculan entre sí, y si el cónyuge está registrado solo como miembro, se indica en el campo *Cónyuge (miembro)*.
+En **Pastores / Guías** hay un solo campo **Cónyuge**, que también se elige entre los miembros y deja el vínculo en las fichas de miembro de ambos.
 
 
 ### Edad al día
@@ -396,6 +396,28 @@ Cada informe muestra arriba los **promedios**: de **asistencia**, de **inasisten
 | **Por miembro** | Cómo va cada persona |
 
 Cada fila lleva una barra de tres colores (presentes, justificados, ausentes) para comparar de un vistazo, y desde el promedio por miembro se salta al informe personal de esa persona con un clic. El informe por persona agrega el **detalle de todas sus marcas** —fecha, actividad, estado, motivo y detalle— y el recuento de **motivos de justificación**. Todo se imprime con el membrete de la iglesia.
+
+## Pastores y Guías 🧑‍💼
+
+### Los cargos, de menor a mayor
+
+| Cargo | Cuántos puede haber |
+|---|---|
+| Guía de obra | Varios |
+| Pastor probando | Varios |
+| Pastor diácono | Varios |
+| Pastor presbítero | Varios |
+| **Pastor presidente** | **Uno solo en toda la organización** |
+
+El sistema hace cumplir lo último: al designar a un segundo presidente avisa quién ocupa el cargo —*«Ya hay un Pastor presidente: Samuel Rodríguez. Cámbiele el cargo o su estado antes de designar a otro.»*— y no lo guarda. De los demás cargos puede haber tantos como haga falta.
+
+> Las fichas que traían un cargo de la lista anterior (Pastor, Pastora, Anciano…) **se conservan tal cual** y quedan anotadas en el arranque; al abrir cada una, el cargo antiguo aparece marcado como *(valor anterior)* hasta que se elija el de la escala nueva. Así ninguno se cambia sin querer.
+
+### Un solo cónyuge
+
+Antes había dos campos —uno hacia otro pastor y otro hacia un miembro—, que era confuso: el cónyuge es uno solo. Ahora hay **un único campo, Cónyuge**, que se elige entre los **miembros**, porque toda persona de la iglesia lo es, incluida la pastora. El vínculo queda también entre las **fichas de miembro** de ambos, en los dos sentidos, que es donde vive el matrimonio.
+
+Lo que estaba registrado se traspasó solo: lo que apuntaba a otro pastor pasó a su ficha de miembro.
 
 ## El pastor y la pastora son también miembros 🧍
 

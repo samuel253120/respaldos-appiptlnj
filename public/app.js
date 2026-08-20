@@ -958,11 +958,17 @@ function fieldHtml(f, row, isNew) {
       input = `<textarea name="${f.name}">${esc(val)}</textarea>`;
       break;
     case 'select': {
+      const valores = (f.options || []).map((o) => String(typeof o === 'object' ? o.value : o));
       const opts = (f.options || []).map((o) => {
         const v = typeof o === 'object' ? o.value : o;
         const l = typeof o === 'object' ? o.label : o;
         return `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
       });
+      // Un valor guardado que ya no está en la lista (p. ej. un cargo de una
+      // lista anterior) se agrega igual, para no cambiarlo sin querer.
+      if (val && !valores.includes(String(val))) {
+        opts.unshift(`<option value="${esc(val)}" selected>${esc(val)} (valor anterior)</option>`);
+      }
       input = `<select name="${f.name}">${f.required ? '' : '<option value="">—</option>'}${opts.join('')}</select>`;
       break;
     }
