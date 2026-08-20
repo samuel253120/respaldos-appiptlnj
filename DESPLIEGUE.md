@@ -46,6 +46,30 @@ Abra la pestaña **Build Logs** del despliegue: la última línea en rojo dice l
 | `npm ci can only install packages when package.json and package-lock.json are in sync` | Se editó `package.json` sin regenerar el candado | Ejecutar `npm install --package-lock-only` y subir el cambio |
 | Error compilando `better-sqlite3` | El constructor eligió una versión de Node sin binario precompilado | `engines.node` fijado en `22.x` en `package.json` |
 
+### Si el despliegue se queda en «Performing healthchecks…»
+
+Un despliegue puede quedarse ahí cuarenta minutos o más sin terminar. Mientras eso pasa, el dominio responde *«Application failed to respond»* aunque el sistema esté bien.
+
+Por eso **este proyecto no declara `healthcheckPath`** en `railway.json`: el despliegue queda en línea apenas arranca el contenedor, sin depender de esa comprobación. La verificación de salud sigue existiendo en el sistema —abra `/health` cuando quiera—, pero ya no puede bloquear un despliegue.
+
+Si ve varios despliegues detenidos en ese paso:
+
+1. En cada uno, menú **⋮ → Remove** (o *Cancel*), para que el que está **ACTIVE** vuelva a atender el dominio.
+2. Revise el aviso del panel: si dice **«Deploys have been paused due to an upstream issue»**, es una avería de Railway. Nada que arreglar de este lado; espere a que se restablezca (https://status.railway.com).
+3. Cuando se restablezca, haga **Redeploy** del último despliegue.
+
+### Cómo saber si el sistema está sano
+
+Abra `https://SU-DOMINIO/health`. Responde algo así:
+
+```json
+{ "ok": true, "version": "1.26.2", "base": "ok", "disco": "820 MB libres" }
+```
+
+- `base` distinto de `"ok"` → la base de datos no contesta (volumen sin conectar).
+- `disco` con pocos MB → **el volumen se está llenando**; agrándelo desde *Settings → Volumes* antes de que el sistema no pueda guardar.
+- Si en vez del sistema aparece una página que dice *«El sistema no pudo abrir su base de datos»*, ahí mismo está explicado qué revisar: los datos no se han perdido, están en el volumen.
+
 ### Verificación final (muy recomendada)
 
 1. Abra la URL, entre y cree un registro de prueba (ej. un miembro).
