@@ -276,6 +276,26 @@ Una tarjeta lista **los miembros que cumplen años más pronto**, con su foto, l
 
 ## Ficha del miembro 🧍
 
+### La ficha completa, en una sola pantalla 👁️
+
+Al tocar a una persona en el listado se abre su **ficha**: **todos** sus datos, ordenados por las mismas secciones con las que se registran, y debajo sus **cuerpos y grupos**, sus **documentos**, su **historial** y su **acceso al sistema**. Es de solo lectura —para cambiar algo está el botón **✏️ Editar**, que lleva al formulario de siempre— y está pensada para leerla desde el teléfono: una columna, letra grande y lo importante arriba.
+
+En el encabezado van la foto, el **trato con el nombre completo**, la iglesia, la edad, el tipo de miembro y el estado, y tres botones que evitan copiar números a mano: **📞 Llamar**, **💬 WhatsApp** y **✉️ Correo**.
+
+Los campos **en blanco no se muestran**, para que la lectura no sea una lista de casillas vacías. Un interruptor —*«Ver los N campos en blanco»*— los muestra todos cuando lo que se quiere es justamente ver **qué falta por completar**. Los datos que no le aplican a esa persona (los del adulto responsable de quien ya es mayor de edad, por ejemplo) no aparecen ni siquiera así, salvo que traigan algo escrito.
+
+Con **🖨️ Imprimir** la misma ficha sale en papel con el membrete de la iglesia.
+
+> Lo mismo vale para las **iglesias**, los **pastores / guías** y los **cuerpos y grupos**: se abren para leerlos, y desde ahí se pasa a editarlos.
+
+> Un dato guardado que **no figura en la lista de opciones** —un parentesco escrito a mano, algo que venga de otro sistema— se muestra **tal cual**: el dato está, y esconderlo por no reconocerlo sería peor que mostrarlo.
+
+### El listado en el teléfono 📱
+
+En pantalla chica, una tabla de nueve columnas obliga a desplazarse de lado y deja la mitad de los datos fuera de la vista. Por eso, **en el teléfono cada fila se dibuja como una tarjeta**: el trato y el nombre arriba, y debajo el RUT, la edad, el tipo de miembro y el estado, cada dato con su nombre al lado. Los campos en blanco no ocupan lugar, y no hay que desplazarse hacia los costados.
+
+Mientras haya **una sola iglesia registrada**, la columna de la iglesia no se muestra —repetir el mismo nombre en cada fila solo quita espacio—; aparece sola en cuanto haya más de una.
+
 ### Cómo se le trata a cada persona
 
 En la iglesia a cada miembro se le dice de una manera, y el sistema la calcula sola:
@@ -339,6 +359,8 @@ La ficha viene ordenada por secciones, para que no sea una lista interminable de
 | **Contacto de emergencia** | Nombre · parentesco · teléfono |
 | **Información médica** | Enfermedades · alergias · indicaciones médicas |
 | **Notas** | **Nota importante** (destacada) · notas |
+
+**Parentesco** —el del contacto de emergencia y el del adulto responsable— se elige de una lista de sugerencias (cónyuge, madre, padre, hijo(a), abuelo(a)…) **o se escribe como corresponda**: *hija*, *esposo*, *nieta*, *madrina*. Nadie tiene que forzar un parentesco real dentro de una lista cerrada, y lo que ya estaba escrito se conserva y se ve tal cual.
 
 **Forma de ingreso** —por dónde llegó a esta iglesia—: servicio general, redes sociales, traslado de iglesia, nacido en la iglesia, campaña evangelística, invitación de hermano(a) u otro.
 

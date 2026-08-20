@@ -25,7 +25,7 @@ const bitacora = require('./bitacora');
 const MIOS_EN_MIEMBROS = [
   'foto', 'nombres', 'apellidos', 'fecha_nacimiento', 'genero',
   'nivel_educacional', 'titulo_estudios', 'ocupacion', 'lugar_trabajo',
-  'estado_civil', 'fecha_matrimonio_civil', 'fecha_matrimonio_religioso',
+  'estado_civil', 'fecha_matrimonio_civil', 'fecha_matrimonio_religioso', 'conyuge_nombre',
   'telefono', 'email', 'direccion',
   'emergencia_nombre', 'emergencia_parentesco', 'emergencia_telefono',
   'enfermedades', 'alergias', 'indicaciones_medicas',
@@ -41,8 +41,9 @@ function camposDe(modulo, nombres) {
   return nombres
     .map((n) => def.fields.find((f) => f.name === n))
     .filter(Boolean)
-    .map(({ name, label, type, options, help, accept, showIf, seccion, mostrarEdad, buscador, sensible }) => ({
-      name, label, type, options: options || null, help: help || null, accept: accept || null,
+    .map(({ name, label, type, options, sugerencias, help, accept, showIf, seccion, mostrarEdad, buscador, sensible }) => ({
+      name, label, type, options: options || null, sugerencias: sugerencias || null,
+      help: help || null, accept: accept || null,
       showIf: showIf || null, seccion: seccion || null, mostrarEdad: !!mostrarEdad,
       buscador: buscador === undefined ? null : !!buscador, sensible: !!sensible,
       required: false, default: null, ref: null, optionsRoute: null, readonly: false,

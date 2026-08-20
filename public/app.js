@@ -259,6 +259,7 @@ function route() {
     const link = document.querySelector(`.side-link[data-mod="${name}"]`);
     if (link) link.classList.add('active');
     if (parts[2] === 'new') return viewForm(name, null, precarga);
+    if (parts[2] === 'ficha' && parts[3]) return viewFicha(name, parts[3]);
     if (parts[2] === 'edit' && parts[3]) return viewForm(name, parts[3]);
     return viewList(name, precarga);
   }
@@ -903,7 +904,7 @@ async function viewDashboard() {
         <h3>🎂 Próximos cumpleaños</h3>
         <ul class="cumple-list">
           ${d.cumpleanos.map((c) => `
-            <li class="${c.dias === 0 ? 'hoy' : ''}" onclick="location.hash='#/m/miembros/edit/${c.id}'">
+            <li class="${c.dias === 0 ? 'hoy' : ''}" onclick="location.hash='#/m/miembros/ficha/${c.id}'">
               <div class="av">${c.foto
                 ? `<img src="/uploads/${esc(c.foto)}" alt="" />`
                 : `<span>${esc((c.nombre || '?').trim().charAt(0).toUpperCase())}</span>`}</div>
@@ -1007,7 +1008,10 @@ async function viewList(name, filtrosIniciales) {
 
   // ------- barra de herramientas: búsqueda + filtros -------
   const tb = document.getElementById('toolbar');
+  // El filtro por iglesia lo pone la propia barra, así que no se repite aunque
+  // el módulo lo declare entre sus filtros
   const filterFields = (m.filterFields || [])
+    .filter((n) => n !== 'iglesia_id')
     .map((n) => fieldsBy[n])
     .filter((f) => f && (f.type === 'select' || f.type === 'ref'));
   // El filtro por iglesia se ofrece cuando el usuario administra más de una
@@ -1096,13 +1100,26 @@ async function viewList(name, filtrosIniciales) {
 
     if (name === 'tesoreria') loadTreasurySummary(params);
 
-    const cols = m.listFields.filter((c) => fieldsBy[c] || c === 'id');
+    // Mientras haya una sola iglesia registrada, su nombre en cada fila solo
+    // quita espacio: la columna aparece cuando haya más de una.
+    let variasIglesias = true;
+    try {
+      variasIglesias = (await getOptions('iglesias')).length > 1;
+    } catch (e) {
+      variasIglesias = true;
+    }
+    const cols = m.listFields
+      .filter((c) => fieldsBy[c] || c === 'id')
+      .filter((c) => c !== 'iglesia_id' || variasIglesias);
     const wrap = document.getElementById('tableWrap');
     if (!data.rows.length) {
       wrap.innerHTML = `<div class="empty-state"><div class="big">${m.icon}</div>No hay registros${st.q || Object.values(st.filters).some(Boolean) ? ' con los filtros aplicados' : ''}.</div>`;
     } else {
+      // En el teléfono esta tabla se dibuja como tarjetas (ver styles.css):
+      // cada fila con sus datos uno bajo otro, sin desplazarse de lado.
+      const etiquetaCol = (c) => (c === 'id' ? 'ID' : (fieldsBy[c] || {}).label || c);
       wrap.innerHTML = `
-        <table class="grid">
+        <table class="grid grid-lista">
           <thead><tr>
             ${cols.map((c) => {
               const f = fieldsBy[c];
@@ -1126,9 +1143,10 @@ async function viewList(name, filtrosIniciales) {
               <tr data-id="${r.id}">
                 ${cols.map((c) => {
                   const f = fieldsBy[c];
-                  return `<td${f && f.type === 'file' ? ' class="col-mini"' : ''}>${cellValue(f, r, c)}</td>`;
+                  return `<td data-col="${esc(c)}" data-label="${esc(etiquetaCol(c))}"${
+                    f && f.type === 'file' ? ' class="col-mini"' : ''}>${cellValue(f, r, c)}</td>`;
                 }).join('')}
-                <td style="white-space:nowrap;text-align:right">
+                <td class="acciones" style="white-space:nowrap;text-align:right">
                   ${m.printable ? `<button class="btn secondary sm act-print" data-id="${r.id}" title="Imprimir">🖨️</button>` : ''}
                   ${m.perms.delete && !generadoPorOtroModulo(r)
                     ? `<button class="btn danger sm act-del" data-id="${r.id}" title="Eliminar">🗑️</button>`
@@ -1149,7 +1167,11 @@ async function viewList(name, filtrosIniciales) {
       wrap.querySelectorAll('tbody tr').forEach((tr) => {
         tr.addEventListener('click', (e) => {
           if (e.target.closest('button')) return;
-          location.hash = `#/m/${name}/edit/${tr.dataset.id}`;
+          // Las personas, los cuerpos y las iglesias se abren en su ficha: casi
+          // siempre se entra a mirar un dato, no a cambiarlo. Desde la ficha,
+          // un botón lleva a editar.
+          const destino = CON_FICHA.includes(name) ? 'ficha' : 'edit';
+          location.hash = `#/m/${name}/${destino}/${tr.dataset.id}`;
         });
       });
       wrap.querySelectorAll('.act-del').forEach((b) => {
@@ -1281,6 +1303,315 @@ function selectLabel(f, v) {
   return v;
 }
 
+/* =====================================================================
+ * La ficha: todo lo que el sistema sabe de alguien, en una sola pantalla
+ *
+ * El listado alcanza a mostrar lo justo para encontrar a la persona —y en el
+ * teléfono, menos todavía—. La ficha muestra el resto: todos sus datos,
+ * ordenados por las mismas secciones con las que se registran, junto con sus
+ * documentos, su historial y los grupos en los que participa.
+ *
+ * Es de solo lectura: para cambiar algo está el botón de editar, que lleva al
+ * formulario de siempre. Los campos en blanco se esconden para no estorbar la
+ * lectura, y un interruptor los muestra cuando se quiere ver qué falta.
+ * ===================================================================== */
+
+/** Los módulos que se abren primero para leerlos, no para editarlos. */
+const CON_FICHA = ['miembros', 'pastores', 'cuerpos', 'iglesias'];
+
+/** "07-11-1973": la fecha como se lee y se dice acá. */
+function fechaCorta(iso) {
+  const s = String(iso || '').slice(0, 10);
+  const [y, m, d] = s.split('-');
+  return y && m && d ? `${d}-${m}-${y}` : s;
+}
+
+/** El teléfono en formato internacional, para llamar o escribir por WhatsApp. */
+function telefonoInternacional(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  if (!d) return '';
+  return d.startsWith('56') ? d : '56' + d;
+}
+
+/** El nombre con el que se presenta un registro, según la plantilla del módulo. */
+function nombreDelRegistro(m, row) {
+  const texto = String(m.display || '')
+    .replace(/\{(\w+)\}/g, (_, campo) => (row[campo] == null ? '' : row[campo]))
+    .replace(/\s+/g, ' ')
+    .trim();
+  return texto || `${m.labelSingular} N.º ${row.id}`;
+}
+
+/**
+ * Cómo se lee cada dato en la ficha. Devuelve HTML, o '' cuando no hay nada
+ * registrado (así la ficha sabe qué campos están en blanco).
+ *
+ * Un valor guardado que no figura en la lista de opciones —un parentesco
+ * escrito a mano, algo que venga de otro sistema— se muestra tal cual: el
+ * dato está, y esconderlo sería peor que mostrarlo.
+ */
+function valorFicha(f, row) {
+  const v = row[f.name];
+  const vacio = v == null || v === '' || (Array.isArray(v) && !v.length);
+  if (f.computed) {
+    if (vacio) return '';
+    if (typeof v === 'object') return `<span class="badge ${nivelClase(v.nivel)}">${esc(v.texto)}</span>`;
+    return f.type === 'money' ? fmtMoney(v) : esc(v);
+  }
+  switch (f.type) {
+    case 'ref':
+      return v ? esc(row[f.name + '_label'] || `#${v}`) : '';
+    case 'multiref': {
+      const nombres = row[f.name + '_labels'] || [];
+      return nombres.length ? nombres.map((n) => `<span class="chip">${esc(n)}</span>`).join(' ') : '';
+    }
+    case 'boolean':
+      return v ? '<span class="badge green">Sí</span>' : '<span class="badge">No</span>';
+    case 'money':
+      return vacio ? '' : fmtMoney(v);
+    case 'date': {
+      if (vacio) return '';
+      const edad = f.mostrarEdad ? edadDeFecha(v) : '';
+      return `${esc(fechaCorta(v))}${edad ? ` <span class="dato-nota">${esc(edad)}</span>` : ''}`;
+    }
+    case 'time':
+      return vacio ? '' : esc(String(v).slice(0, 5));
+    case 'rut':
+      return vacio ? '' : esc(rutFormatear(v));
+    case 'tel': {
+      if (vacio) return '';
+      const num = telefonoInternacional(v);
+      const wasap = /^569\d{8}$/.test(num)
+        ? ` <a class="dato-wa" href="https://wa.me/${num}" target="_blank" rel="noopener" title="Escribir por WhatsApp">💬</a>`
+        : '';
+      return `<a href="tel:+${esc(num)}">${esc(v)}</a>${wasap}`;
+    }
+    case 'email':
+      return vacio ? '' : `<a href="mailto:${esc(v)}">${esc(v)}</a>`;
+    case 'file': {
+      if (vacio) return '';
+      if (/\.(jpe?g|png|gif|webp)$/i.test(v)) {
+        return `<a href="/uploads/${esc(v)}" target="_blank"><img class="dato-imagen" src="/uploads/${esc(v)}" alt="" /></a>`;
+      }
+      return `<a href="/uploads/${esc(v)}" target="_blank">📎 ${esc(nombreArchivo(v))}</a>`;
+    }
+    case 'textarea':
+      return vacio ? '' : `<div class="dato-texto">${esc(v)}</div>`;
+    case 'select':
+      return vacio ? '' : `<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`;
+    case 'persona':
+      return vacio ? '' : row[f.name + '_id'] ? `<span class="persona-chip">${esc(v)}</span>` : esc(v);
+    case 'permisos':
+    case 'password':
+      return '';
+    default:
+      return vacio ? '' : esc(v);
+  }
+}
+
+/**
+ * ¿Este campo le aplica a este registro? Los que dependen de otro —los datos
+ * del adulto responsable, que solo son de los menores de 18— no se muestran
+ * cuando la condición no se cumple, salvo que traigan algo escrito: si el
+ * dato está, se muestra igual.
+ */
+function aplicaEnLaFicha(f, row) {
+  if (!f.showIf) return true;
+  const actual = row[f.showIf.field];
+  if (f.showIf.menorDe !== undefined) {
+    const anios = aniosDeFecha(actual);
+    return anios != null && anios < Number(f.showIf.menorDe);
+  }
+  if (f.showIf.equals !== undefined) return String(actual == null ? '' : actual) === String(f.showIf.equals);
+  if (Array.isArray(f.showIf.in)) return f.showIf.in.map(String).includes(String(actual == null ? '' : actual));
+  return true;
+}
+
+async function viewFicha(name, id) {
+  const m = MOD[name];
+  content().innerHTML = `<div class="card"><div class="card-body">Cargando…</div></div>`;
+
+  let row;
+  try {
+    row = await api('GET', `/${name}/${id}`);
+  } catch (e) {
+    content().innerHTML = `
+      <div class="page-head"><h2>${m.icon} ${esc(m.labelSingular)}</h2>
+        <div class="actions"><button class="btn secondary" id="btnBack">← Volver</button></div></div>
+      <div class="card"><div class="card-body" style="color:var(--danger)">${esc(e.message)}</div></div>`;
+    document.getElementById('btnBack').addEventListener('click', () => (location.hash = `#/m/${name}`));
+    return;
+  }
+
+  const campos = m.fields.filter((f) => f.type !== 'password' && f.type !== 'permisos');
+  const campoFoto = campos.find((f) => f.type === 'file' && String(f.accept || '').startsWith('image'));
+
+  // Lo que va en el encabezado no se repite abajo
+  const enCabecera = new Set([campoFoto ? campoFoto.name : '', 'tratamiento'].filter(Boolean));
+
+  // Insignias y subtítulo: lo mismo que distingue a la persona en el listado
+  const insignias = [];
+  const subtitulo = [];
+  for (const c of m.listFields || []) {
+    if (enCabecera.has(c)) continue;
+    const f = campos.find((x) => x.name === c);
+    if (!f) continue;
+    const v = row[f.name];
+    if (v == null || v === '') continue;
+    if (f.type === 'select') insignias.push(`<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`);
+    else if (f.computed && typeof v !== 'object') insignias.push(`<span class="badge">${esc(v)}</span>`);
+    else if (f.type === 'ref') subtitulo.push(row[f.name + '_label'] || '');
+  }
+
+  const titulo = nombreDelRegistro(m, row);
+  const conTrato = row.tratamiento ? `${row.tratamiento} ${titulo}` : titulo;
+
+  // Para llamar o escribir de inmediato, sin copiar el número a mano
+  const campoTel = campos.find((f) => f.type === 'tel' && row[f.name]);
+  const campoMail = campos.find((f) => f.type === 'email' && row[f.name]);
+  const numero = campoTel ? telefonoInternacional(row[campoTel.name]) : '';
+  const acciones = [
+    numero ? `<a class="btn secondary sm" href="tel:+${esc(numero)}">📞 Llamar</a>` : '',
+    /^569\d{8}$/.test(numero)
+      ? `<a class="btn secondary sm" href="https://wa.me/${esc(numero)}" target="_blank" rel="noopener">💬 WhatsApp</a>` : '',
+    campoMail ? `<a class="btn secondary sm" href="mailto:${esc(row[campoMail.name])}">✉️ Correo</a>` : '',
+  ].filter(Boolean).join('');
+
+  // Los datos, agrupados por las secciones de la ficha
+  const grupos = [];
+  let grupo = null;
+  // Si el campo que abre una sección va en el encabezado —la foto—, el título
+  // de esa sección pasa al primer campo que sí se muestre.
+  let seccionPendiente = '';
+  for (const f of campos) {
+    if (enCabecera.has(f.name)) {
+      if (f.seccion) seccionPendiente = f.seccion;
+      continue;
+    }
+    if (f.computed) {
+      if ((m.listFields || []).includes(f.name)) continue; // ya va como insignia
+      if (!grupo || grupo.titulo !== 'Según el sistema') {
+        grupo = { titulo: 'Según el sistema', datos: [] };
+        grupos.push(grupo);
+      }
+    } else {
+      const seccion = f.seccion || seccionPendiente;
+      if (seccion || !grupo) {
+        grupo = { titulo: seccion || 'Datos generales', datos: [] };
+        grupos.push(grupo);
+      }
+      seccionPendiente = '';
+    }
+    const html = valorFicha(f, row);
+    if (!html && !aplicaEnLaFicha(f, row)) continue; // no le aplica y nada que mostrar
+    grupo.datos.push({ f, html });
+  }
+
+  // Una sección puede quedar sin ningún campo que mostrar
+  for (let i = grupos.length - 1; i >= 0; i--) if (!grupos[i].datos.length) grupos.splice(i, 1);
+
+  const enBlanco = grupos.reduce((n, g) => n + g.datos.filter((d) => !d.html).length, 0);
+  const cuerpo = grupos.map((g) => {
+    const todoEnBlanco = g.datos.every((d) => !d.html);
+    return `
+      <div class="ficha-seccion${todoEnBlanco ? ' vacio' : ''}"><span>${esc(g.titulo)}</span></div>
+      ${g.datos.map((d) => `
+        <div class="ficha-dato${d.html ? '' : ' vacio'}${d.f.destacado && d.html ? ' destacado' : ''}">
+          <span class="dl">${esc(d.f.label)}</span>
+          <span class="dv">${d.html || '<span class="sin">Sin registrar</span>'}</span>
+        </div>`).join('')}`;
+  }).join('');
+
+  const foto = campoFoto && row[campoFoto.name]
+    ? `<img class="fc-foto" src="/uploads/${esc(row[campoFoto.name])}" alt="" />`
+    : `<div class="fc-foto sin">${m.icon}</div>`;
+
+  content().innerHTML = `
+    <div class="page-head">
+      <h2>${m.icon} ${esc(m.labelSingular)}</h2>
+      <div class="actions">
+        <button class="btn secondary" id="btnBack">← Volver</button>
+        ${m.printable ? `<button class="btn secondary" id="btnPrint">🖨️ Imprimir</button>` : ''}
+        ${m.perms.edit ? `<button class="btn" id="btnEdit">✏️ Editar</button>` : ''}
+      </div>
+    </div>
+
+    <div class="card ficha-cabecera">
+      ${foto}
+      <div class="fc-datos">
+        <h3>${esc(conTrato)}</h3>
+        ${subtitulo.filter(Boolean).length ? `<div class="fc-sub">${esc(subtitulo.filter(Boolean).join(' · '))}</div>` : ''}
+        ${insignias.length ? `<div class="fc-badges">${insignias.join('')}</div>` : ''}
+        ${acciones ? `<div class="fc-acciones">${acciones}</div>` : ''}
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="toolbar">
+        <b style="font-size:14px">Datos registrados</b>
+        <label class="ver-blancos"${enBlanco ? '' : ' hidden'}>
+          <input type="checkbox" id="verBlancos" /> Ver los ${enBlanco} campo${enBlanco === 1 ? '' : 's'} en blanco
+        </label>
+      </div>
+      <div class="ficha-datos" id="fichaDatos">${cuerpo}</div>
+    </div>`;
+
+  document.getElementById('btnBack').addEventListener('click', () => (location.hash = `#/m/${name}`));
+  const be = document.getElementById('btnEdit');
+  if (be) be.addEventListener('click', () => (location.hash = `#/m/${name}/edit/${id}`));
+  const bp = document.getElementById('btnPrint');
+  if (bp) bp.addEventListener('click', () => (location.hash = `#/print/${name}/${id}`));
+  const vb = document.getElementById('verBlancos');
+  if (vb) {
+    vb.addEventListener('change', () => {
+      document.getElementById('fichaDatos').classList.toggle('con-vacios', vb.checked);
+    });
+  }
+
+  // Lo que no se puede pasar por alto de esta persona, antes de sus datos
+  if (name === 'miembros') avisosDelMiembro(row);
+
+  // Y todo lo que cuelga de la ficha: sus grupos, sus documentos, su historial
+  const zona = (fn, ...args) => {
+    const caja = document.createElement('div');
+    content().appendChild(caja);
+    fn(...args, caja);
+  };
+  if (name === 'miembros') zona(renderCuerposDelMiembro, Number(id));
+  if (name === 'cuerpos') zona(renderPanelesCuerpo, Number(id));
+  if (name === 'pastores') zona(renderFichaMiembroPastor, Number(id), row);
+  if (PANEL_DOCUMENTOS[name]) zona(renderDocumentos, PANEL_DOCUMENTOS[name], Number(id));
+  if (PANEL_HISTORIAL[name]) zona(renderHistorial, PANEL_HISTORIAL[name], Number(id));
+  if (name === 'miembros') zona(renderAccesoMiembro, Number(id));
+}
+
+/** Los cuerpos y grupos en los que participa un miembro, bajo su ficha. */
+async function renderCuerposDelMiembro(miembroId, contenedor) {
+  if (!MOD['cuerpos']) return;
+  let d;
+  try {
+    d = await api('GET', `/miembros/${miembroId}/cuerpos`);
+  } catch (e) {
+    contenedor.innerHTML = '';
+    return;
+  }
+  contenedor.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar"><b>👥 Cuerpos y grupos</b></div>
+      ${d.cuerpos.length
+        ? `<ul class="mini-list">${d.cuerpos.map((c) => `
+            <li data-id="${c.id}">
+              <span>${esc(c.nombre)}${c.lidera ? ' <span class="badge blue">Lidera</span>' : ''}</span>
+              <span class="mut">${esc(c.tipo || '')}</span>
+            </li>`).join('')}</ul>`
+        : `<div class="card-body" style="color:var(--muted);font-size:13px">No participa en ningún cuerpo ni grupo.</div>`}
+    </div>`;
+  contenedor.querySelectorAll('.mini-list li').forEach((li) => {
+    li.style.cursor = 'pointer';
+    li.addEventListener('click', () => (location.hash = `#/m/cuerpos/ficha/${li.dataset.id}`));
+  });
+}
+
 /* ---------------- formulario genérico ---------------- */
 async function viewForm(name, id, precarga) {
   const m = MOD[name];
@@ -1291,12 +1622,17 @@ async function viewForm(name, id, precarga) {
   content().innerHTML = `
     <div class="page-head">
       <h2>${m.icon} ${isNew ? 'Nuevo' : canEdit ? 'Editar' : 'Ver'} ${esc(m.labelSingular.toLowerCase())}</h2>
-      <div class="actions"><button class="btn secondary" id="btnBack">← Volver</button></div>
+      <div class="actions">
+        ${!isNew && CON_FICHA.includes(name) ? `<button class="btn secondary" id="btnFicha">👁️ Ver la ficha</button>` : ''}
+        <button class="btn secondary" id="btnBack">← Volver</button>
+      </div>
     </div>
     <div class="card"><form id="recForm"><div class="form-grid" id="formGrid"><p>Cargando…</p></div>
     <div class="form-error" id="formError"></div>
     <div class="form-foot" id="formFoot"></div></form></div>`;
   document.getElementById('btnBack').addEventListener('click', () => (location.hash = `#/m/${name}`));
+  const bf = document.getElementById('btnFicha');
+  if (bf) bf.addEventListener('click', () => (location.hash = `#/m/${name}/ficha/${id}`));
 
   let row = isNew && precarga ? { ...precarga } : {};
   if (!isNew) {
@@ -1434,7 +1770,7 @@ async function viewForm(name, id, precarga) {
       else await api('PUT', `/${name}/${id}`, data);
       invalidarOpciones(name); // refrescar selectores que referencien este módulo
       toast('Guardado correctamente');
-      location.hash = `#/m/${name}`;
+      location.hash = !isNew && CON_FICHA.includes(name) ? `#/m/${name}/ficha/${id}` : `#/m/${name}`;
     } catch (err) {
       errEl.textContent = err.message;
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1671,6 +2007,16 @@ function fieldHtml(f, row, isNew) {
       input = `<input type="tel" name="${f.name}" value="${esc(val)}" ${f.required ? 'required' : ''} />`;
       break;
     default:
+      // Texto con sugerencias: se elige de la lista o se escribe otra cosa.
+      // Así un parentesco puede quedar como "hija" o "nieta" sin forzarlo a
+      // una lista cerrada, y lo que ya está guardado se ve tal cual.
+      if (f.sugerencias && f.sugerencias.length) {
+        input = `
+          <input type="text" name="${f.name}" value="${esc(val)}" list="dl_${f.name}"
+                 autocomplete="off" ${f.required ? 'required' : ''} />
+          <datalist id="dl_${f.name}">${f.sugerencias.map((o) => `<option value="${esc(o)}"></option>`).join('')}</datalist>`;
+        break;
+      }
       input = `<input type="text" name="${f.name}" value="${esc(val)}" ${f.required ? 'required' : ''} />`;
   }
   if (f.readonly) input = marcarSoloLectura(input);
@@ -1800,10 +2146,12 @@ function initSelectBuscable(f) {
       oculto.value = ''; // mientras se escribe, no hay nada elegido
     },
     alSalir: (texto) => {
-      // Solo valen las opciones de la lista: se restituye lo que esté elegido
+      // Se restituye lo que esté elegido. Si lo guardado no figura en la
+      // lista —viene de otro sistema o de una lista anterior—, se muestra tal
+      // cual: el dato está, y borrarlo por no reconocerlo sería peor.
       const actual = opciones.find((o) => o.valor === oculto.value);
-      texto.value = actual ? actual.texto : '';
-      caja.querySelector('.rb-x').hidden = !actual;
+      texto.value = actual ? actual.texto : oculto.value || '';
+      caja.querySelector('.rb-x').hidden = !oculto.value;
     },
   });
 }
@@ -3182,7 +3530,7 @@ async function renderFichaMiembroPastor(pastorId, row, contenedor) {
     </div>`;
 
   const ver = document.getElementById('verMiembro');
-  if (ver) ver.addEventListener('click', () => (location.hash = `#/m/miembros/edit/${d.miembro.id}`));
+  if (ver) ver.addEventListener('click', () => (location.hash = `#/m/miembros/ficha/${d.miembro.id}`));
 
   const crear = document.getElementById('crearMiembro');
   if (crear) {

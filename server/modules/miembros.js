@@ -122,6 +122,7 @@ module.exports = {
   listFields: ['foto', 'tratamiento', 'nombres', 'apellidos', 'rut', 'edad', 'tipo_miembro', 'iglesia_id', 'estado'],
   filterFields: ['tipo_miembro', 'estado', 'iglesia_id'],
   defaultSort: { field: 'apellidos', dir: 'asc' },
+  printable: true,
   computed: [
     {
       name: 'tratamiento', label: 'Trato', type: 'texto',
@@ -176,9 +177,10 @@ module.exports = {
       showIf: { field: 'fecha_nacimiento', menorDe: 18 },
     },
     {
-      name: 'responsable_parentesco', label: 'Parentesco con el menor', type: 'select',
-      options: ['Madre', 'Padre', 'Abuelo(a)', 'Tío(a)', 'Hermano(a)', 'Tutor(a) legal', 'Otro'],
+      name: 'responsable_parentesco', label: 'Parentesco con el menor', type: 'text',
+      sugerencias: ['Madre', 'Padre', 'Abuelo(a)', 'Tío(a)', 'Hermano(a)', 'Tutor(a) legal'],
       showIf: { field: 'fecha_nacimiento', menorDe: 18 },
+      help: 'Se elige de la lista o se escribe como corresponda (abuela, tía, madrina…).',
     },
     {
       name: 'responsable_telefono', label: 'Teléfono del adulto responsable', type: 'tel',
@@ -264,8 +266,10 @@ module.exports = {
       help: 'A quién avisar en caso de emergencia.',
     },
     {
-      name: 'emergencia_parentesco', label: 'Parentesco', type: 'select',
-      options: ['Cónyuge', 'Madre', 'Padre', 'Hijo(a)', 'Hermano(a)', 'Abuelo(a)', 'Tío(a)', 'Amigo(a)', 'Vecino(a)', 'Otro'],
+      name: 'emergencia_parentesco', label: 'Parentesco', type: 'text',
+      sugerencias: ['Cónyuge', 'Esposo', 'Esposa', 'Madre', 'Padre', 'Hijo(a)', 'Hermano(a)',
+        'Abuelo(a)', 'Nieto(a)', 'Tío(a)', 'Sobrino(a)', 'Amigo(a)', 'Vecino(a)'],
+      help: 'Se elige de la lista o se escribe como corresponda (hija, esposo, nieta…).',
     },
     { name: 'emergencia_telefono', label: 'Teléfono del contacto', type: 'tel' },
 
@@ -291,6 +295,29 @@ module.exports = {
   ],
 
   extraRoutes(router, { db, requirePerm }) {
+    /**
+     * Los cuerpos y grupos en los que participa este miembro, para verlos en
+     * su ficha sin tener que abrir uno por uno. Se busca tanto entre los
+     * integrantes como entre quienes los lideran.
+     */
+    router.get('/miembros/:id(\\d+)/cuerpos', requirePerm('miembros', 'view'), (req, res) => {
+      const id = Number(req.params.id);
+      const suyos = db
+        .prepare('SELECT id, nombre, tipo, estado, lider_id, integrantes FROM cuerpos ORDER BY nombre')
+        .all()
+        .filter((c) => {
+          if (Number(c.lider_id) === id) return true;
+          let ids = [];
+          try { ids = JSON.parse(c.integrantes || '[]'); } catch (e) { ids = []; }
+          return ids.map(Number).includes(id);
+        })
+        .map((c) => ({
+          id: c.id, nombre: c.nombre, tipo: c.tipo, estado: c.estado,
+          lidera: Number(c.lider_id) === id,
+        }));
+      res.json({ cuerpos: suyos });
+    });
+
     /** Cómo está el acceso al sistema de este miembro. */
     router.get('/miembros/:id(\\d+)/usuario', requirePerm('miembros', 'view'), (req, res) => {
       const miembro = db.prepare('SELECT * FROM miembros WHERE id = ?').get(req.params.id);

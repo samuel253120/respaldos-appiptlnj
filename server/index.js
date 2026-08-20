@@ -95,8 +95,9 @@ app.get('/api/meta', authRequired, (req, res) => {
       fields: [
         ...m.fields
           .filter((f) => !f.oculto)
-          .map(({ name, label, type, required, options, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador }) => ({
-            name, label, type, required: !!required, options: options || null, ref: ref || null,
+          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador }) => ({
+            name, label, type, required: !!required, options: options || null,
+            sugerencias: sugerencias || null, ref: ref || null,
             help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
             optionsRoute: optionsRoute || null, readonly: !!readonly, mostrarEdad: !!mostrarEdad,
             seccion: seccion || null, destacado: !!destacado,
@@ -106,7 +107,7 @@ app.get('/api/meta', authRequired, (req, res) => {
           })),
         ...(m.computed || []).map(({ name, label, type, help }) => ({
           name, label, type, help: help || null, computed: true,
-          required: false, options: null, ref: null, default: null, accept: null, showIf: null,
+          required: false, options: null, sugerencias: null, ref: null, default: null, accept: null, showIf: null,
           optionsRoute: null, readonly: true, calcula: null,
         })),
       ],
