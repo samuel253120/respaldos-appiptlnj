@@ -14,7 +14,7 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 
 | Grupo | Módulos |
 |---|---|
-| **Organización** | Iglesias (con su foto, su historial y sus documentos) · Pastores / Guías (con su historial ministerial y sus documentos) · Cuerpos / Grupos (con su foto) · Directivas de Cuerpos |
+| **Organización** | Iglesias (matriz, sedes, locales y anexos, con su foto, su historial y sus documentos) · Pastores / Guías (con su historial ministerial y sus documentos) · Cuerpos / Grupos (con su foto) · Directivas de Cuerpos |
 | **Servicios** | Registro de Servicios (cultos: salmo, mensaje, asistencia y ofrenda) |
 | **Personas** | Miembros · Bitácora de Miembros · Documentos de Miembros |
 | **Asistencia** | Asistencia: calendario, actividades, toma de lista e informes en una sola pantalla, pensada para el teléfono |
@@ -208,6 +208,21 @@ El resultado es **Al día**, **Observado** (falta un requisito) o **Pendiente** 
 Este indicador usa otra capacidad general del motor: un módulo puede declarar `computed` —campos que no se guardan, sino que se calculan al leer cada registro— y usarlos en sus listados como cualquier otro campo.
 
 Esto usa una capacidad general del motor: cualquier campo puede declarar `showIf: { field: 'otro_campo', equals: 'valor' }` (o `in: [...]`) para mostrarse solo cuando corresponda. El servidor tampoco exige los campos obligatorios que no apliquen.
+
+## Tipos de iglesia 🏛️
+
+La organización distingue cuatro, de mayor a menor:
+
+| Tipo | Cuántas |
+|---|---|
+| **Iglesia Matriz** | **Una sola en toda la organización** |
+| Iglesia Sede | Varias |
+| Iglesia Local | Varias |
+| Iglesia Anexo | Varias |
+
+El sistema hace cumplir lo primero: al designar una segunda matriz avisa cuál lo es y no lo guarda —*«Ya hay una Iglesia Matriz: Iglesia Central. Cámbiele el tipo a esa antes de designar otra.»*—. Para traspasar la condición de matriz, primero se le cambia el tipo a la que la tiene y después se designa la nueva.
+
+El tipo aparece como columna y como filtro en el listado de iglesias. Las iglesias registradas antes de esta distinción quedan **sin tipo**, a la espera de que se les asigne: el sistema no lo adivina. Una iglesia nueva se crea como *Iglesia Local*, que es lo más habitual.
 
 ## Cada iglesia y cada cuerpo con su fotografía 📸
 
