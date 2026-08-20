@@ -7,20 +7,29 @@
  * sola por el RUT— y quien todavía no la tenga aparece marcado, con un botón
  * para crearla con sus mismos datos.
  *
- * De ese enlace depende, además, el trato: a quien está en este módulo se le
- * dice Pastor o Pastora en todo el sistema, y a su cónyuge también.
+ * De ese enlace depende, además, el trato: a quien tiene cargo pastoral se
+ * le dice Pastor o Pastora en todo el sistema, y a su cónyuge también; al
+ * guía de obra se le dice guía de obra.
  *
  * Matrimonio: el pastor y la pastora se vinculan entre sí; el vínculo queda
  * en las dos fichas. Si el cónyuge no está en este módulo sino en Miembros,
  * se vincula allá.
  */
+const { CARGO_GUIA } = require('../tratamiento');
+
 /**
  * Los cargos del ministerio, de menor a mayor. El de Pastor presidente lo
  * ocupa una sola persona en toda la organización; de los demás puede haber
  * varios a la vez.
+ *
+ * El guía de obra es el primer cargo y todavía no es pastoral: se le dice
+ * guía de obra, y su cónyuge no pasa a ser Pastor ni Pastora.
  */
-const CARGOS = ['Guía de obra', 'Pastor probando', 'Pastor diácono', 'Pastor presbítero', 'Pastor presidente'];
+const CARGOS = [CARGO_GUIA, 'Pastor probando', 'Pastor diácono', 'Pastor presbítero', 'Pastor presidente'];
 const CARGO_UNICO = 'Pastor presidente';
+
+/** ¿Este cargo es pastoral? El de guía de obra todavía no lo es. */
+const esCargoPastoral = (cargo) => !!cargo && cargo !== CARGO_GUIA;
 
 /**
  * Cómo está el pastor respecto de su ficha de miembro. El enlace vale desde
@@ -95,7 +104,7 @@ module.exports = {
     {
       name: 'conyuge_id', label: 'Cónyuge', type: 'ref', ref: 'miembros',
       optionsRoute: '/pastores/conyuges?pastor_id={id}',
-      help: 'Se ofrecen solo las personas del sexo opuesto que ya tienen trato de Pastor o Pastora: las registradas en Pastores / Guías o con ese trato fijado en su ficha de miembro. El vínculo queda también en las fichas de miembro de ambos.',
+      help: 'Se ofrecen las personas del sexo opuesto; si el cargo es pastoral, solo las que ya tienen trato de Pastor o Pastora —registradas en Pastores / Guías o con ese trato fijado en su ficha—. El vínculo queda también en las fichas de miembro de ambos.',
     },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Activo',
@@ -174,13 +183,15 @@ module.exports = {
       }
 
       const { esPastorPorSiMismo } = require('../tratamiento');
+      const exigePastoral = !pastor || esCargoPastoral(pastor.cargo);
       const filas = db
         .prepare(`SELECT * FROM miembros WHERE ${cond.join(' AND ')} ORDER BY apellidos, nombres LIMIT 1000`)
         .all(...params)
         // El cónyuge de un pastor tiene trato de pastora (y el de una pastora,
         // de pastor): son quienes tienen su propia ficha en Pastores / Guías o
-        // ese trato fijado en la suya.
-        .filter((f) => esPastorPorSiMismo(f, db));
+        // ese trato fijado en la suya. Al guía de obra no se le exige, porque
+        // su cónyuge sigue siendo hermano o hermana.
+        .filter((f) => !exigePastoral || esPastorPorSiMismo(f, db));
 
       res.json(
         filas.map((f) => {
@@ -278,10 +289,12 @@ module.exports = {
           return `El cónyuge tiene que ser del sexo opuesto: ${otro.nombres} ${otro.apellidos} figura como ${otro.genero.toLowerCase()}, igual que esta ficha.`;
         }
 
-        // Y tiene que tener trato de pastor o pastora por su propio registro
+        // Y, si el cargo es pastoral, tiene que tener trato de pastor o
+        // pastora por su propio registro. El cónyuge del guía de obra no:
+        // sigue siendo hermano o hermana.
         const { esPastorPorSiMismo } = require('../tratamiento');
         const completa = db.prepare('SELECT * FROM miembros WHERE id = ?').get(conyuge);
-        if (!esPastorPorSiMismo(completa, db)) {
+        if (esCargoPastoral(cargo) && !esPastorPorSiMismo(completa, db)) {
           const trato = otro.genero === 'Femenino' ? 'Pastora' : 'Pastor';
           return `${otro.nombres} ${otro.apellidos} todavía no tiene trato de ${trato}. ` +
             `Regístrele su ficha en Pastores / Guías, o fíjele el trato de ${trato} en su ficha de miembro, y vuelva a intentarlo.`;

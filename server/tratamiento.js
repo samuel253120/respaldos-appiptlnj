@@ -5,35 +5,88 @@
  *
  *   Hermano / Hermana   a los miembros en general, según su género.
  *   Oficial             a los varones que pertenecen al cuerpo de oficiales.
- *   Pastor / Pastora    a quienes están registrados en Pastores / Guías y a
- *                       su cónyuge: el marido de la pastora es Pastor y la
- *                       esposa del pastor es Pastora, nunca Hermano ni
- *                       Hermana.
+ *   Guía de obra        a quien tiene ese cargo en Pastores / Guías: al guía
+ *                       de obra se le dice guía de obra, no hermano ni pastor.
+ *   Pastor / Pastora    a quienes tienen un cargo pastoral —de pastor
+ *                       probando hacia arriba— y a su cónyuge: el marido de
+ *                       la pastora es Pastor y la esposa del pastor es
+ *                       Pastora, nunca Hermano ni Hermana.
  *
  * Se calcula al leer la ficha —no se guarda—, así que se mantiene al día solo
- * cuando alguien entra al cuerpo de oficiales o queda registrado como pastor.
- * Cada miembro puede llevar además un trato fijado a mano, que manda sobre
- * todo lo anterior.
+ * cuando alguien entra al cuerpo de oficiales, queda registrado en Pastores /
+ * Guías o cambia de cargo. Cada miembro puede llevar además un trato fijado a
+ * mano, que manda sobre todo lo anterior.
  */
 const { esOficial } = require('./oficiales');
 
+/**
+ * El primer cargo del ministerio. No es un cargo pastoral: su trato es el
+ * nombre mismo del cargo y su cónyuge no pasa a ser Pastor ni Pastora.
+ */
+const CARGO_GUIA = 'Guía de obra';
+
 /** Los únicos tratos que se usan en la iglesia. */
-const TRATAMIENTOS = ['Hermano', 'Hermana', 'Oficial', 'Pastor', 'Pastora'];
+const TRATAMIENTOS = ['Hermano', 'Hermana', 'Oficial', CARGO_GUIA, 'Pastor', 'Pastora'];
 
 const esMujer = (genero) => genero === 'Femenino';
 
 /**
- * ¿Esta persona está registrada como pastor(a)?
+ * La ficha de Pastores / Guías de esta persona, si tiene.
  *
- * El pastor y la pastora de una iglesia son también miembros de ella: su
- * ficha de miembro queda enlazada a la de Pastores / Guías. Se reconoce por
- * ese enlace y, si aún no lo tiene, por el RUT.
+ * Quien está en ese módulo es también miembro de su iglesia: su ficha de
+ * miembro queda enlazada. Se reconoce por ese enlace y, si aún no lo tiene,
+ * por el RUT.
  */
+function fichaPastoral(miembro, db) {
+  if (!miembro) return null;
+  if (miembro.id) {
+    const ficha = db.prepare('SELECT * FROM pastores WHERE miembro_id = ?').get(miembro.id);
+    if (ficha) return ficha;
+  }
+  if (miembro.rut) return db.prepare('SELECT * FROM pastores WHERE rut = ?').get(miembro.rut) || null;
+  return null;
+}
+
+/** ¿Esta persona está registrada en Pastores / Guías? */
 function estaEnPastores(miembro, db) {
-  if (!miembro) return false;
-  if (miembro.id && db.prepare('SELECT id FROM pastores WHERE miembro_id = ?').get(miembro.id)) return true;
-  if (miembro.rut && db.prepare('SELECT id FROM pastores WHERE rut = ?').get(miembro.rut)) return true;
-  return false;
+  return !!fichaPastoral(miembro, db);
+}
+
+/**
+ * El trato que le da su propia ficha ministerial: 'Guía de obra' según el
+ * cargo, 'Pastor' o 'Pastora' según el género, o '' si no tiene ficha.
+ */
+function tratoDeLaFicha(miembro, db) {
+  const ficha = fichaPastoral(miembro, db);
+  if (!ficha) return '';
+  if (ficha.cargo === CARGO_GUIA) return CARGO_GUIA;
+  return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
+}
+
+/** ¿Es guía de obra? */
+function esGuiaDeObra(miembro, db) {
+  return tratoDeLaFicha(miembro, db) === CARGO_GUIA;
+}
+
+/** ¿Tiene un cargo pastoral? El guía de obra todavía no lo tiene. */
+function esPastorRegistrado(miembro, db) {
+  return ['Pastor', 'Pastora'].includes(tratoDeLaFicha(miembro, db));
+}
+
+/**
+ * El trato que impone el ministerio: el de su propia ficha o, si es cónyuge
+ * de un pastor o una pastora, el que le toca por ese matrimonio. Devuelve ''
+ * cuando nada del ministerio lo obliga.
+ */
+function tratoMinisterial(miembro, db) {
+  if (!miembro) return '';
+  const propio = tratoDeLaFicha(miembro, db);
+  if (propio) return propio;
+  if (miembro.conyuge_id) {
+    const conyuge = db.prepare('SELECT id, rut, genero FROM miembros WHERE id = ?').get(miembro.conyuge_id);
+    if (conyuge && esPastorRegistrado(conyuge, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
+  }
+  return '';
 }
 
 /** El trato que le corresponde a un miembro. Devuelve '' si no se puede saber. */
@@ -41,13 +94,9 @@ function tratamientoDe(miembro, db) {
   if (!miembro) return '';
   if (miembro.tratamiento_personalizado) return miembro.tratamiento_personalizado;
 
-  if (estaEnPastores(miembro, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
-
-  // El cónyuge del pastor o de la pastora recibe siempre el mismo trato
-  if (miembro.conyuge_id) {
-    const conyuge = db.prepare('SELECT id, rut FROM miembros WHERE id = ?').get(miembro.conyuge_id);
-    if (conyuge && estaEnPastores(conyuge, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
-  }
+  // Su ficha ministerial y, si no la tiene, la de su cónyuge
+  const ministerial = tratoMinisterial(miembro, db);
+  if (ministerial) return ministerial;
 
   if (!esMujer(miembro.genero) && miembro.genero && esOficial(miembro.id, db)) return 'Oficial';
 
@@ -65,8 +114,7 @@ function tratamientoDe(miembro, db) {
 function tratamientoPropio(miembro, db) {
   if (!miembro) return '';
   if (miembro.tratamiento_personalizado) return miembro.tratamiento_personalizado;
-  if (estaEnPastores(miembro, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
-  return '';
+  return tratoDeLaFicha(miembro, db);
 }
 
 /** ¿Es pastor o pastora por su propio registro? */
@@ -76,16 +124,10 @@ function esPastorPorSiMismo(miembro, db) {
 
 /**
  * ¿A esta persona le corresponde el trato de Pastor o Pastora? Lo es quien
- * tiene ficha en Pastores / Guías y también su cónyuge.
+ * tiene un cargo pastoral y también su cónyuge.
  */
 function leCorrespondePastor(miembro, db) {
-  if (!miembro) return false;
-  if (estaEnPastores(miembro, db)) return true;
-  if (miembro.conyuge_id) {
-    const conyuge = db.prepare('SELECT id, rut FROM miembros WHERE id = ?').get(miembro.conyuge_id);
-    if (conyuge && estaEnPastores(conyuge, db)) return true;
-  }
-  return false;
+  return ['Pastor', 'Pastora'].includes(tratoMinisterial(miembro, db));
 }
 
 /** "Hermano Juan Pérez" */
@@ -96,6 +138,7 @@ function conTratamiento(miembro, db) {
 }
 
 module.exports = {
-  TRATAMIENTOS, tratamientoDe, conTratamiento, estaEnPastores, leCorrespondePastor,
-  tratamientoPropio, esPastorPorSiMismo,
+  CARGO_GUIA, TRATAMIENTOS, tratamientoDe, conTratamiento, estaEnPastores, leCorrespondePastor,
+  tratamientoPropio, esPastorPorSiMismo, fichaPastoral, tratoDeLaFicha, esGuiaDeObra,
+  esPastorRegistrado, tratoMinisterial,
 };

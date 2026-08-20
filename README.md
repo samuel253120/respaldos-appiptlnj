@@ -232,13 +232,19 @@ En la iglesia a cada miembro se le dice de una manera, y el sistema la calcula s
 |---|---|
 | **Hermano** / **Hermana** | A los miembros en general, según su género |
 | **Oficial** | A los **varones** que pertenecen al cuerpo de oficiales |
-| **Pastor** / **Pastora** | A quienes tienen ficha en *Pastores / Guías* —que son también miembros de su iglesia— **y a su cónyuge** |
+| **Guía de obra** | A quien tiene ese **cargo** en *Pastores / Guías*: al guía de obra se le dice guía de obra, no hermano ni pastor |
+| **Pastor** / **Pastora** | A quienes tienen un **cargo pastoral** —de *pastor probando* hacia arriba— **y a su cónyuge** |
 
-El trato aparece como columna en el listado y junto al nombre al abrir la ficha. **No se guarda**: se calcula al leer, así que cuando alguien entra al cuerpo de oficiales o queda registrado como pastor, cambia solo.
+El trato aparece como columna en el listado y junto al nombre al abrir la ficha. **No se guarda**: se calcula al leer, así que cuando alguien entra al cuerpo de oficiales, queda registrado en Pastores / Guías o **cambia de cargo**, cambia solo. El día que un guía de obra pasa a pastor probando, deja de ser *Guía de obra* y es *Pastor* en todo el sistema, sin tocar nada más.
 
-Los tratos son solo esos cinco: **Hermano, Hermana, Oficial, Pastor y Pastora**. Cuando a alguien le corresponda uno distinto del que calcula el sistema, se fija a mano en su ficha, en **Trato (fijado a mano)**, y ese manda sobre el cálculo.
+Los tratos son esos seis: **Hermano, Hermana, Oficial, Guía de obra, Pastor y Pastora**. Cuando a alguien le corresponda uno distinto del que calcula el sistema, se fija a mano en su ficha, en **Trato (fijado a mano)**, y ese manda sobre el cálculo.
 
-Al cónyuge de un pastor o de una pastora **siempre** le corresponde *Pastor* o *Pastora*: no se le puede fijar a mano el de Hermano, Hermana u Oficial.
+Hay dos que el ministerio impone y no se pueden cambiar a mano por uno de hermano:
+
+- al **guía de obra**, el de su cargo: *«A esta persona le corresponde el trato de Guía de obra —por su cargo en Pastores / Guías—, así que no puede quedar como "Hermano".»*
+- al cónyuge de un pastor o de una pastora, el de *Pastor* o *Pastora*.
+
+> El **guía de obra todavía no tiene cargo pastoral**, así que su cónyuge **no** pasa a ser Pastor ni Pastora: sigue siendo *Hermano* o *Hermana*, como cualquier miembro.
 
 > El cuerpo de oficiales es el que se nombre en **Configuración → Organización → Cuerpo de oficiales** («Oficiales» por defecto).
 
@@ -428,7 +434,7 @@ Cada fila lleva una barra de tres colores (presentes, justificados, ausentes) pa
 
 | Cargo | Cuántos puede haber |
 |---|---|
-| Guía de obra | Varios |
+| Guía de obra | Varios — **no es cargo pastoral**: se le dice *Guía de obra* |
 | Pastor probando | Varios |
 | Pastor diácono | Varios |
 | Pastor presbítero | Varios |
@@ -448,6 +454,8 @@ El selector **no ofrece a todos los miembros**, sino solo a quienes pueden serlo
 - **con trato de Pastor o Pastora por su propio registro**: las que tienen su **ficha en Pastores / Guías** o ese trato **fijado a mano** en su ficha de miembro;
 - dentro de las iglesias que el usuario administra.
 
+Esto último rige **solo para los cargos pastorales**. En la ficha de un **guía de obra** el selector ofrece a todas las personas del sexo opuesto, porque su cónyuge sigue siendo hermano o hermana.
+
 Es decir: el pastor se casa con la pastora, no con una hermana. Si la persona todavía no aparece, el sistema dice qué falta: *«Ruth Mora todavía no tiene trato de Pastora. Regístrele su ficha en Pastores / Guías, o fíjele el trato de Pastora en su ficha de miembro, y vuelva a intentarlo.»* La misma comprobación se aplica al vincular el matrimonio desde la ficha de miembro.
 
 > Ojo con la diferencia: quien se casa con un pastor **recibe** el trato de Pastora, pero para poder ser elegida como cónyuge tiene que tenerlo **por sí misma** —su propia ficha de pastora o el trato fijado—; si no, la regla se mordería la cola.
@@ -455,7 +463,7 @@ Es decir: el pastor se casa con la pastora, no con una hermana. Si la persona to
 El matrimonio del pastor o de la pastora tiene dos reglas que el sistema hace cumplir:
 
 - **Del sexo opuesto**: la esposa del pastor es mujer y el marido de la pastora es varón. Si los dos figuran con el mismo género, no lo guarda y lo dice: *«El cónyuge tiene que ser del sexo opuesto: Pedro Rivas figura como masculino, igual que esta ficha.»* Y si a la otra ficha le falta el género, pide registrarlo antes de vincularlos.
-- **Con trato de Pastor o Pastora, nunca de Hermano, Hermana u Oficial**: al vincular el matrimonio, el cónyuge pasa **solo** a *Pastora* (o a *Pastor*), y ese trato ya no se puede cambiar a mano por uno de hermano: *«A esta persona le corresponde el trato de Pastor o Pastora —por su ficha en Pastores / Guías o por su cónyuge—, así que no puede quedar como "Hermana".»*
+- **Con trato de Pastor o Pastora, nunca de Hermano, Hermana u Oficial**: al vincular el matrimonio, el cónyuge pasa **solo** a *Pastora* (o a *Pastor*), y ese trato ya no se puede cambiar a mano por uno de hermano: *«A esta persona le corresponde el trato de Pastora —por su ficha en Pastores / Guías o por su cónyuge—, así que no puede quedar como "Hermana".»* (Del guía de obra no: su cónyuge no cambia de trato.)
 
 Vale en los dos sentidos: la esposa del pastor queda como **Pastora**, y el marido de una pastora registrada queda como **Pastor** en cuanto se vinculan.
 
@@ -469,7 +477,7 @@ El sistema lo cuida solo:
 
 - Cada ficha de pastor se **enlaza con su ficha de miembro**. Si ya existe una con el mismo RUT, la reconoce y la enlaza sin que haya que hacer nada.
 - Si todavía no existe, el listado de Pastores / Guías lo muestra en una columna —**Registrado** o **Falta registrarlo**— y al pie de su ficha aparece el botón **➕ Crear su ficha de miembro**, que la crea con sus mismos datos (nombres, RUT, iglesia, fecha de nacimiento, contacto y foto) y las deja enlazadas.
-- De ese enlace depende el **trato**: quien tiene ficha en Pastores / Guías es *Pastor* o *Pastora* en todo el sistema, y su cónyuge también.
+- De ese enlace depende el **trato**: quien tiene cargo pastoral es *Pastor* o *Pastora* en todo el sistema, y su cónyuge también; al **guía de obra** se le dice *Guía de obra*.
 
 ### El RUT tiene que coincidir en las dos fichas
 
@@ -485,7 +493,7 @@ El enlace es lo que une las dos fichas, pero **el RUT es la verificación**: si 
 
 El sistema **no deja que se descuadren**: no acepta enlazar dos fichas con RUT distinto, ni cambiar el RUT en una sola de ellas —*«El RUT no coincide con el de su ficha en Pastores / Guías (Ana Vera: 24.333.444-6). Corrija el que esté equivocado.»*—, y al copiar el RUT avisa si ya lo tiene otro miembro. Cualquier otro dato se sigue editando sin estorbo.
 
-> Mientras tanto, quien no tenga RUT en su ficha de miembro **igual recibe su trato de Pastor o Pastora**, porque el enlace basta. El RUT queda como comprobación para cuando se corrijan.
+> Mientras tanto, quien no tenga RUT en su ficha de miembro **igual recibe el trato que le da su cargo**, porque el enlace basta. El RUT queda como comprobación para cuando se corrijan.
 
 Así el pastor y la pastora aparecen en la membresía, cuentan en los totales de su iglesia, pueden integrar cuerpos, se les toma asistencia y tienen su bitácora, como corresponde a un miembro más.
 

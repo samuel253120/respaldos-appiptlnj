@@ -13,8 +13,9 @@
  * que hagan falta a una misma persona.
  *
  * Trato: cada miembro muestra cómo se le dice —Hermano, Hermana, Oficial,
- * Pastor o Pastora—, calculado según su género, si pertenece al cuerpo de
- * oficiales y si está registrado en Pastores / Guías (ver server/tratamiento.js).
+ * Guía de obra, Pastor o Pastora—, calculado según su género, si pertenece al
+ * cuerpo de oficiales y qué cargo tiene en Pastores / Guías (ver
+ * server/tratamiento.js).
  * Se puede fijar a mano cuando corresponda otro trato.
  *
  * Matrimonio: al vincular a dos miembros como cónyuges, el vínculo se
@@ -237,23 +238,27 @@ module.exports = {
         return 'Un miembro no puede figurar como su propio cónyuge';
       }
 
-      // El cónyuge de un pastor o de una pastora es del sexo opuesto, y nunca
-      // queda con trato de Hermano, Hermana ni Oficial: es Pastor o Pastora.
-      const { estaEnPastores } = require('../tratamiento');
+      // El cónyuge de quien está en Pastores / Guías es del sexo opuesto; y si
+      // el cargo es pastoral, nunca queda con trato de Hermano, Hermana ni
+      // Oficial: es Pastor o Pastora. Al guía de obra no se le aplica esto
+      // último, porque su cónyuge sigue siendo hermano o hermana.
+      const { estaEnPastores, esPastorRegistrado } = require('../tratamiento');
       if (conyuge) {
         const otro = db.prepare('SELECT id, nombres, apellidos, genero, rut FROM miembros WHERE id = ?').get(conyuge);
         if (!otro) return 'La persona indicada como cónyuge no existe';
         const yo = { id, rut: rutDe(data, existing), genero: data.genero !== undefined ? data.genero : existing ? existing.genero : null };
-        const alguienEsPastor = estaEnPastores(otro, db) || (id && estaEnPastores(yo, db));
-        if (alguienEsPastor) {
+        const alguienEstaEnPastores = estaEnPastores(otro, db) || (id && estaEnPastores(yo, db));
+        if (alguienEstaEnPastores) {
           if (!otro.genero || !yo.genero) {
-            return 'Para vincular el matrimonio de un pastor o una pastora, las dos fichas necesitan tener su género registrado.';
+            return 'Para vincular el matrimonio de alguien registrado en Pastores / Guías, las dos fichas necesitan tener su género registrado.';
           }
           if (otro.genero === yo.genero) {
             return `El cónyuge tiene que ser del sexo opuesto: ${otro.nombres} ${otro.apellidos} figura como ${otro.genero.toLowerCase()}.`;
           }
-          // Los dos tienen que tener trato de pastor o pastora por su propio
-          // registro: el pastor se casa con la pastora, no con una hermana.
+        }
+        // Los dos tienen que tener trato de pastor o pastora por su propio
+        // registro: el pastor se casa con la pastora, no con una hermana.
+        if (esPastorRegistrado(otro, db) || (id && esPastorRegistrado(yo, db))) {
           const { esPastorPorSiMismo } = require('../tratamiento');
           const completo = db.prepare('SELECT * FROM miembros WHERE id = ?').get(id);
           for (const quien of [completo, otro]) {
@@ -265,14 +270,19 @@ module.exports = {
         }
       }
 
-      // A quien le corresponde el trato de Pastor o Pastora no se le puede
-      // fijar a mano el de Hermano, Hermana u Oficial.
+      // A quien el ministerio le impone un trato —Guía de obra por su cargo,
+      // Pastor o Pastora por el suyo o por su cónyuge— no se le puede fijar a
+      // mano el de Hermano, Hermana u Oficial.
       const manual = data.tratamiento_personalizado;
       if (manual && ['Hermano', 'Hermana', 'Oficial'].includes(manual) && id) {
-        const { leCorrespondePastor } = require('../tratamiento');
+        const { tratoMinisterial } = require('../tratamiento');
         const fila = { ...(existing || {}), ...data, id };
-        if (leCorrespondePastor(fila, db)) {
-          return `A esta persona le corresponde el trato de Pastor o Pastora —por su ficha en Pastores / Guías o por su cónyuge—, así que no puede quedar como "${manual}".`;
+        const impuesto = tratoMinisterial(fila, db);
+        if (impuesto) {
+          const porque = impuesto === 'Guía de obra'
+            ? 'por su cargo en Pastores / Guías'
+            : 'por su ficha en Pastores / Guías o por su cónyuge';
+          return `A esta persona le corresponde el trato de ${impuesto} —${porque}—, así que no puede quedar como "${manual}".`;
         }
       }
 
