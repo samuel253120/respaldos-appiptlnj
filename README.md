@@ -606,7 +606,7 @@ Deja constancia de cada servicio (culto) realizado: cuándo empezó y terminó, 
 
 ### Personas que pueden o no estar registradas
 
-**Coordinador(a)**, **salmista** y **predicador(a)** se escriben en un campo que sugiere a los miembros registrados mientras se escribe:
+**Coordinador(a)**, **salmista** y **predicador(a)** son un **desplegable con buscador**: al tocarlo se abre la lista de miembros, y escribiendo unas letras del nombre o del RUT se reduce a quien se busca.
 
 - Si la persona **está registrada**, se elige de la lista y el registro queda enlazado a su ficha (aparece marcada con ✓ *registrado*). Si más adelante cambia su nombre en Miembros, el servicio muestra el nombre actualizado.
 - Si **no está registrada** (una visita, un predicador invitado), se escribe el nombre y queda guardado igual, sin enlace.
@@ -617,6 +617,10 @@ Esto usa otra capacidad general del motor: el tipo de campo **`persona`**, dispo
 ### Salmo y mensaje
 
 Ambos se citan igual: **libro** (los 66 de la Reina-Valera 1960, en orden del canon), **capítulo**, **versículo inicial** y **versículo final**. En el listado y al imprimir se muestran armados: *Salmos 23:1-6*, *Juan 10:11-18*.
+
+El libro también es un **desplegable con buscador**: en vez de recorrer los 66, se escriben las primeras letras —*«corin»* deja 1 y 2 Corintios— y se elige. Sirve igual con el dedo en el teléfono que con las flechas y Enter en el teclado.
+
+> Es una capacidad general del motor: cualquier campo de lista larga se dibuja así, y cualquier campo puede pedirlo con `buscador: true`.
 
 ### Asistencia y ofrenda
 
@@ -770,6 +774,7 @@ Cualquier campo acepta además:
 - `unique: true` — impide valores repetidos.
 - `showIf: { field, equals }` o `showIf: { field, in: [...] }` — el campo se muestra (y se exige, si es obligatorio) solo cuando otro campo tenga ese valor.
 - `showIf: { field, menorDe: 18 }` — se muestra según la **edad** que da una fecha (así aparecen los datos del adulto responsable).
+- `buscador: true` — el campo se dibuja como **desplegable con buscador** en vez de una lista larga (los libros de la Biblia, los miembros). Con más de 20 opciones se hace solo; `buscador: false` lo impide.
 - `seccion: 'Contacto de emergencia'` — abre con ese campo un bloque de la ficha, con su encabezado. Si el campo tiene condición, el encabezado se oculta con él.
 - `destacado: true` — el campo se dibuja resaltado (la nota importante).
 - `sensible: true` — cuando cambia, el historial anota que se actualizó **sin copiar su contenido**.

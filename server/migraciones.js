@@ -681,6 +681,51 @@ function formasDeIngreso() {
 }
 
 
+/**
+ * Los tipos de servicio pasaron a los que celebra la iglesia. Los que
+ * significan lo mismo se renombran solos y los demás quedan como "Otro": no
+ * se deja ningún nombre antiguo dando vueltas. Ningún servicio se borra, ni
+ * lo que tenga registrado.
+ */
+function tiposDeServicio() {
+  const columnas = db.prepare('PRAGMA table_info("servicios")').all().map((c) => c.name);
+  if (!columnas.includes('tipo')) return;
+
+  const equivalencias = {
+    'Culto general': 'Servicio General',
+    'Vigilia': 'Servicio Vigilia',
+    'Servicio especial': 'Servicio Especial',
+  };
+  const nuevos = ['Servicio General', 'Clase de Dorcas', 'Servicio Especial', 'Servicio Vigilia', 'Otro'];
+
+  let renombrados = 0;
+  const renombrar = db.prepare('UPDATE servicios SET tipo = ? WHERE tipo = ?');
+  for (const [antes, despues] of Object.entries(equivalencias)) {
+    const cuantos = db.prepare('SELECT COUNT(*) AS n FROM servicios WHERE tipo = ?').get(antes).n;
+    if (!cuantos) continue;
+    renombrar.run(despues, antes);
+    renombrados += cuantos;
+  }
+  if (renombrados) console.log(`🔁 servicios: ${renombrados} servicio(s) pasaron a los nombres nuevos.`);
+
+  const marcas = nuevos.map(() => '?').join(',');
+  const sobran = db
+    .prepare(
+      `SELECT tipo, COUNT(*) AS n FROM servicios
+        WHERE tipo IS NOT NULL AND tipo != '' AND tipo NOT IN (${marcas})
+        GROUP BY tipo`
+    )
+    .all(...nuevos);
+  if (sobran.length) {
+    db.prepare(`UPDATE servicios SET tipo = 'Otro' WHERE tipo NOT IN (${marcas})`).run(...nuevos);
+    console.log(
+      `🔁 servicios: ${sobran.reduce((t, f) => t + f.n, 0)} servicio(s) tenían un tipo que ya no está en la lista ` +
+        `y quedaron como "Otro" (${sobran.map((f) => `${f.tipo}: ${f.n}`).join(', ')}).`
+    );
+  }
+}
+
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -700,6 +745,7 @@ function ejecutarMigraciones() {
     ['aviso de "otro documento"', avisoOtroDocumentoDeMiembros],
     ['tipos de actividad', tiposDeActividad],
     ['formas de ingreso', formasDeIngreso],
+    ['tipos de servicio', tiposDeServicio],
   ];
 
   for (const [nombre, paso] of pasos) {

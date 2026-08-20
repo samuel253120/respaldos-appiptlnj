@@ -23,6 +23,15 @@
 const { LIBROS, cita } = require('../biblia');
 const { fechaLarga } = require('../formato');
 
+/** Los servicios que celebra la iglesia. */
+const TIPOS_DE_SERVICIO = [
+  'Servicio General',
+  'Clase de Dorcas',
+  'Servicio Especial',
+  'Servicio Vigilia',
+  'Otro',
+];
+
 module.exports = {
   name: 'servicios',
   label: 'Registro de Servicios',
@@ -53,34 +62,40 @@ module.exports = {
     { name: 'fecha', label: 'Fecha', type: 'date', required: true },
     { name: 'hora_inicio', label: 'Hora de inicio', type: 'time' },
     {
-      name: 'tipo', label: 'Tipo de servicio', type: 'select', default: 'Culto general',
-      options: ['Culto general', 'Escuela Dominical', 'Culto de oración', 'Ayuno', 'Estudio bíblico', 'Vigilia', 'Evangelismo', 'Servicio especial', 'Otro'],
+      name: 'tipo', label: 'Tipo de servicio', type: 'select', default: TIPOS_DE_SERVICIO[0],
+      options: TIPOS_DE_SERVICIO,
     },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
 
     // ---- Coordinación ----
     {
-      name: 'coordinador', label: 'Coordinador(a)', type: 'persona', ref: 'miembros',
-      help: 'Elíjalo de la lista de miembros o escriba el nombre si no está registrado.',
+      name: 'coordinador', label: 'Coordinador(a)', type: 'persona', ref: 'miembros', buscador: true,
+      help: 'Búsquelo entre los miembros o escriba el nombre si no está registrado.',
     },
 
     // ---- Salmo (devocional) ----
     {
-      name: 'salmista', label: 'Salmista (quien leyó el salmo)', type: 'persona', ref: 'miembros',
-      help: 'Elíjalo de la lista de miembros o escriba el nombre si no está registrado.',
+      name: 'salmista', label: 'Salmista (quien leyó el salmo)', type: 'persona', ref: 'miembros', buscador: true,
+      help: 'Búsquelo entre los miembros o escriba el nombre si no está registrado.',
     },
-    { name: 'salmo_libro', label: 'Salmo: libro', type: 'select', options: LIBROS },
+    {
+      name: 'salmo_libro', label: 'Salmo: libro', type: 'select', options: LIBROS, buscador: true,
+      help: 'Escriba las primeras letras del libro.',
+    },
     { name: 'salmo_capitulo', label: 'Salmo: capítulo', type: 'number' },
     { name: 'salmo_versiculo_inicial', label: 'Salmo: versículo inicial', type: 'number' },
     { name: 'salmo_versiculo_final', label: 'Salmo: versículo final', type: 'number' },
 
     // ---- Mensaje ----
     {
-      name: 'predicador', label: 'Predicador(a)', type: 'persona', ref: 'miembros',
-      help: 'Elíjalo de la lista de miembros o escriba el nombre si no está registrado.',
+      name: 'predicador', label: 'Predicador(a)', type: 'persona', ref: 'miembros', buscador: true,
+      help: 'Búsquelo entre los miembros o escriba el nombre si no está registrado.',
     },
     { name: 'mensaje_titulo', label: 'Tema del mensaje', type: 'text' },
-    { name: 'mensaje_libro', label: 'Mensaje: libro', type: 'select', options: LIBROS },
+    {
+      name: 'mensaje_libro', label: 'Mensaje: libro', type: 'select', options: LIBROS, buscador: true,
+      help: 'Escriba las primeras letras del libro.',
+    },
     { name: 'mensaje_capitulo', label: 'Mensaje: capítulo', type: 'number' },
     { name: 'mensaje_versiculo_inicial', label: 'Mensaje: versículo inicial', type: 'number' },
     { name: 'mensaje_versiculo_final', label: 'Mensaje: versículo final', type: 'number' },

@@ -496,8 +496,6 @@ ul.directivas .cargo { font-size: 13px; }
 ul.directivas .cargo i { font-style: normal; color: var(--muted); }
 
 /* Campo de persona: se busca en el registro o se escribe a mano */
-.personafld { position: relative; }
-.personafld input[type=text] { width: 100%; }
 .persona-estado { display: inline-block; margin-top: 4px; font-size: 12px; }
 .persona-estado.enlazado { color: #166534; }
 .persona-estado.libre { color: var(--muted); }

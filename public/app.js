@@ -877,7 +877,8 @@ async function viewForm(name, id, precarga) {
       if (el) el.addEventListener('blur', () => { if (el.value) el.value = rutFormatear(el.value); });
     }
     if (f.type === 'permisos') initPermisos(f, row, row.rol);
-    if (f.type === 'persona') initPersona(f, row);
+    if (f.type === 'persona') initPersona(f);
+    if (f.type === 'select') initSelectBuscable(f);
     if (f.type === 'ref') initRefBuscador(f, row);
     if (f.mostrarEdad) initEdad(f);
   });
@@ -1073,6 +1074,22 @@ function fieldHtml(f, row, isNew) {
       break;
     case 'select': {
       const valores = (f.options || []).map((o) => String(typeof o === 'object' ? o.value : o));
+
+      // Con muchas opciones —los 66 libros de la Biblia— se ofrece un
+      // desplegable con buscador en vez de una lista larguísima.
+      if (usaBuscador(f, f.options || [])) {
+        const etiqueta = val ? selectLabel(f, val) : '';
+        input = `
+          <div class="refbuscar selbuscar" id="sb_${f.name}">
+            <input type="hidden" name="${f.name}" value="${esc(val)}" />
+            <input type="text" class="rb-txt" autocomplete="off" spellcheck="false"
+                   value="${esc(etiqueta)}" placeholder="Escriba para buscar…" ${f.required ? 'required' : ''} />
+            <button type="button" class="rb-x" title="Quitar la selección" ${val ? '' : 'hidden'}>×</button>
+            <ul class="rb-lista" hidden></ul>
+          </div>`;
+        break;
+      }
+
       const opts = (f.options || []).map((o) => {
         const v = typeof o === 'object' ? o.value : o;
         const l = typeof o === 'object' ? o.label : o;
@@ -1143,17 +1160,22 @@ function fieldHtml(f, row, isNew) {
       input = `<input type="text" name="${f.name}" value="${esc(rutFormatear(val))}" placeholder="12.345.678-5" ${f.required ? 'required' : ''} />`;
       break;
     case 'persona': {
-      // Se puede elegir de la lista (queda enlazado al registro) o escribir un
-      // nombre cualquiera, para quien no está registrado.
+      // Se busca entre los registrados —y queda enlazado a su ficha— o se
+      // escribe un nombre cualquiera, para quien no está en el registro.
       const enlace = row[f.name + '_id'] || '';
+      // El aviso de "registrado / no registrado" va fuera de la caja del
+      // buscador, para que el desplegable caiga justo bajo el campo.
       input = `
-        <div class="personafld" id="pf_${f.name}">
-          <input type="text" name="${f.name}" list="dlp_${f.name}" value="${esc(val)}" autocomplete="off"
-                 placeholder="Escriba el nombre o elíjalo de la lista" ${f.required ? 'required' : ''} />
-          <datalist id="dlp_${f.name}"></datalist>
+        <div class="refbuscar personafld" id="pf_${f.name}">
+          <input type="hidden" name="${f.name}" value="${esc(val)}" />
           <input type="hidden" name="${f.name}_id" value="${esc(enlace)}" />
-          <span class="persona-estado" id="pe_${f.name}"></span>
-        </div>`;
+          <input type="text" class="rb-txt" autocomplete="off" spellcheck="false"
+                 value="${esc(val)}" placeholder="Busque el nombre, o escríbalo si no está registrado"
+                 ${f.required ? 'required' : ''} />
+          <button type="button" class="rb-x" title="Vaciar" ${val ? '' : 'hidden'}>×</button>
+          <ul class="rb-lista" hidden></ul>
+        </div>
+        <span class="persona-estado" id="pe_${f.name}"></span>`;
       break;
     }
     case 'permisos':
@@ -1184,34 +1206,178 @@ function fieldHtml(f, row, isNew) {
 }
 
 /**
- * Campo de persona: sugiere los registros del módulo referenciado, pero deja
- * escribir cualquier nombre. Si lo escrito coincide con un registro, se guarda
- * el enlace; si no, queda como nombre suelto.
+ * Motor común de los desplegables con buscador: una caja de texto que filtra
+ * una lista al escribir, con teclado (flechas, Enter, Escape) y con el ratón.
+ *
+ * Lo usan el selector de opciones largas —los libros de la Biblia— y el campo
+ * de persona. Cada uno le dice qué hacer al elegir y qué hacer al salir.
  */
-function initPersona(f, row) {
+function montarBuscador(caja, { opciones, alElegir, alSalir, alEscribir, etiqueta }) {
+  const texto = caja.querySelector('.rb-txt');
+  const quitar = caja.querySelector('.rb-x');
+  const lista = caja.querySelector('.rb-lista');
+  const MAXIMO = 40;
+  let marcado = -1;
+
+  const cerrar = () => { lista.hidden = true; marcado = -1; };
+
+  const tomar = (elegida) => {
+    if (!elegida) return;
+    alElegir(elegida);
+    texto.value = etiqueta(elegida);
+    quitar.hidden = false;
+    cerrar();
+  };
+
+  const pintar = (resultados) => {
+    if (!resultados.length) {
+      lista.innerHTML = '<li class="rb-vacio">Sin coincidencias</li>';
+      lista.hidden = false;
+      return;
+    }
+    lista.innerHTML = resultados
+      .map((o, i) => `<li data-valor="${esc(o.valor)}" class="${i === marcado ? 'marcado' : ''}">${esc(etiqueta(o))}</li>`)
+      .join('');
+    lista.hidden = false;
+    lista.querySelectorAll('li[data-valor]').forEach((li) => {
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // antes del blur, para que no se cierre primero
+        tomar(resultados.find((o) => String(o.valor) === li.dataset.valor));
+      });
+    });
+  };
+
+  const buscar = () => {
+    const palabras = textoBuscable(texto.value).split(/\s+/).filter(Boolean);
+    const resultados = (palabras.length
+      ? opciones.filter((o) => palabras.every((p) => textoBuscable(o.buscar || etiqueta(o)).includes(p)))
+      : opciones
+    ).slice(0, MAXIMO);
+    marcado = -1;
+    pintar(resultados);
+    return resultados;
+  };
+
+  // Al entrar al campo se despliega la lista entera y se marca lo escrito:
+  // así se ve todo lo que hay, y escribir reemplaza lo que estaba.
+  texto.addEventListener('focus', () => {
+    texto.select();
+    marcado = -1;
+    pintar(opciones.slice(0, MAXIMO));
+  });
+  texto.addEventListener('input', () => {
+    if (alEscribir) alEscribir(texto.value);
+    quitar.hidden = !texto.value;
+    buscar();
+  });
+  texto.addEventListener('keydown', (e) => {
+    const items = [...lista.querySelectorAll('li[data-valor]')];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!items.length) return;
+      marcado = e.key === 'ArrowDown' ? Math.min(items.length - 1, marcado + 1) : Math.max(0, marcado - 1);
+      items.forEach((li, i) => li.classList.toggle('marcado', i === marcado));
+      items[marcado].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      if (!lista.hidden && items.length) {
+        e.preventDefault();
+        const li = items[marcado >= 0 ? marcado : 0];
+        tomar(opciones.find((o) => String(o.valor) === li.dataset.valor));
+      }
+    } else if (e.key === 'Escape') {
+      cerrar();
+    }
+  });
+  texto.addEventListener('blur', () => {
+    setTimeout(() => {
+      cerrar();
+      if (alSalir) alSalir(texto);
+    }, 140);
+  });
+  quitar.addEventListener('click', () => {
+    texto.value = '';
+    quitar.hidden = true;
+    if (alEscribir) alEscribir('');
+    texto.focus();
+  });
+}
+
+/**
+ * Selector de una lista larga —los 66 libros de la Biblia— como desplegable
+ * con buscador: se escriben las primeras letras y aparece. Solo admite
+ * valores de la lista.
+ */
+function initSelectBuscable(f) {
+  const caja = document.getElementById('sb_' + f.name);
+  if (!caja) return;
+  const oculto = caja.querySelector('input[type=hidden]');
+  const opciones = (f.options || []).map((o) => ({
+    valor: String(typeof o === 'object' ? o.value : o),
+    texto: String(typeof o === 'object' ? o.label : o),
+  }));
+
+  montarBuscador(caja, {
+    opciones,
+    etiqueta: (o) => o.texto,
+    alElegir: (o) => {
+      oculto.value = o.valor;
+      oculto.dispatchEvent(new Event('change', { bubbles: true }));
+    },
+    alEscribir: () => {
+      oculto.value = ''; // mientras se escribe, no hay nada elegido
+    },
+    alSalir: (texto) => {
+      // Solo valen las opciones de la lista: se restituye lo que esté elegido
+      const actual = opciones.find((o) => o.valor === oculto.value);
+      texto.value = actual ? actual.texto : '';
+      caja.querySelector('.rb-x').hidden = !actual;
+    },
+  });
+}
+
+/**
+ * Campo de persona: desplegable con buscador sobre los registros del módulo
+ * referenciado, que además deja escribir cualquier nombre. Si se elige de la
+ * lista queda enlazado a su ficha; si se escribe un nombre que no está, se
+ * guarda tal cual, que es como se anota a un visitante o a un predicador
+ * invitado.
+ */
+function initPersona(f) {
   const caja = document.getElementById('pf_' + f.name);
   if (!caja) return;
-  const texto = caja.querySelector(`input[name="${f.name}"]`);
+  const nombre = caja.querySelector(`input[name="${f.name}"]`);
   const enlace = caja.querySelector(`input[name="${f.name}_id"]`);
   const estado = document.getElementById('pe_' + f.name);
-  const lista = optionsCache[rutaOpciones(f)] || [];
-  caja.querySelector('datalist').innerHTML = lista.map((o) => `<option value="${esc(o.label)}"></option>`).join('');
+  const opciones = (optionsCache[rutaOpciones(f)] || []).map((o) => ({
+    valor: String(o.id), texto: o.label, buscar: o.buscar || o.label,
+  }));
 
   const revisar = () => {
-    const valor = (texto.value || '').trim().toLowerCase();
-    const coincidencias = lista.filter((o) => o.label.toLowerCase() === valor);
-    if (coincidencias.length === 1) {
-      enlace.value = coincidencias[0].id;
+    if (enlace.value) {
       estado.className = 'persona-estado enlazado';
       estado.textContent = '✓ registrado';
     } else {
-      enlace.value = '';
       estado.className = 'persona-estado libre';
-      estado.textContent = texto.value.trim() ? 'no está en el registro' : '';
+      estado.textContent = nombre.value.trim() ? 'no está en el registro' : '';
     }
   };
-  texto.addEventListener('input', revisar);
-  texto.addEventListener('change', revisar);
+
+  montarBuscador(caja, {
+    opciones,
+    etiqueta: (o) => o.texto,
+    alElegir: (o) => {
+      nombre.value = o.texto;
+      enlace.value = o.valor;
+      revisar();
+    },
+    // Mientras se escribe no hay nadie elegido: vale lo escrito tal cual
+    alEscribir: (valor) => {
+      nombre.value = valor;
+      enlace.value = '';
+      revisar();
+    },
+    alSalir: () => revisar(),
+  });
   revisar();
 }
 
