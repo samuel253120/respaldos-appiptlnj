@@ -514,6 +514,37 @@ function tratamientosPermitidos() {
 }
 
 
+/**
+ * Marca como "Miembro Menor de Edad" a quienes todavía no cumplen 18 años y
+ * no tienen tipo de miembro registrado. Es lo único que se puede deducir sin
+ * suponer nada: el resto de los tipos (nuevo, oyente, activo, líder) los
+ * decide la iglesia, así que quedan en blanco a la espera.
+ */
+function menoresDeEdadComoTipoDeMiembro() {
+  if (yaAplicada('tipo_miembro_menores')) return; // se completa una sola vez
+  const columnas = db.prepare('PRAGMA table_info("miembros")').all().map((c) => c.name);
+  if (!columnas.includes('tipo_miembro') || !columnas.includes('fecha_nacimiento')) return;
+
+  const menores = db
+    .prepare(
+      `SELECT id FROM miembros
+        WHERE (tipo_miembro IS NULL OR tipo_miembro = '')
+          AND fecha_nacimiento IS NOT NULL AND fecha_nacimiento != ''
+          AND date(fecha_nacimiento) > date('now','localtime','-18 years')`
+    )
+    .all();
+  marcarAplicada('tipo_miembro_menores');
+  if (!menores.length) return;
+
+  const marcar = db.prepare(`UPDATE miembros SET tipo_miembro = 'Miembro Menor de Edad' WHERE id = ?`);
+  for (const m of menores) marcar.run(m.id);
+  console.log(
+    `🔁 miembros: ${menores.length} menor(es) de 18 años quedaron como "Miembro Menor de Edad". ` +
+      'El tipo de los demás queda en blanco: lo decide la iglesia.'
+  );
+}
+
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
@@ -528,6 +559,7 @@ function ejecutarMigraciones() {
   conyugeUnicoDePastores();
   cargosDePastores();
   tratamientosPermitidos();
+  menoresDeEdadComoTipoDeMiembro();
 }
 
 module.exports = { ejecutarMigraciones };

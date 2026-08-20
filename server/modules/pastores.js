@@ -14,6 +14,9 @@
  * Matrimonio: el pastor y la pastora se vinculan entre sí; el vínculo queda
  * en las dos fichas. Si el cónyuge no está en este módulo sino en Miembros,
  * se vincula allá.
+ *
+ * Cada ficha lleva además su historial ministerial (historial_pastores) y sus
+ * documentos (documentos_pastores), que se ven al pie de su ficha.
  */
 const { CARGO_GUIA } = require('../tratamiento');
 

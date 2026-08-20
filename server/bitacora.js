@@ -1,9 +1,16 @@
 /**
- * Registro automático en la bitácora de miembros.
+ * Registro automático en los historiales.
  *
- * Se conecta al motor CRUD: cada vez que se guarda o elimina un registro,
- * anota en la bitácora del miembro correspondiente lo que ocurrió. Puede
- * desactivarse desde la configuración del sistema (bitacora_automatica).
+ * Se conecta al motor CRUD: cada vez que se guarda un registro, anota en el
+ * historial de quien corresponda lo que ocurrió. Hay tres historiales, uno
+ * por cada cosa que tiene vida propia en la organización:
+ *
+ *   miembros  → bitacora              (la bitácora de cada persona)
+ *   iglesias  → historial_iglesias    (la historia de cada congregación)
+ *   pastores  → historial_pastores    (el recorrido ministerial)
+ *
+ * Puede desactivarse desde la configuración del sistema
+ * (bitacora_automatica), y en ese caso ninguno de los tres se escribe solo.
  */
 const { db } = require('./db');
 const ajustes = require('./ajustes');
@@ -14,21 +21,58 @@ function nombreMiembro(id) {
   return m ? `${m.nombres} ${m.apellidos}`.trim() : null;
 }
 
-/** Escribe un registro automático en la bitácora. */
-function anotar({ miembroId, tipo, descripcion, iglesiaId, usuario }) {
-  if (!miembroId || !ajustes.activo('bitacora_automatica')) return;
-  if (!nombreMiembro(miembroId)) return; // el miembro ya no existe
+/**
+ * Escribe un registro automático en un historial cualquiera: se le indica en
+ * qué tabla, con qué columna apunta a su dueño y de quién se trata.
+ */
+function anotarEn(tabla, columna, id, { tipo, descripcion, iglesiaId, usuario }) {
+  if (!id || !ajustes.activo('bitacora_automatica')) return;
   try {
-    db.prepare(
-      `INSERT INTO bitacora (miembro_id, fecha, tipo, descripcion, iglesia_id, origen, registrado_por, created_by)
-       VALUES (?, date('now','localtime'), ?, ?, ?, 'Automático', ?, ?)`
-    ).run(miembroId, tipo, descripcion, iglesiaId || null, usuario ? usuario.nombre : 'Sistema', usuario ? usuario.id : null);
+    const tiene = new Set(db.prepare(`PRAGMA table_info("${tabla}")`).all().map((c) => c.name));
+    // El dueño primero; las demás, solo si la tabla las tiene. En el historial
+    // de una iglesia el dueño ES la iglesia, así que no se repite.
+    const pares = [[columna, id], ['tipo', tipo], ['descripcion', descripcion]];
+    const opcional = (nombre, valor) => {
+      if (nombre !== columna && tiene.has(nombre)) pares.push([nombre, valor]);
+    };
+    opcional('iglesia_id', iglesiaId || null);
+    opcional('origen', 'Automático');
+    opcional('registrado_por', usuario ? usuario.nombre : 'Sistema');
+    opcional('created_by', usuario ? usuario.id : null);
+
+    const columnas = ['fecha', ...pares.map(([c]) => c)].map((c) => `"${c}"`).join(', ');
+    const marcas = ["date('now','localtime')", ...pares.map(() => '?')].join(', ');
+    db.prepare(`INSERT INTO "${tabla}" (${columnas}) VALUES (${marcas})`).run(...pares.map(([, v]) => v));
   } catch (e) {
-    console.error('No se pudo anotar en la bitácora:', e.message);
+    console.error(`No se pudo anotar en ${tabla}:`, e.message);
   }
 }
 
-/** Lista legible de los campos que cambiaron entre dos versiones de un registro. */
+/** Escribe un registro automático en la bitácora de un miembro. */
+function anotar({ miembroId, tipo, descripcion, iglesiaId, usuario }) {
+  if (!miembroId) return;
+  if (!nombreMiembro(miembroId)) return; // el miembro ya no existe
+  anotarEn('bitacora', 'miembro_id', miembroId, { tipo, descripcion, iglesiaId, usuario });
+}
+
+/** Escribe un registro automático en el historial de una iglesia. */
+function anotarIglesia(iglesiaId, datos) {
+  anotarEn('historial_iglesias', 'iglesia_id', iglesiaId, { ...datos, iglesiaId });
+}
+
+/** Escribe un registro automático en el historial de un pastor. */
+function anotarPastor(pastorId, datos) {
+  const pastor = pastorId ? db.prepare('SELECT iglesia_id FROM pastores WHERE id = ?').get(pastorId) : null;
+  if (!pastor) return; // la ficha ya no existe
+  anotarEn('historial_pastores', 'pastor_id', pastorId, { ...datos, iglesiaId: pastor.iglesia_id });
+}
+
+/**
+ * Lista legible de los campos que cambiaron entre dos versiones de un
+ * registro. De los campos marcados como `sensible` —los datos de salud, la
+ * nota importante— solo se deja constancia de que cambiaron: su contenido no
+ * se copia al historial.
+ */
 function cambios(def, antes, despues) {
   const lista = [];
   for (const f of def.fields) {
@@ -37,6 +81,10 @@ function cambios(def, antes, despues) {
     const previo = antes[f.name];
     const nuevo = despues[f.name];
     if (String(previo ?? '') === String(nuevo ?? '')) continue;
+    if (f.sensible) {
+      lista.push(`${f.label}: ${nuevo ? 'actualizada' : 'borrada'}`);
+      continue;
+    }
     const texto = (v) => (v === null || v === undefined || v === '' ? '(vacío)' : String(v));
     lista.push(`${f.label}: ${texto(previo)} → ${texto(nuevo)}`);
   }
@@ -80,7 +128,68 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
     return;
   }
 
-  // 2. Cuerpos: ingresos y salidas de integrantes
+  // 2. La iglesia: su alta y los cambios de sus datos
+  if (def.name === 'iglesias') {
+    if (isNew) {
+      anotarIglesia(despues.id, { tipo: 'Anotación', usuario: user,
+        descripcion: `Se registra la iglesia "${despues.nombre || ''}" en el sistema.`.replace(' ""', '') });
+    } else {
+      const lista = cambios(def, antes, datos);
+      if (lista.length) {
+        anotarIglesia(despues.id, { tipo: 'Cambio de datos', usuario: user, descripcion: lista.join(' · ') });
+      }
+    }
+    return;
+  }
+
+  // 3. El pastor: su alta, su cargo, su traslado y los demás cambios
+  if (def.name === 'pastores') {
+    const quien = `${despues.nombres || ''} ${despues.apellidos || ''}`.trim();
+    if (isNew) {
+      anotarPastor(despues.id, { tipo: 'Anotación', usuario: user,
+        descripcion: `Se registra a ${quien} en Pastores / Guías${despues.cargo ? ` como ${despues.cargo}` : ''}.` });
+      return;
+    }
+    if (datos.cargo !== undefined && antes.cargo !== despues.cargo) {
+      anotarPastor(despues.id, {
+        tipo: 'Cambio de cargo', usuario: user,
+        descripcion: `Pasa de ${antes.cargo || '(sin cargo)'} a ${despues.cargo || '(sin cargo)'}.`,
+      });
+    }
+    if (datos.iglesia_id !== undefined && antes.iglesia_id !== despues.iglesia_id) {
+      const nombreDe = (id) => {
+        const i = id ? db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(id) : null;
+        return i ? i.nombre : '(sin iglesia)';
+      };
+      anotarPastor(despues.id, {
+        tipo: 'Traslado de iglesia', usuario: user,
+        descripcion: `De ${nombreDe(antes.iglesia_id)} a ${nombreDe(despues.iglesia_id)}.`,
+      });
+    }
+    const otros = cambios(def, antes, datos).filter((c) => !c.startsWith('Cargo:') && !c.startsWith('Iglesia:'));
+    if (otros.length) {
+      anotarPastor(despues.id, { tipo: 'Cambio de datos', usuario: user, descripcion: otros.join(' · ') });
+    }
+    return;
+  }
+
+  // 4. Documentos adjuntos a una iglesia o a un pastor
+  if (def.name === 'documentos_iglesias' && isNew && despues.iglesia_id) {
+    anotarIglesia(despues.iglesia_id, {
+      tipo: 'Documento', usuario: user,
+      descripcion: `Se adjuntó "${despues.nombre || despues.tipo || 'un documento'}" (${despues.tipo || ''}).`,
+    });
+    return;
+  }
+  if (def.name === 'documentos_pastores' && isNew && despues.pastor_id) {
+    anotarPastor(despues.pastor_id, {
+      tipo: 'Documento', usuario: user,
+      descripcion: `Se adjuntó "${despues.nombre || despues.tipo || 'un documento'}" (${despues.tipo || ''}).`,
+    });
+    return;
+  }
+
+  // 5. Cuerpos: ingresos y salidas de integrantes
   if (def.name === 'cuerpos') {
     const previos = isNew ? [] : idsDe(antes.integrantes);
     const actuales = idsDe(despues.integrantes);
@@ -101,7 +210,7 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
     return;
   }
 
-  // 3. Directivas: se anota a cada miembro el cargo que asume
+  // 6. Directivas: se anota a cada miembro el cargo que asume
   if (def.name === 'directivas') {
     const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(despues.cuerpo_id);
     const nombreCuerpo = cuerpo ? cuerpo.nombre : 'un cuerpo';
@@ -126,7 +235,7 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
     return;
   }
 
-  // 4. Módulos que apuntan a un miembro
+  // 7. Módulos que apuntan a un miembro
   const relacionados = {
     solicitudes: (r) => ({ tipo: 'Solicitud', texto: `Solicitud "${r.asunto || r.tipo}" (${r.estado || 'Pendiente'}).` }),
     ayudas_sociales: (r) => ({ tipo: 'Ayuda social', texto: `Ayuda social: ${r.tipo_ayuda || ''} — ${r.estado || ''}.` }),
@@ -148,4 +257,4 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
   }
 }
 
-module.exports = { anotar, registrarGuardado };
+module.exports = { anotar, anotarIglesia, anotarPastor, registrarGuardado };

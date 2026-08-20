@@ -12,7 +12,14 @@
  *
  * Un campo puede declarar `showIf: { field, equals | in }` para mostrarse solo
  * cuando otro campo tenga cierto valor (p. ej. datos que solo aplican a los
- * cuerpos formales y no a los grupos de servicio).
+ * cuerpos formales y no a los grupos de servicio), o `showIf: { field,
+ * menorDe }` para mostrarse según la edad que da una fecha (los datos del
+ * adulto responsable, que solo aplican a los menores de 18 años).
+ *
+ * Un campo puede declarar `seccion` para abrir con él un bloque de la ficha
+ * («Contacto de emergencia», «Información médica»…), `destacado` para que se
+ * vea resaltado, y `sensible` para que el historial deje constancia de que
+ * cambió sin copiar su contenido.
  *
  * Un campo de tipo `ref` puede declarar `optionsRoute` para que su selector se
  * llene desde una ruta propia del módulo (definida en `extraRoutes`) en vez de
@@ -59,6 +66,9 @@ function normalize(def) {
   def.icon = def.icon || '📄';
   def.group = def.group || 'General';
   def.order = def.order == null ? 100 : def.order;
+  // `menu: false` deja al módulo fuera del menú: se maneja desde la ficha de
+  // otro (los documentos y el historial de una iglesia o de un pastor).
+  def.menu = def.menu !== false;
   def.fields = def.fields || [];
   // Los campos "persona" necesitan una columna extra para enlazar al registro
   // cuando esa persona sí está en el sistema. Se agrega sola, oculta: no se

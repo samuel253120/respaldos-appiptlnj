@@ -57,6 +57,7 @@ app.get('/api/meta', authRequired, (req, res) => {
       icon: m.icon,
       group: m.group,
       order: m.order,
+      menu: m.menu !== false, // los que se ven dentro de otra ficha no ocupan lugar en el menú
       display: m.display,
       printable: !!m.printable,
       dateField: m.dateField || null,
@@ -67,10 +68,11 @@ app.get('/api/meta', authRequired, (req, res) => {
       fields: [
         ...m.fields
           .filter((f) => !f.oculto)
-          .map(({ name, label, type, required, options, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad }) => ({
+          .map(({ name, label, type, required, options, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado }) => ({
             name, label, type, required: !!required, options: options || null, ref: ref || null,
             help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
             optionsRoute: optionsRoute || null, readonly: !!readonly, mostrarEdad: !!mostrarEdad,
+            seccion: seccion || null, destacado: !!destacado,
             calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
             computed: false,
           })),

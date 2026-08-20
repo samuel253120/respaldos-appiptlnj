@@ -3,6 +3,9 @@
  *
  * Al crear una iglesia se le crean solas sus dos cuentas de tesorería: la
  * general y el fondo donde aparta lo que le corresponde a la corporación.
+ *
+ * Cada iglesia lleva además su fotografía, su historial (historial_iglesias)
+ * y sus documentos (documentos_iglesias), que se ven al pie de su ficha.
  */
 module.exports = {
   name: 'iglesias',
@@ -13,9 +16,13 @@ module.exports = {
   order: 10,
   display: '{nombre}',
   searchFields: ['nombre', 'codigo', 'ciudad', 'direccion'],
-  listFields: ['nombre', 'codigo', 'ciudad', 'telefono', 'pastor_id', 'estado'],
+  listFields: ['foto', 'nombre', 'codigo', 'ciudad', 'telefono', 'pastor_id', 'estado'],
   defaultSort: { field: 'nombre', dir: 'asc' },
   fields: [
+    {
+      name: 'foto', label: 'Fotografía del templo', type: 'file', accept: 'image/*',
+      help: 'La foto con la que se reconoce a esta iglesia. Se puede sacar con el teléfono: al subirla se ajusta sola de tamaño.',
+    },
     { name: 'nombre', label: 'Nombre', type: 'text', required: true },
     { name: 'codigo', label: 'Código', type: 'text', help: 'Identificador corto, ej. IG-001' },
     { name: 'direccion', label: 'Dirección', type: 'text' },

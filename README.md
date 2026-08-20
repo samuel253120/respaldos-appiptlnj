@@ -14,10 +14,10 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 
 | Grupo | Módulos |
 |---|---|
-| **Organización** | Iglesias · Pastores / Guías · Cuerpos / Grupos · Directivas de Cuerpos |
+| **Organización** | Iglesias (con su foto, su historial y sus documentos) · Pastores / Guías (con su historial ministerial y sus documentos) · Cuerpos / Grupos (con su foto) · Directivas de Cuerpos |
 | **Servicios** | Registro de Servicios (cultos: salmo, mensaje, asistencia y ofrenda) |
 | **Personas** | Miembros · Asistencias (actividades y pasar lista) · Toma de Asistencia · Bitácora de Miembros · Documentos de Miembros |
-| **Informes** | Informes de Asistencia (general, por cuerpo y por persona) |
+| **Asistencia** | Pasar Lista (pensado para el teléfono) · Informes de Asistencia (general, por cuerpo y por persona) |
 | **Finanzas** | Cuentas de Tesorería (corporación e iglesias) · Tesorería (ingresos/egresos con resumen y balance) · Traspasos entre Cuentas · Ayudas Sociales · Inventarios (de iglesia y de cuerpos) |
 | **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · Documentos · Certificados · Credenciales · Solicitudes |
 | **Administración** | Usuarios (roles y permisos) |
@@ -209,6 +209,41 @@ Este indicador usa otra capacidad general del motor: un módulo puede declarar `
 
 Esto usa una capacidad general del motor: cualquier campo puede declarar `showIf: { field: 'otro_campo', equals: 'valor' }` (o `in: [...]`) para mostrarse solo cuando corresponda. El servidor tampoco exige los campos obligatorios que no apliquen.
 
+## Cada iglesia y cada cuerpo con su fotografía 📸
+
+Tanto la **iglesia** como cada **cuerpo o grupo** llevan su propia fotografía —el templo, el cuerpo reunido—, que se ve como miniatura en el listado y en su ficha. Se saca con el teléfono y al subirla se ajusta sola de tamaño, igual que la foto de un miembro.
+
+## Historial y documentos de la iglesia y del pastor 🗒️🗂️
+
+Lo que ya tenía cada miembro lo tienen ahora también **cada iglesia** y **cada pastor o guía**: su historial y sus documentos, al pie de su ficha.
+
+### Documentos
+
+Todos los que hagan falta, cada uno con **su archivo y su nombre**, más su tipo, su fecha y observaciones:
+
+| De la iglesia | Del pastor / guía |
+|---|---|
+| Personería jurídica · Estatutos · Acta de fundación · Escritura / Propiedad · Contrato de arriendo · Permiso municipal · Plano del templo · Certificado · Reglamento interno · Otro | Credencial ministerial · Certificado de ordenación · Nombramiento · Carnet de identidad · Certificado de estudios · Certificado de matrimonio · Carta de traslado · Currículum · Otro |
+
+Al agregar uno desde la ficha, la iglesia o el pastor vienen puestos. Los documentos del pastor heredan **su** iglesia, que es lo que decide quién puede verlos.
+
+### Historial
+
+Un registro fechado de lo que va ocurriendo, con anotaciones escritas a mano y otras que el sistema hace solo:
+
+| Se anota solo | Cuándo |
+|---|---|
+| *«Se registra la iglesia … en el sistema»* | Al crearla |
+| *«Ciudad: (vacío) → Puerto Montt · Teléfono: …»* | Al cambiar sus datos |
+| *«Se registra a Samuel Rodríguez en Pastores / Guías como Pastor probando»* | Al crear su ficha |
+| *«Pasa de Pastor probando a Pastor diácono»* | Al cambiarle el cargo |
+| *«De Iglesia Central a Iglesia Alerce»* | Al trasladarlo |
+| *«Se adjuntó "Credencial 2026"»* | Al subir un documento |
+
+A mano se puede anotar cualquier otra cosa: la fundación, una inauguración, un cambio de pastor, una obra en el templo, un aniversario, una campaña, una visita, un reconocimiento; y en el ministerio, una ordenación, un nombramiento, una licencia, una capacitación. Cada registro se puede **editar o eliminar**, como en la bitácora del miembro.
+
+> Estos cuatro módulos —documentos e historial de iglesias y de pastores— **no ocupan lugar en el menú**: se manejan desde la ficha a la que pertenecen, que es donde se buscan. El motor los publica igual en la API y respeta sus permisos.
+
 ## Panel de control 📊
 
 La pantalla de inicio muestra los totales del sistema, el resumen financiero del mes (a quien tenga acceso a Tesorería), las últimas asistencias y las solicitudes recientes.
@@ -272,6 +307,44 @@ Cuando dos miembros están casados entre sí, se vinculan: basta elegir al **có
 En **Pastores / Guías** hay un solo campo **Cónyuge**, que también se elige entre los miembros y deja el vínculo en las fichas de miembro de ambos.
 
 
+### Qué se registra de cada persona
+
+La ficha viene ordenada por secciones, para que no sea una lista interminable de casillas:
+
+| Sección | Qué lleva |
+|---|---|
+| **Identificación** | Foto · iglesia · RUT · trato · nombres · apellidos · fecha de nacimiento (con la edad al día) · sexo · otro documento |
+| **Adulto responsable** | Solo para **menores de 18**: nombre y apellido, RUT, parentesco y teléfono de quien responde por él |
+| **Educación y trabajo** | Nivel educacional · título o estudios cursados · profesión u oficio · lugar de trabajo o estudio |
+| **Estado civil y familia** | Estado civil · fechas de matrimonio civil y por la iglesia · cónyuge |
+| **Contacto** | Teléfono · correo · dirección |
+| **Vida en la iglesia** | Forma de ingreso · fecha de ingreso · conversión · bautismo · estado · **tipo de miembro** |
+| **Contacto de emergencia** | Nombre · parentesco · teléfono |
+| **Información médica** | Enfermedades · alergias · indicaciones médicas |
+| **Notas** | **Nota importante** (destacada) · notas |
+
+**Forma de ingreso**: bautismo, conversión, traslado de otra iglesia, reconciliación / restauración, nacido(a) en la iglesia u otro.
+
+**Tipo de miembro**: Miembro Nuevo · Miembro Menor de Edad · Miembro Oyente · Miembro Activo · Miembro Líder. No es lo mismo que el **estado** (activo, inactivo, trasladado…): una persona activa puede ser oyente, y un menor de edad sigue siendo miembro. Aparece como columna y como filtro en el listado.
+
+> Al actualizar, a **quienes todavía no cumplen 18 años** se les pone solo *Miembro Menor de Edad*, porque es lo único que se puede deducir sin suponer nada; el tipo de los demás queda en blanco, a la espera de que la iglesia lo decida. Queda anotado en el arranque cuántos fueron.
+
+### El adulto responsable de los menores 👶
+
+Los datos del adulto responsable **aparecen solos** cuando la fecha de nacimiento indica menos de 18 años, y se ocultan en cuanto deja de ser menor —sin borrarse—. Al abrir la ficha de un menor que todavía no lo tiene registrado, un aviso lo dice arriba de todo: *«Es menor de edad y todavía no está registrado su adulto responsable»*.
+
+No se exige para poder guardar: hay fichas antiguas que aún no lo traen, y bloquearlas impediría corregir cualquier otro dato. El aviso queda a la vista hasta que se complete.
+
+### Lo que no se puede pasar por alto ⚠️
+
+Al abrir una ficha, antes de los datos, se muestran los avisos que importan:
+
+- la **nota importante**, si la tiene, en amarillo;
+- la falta del **adulto responsable** en un menor;
+- la **información médica** —enfermedades, alergias, indicaciones—, para tenerla a mano sin buscarla.
+
+Los datos de salud y la nota importante quedan marcados como **sensibles**: cuando cambian, el historial deja constancia de que se actualizaron, **sin copiar su contenido** («Alergias: actualizada»).
+
 ### Edad al día
 
 Basta con la **fecha de nacimiento**: la edad aparece al lado mientras se escribe y se muestra en el listado. No se guarda —se calcula cada vez que se lee la ficha—, así que nunca queda desactualizada. A los menores de un año se les muestra la edad en meses.
@@ -282,7 +355,7 @@ Al elegir **Casado(a)** aparecen dos campos más: **fecha de matrimonio civil** 
 
 ### Fotos y documentos que suben rápido
 
-Al subir una **imagen** —la foto del miembro, la foto de un carnet— el sistema la **ajusta de tamaño antes de enviarla**: la deja con su lado mayor en 1600 píxeles conservando el detalle a simple vista. Una foto de teléfono de varios MB queda en unos cientos de KB y sube en un instante, aun con señal mala. Debajo del archivo se indica lo que pasó: *«imagen ajustada a 1600×1200 — de 4,2 MB a 180 KB»*.
+Al subir una **imagen** —la foto del miembro, la del templo, la del cuerpo, la de un carnet— el sistema la **ajusta de tamaño antes de enviarla**: la deja con su lado mayor en 1600 píxeles conservando el detalle a simple vista. Una foto de teléfono de varios MB queda en unos cientos de KB y sube en un instante, aun con señal mala. Debajo del archivo se indica lo que pasó: *«imagen ajustada a 1600×1200 — de 4,2 MB a 180 KB»*.
 
 El tamaño y la calidad se cambian en **Configuración → Preferencias**. Los archivos que no son imágenes (PDF, Word) suben tal cual.
 
@@ -364,9 +437,24 @@ La asistencia se toma **por cuerpo y en cada actividad**: la reunión del cuerpo
 
 En **Cuerpos convocados** se elige uno o varios: a una actividad conjunta pueden asistir Damas y Caballeros a la vez. Al pasar lista aparecen los integrantes de todos ellos, **agrupados por cuerpo** y con su encabezado, y quien pertenece a dos cuerpos aparece una sola vez. En los informes cada persona sigue contando en **su** cuerpo, así que un encuentro conjunto no mezcla los promedios.
 
-### Pasar lista 🖐️
+### Pasar lista 🖐️ — pensado para el teléfono
 
-Al pie de cada actividad está **Pasar lista**: aparecen los integrantes de ese cuerpo, cada uno con tres botones —**Presente**, **Ausente**, **Justificado**— y se guardan todos de una vez. Hay un botón **Todos presentes** para marcar de golpe y corregir solo las excepciones, y abajo se ve el recuento en vivo. Volver a pulsar el mismo botón desmarca a la persona.
+La asistencia casi siempre se toma **de pie, con el teléfono en la mano**, así que tiene su propia entrada en el menú —**Asistencia → Pasar Lista**— y una pantalla completa, sin el formulario de la actividad estorbando.
+
+**1. Elegir la actividad.** Se abren las actividades de los últimos dos meses, con el día en palabras (*«Jueves 20 de agosto — hoy»*), los cuerpos convocados y **cuánto lleva cada una**: *Sin tomar*, *Faltan 6* o *Lista completa*, con su barra de avance. Un toque en la actividad y ya se está pasando lista.
+
+**2. Marcar.** Cada persona ocupa una fila con tres botones grandes —**Presente**, **Ausente**, **Justificado**— de 46 píxeles de alto, cómodos para el pulgar. Volver a pulsar el mismo botón la desmarca.
+
+- **Buscador**: se escribe parte del nombre o del RUT y la lista se reduce a esa persona, sin desplazarse por sesenta nombres. No importan tildes ni mayúsculas.
+- **Sin marcar (N)**: deja a la vista solo a quienes faltan, que es lo que uno busca al final.
+- **✓ Todos presentes**: marca a los que están a la vista y **sin marcar**, sin pisar lo ya decidido. Con el filtro puesto, solo a esos.
+- **Barra siempre a la vista**: abajo, pegada a la pantalla, va el recuento en vivo —*«12 de 45 · 10 presentes · 1 ausente…»*— y el botón **Guardar lista**, sin tener que volver arriba.
+
+**3. Nada se pierde.** Lo marcado queda guardado **en el propio teléfono** al instante, y **se guarda solo** unos segundos después de la última marca: la barra dice *«Guardado a las 19:42»*. Si se corta la señal, se cierra la pantalla o se apaga el teléfono a media lista, al volver a abrirla aparece el aviso *«Se recuperaron 8 marcas que habían quedado sin guardar en este teléfono»* y se sigue donde se iba.
+
+> El guardado automático **espera** si hay una justificación sin motivo o sin detalle: la barra avisa *«Falta el motivo de 1 justificación(es)»* y no manda nada a medias. En cuanto se completa, guarda.
+
+Al pie de la ficha de la actividad sigue estando la misma lista, para trabajar desde el computador, con un botón **🖐️ Pasar lista** que lleva a la pantalla completa.
 
 Cuando alguien queda **Justificado** se pide el motivo:
 
@@ -576,6 +664,8 @@ Además del rol, cada usuario puede tener permisos propios. En su ficha hay una 
 
 ## Bitácora de miembros 🗒️
 
+Hay **tres historiales**, uno por cada cosa que tiene vida propia en la organización: el del **miembro** (esta bitácora), el de la **iglesia** y el del **pastor o guía** (ver *Historial y documentos de la iglesia y del pastor*). Los tres funcionan igual: se ven al pie de su ficha, mezclan registros automáticos y manuales, y cada línea se puede corregir o eliminar. Si en Configuración se desactiva el registro automático, se desactiva en los tres.
+
 Cada miembro tiene un **historial** que se ve al pie de su ficha, con dos tipos de registro:
 
 **Automáticos** (mientras la opción esté activa en Configuración):
@@ -589,6 +679,8 @@ Cada miembro tiene un **historial** que se ve al pie de su ficha, con dos tipos 
 | Queda como líder de un cuerpo | Anotación |
 | Solicitud, ayuda social, certificado o credencial | Su tipo correspondiente (al crearse y al cambiar de estado) |
 | Documento adjuntado al miembro | Documento |
+
+Los datos marcados como **sensibles** —enfermedades, alergias, indicaciones médicas y la nota importante— se anotan sin copiar su contenido: *«Alergias: actualizada»*.
 
 **Manuales**: el botón *Agregar anotación* permite registrar visitas, disciplinas, reconocimientos u observaciones, con su fecha y tipo.
 
@@ -662,6 +754,12 @@ Cualquier campo acepta además:
 
 - `unique: true` — impide valores repetidos.
 - `showIf: { field, equals }` o `showIf: { field, in: [...] }` — el campo se muestra (y se exige, si es obligatorio) solo cuando otro campo tenga ese valor.
+- `showIf: { field, menorDe: 18 }` — se muestra según la **edad** que da una fecha (así aparecen los datos del adulto responsable).
+- `seccion: 'Contacto de emergencia'` — abre con ese campo un bloque de la ficha, con su encabezado. Si el campo tiene condición, el encabezado se oculta con él.
+- `destacado: true` — el campo se dibuja resaltado (la nota importante).
+- `sensible: true` — cuando cambia, el historial anota que se actualizó **sin copiar su contenido**.
+
+Y un módulo acepta `menu: false`, para no ocupar lugar en el menú y manejarse desde la ficha de otro (los documentos y el historial de una iglesia o de un pastor).
 
 ### Lógica propia por módulo
 
@@ -685,6 +783,7 @@ GET    /api/<modulo>/:id
 POST   /api/<modulo>
 PUT    /api/<modulo>/:id
 DELETE /api/<modulo>/:id
+GET    /api/asistencias/pendientes  actividades a las que pasar lista, con su avance
 GET    /api/tesoreria/resumen       ingresos, egresos, balance y por categoría
 POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importación masiva
 ```
@@ -699,6 +798,8 @@ POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importa
 ## Uso en teléfonos móviles 📱
 
 La interfaz es totalmente adaptable (menú lateral táctil, formularios de una columna, tablas con desplazamiento) y puede **instalarse como aplicación** en el teléfono: en Android (Chrome) menú ⋮ → *Agregar a la pantalla principal*; en iPhone (Safari) Compartir → *Agregar a pantalla de inicio*.
+
+Lo que más se usa desde el teléfono está pensado para eso: **pasar lista** tiene su propia pantalla con botones grandes, buscador, barra de acciones fija y guardado automático con respaldo en el propio teléfono (ver **Pasar lista**), y las **fotos** se ajustan de tamaño antes de subirse, para que carguen aun con mala señal.
 
 ## Publicar en internet 🌐
 

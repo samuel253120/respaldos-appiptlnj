@@ -15,6 +15,7 @@
  * puede dejar pasar lista sin dejarlo crear actividades.
  *
  * Rutas propias:
+ *   GET  /asistencias/pendientes  actividades a las que pasar lista, con su avance
  *   GET  /asistencias/:id/lista   integrantes del cuerpo con su marca
  *   POST /asistencias/:id/lista   guarda todas las marcas de una vez
  *   GET  /asistencias/informe     informes y promedios (general, por cuerpo,
@@ -144,6 +145,53 @@ module.exports = {
   },
 
   extraRoutes(router, { db, requirePerm, can }) {
+    /**
+     * Actividades a las que hay que pasar lista, para la pantalla de toma de
+     * asistencia: las de los últimos dos meses y las que vienen, con cuántos
+     * integrantes convoca cada una y cuántos van marcados.
+     *
+     * Es lo primero que se abre desde el teléfono, así que responde todo lo
+     * necesario de una vez: no hace falta entrar a cada actividad para saber
+     * cuál falta.
+     */
+    router.get('/asistencias/pendientes', requirePerm('asistencias', 'view'), (req, res) => {
+      const alcance = require('../alcance');
+      const params = [];
+      const cond = ["fecha >= date('now','localtime','-60 days')"];
+      const suyo = alcance.condiciones(module.exports, req.user, params);
+      if (suyo) cond.push(suyo);
+
+      const filas = db
+        .prepare(`SELECT * FROM asistencias WHERE ${cond.join(' AND ')} ORDER BY fecha DESC, hora_inicio DESC LIMIT 60`)
+        .all(...params);
+
+      const actividades = filas.map((a) => {
+        const c = conteo(a.id, db);
+        const cuerpos = idsDeCuerpos(a.cuerpos)
+          .map((id) => (db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(id) || {}).nombre)
+          .filter(Boolean);
+        return {
+          id: a.id,
+          fecha: a.fecha,
+          hora_inicio: a.hora_inicio || null,
+          tipo_reunion: a.tipo_reunion,
+          lugar: a.lugar || null,
+          cuerpos,
+          convocados: integrantesConvocados(a, db).size,
+          marcados: c.total,
+          presentes: c.presentes,
+          ausentes: c.ausentes,
+          justificados: c.justificados,
+        };
+      });
+
+      res.json({
+        actividades,
+        puede_marcar: can(req.user, 'asistencia_detalle', 'create') && can(req.user, 'asistencia_detalle', 'edit'),
+        puede_crear: can(req.user, 'asistencias', 'create'),
+      });
+    });
+
     /**
      * Integrantes de todos los cuerpos convocados, con la marca que ya
      * tengan. Quien pertenece a dos de esos cuerpos aparece una sola vez.

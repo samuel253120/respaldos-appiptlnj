@@ -26,8 +26,25 @@
  * propia ficha. Quedan enlazados, y el RUT, el nombre, el correo y el
  * teléfono se mantienen iguales en los dos módulos, se cambien donde se
  * cambien.
+ *
+ * La ficha viene ordenada por secciones: identificación, adulto responsable
+ * (solo para menores de 18, según la fecha de nacimiento), educación y
+ * trabajo, estado civil y familia, contacto, vida en la iglesia, contacto de
+ * emergencia, información médica y notas.
+ *
+ * Los datos de salud y la nota importante van marcados como `sensible`: el
+ * historial deja constancia de que cambiaron, sin copiar su contenido.
  */
 const { TRATAMIENTOS, tratamientoDe } = require('../tratamiento');
+
+/**
+ * Cómo participa cada persona en la vida de la iglesia. No es lo mismo que su
+ * estado (activo, inactivo…): una persona activa puede ser oyente, y un menor
+ * de edad sigue siendo miembro.
+ */
+const TIPOS_DE_MIEMBRO = [
+  'Miembro Nuevo', 'Miembro Menor de Edad', 'Miembro Oyente', 'Miembro Activo', 'Miembro Líder',
+];
 
 /**
  * Deja al día el usuario del sistema enlazado a este miembro: comparten el
@@ -91,7 +108,8 @@ module.exports = {
   order: 20,
   display: '{nombres} {apellidos}',
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono', 'email'],
-  listFields: ['foto', 'tratamiento', 'nombres', 'apellidos', 'rut', 'edad', 'iglesia_id', 'estado'],
+  listFields: ['foto', 'tratamiento', 'nombres', 'apellidos', 'rut', 'edad', 'tipo_miembro', 'iglesia_id', 'estado'],
+  filterFields: ['tipo_miembro', 'estado', 'iglesia_id'],
   defaultSort: { field: 'apellidos', dir: 'asc' },
   computed: [
     {
@@ -110,23 +128,76 @@ module.exports = {
     },
   ],
   fields: [
-    { name: 'nombres', label: 'Nombres', type: 'text', required: true },
-    { name: 'apellidos', label: 'Apellidos', type: 'text', required: true },
+    // ---------------- Identificación ----------------
+    {
+      name: 'foto', label: 'Foto', type: 'file', accept: 'image/*', seccion: 'Identificación',
+      help: 'Se puede sacar con el teléfono: al subirla se ajusta sola de tamaño para que cargue rápido.',
+    },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
     {
       name: 'rut', label: 'RUT', type: 'rut', unique: true,
       help: 'Con o sin puntos. Se valida el dígito verificador y evita miembros repetidos.',
     },
     {
+      name: 'tratamiento_personalizado', label: 'Trato (fijado a mano)', type: 'select',
+      options: TRATAMIENTOS,
+      help: 'Solo si le corresponde un trato distinto del que calcula el sistema. En blanco, se calcula solo.',
+    },
+    { name: 'nombres', label: 'Nombres', type: 'text', required: true },
+    { name: 'apellidos', label: 'Apellidos', type: 'text', required: true },
+    {
       name: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date',
       mostrarEdad: true, help: 'La edad se calcula sola.',
     },
     {
-      name: 'genero', label: 'Género', type: 'select',
+      name: 'genero', label: 'Sexo', type: 'select',
       options: ['Femenino', 'Masculino'],
     },
+    { name: 'documento_identidad', label: 'Otro documento (pasaporte / extranjero)', type: 'text' },
+
+    // ------- Adulto responsable (solo para menores de 18) -------
     {
-      name: 'estado_civil', label: 'Estado civil', type: 'select',
+      name: 'responsable_nombre', label: 'Nombre y apellido del adulto responsable', type: 'text',
+      seccion: 'Adulto responsable (menor de edad)', showIf: { field: 'fecha_nacimiento', menorDe: 18 },
+      help: 'Quién responde por este miembro mientras sea menor de 18 años.',
+    },
+    {
+      name: 'responsable_rut', label: 'RUT del adulto responsable', type: 'rut',
+      showIf: { field: 'fecha_nacimiento', menorDe: 18 },
+    },
+    {
+      name: 'responsable_parentesco', label: 'Parentesco con el menor', type: 'select',
+      options: ['Madre', 'Padre', 'Abuelo(a)', 'Tío(a)', 'Hermano(a)', 'Tutor(a) legal', 'Otro'],
+      showIf: { field: 'fecha_nacimiento', menorDe: 18 },
+    },
+    {
+      name: 'responsable_telefono', label: 'Teléfono del adulto responsable', type: 'tel',
+      showIf: { field: 'fecha_nacimiento', menorDe: 18 },
+    },
+
+    // ---------------- Educación y trabajo ----------------
+    {
+      name: 'nivel_educacional', label: 'Nivel educacional', type: 'select',
+      seccion: 'Educación y trabajo',
+      options: [
+        'Sin estudios formales', 'Básica incompleta', 'Básica completa',
+        'Media incompleta', 'Media completa', 'Técnica incompleta', 'Técnica completa',
+        'Universitaria incompleta', 'Universitaria completa', 'Postgrado',
+      ],
+    },
+    {
+      name: 'titulo_estudios', label: 'Título o estudios cursados', type: 'text',
+      help: 'Ej: Técnico en enfermería, Profesor de Historia…',
+    },
+    {
+      name: 'ocupacion', label: 'Profesión u oficio', type: 'text',
+      help: 'A qué se dedica hoy. Ej: gásfiter, contadora, dueña de casa, estudiante.',
+    },
+    { name: 'lugar_trabajo', label: 'Lugar de trabajo o estudio', type: 'text' },
+
+    // ---------------- Estado civil y familia ----------------
+    {
+      name: 'estado_civil', label: 'Estado civil', type: 'select', seccion: 'Estado civil y familia',
       options: ['Soltero(a)', 'Casado(a)', 'Unión libre', 'Viudo(a)', 'Divorciado(a)'],
     },
     {
@@ -142,26 +213,63 @@ module.exports = {
       showIf: { field: 'estado_civil', in: ['Casado(a)', 'Unión libre', 'Viudo(a)'] },
       help: 'Si su cónyuge también está registrado, elíjalo aquí: el vínculo queda en las dos fichas.',
     },
-    { name: 'telefono', label: 'Teléfono', type: 'tel' },
+
+    // ---------------- Contacto ----------------
+    { name: 'telefono', label: 'Teléfono', type: 'tel', seccion: 'Contacto' },
     { name: 'email', label: 'Correo electrónico', type: 'email' },
     { name: 'direccion', label: 'Dirección', type: 'text' },
-    { name: 'ocupacion', label: 'Ocupación', type: 'text' },
-    { name: 'documento_identidad', label: 'Otro documento (pasaporte / extranjero)', type: 'text' },
+
+    // ---------------- Vida en la iglesia ----------------
+    {
+      name: 'forma_ingreso', label: 'Forma de ingreso', type: 'select', seccion: 'Vida en la iglesia',
+      options: [
+        'Bautismo', 'Conversión', 'Traslado de otra iglesia', 'Reconciliación / Restauración',
+        'Nacido(a) en la iglesia', 'Otro',
+      ],
+      help: 'Cómo llegó a ser parte de esta iglesia.',
+    },
+    { name: 'fecha_ingreso', label: 'Fecha de ingreso a la iglesia', type: 'date' },
     { name: 'fecha_conversion', label: 'Fecha de conversión', type: 'date' },
     { name: 'fecha_bautismo', label: 'Fecha de bautismo', type: 'date' },
-    { name: 'fecha_ingreso', label: 'Fecha de ingreso a la iglesia', type: 'date' },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Activo',
       options: ['Activo', 'Inactivo', 'En disciplina', 'Trasladado', 'Fallecido'],
     },
     {
-      name: 'foto', label: 'Foto', type: 'file', accept: 'image/*',
-      help: 'Se puede sacar con el teléfono: al subirla se ajusta sola de tamaño para que cargue rápido.',
+      name: 'tipo_miembro', label: 'Tipo de miembro', type: 'select',
+      options: TIPOS_DE_MIEMBRO,
+      help: 'Menor de edad: quien todavía no cumple 18 años. Oyente: asiste sin estar en plena membresía.',
+    },
+
+    // ---------------- Contacto de emergencia ----------------
+    {
+      name: 'emergencia_nombre', label: 'Nombre del contacto', type: 'text',
+      seccion: 'Contacto de emergencia',
+      help: 'A quién avisar si le ocurre algo a este miembro.',
     },
     {
-      name: 'tratamiento_personalizado', label: 'Trato (fijado a mano)', type: 'select',
-      options: TRATAMIENTOS,
-      help: 'Solo si le corresponde un trato distinto del que calcula el sistema. En blanco, se calcula solo.',
+      name: 'emergencia_parentesco', label: 'Parentesco', type: 'select',
+      options: ['Cónyuge', 'Madre', 'Padre', 'Hijo(a)', 'Hermano(a)', 'Abuelo(a)', 'Tío(a)', 'Amigo(a)', 'Vecino(a)', 'Otro'],
+    },
+    { name: 'emergencia_telefono', label: 'Teléfono del contacto', type: 'tel' },
+
+    // ---------------- Información médica ----------------
+    {
+      name: 'enfermedades', label: 'Enfermedades', type: 'textarea', sensible: true,
+      seccion: 'Información médica',
+      help: 'Diagnósticos o condiciones que conviene conocer (diabetes, hipertensión, epilepsia…).',
+    },
+    { name: 'alergias', label: 'Alergias', type: 'textarea', sensible: true },
+    {
+      name: 'indicaciones_medicas', label: 'Indicaciones médicas', type: 'textarea', sensible: true,
+      help: 'Medicamentos, cuidados o qué hacer ante una emergencia.',
+    },
+
+    // ---------------- Notas ----------------
+    {
+      name: 'nota_importante', label: 'Nota importante', type: 'textarea', sensible: true,
+      destacado: true, seccion: 'Notas',
+      help: 'Lo que no se puede pasar por alto de esta persona. Se muestra destacado al abrir su ficha.',
     },
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],

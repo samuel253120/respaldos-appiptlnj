@@ -71,7 +71,7 @@ module.exports = {
   order: 12,
   display: '{nombre}',
   searchFields: ['nombre', 'descripcion'],
-  listFields: ['nombre', 'tipo', 'iglesia_id', 'lider_id', 'estado', 'cumplimiento'],
+  listFields: ['foto', 'nombre', 'tipo', 'iglesia_id', 'lider_id', 'estado', 'cumplimiento'],
   defaultSort: { field: 'nombre', dir: 'asc' },
   computed: [
     {
@@ -81,6 +81,10 @@ module.exports = {
     },
   ],
   fields: [
+    {
+      name: 'foto', label: 'Fotografía del cuerpo / grupo', type: 'file', accept: 'image/*',
+      help: 'La foto con la que se reconoce a este cuerpo o grupo. Al subirla se ajusta sola de tamaño.',
+    },
     { name: 'nombre', label: 'Nombre', type: 'text', required: true, help: 'Ej: Damas, Caballeros, Jóvenes, Coro, Escuela Dominical…' },
     {
       name: 'tipo', label: 'Tipo', type: 'select', required: true, default: 'Cuerpo',
