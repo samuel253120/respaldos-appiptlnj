@@ -16,6 +16,7 @@ let MOD = {}; // por nombre
 const optionsCache = {}; // opciones {id,label} por módulo referenciado
 const listState = {}; // estado de cada listado (página, búsqueda, filtros…)
 let PERMISOS_CATALOGO = null; // módulos y acciones para el editor de permisos
+let ROLES = []; // roles disponibles, para mostrarlos por su nombre
 let AJUSTES = { imagen_lado_maximo: 1600, imagen_calidad: 88 }; // preferencias de la interfaz
 
 const $app = document.getElementById('app');
@@ -186,6 +187,7 @@ async function boot() {
     MODULES.forEach((m) => (MOD[m.name] = m));
     USER = meta.user;
     PERMISOS_CATALOGO = meta.permisosCatalogo || null;
+    ROLES = meta.roles || [];
     if (meta.ajustes) AJUSTES = { ...AJUSTES, ...meta.ajustes };
     renderShell();
     route();
@@ -876,7 +878,12 @@ async function viewForm(name, id, precarga) {
     renderPanelesCuerpo(Number(id), zona);
   }
 
-  // Documentos e historial del miembro, bajo la ficha
+  // Acceso al sistema, documentos e historial del miembro, bajo la ficha
+  if (name === 'miembros' && !isNew) {
+    const zonaUsuario = document.createElement('div');
+    content().appendChild(zonaUsuario);
+    renderAccesoMiembro(Number(id), zonaUsuario);
+  }
   if (name === 'miembros' && !isNew) {
     const zonaDocs = document.createElement('div');
     content().appendChild(zonaDocs);
@@ -2586,6 +2593,80 @@ async function renderEstadoCuenta(cuentaId, contenedor) {
     if (bv) bv.addEventListener('click', () => (location.hash = `#/m/tesoreria?f_cuenta_id=${cuentaId}`));
   } catch (err) {
     contenedor.innerHTML = '';
+  }
+}
+
+/**
+ * Acceso al sistema de un miembro: si ya tiene usuario, se muestra y se puede
+ * abrir; si no, el administrador puede designarlo con un botón, y el sistema
+ * entrega una contraseña provisoria para pasarle a la persona.
+ */
+async function renderAccesoMiembro(miembroId, contenedor) {
+  let d;
+  try {
+    d = await api('GET', `/miembros/${miembroId}/usuario`);
+  } catch (e) {
+    contenedor.innerHTML = '';
+    return;
+  }
+  if (!d.usuario && !d.puede_designar) {
+    contenedor.innerHTML = '';
+    return;
+  }
+
+  const rol = (v) => (ROLES.find((r) => r.value === v) || {}).label || v;
+  contenedor.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🔐 Acceso al sistema</b>
+        <span class="spacer"></span>
+        ${d.usuario && MOD['usuarios']
+          ? `<button class="btn sm secondary" id="verUsuario">Abrir su usuario</button>`
+          : d.puede_designar
+            ? `<button class="btn sm" id="crearUsuario" ${d.tiene_rut ? '' : 'disabled'}>➕ Designarlo como usuario</button>`
+            : ''}
+      </div>
+      <div style="padding:14px 18px;font-size:13.5px" id="accesoCuerpo">
+        ${d.usuario
+          ? `<span class="badge ${d.usuario.activo ? 'green' : 'red'}">${d.usuario.activo ? 'Con acceso' : 'Acceso desactivado'}</span>
+             Entra con su RUT <b>${esc(rutFormatear(d.usuario.rut || ''))}</b> — rol: <b>${esc(rol(d.usuario.rol))}</b>.
+             <div class="mut" style="margin-top:6px">El RUT, el nombre, el correo y el teléfono se mantienen iguales en los dos módulos.</div>`
+          : d.tiene_rut
+            ? `Esta persona todavía no tiene acceso al sistema. Al designarla se crea su usuario con estos mismos datos
+               y una contraseña provisoria para entregarle.`
+            : `<span class="badge red">Falta el RUT</span>
+               Para entrar al sistema se necesita el RUT, porque es el usuario de acceso. Complételo arriba y guarde.`}
+      </div>
+    </div>`;
+
+  const ver = document.getElementById('verUsuario');
+  if (ver) ver.addEventListener('click', () => (location.hash = `#/m/usuarios/edit/${d.usuario.id}`));
+
+  const crear = document.getElementById('crearUsuario');
+  if (crear) {
+    crear.addEventListener('click', async () => {
+      crear.disabled = true;
+      try {
+        const r = await api('POST', `/miembros/${miembroId}/usuario`);
+        if (r.password) {
+          document.getElementById('accesoCuerpo').innerHTML = `
+            <span class="badge green">Usuario creado</span>
+            <div style="margin-top:10px">Entregue estos datos a la persona; la contraseña se muestra <b>una sola vez</b>:</div>
+            <div class="clave-provisoria">
+              <div><span class="mut">Usuario (RUT)</span><b>${esc(rutFormatear(r.rut || ''))}</b></div>
+              <div><span class="mut">Contraseña provisoria</span><b>${esc(r.password)}</b></div>
+            </div>
+            <div class="mut" style="margin-top:8px">Queda con rol «Solo consulta»; ajústelo en su ficha de usuario.</div>`;
+          toast('Usuario creado');
+        } else {
+          toast('Ya tenía usuario: quedó enlazado');
+          renderAccesoMiembro(miembroId, contenedor);
+        }
+      } catch (e) {
+        toast(e.message, true);
+        crear.disabled = false;
+      }
+    });
   }
 }
 

@@ -99,6 +99,29 @@ Roles disponibles (editables en `server/permissions.js`):
 
 **Iglesia local a la vista**: la barra superior y el panel de control muestran siempre en qué congregación se está trabajando — la asignada al usuario o, si administra varias, "Todas las iglesias". Cuando el sistema administra una sola iglesia, se muestra su nombre aunque el usuario no tenga ninguna asignada.
 
+### Designar a un miembro como usuario 🔐
+
+Al pie de la ficha de cualquier miembro está **🔐 Acceso al sistema**. Si todavía no tiene cuenta, el administrador la crea con un botón: el sistema toma sus mismos datos —RUT, nombre, correo, teléfono e iglesia— y entrega una **contraseña provisoria que se muestra una sola vez**, para pasársela a la persona. Queda con rol *Solo consulta*, y desde ahí se le ajusta lo que corresponda.
+
+Para tener acceso hace falta el **RUT**, porque es el usuario de entrada: si a la ficha le falta, el panel lo dice y no deja continuar. Si ya existía una cuenta con ese mismo RUT, no se crea otra: **se enlaza** con la ficha.
+
+### Los dos módulos quedan sincronizados
+
+Mientras el usuario esté enlazado a su ficha de miembro, lo que comparten se mantiene igual **se cambie donde se cambie**:
+
+| Dato | Se sincroniza |
+|---|---|
+| RUT | En los dos sentidos |
+| Correo electrónico | En los dos sentidos |
+| Teléfono | En los dos sentidos |
+| Nombre | De **Miembros** hacia Usuarios (allá va separado en nombres y apellidos) |
+
+Y una salvaguarda: si el miembro pasa a **Fallecido** o **Trasladado**, su acceso al sistema **se desactiva solo**.
+
+Lo que **no** se sincroniza, a propósito, es la **iglesia**: en Miembros dice a qué congregación pertenece la persona, y en Usuarios qué iglesias administra — son cosas distintas.
+
+> Al enlazar dos fichas que ya tienen RUT, tienen que ser el mismo, o no son la misma persona. Una vez enlazadas, corregir el RUT en cualquiera de las dos lo corrige también en la otra.
+
 ### Qué ve cada usuario: iglesias y cuerpos asignados 🔒
 
 En la ficha de cada usuario, el administrador decide **hasta dónde llega**:

@@ -20,8 +20,45 @@
  * Matrimonio: al vincular a dos miembros como cónyuges, el vínculo se
  * devuelve solo en la ficha del otro, y las fechas de matrimonio se copian a
  * quien las tenga en blanco, para no registrarlas dos veces.
+ *
+ * Acceso al sistema: a un miembro se le puede crear su usuario desde su
+ * propia ficha. Quedan enlazados, y el RUT, el nombre, el correo y el
+ * teléfono se mantienen iguales en los dos módulos, se cambien donde se
+ * cambien.
  */
 const { TRATAMIENTOS, tratamientoDe } = require('../tratamiento');
+
+/**
+ * Deja al día el usuario del sistema enlazado a este miembro: comparten el
+ * RUT, el nombre, el correo y el teléfono. Si el miembro pasa a fallecido o
+ * trasladado, su acceso queda desactivado.
+ */
+function sincronizarUsuario(fila, db) {
+  const usuario = db.prepare('SELECT * FROM usuarios WHERE miembro_id = ?').get(fila.id);
+  if (!usuario) return;
+
+  const nombre = `${fila.nombres || ''} ${fila.apellidos || ''}`.trim();
+  const cambios = [];
+  const valores = [];
+  const igualar = (columna, valor) => {
+    if ((valor || null) === (usuario[columna] || null)) return;
+    cambios.push(`"${columna}" = ?`);
+    valores.push(valor || null);
+  };
+  igualar('nombre', nombre);
+  igualar('rut', fila.rut);
+  igualar('email', fila.email);
+  igualar('telefono', fila.telefono);
+
+  // Quien ya no está en la iglesia no debe poder entrar al sistema
+  if (['Fallecido', 'Trasladado'].includes(fila.estado) && usuario.activo) {
+    cambios.push('activo = ?');
+    valores.push(0);
+  }
+  if (!cambios.length) return;
+  db.prepare(`UPDATE usuarios SET ${cambios.join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`)
+    .run(...valores, usuario.id);
+}
 
 /** Años cumplidos a la fecha de hoy. */
 function edadEnAnios(fechaNacimiento) {
@@ -128,6 +165,70 @@ module.exports = {
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],
 
+  extraRoutes(router, { db, requirePerm }) {
+    /** Cómo está el acceso al sistema de este miembro. */
+    router.get('/miembros/:id(\\d+)/usuario', requirePerm('miembros', 'view'), (req, res) => {
+      const miembro = db.prepare('SELECT * FROM miembros WHERE id = ?').get(req.params.id);
+      if (!miembro) return res.status(404).json({ error: 'Miembro no encontrado' });
+      const usuario = db.prepare('SELECT * FROM usuarios WHERE miembro_id = ?').get(miembro.id)
+        || (miembro.rut ? db.prepare('SELECT * FROM usuarios WHERE rut = ?').get(miembro.rut) : null);
+      res.json({
+        puede_designar: require('../permissions').can(req.user, 'usuarios', 'create'),
+        tiene_rut: !!miembro.rut,
+        usuario: usuario
+          ? { id: usuario.id, nombre: usuario.nombre, rut: usuario.rut, rol: usuario.rol, activo: !!usuario.activo, enlazado: !!usuario.miembro_id }
+          : null,
+      });
+    });
+
+    /**
+     * Designa a este miembro como usuario del sistema: crea su cuenta con sus
+     * mismos datos y una contraseña provisoria que se muestra una sola vez.
+     * Si ya existe una cuenta con su RUT, solo se enlaza.
+     */
+    router.post('/miembros/:id(\\d+)/usuario', requirePerm('usuarios', 'create'), (req, res) => {
+      const bcryptjs = require('bcryptjs');
+      const miembro = db.prepare('SELECT * FROM miembros WHERE id = ?').get(req.params.id);
+      if (!miembro) return res.status(404).json({ error: 'Miembro no encontrado' });
+      if (!require('../alcance').alcanza(module.exports, miembro, req.user)) {
+        return res.status(403).json({ error: 'Ese registro está fuera de lo que tiene asignado' });
+      }
+      if (!miembro.rut) {
+        return res.status(400).json({ error: 'Para entrar al sistema se necesita el RUT: complételo en su ficha.' });
+      }
+
+      const yaEnlazado = db.prepare('SELECT * FROM usuarios WHERE miembro_id = ?').get(miembro.id);
+      if (yaEnlazado) return res.json({ ok: true, usuario_id: yaEnlazado.id, creado: false });
+
+      const conSuRut = db.prepare('SELECT * FROM usuarios WHERE rut = ?').get(miembro.rut);
+      if (conSuRut) {
+        db.prepare('UPDATE usuarios SET miembro_id = ? WHERE id = ?').run(miembro.id, conSuRut.id);
+        return res.json({ ok: true, usuario_id: conSuRut.id, creado: false, enlazado: true });
+      }
+
+      // Contraseña provisoria, para entregarla a la persona y que la cambie
+      const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const provisoria = Array.from({ length: 8 }, () => alfabeto[Math.floor(Math.random() * alfabeto.length)]).join('');
+
+      const info = db
+        .prepare(
+          `INSERT INTO usuarios (rut, nombre, password, rol, iglesia_id, email, telefono, activo, miembro_id, created_by)
+           VALUES (?, ?, ?, 'consulta', ?, ?, ?, 1, ?, ?)`
+        )
+        .run(
+          miembro.rut,
+          `${miembro.nombres || ''} ${miembro.apellidos || ''}`.trim(),
+          bcryptjs.hashSync(provisoria, 10),
+          miembro.iglesia_id || null,
+          miembro.email || null,
+          miembro.telefono || null,
+          miembro.id,
+          req.user.id
+        );
+      res.status(201).json({ ok: true, usuario_id: info.lastInsertRowid, creado: true, password: provisoria, rut: miembro.rut });
+    });
+  },
+
   hooks: {
     beforeSave(data, { id, existing, db }) {
       const rutDe = (d, e) => (d.rut !== undefined ? d.rut : e ? e.rut : null);
@@ -185,6 +286,8 @@ module.exports = {
      * tenga en blanco.
      */
     afterSave(fila, { db }) {
+      sincronizarUsuario(fila, db);
+
       const conyugeId = fila.conyuge_id || null;
 
       // Quien estuviera vinculado a esta persona y ya no corresponda, se suelta

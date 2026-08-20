@@ -10,6 +10,11 @@
  * - Al editar, dejar la contraseña vacía la mantiene sin cambios.
  * - No se puede eliminar el propio usuario ni el último administrador.
  *
+ * Un usuario puede estar **enlazado a su ficha de miembro**: entonces los
+ * datos que comparten —RUT, nombre, correo y teléfono— se mantienen iguales
+ * en los dos módulos, se cambien donde se cambien. El nombre se escribe en
+ * Miembros, que es donde va separado en nombres y apellidos.
+ *
  * Alcance: a cada usuario se le puede asignar **una o varias iglesias** y,
  * dentro de ellas, **uno o varios cuerpos**. Solo ve y administra los datos de
  * lo que tenga asignado; sin iglesias asignadas ve todas, y sin cuerpos
@@ -27,14 +32,21 @@ module.exports = {
   order: 90,
   display: '{nombre}',
   searchFields: ['nombre', 'rut', 'email'],
-  listFields: ['rut', 'nombre', 'rol', 'iglesias', 'cuerpos', 'activo'],
+  listFields: ['rut', 'nombre', 'rol', 'miembro_id', 'iglesias', 'cuerpos', 'activo'],
   defaultSort: { field: 'nombre', dir: 'asc' },
   fields: [
     {
       name: 'rut', label: 'RUT (usuario de acceso)', type: 'rut', required: true, unique: true,
       help: 'Con o sin puntos, con guion y dígito verificador. Ej: 12.345.678-5',
     },
-    { name: 'nombre', label: 'Nombre completo', type: 'text', required: true },
+    {
+      name: 'nombre', label: 'Nombre completo', type: 'text', required: true,
+      help: 'Si está enlazado a una ficha de miembro, el nombre se toma de allá (donde va separado en nombres y apellidos).',
+    },
+    {
+      name: 'miembro_id', label: 'Su ficha de miembro', type: 'ref', ref: 'miembros',
+      help: 'Enlazándolo, el RUT, el nombre, el correo y el teléfono quedan iguales en los dos módulos. Si tienen el mismo RUT, el sistema la reconoce sola.',
+    },
     { name: 'password', label: 'Contraseña', type: 'password', required: true, help: 'Al editar, dejar vacío para no cambiarla' },
     {
       name: 'rol', label: 'Rol', type: 'select', required: true, default: 'consulta',
@@ -94,6 +106,34 @@ module.exports = {
         }
       }
 
+      // Enlace con su ficha de miembro: si no se indicó, se busca por RUT
+      const rut = dato('rut');
+      let enlace = dato('miembro_id');
+      if (!enlace && rut) {
+        const m = db.prepare('SELECT id FROM miembros WHERE rut = ?').get(rut);
+        if (m) {
+          data.miembro_id = m.id;
+          enlace = m.id;
+        }
+      }
+      if (enlace) {
+        const miembro = db.prepare('SELECT * FROM miembros WHERE id = ?').get(enlace);
+        if (!miembro) return 'La ficha de miembro indicada no existe';
+
+        // Al enlazar dos fichas que ya tienen RUT, tienen que ser el mismo:
+        // si no, no son la misma persona. Una vez enlazadas, corregir el RUT
+        // en cualquiera de las dos lo corrige también en la otra.
+        const reciénEnlazado = !existing || Number(existing.miembro_id || 0) !== Number(enlace);
+        if (reciénEnlazado && rut && miembro.rut && miembro.rut !== rut) {
+          return `El RUT no coincide con el de su ficha de miembro (${miembro.nombres} ${miembro.apellidos}: ${miembro.rut}). ` +
+            'Corrija el que esté equivocado, o enlace la ficha que corresponda.';
+        }
+        // El nombre se escribe en Miembros, que lo lleva separado
+        data.nombre = `${miembro.nombres || ''} ${miembro.apellidos || ''}`.trim() || data.nombre;
+        const otro = db.prepare('SELECT id, nombre FROM usuarios WHERE miembro_id = ? AND id != ?').get(enlace, id || 0);
+        if (otro) return `Esa ficha de miembro ya está enlazada al usuario "${otro.nombre}"`;
+      }
+
       if (data.email) {
         data.email = String(data.email).trim().toLowerCase();
         const dup = db
@@ -109,6 +149,28 @@ module.exports = {
       }
       return null;
     },
+    /** Lo que cambió aquí se lleva a su ficha de miembro. */
+    afterSave(fila, { db }) {
+      if (!fila.miembro_id) return;
+      const miembro = db.prepare('SELECT * FROM miembros WHERE id = ?').get(fila.miembro_id);
+      if (!miembro) return;
+
+      const cambios = [];
+      const valores = [];
+      const igualar = (columna, valor) => {
+        const actual = miembro[columna];
+        if ((valor || null) === (actual || null)) return;
+        cambios.push(`"${columna}" = ?`);
+        valores.push(valor || null);
+      };
+      igualar('rut', fila.rut);
+      igualar('email', fila.email);
+      igualar('telefono', fila.telefono);
+      if (!cambios.length) return;
+      db.prepare(`UPDATE miembros SET ${cambios.join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`)
+        .run(...valores, miembro.id);
+    },
+
     beforeDelete(row, { user, db }) {
       if (row.id === user.id) return 'No puede eliminar su propio usuario';
       if (row.rol === 'admin') {
