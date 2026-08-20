@@ -252,6 +252,16 @@ module.exports = {
           if (otro.genero === yo.genero) {
             return `El cónyuge tiene que ser del sexo opuesto: ${otro.nombres} ${otro.apellidos} figura como ${otro.genero.toLowerCase()}.`;
           }
+          // Los dos tienen que tener trato de pastor o pastora por su propio
+          // registro: el pastor se casa con la pastora, no con una hermana.
+          const { esPastorPorSiMismo } = require('../tratamiento');
+          const completo = db.prepare('SELECT * FROM miembros WHERE id = ?').get(id);
+          for (const quien of [completo, otro]) {
+            if (!quien || esPastorPorSiMismo(quien, db)) continue;
+            const trato = quien.genero === 'Femenino' ? 'Pastora' : 'Pastor';
+            return `${quien.nombres} ${quien.apellidos} todavía no tiene trato de ${trato}. ` +
+              `Regístrele su ficha en Pastores / Guías, o fíjele el trato de ${trato} en su ficha, y vuelva a intentarlo.`;
+          }
         }
       }
 

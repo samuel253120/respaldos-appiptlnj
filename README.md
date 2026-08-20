@@ -442,7 +442,15 @@ El sistema hace cumplir lo último: al designar a un segundo presidente avisa qu
 
 Antes había dos campos —uno hacia otro pastor y otro hacia un miembro—, que era confuso: el cónyuge es uno solo. Ahora hay **un único campo, Cónyuge**, que se elige entre los **miembros**, porque toda persona de la iglesia lo es, incluida la pastora. El vínculo queda también entre las **fichas de miembro** de ambos, en los dos sentidos, que es donde vive el matrimonio.
 
-El selector **ya no ofrece a todos los miembros**: muestra solo a los del **sexo opuesto** al del pastor —sacado de su ficha de miembro—, dentro de las iglesias que el usuario administra, y sin incluirlo a él mismo. En una ficha nueva, mientras no se sepa su sexo, ofrece a todos los que tengan género registrado y la comprobación se hace al guardar.
+El selector **no ofrece a todos los miembros**, sino solo a quienes pueden serlo:
+
+- del **sexo opuesto** al del pastor (tomado de su ficha de miembro), sin incluirlo a él mismo;
+- **con trato de Pastor o Pastora por su propio registro**: las que tienen su **ficha en Pastores / Guías** o ese trato **fijado a mano** en su ficha de miembro;
+- dentro de las iglesias que el usuario administra.
+
+Es decir: el pastor se casa con la pastora, no con una hermana. Si la persona todavía no aparece, el sistema dice qué falta: *«Ruth Mora todavía no tiene trato de Pastora. Regístrele su ficha en Pastores / Guías, o fíjele el trato de Pastora en su ficha de miembro, y vuelva a intentarlo.»* La misma comprobación se aplica al vincular el matrimonio desde la ficha de miembro.
+
+> Ojo con la diferencia: quien se casa con un pastor **recibe** el trato de Pastora, pero para poder ser elegida como cónyuge tiene que tenerlo **por sí misma** —su propia ficha de pastora o el trato fijado—; si no, la regla se mordería la cola.
 
 El matrimonio del pastor o de la pastora tiene dos reglas que el sistema hace cumplir:
 

@@ -95,7 +95,7 @@ module.exports = {
     {
       name: 'conyuge_id', label: 'Cónyuge', type: 'ref', ref: 'miembros',
       optionsRoute: '/pastores/conyuges?pastor_id={id}',
-      help: 'Se ofrecen los miembros del sexo opuesto. El vínculo queda también en las fichas de miembro de ambos.',
+      help: 'Se ofrecen solo las personas del sexo opuesto que ya tienen trato de Pastor o Pastora: las registradas en Pastores / Guías o con ese trato fijado en su ficha de miembro. El vínculo queda también en las fichas de miembro de ambos.',
     },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Activo',
@@ -173,9 +173,15 @@ module.exports = {
         params.push(...suyas);
       }
 
+      const { esPastorPorSiMismo } = require('../tratamiento');
       const filas = db
         .prepare(`SELECT * FROM miembros WHERE ${cond.join(' AND ')} ORDER BY apellidos, nombres LIMIT 1000`)
-        .all(...params);
+        .all(...params)
+        // El cónyuge de un pastor tiene trato de pastora (y el de una pastora,
+        // de pastor): son quienes tienen su propia ficha en Pastores / Guías o
+        // ese trato fijado en la suya.
+        .filter((f) => esPastorPorSiMismo(f, db));
+
       res.json(
         filas.map((f) => {
           const label = displayOf(miembros, f);
@@ -270,6 +276,15 @@ module.exports = {
         const propia = enlace ? db.prepare('SELECT genero FROM miembros WHERE id = ?').get(enlace) : null;
         if (propia && propia.genero && propia.genero === otro.genero) {
           return `El cónyuge tiene que ser del sexo opuesto: ${otro.nombres} ${otro.apellidos} figura como ${otro.genero.toLowerCase()}, igual que esta ficha.`;
+        }
+
+        // Y tiene que tener trato de pastor o pastora por su propio registro
+        const { esPastorPorSiMismo } = require('../tratamiento');
+        const completa = db.prepare('SELECT * FROM miembros WHERE id = ?').get(conyuge);
+        if (!esPastorPorSiMismo(completa, db)) {
+          const trato = otro.genero === 'Femenino' ? 'Pastora' : 'Pastor';
+          return `${otro.nombres} ${otro.apellidos} todavía no tiene trato de ${trato}. ` +
+            `Regístrele su ficha en Pastores / Guías, o fíjele el trato de ${trato} en su ficha de miembro, y vuelva a intentarlo.`;
         }
       }
 

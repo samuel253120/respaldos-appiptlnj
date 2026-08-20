@@ -56,6 +56,25 @@ function tratamientoDe(miembro, db) {
 }
 
 /**
+ * El trato que le corresponde **por sí misma**, sin contar a su cónyuge: por
+ * tener ficha en Pastores / Guías o por tenerlo fijado a mano.
+ *
+ * Sirve para elegir cónyuge: la pastora es pastora por su propio registro, no
+ * por estar casada; si no, la regla se mordería la cola.
+ */
+function tratamientoPropio(miembro, db) {
+  if (!miembro) return '';
+  if (miembro.tratamiento_personalizado) return miembro.tratamiento_personalizado;
+  if (estaEnPastores(miembro, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
+  return '';
+}
+
+/** ¿Es pastor o pastora por su propio registro? */
+function esPastorPorSiMismo(miembro, db) {
+  return ['Pastor', 'Pastora'].includes(tratamientoPropio(miembro, db));
+}
+
+/**
  * ¿A esta persona le corresponde el trato de Pastor o Pastora? Lo es quien
  * tiene ficha en Pastores / Guías y también su cónyuge.
  */
@@ -76,4 +95,7 @@ function conTratamiento(miembro, db) {
   return trato ? `${trato} ${nombre}` : nombre;
 }
 
-module.exports = { TRATAMIENTOS, tratamientoDe, conTratamiento, estaEnPastores, leCorrespondePastor };
+module.exports = {
+  TRATAMIENTOS, tratamientoDe, conTratamiento, estaEnPastores, leCorrespondePastor,
+  tratamientoPropio, esPastorPorSiMismo,
+};
