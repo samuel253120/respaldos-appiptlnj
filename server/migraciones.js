@@ -569,6 +569,58 @@ function avisoOtroDocumentoDeMiembros() {
 }
 
 
+/**
+ * Las actividades a las que se toma asistencia pasaron a la lista que usa la
+ * iglesia. Las que tienen el mismo sentido se renombran solas; las que no
+ * calzan con ninguna se conservan tal cual —aparecen marcadas como "(valor
+ * anterior)" al abrir la actividad— y se informa de cuáles son, para que
+ * alguien elija la que corresponde sin que el sistema lo decida por él.
+ */
+function tiposDeActividad() {
+  const columnas = db.prepare('PRAGMA table_info("asistencias")').all().map((c) => c.name);
+  if (!columnas.includes('tipo_reunion')) return;
+
+  const equivalencias = {
+    'Culto general': 'Servicio General',
+    'Culto de oración': 'Oración',
+    'Estudio bíblico': 'Estudio Bíblico',
+    'Vigilia': 'Servicio Vigilia',
+    'Otra': 'Otros',
+  };
+  const nuevos = [
+    'Servicio General', 'Servicio Especial', 'Servicio Vigilia', 'Clase de Dorcas',
+    'Estudio Bíblico', 'Oración', 'Ensayo', 'Salida a Visitar', 'Salida a Gira',
+    'Reunión Administrativa', 'Reunión Directivas', 'Otros',
+  ];
+
+  const renombrar = db.prepare('UPDATE asistencias SET tipo_reunion = ? WHERE tipo_reunion = ?');
+  let renombradas = 0;
+  for (const [antes, despues] of Object.entries(equivalencias)) {
+    const cuantas = db.prepare('SELECT COUNT(*) AS n FROM asistencias WHERE tipo_reunion = ?').get(antes).n;
+    if (!cuantas) continue;
+    renombrar.run(despues, antes);
+    renombradas += cuantas;
+  }
+  if (renombradas) console.log(`🔁 asistencias: ${renombradas} actividad(es) pasaron a los nombres nuevos.`);
+
+  const marcas = nuevos.map(() => '?').join(',');
+  const sobran = db
+    .prepare(
+      `SELECT tipo_reunion AS tipo, COUNT(*) AS n FROM asistencias
+        WHERE tipo_reunion IS NOT NULL AND tipo_reunion != '' AND tipo_reunion NOT IN (${marcas})
+        GROUP BY tipo_reunion`
+    )
+    .all(...nuevos);
+  if (sobran.length) {
+    console.log(
+      `ℹ️  asistencias: ${sobran.reduce((t, f) => t + f.n, 0)} actividad(es) tienen un tipo que ya no está en la lista ` +
+        `y se conservan como estaban (${sobran.map((f) => `${f.tipo}: ${f.n}`).join(', ')}).\n` +
+        '   Ábralas y elija la actividad que corresponde.'
+    );
+  }
+}
+
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
@@ -585,6 +637,7 @@ function ejecutarMigraciones() {
   tratamientosPermitidos();
   menoresDeEdadComoTipoDeMiembro();
   avisoOtroDocumentoDeMiembros();
+  tiposDeActividad();
 }
 
 module.exports = { ejecutarMigraciones };

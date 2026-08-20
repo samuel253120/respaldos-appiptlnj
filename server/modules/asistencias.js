@@ -23,6 +23,22 @@
  */
 const MOTIVOS_CON_DETALLE = ['Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
 
+/** Las actividades a las que la iglesia toma asistencia. */
+const TIPOS_DE_ACTIVIDAD = [
+  'Servicio General',
+  'Servicio Especial',
+  'Servicio Vigilia',
+  'Clase de Dorcas',
+  'Estudio Bíblico',
+  'Oración',
+  'Ensayo',
+  'Salida a Visitar',
+  'Salida a Gira',
+  'Reunión Administrativa',
+  'Reunión Directivas',
+  'Otros',
+];
+
 /** Ids de los cuerpos convocados (el multiref se guarda como JSON). */
 function idsDeCuerpos(valor) {
   if (Array.isArray(valor)) return valor.map(Number).filter(Boolean);
@@ -106,11 +122,8 @@ module.exports = {
       help: 'A una actividad puede asistir más de un cuerpo. Se pasará lista a los integrantes de todos los elegidos.',
     },
     {
-      name: 'tipo_reunion', label: 'Actividad', type: 'select', required: true, default: 'Reunión de cuerpo',
-      options: [
-        'Reunión de cuerpo', 'Ensayo', 'Culto general', 'Escuela Dominical', 'Culto de oración',
-        'Ayuno', 'Estudio bíblico', 'Vigilia', 'Evangelismo', 'Actividad especial', 'Otra',
-      ],
+      name: 'tipo_reunion', label: 'Actividad', type: 'select', required: true, default: TIPOS_DE_ACTIVIDAD[0],
+      options: TIPOS_DE_ACTIVIDAD,
     },
     {
       name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true,
