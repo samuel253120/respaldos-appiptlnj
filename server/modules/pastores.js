@@ -214,6 +214,20 @@ module.exports = {
         return 'Un pastor no puede figurar como su propio cónyuge';
       }
 
+      // El cónyuge de un pastor es del sexo opuesto: la esposa del pastor es
+      // mujer y el marido de la pastora es varón.
+      if (conyuge) {
+        const otro = db.prepare('SELECT nombres, apellidos, genero FROM miembros WHERE id = ?').get(conyuge);
+        if (!otro) return 'La ficha de miembro indicada como cónyuge no existe';
+        if (!otro.genero) {
+          return `Antes de vincularlos, indique el género en la ficha de ${otro.nombres} ${otro.apellidos}.`;
+        }
+        const propia = enlace ? db.prepare('SELECT genero FROM miembros WHERE id = ?').get(enlace) : null;
+        if (propia && propia.genero && propia.genero === otro.genero) {
+          return `El cónyuge tiene que ser del sexo opuesto: ${otro.nombres} ${otro.apellidos} figura como ${otro.genero.toLowerCase()}, igual que esta ficha.`;
+        }
+      }
+
       // El RUT tiene que ser el mismo en las dos fichas: es la misma persona
       if (enlace && rut) {
         const miembro = db.prepare('SELECT nombres, apellidos, rut FROM miembros WHERE id = ?').get(enlace);

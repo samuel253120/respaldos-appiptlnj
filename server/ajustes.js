@@ -51,12 +51,6 @@ const OPCIONES = [
           'cuerpos. Mientras ese cuerpo no exista o no tenga integrantes, se puede elegir a cualquier miembro.',
       },
       {
-        clave: 'conyuge_pastor_tratamiento', label: 'Al cónyuge del pastor se le trata de Pastor(a)', tipo: 'boolean', defecto: '1',
-        ayuda:
-          'Si está activo, la esposa del pastor recibe el trato de «Pastora» (y el esposo de la pastora, el de ' +
-          '«Pastor») aunque no esté registrada en Pastores / Guías. Requiere que el matrimonio esté vinculado.',
-      },
-      {
         clave: 'ofrenda_porcentaje_fondo', label: 'Porcentaje de la ofrenda que se aparta', tipo: 'number', defecto: '10',
         ayuda:
           'En el Registro de Servicios, de cada ofrenda se aparta este porcentaje para el fondo de la ' +

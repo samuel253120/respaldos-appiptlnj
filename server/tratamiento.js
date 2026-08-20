@@ -5,8 +5,10 @@
  *
  *   Hermano / Hermana   a los miembros en general, según su género.
  *   Oficial             a los varones que pertenecen al cuerpo de oficiales.
- *   Pastor / Pastora    a quienes están registrados en Pastores / Guías y,
- *                       si así se configura, a su cónyuge.
+ *   Pastor / Pastora    a quienes están registrados en Pastores / Guías y a
+ *                       su cónyuge: el marido de la pastora es Pastor y la
+ *                       esposa del pastor es Pastora, nunca Hermano ni
+ *                       Hermana.
  *
  * Se calcula al leer la ficha —no se guarda—, así que se mantiene al día solo
  * cuando alguien entra al cuerpo de oficiales o queda registrado como pastor.
@@ -39,12 +41,10 @@ function tratamientoDe(miembro, db) {
   if (!miembro) return '';
   if (miembro.tratamiento_personalizado) return miembro.tratamiento_personalizado;
 
-  const ajustes = require('./ajustes'); // tardío: ajustes usa la base
-
   if (estaEnPastores(miembro, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
 
-  // El cónyuge del pastor o la pastora recibe el mismo trato, si así se usa
-  if (miembro.conyuge_id && ajustes.activo('conyuge_pastor_tratamiento')) {
+  // El cónyuge del pastor o de la pastora recibe siempre el mismo trato
+  if (miembro.conyuge_id) {
     const conyuge = db.prepare('SELECT id, rut FROM miembros WHERE id = ?').get(miembro.conyuge_id);
     if (conyuge && estaEnPastores(conyuge, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
   }
@@ -55,6 +55,20 @@ function tratamientoDe(miembro, db) {
   return esMujer(miembro.genero) ? 'Hermana' : 'Hermano';
 }
 
+/**
+ * ¿A esta persona le corresponde el trato de Pastor o Pastora? Lo es quien
+ * tiene ficha en Pastores / Guías y también su cónyuge.
+ */
+function leCorrespondePastor(miembro, db) {
+  if (!miembro) return false;
+  if (estaEnPastores(miembro, db)) return true;
+  if (miembro.conyuge_id) {
+    const conyuge = db.prepare('SELECT id, rut FROM miembros WHERE id = ?').get(miembro.conyuge_id);
+    if (conyuge && estaEnPastores(conyuge, db)) return true;
+  }
+  return false;
+}
+
 /** "Hermano Juan Pérez" */
 function conTratamiento(miembro, db) {
   const trato = tratamientoDe(miembro, db);
@@ -62,4 +76,4 @@ function conTratamiento(miembro, db) {
   return trato ? `${trato} ${nombre}` : nombre;
 }
 
-module.exports = { TRATAMIENTOS, tratamientoDe, conTratamiento };
+module.exports = { TRATAMIENTOS, tratamientoDe, conTratamiento, estaEnPastores, leCorrespondePastor };

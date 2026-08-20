@@ -130,9 +130,39 @@ module.exports = {
 
   hooks: {
     beforeSave(data, { id, existing, db }) {
+      const rutDe = (d, e) => (d.rut !== undefined ? d.rut : e ? e.rut : null);
       const conyuge = data.conyuge_id !== undefined ? data.conyuge_id : existing ? existing.conyuge_id : null;
       if (conyuge && id && Number(conyuge) === Number(id)) {
         return 'Un miembro no puede figurar como su propio cónyuge';
+      }
+
+      // El cónyuge de un pastor o de una pastora es del sexo opuesto, y nunca
+      // queda con trato de Hermano, Hermana ni Oficial: es Pastor o Pastora.
+      const { estaEnPastores } = require('../tratamiento');
+      if (conyuge) {
+        const otro = db.prepare('SELECT id, nombres, apellidos, genero, rut FROM miembros WHERE id = ?').get(conyuge);
+        if (!otro) return 'La persona indicada como cónyuge no existe';
+        const yo = { id, rut: rutDe(data, existing), genero: data.genero !== undefined ? data.genero : existing ? existing.genero : null };
+        const alguienEsPastor = estaEnPastores(otro, db) || (id && estaEnPastores(yo, db));
+        if (alguienEsPastor) {
+          if (!otro.genero || !yo.genero) {
+            return 'Para vincular el matrimonio de un pastor o una pastora, las dos fichas necesitan tener su género registrado.';
+          }
+          if (otro.genero === yo.genero) {
+            return `El cónyuge tiene que ser del sexo opuesto: ${otro.nombres} ${otro.apellidos} figura como ${otro.genero.toLowerCase()}.`;
+          }
+        }
+      }
+
+      // A quien le corresponde el trato de Pastor o Pastora no se le puede
+      // fijar a mano el de Hermano, Hermana u Oficial.
+      const manual = data.tratamiento_personalizado;
+      if (manual && ['Hermano', 'Hermana', 'Oficial'].includes(manual) && id) {
+        const { leCorrespondePastor } = require('../tratamiento');
+        const fila = { ...(existing || {}), ...data, id };
+        if (leCorrespondePastor(fila, db)) {
+          return `A esta persona le corresponde el trato de Pastor o Pastora —por su ficha en Pastores / Guías o por su cónyuge—, así que no puede quedar como "${manual}".`;
+        }
       }
 
       // Si esta persona tiene además ficha de pastor, su RUT tiene que ser el

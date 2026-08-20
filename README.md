@@ -209,13 +209,15 @@ En la iglesia a cada miembro se le dice de una manera, y el sistema la calcula s
 |---|---|
 | **Hermano** / **Hermana** | A los miembros en general, según su género |
 | **Oficial** | A los **varones** que pertenecen al cuerpo de oficiales |
-| **Pastor** / **Pastora** | A quienes tienen ficha en *Pastores / Guías* —que son también miembros de su iglesia— y, si así se usa, a su cónyuge |
+| **Pastor** / **Pastora** | A quienes tienen ficha en *Pastores / Guías* —que son también miembros de su iglesia— **y a su cónyuge** |
 
 El trato aparece como columna en el listado y junto al nombre al abrir la ficha. **No se guarda**: se calcula al leer, así que cuando alguien entra al cuerpo de oficiales o queda registrado como pastor, cambia solo.
 
 Cuando a alguien le corresponda otro trato (diácono, diaconisa, anciano…), se fija a mano en su ficha, en **Trato (fijado a mano)**, y ese manda sobre el cálculo.
 
-> El cuerpo de oficiales es el que se nombre en **Configuración → Organización → Cuerpo de oficiales** («Oficiales» por defecto), y el trato de *Pastor(a)* para el cónyuge se puede desactivar allí mismo.
+Al cónyuge de un pastor o de una pastora **siempre** le corresponde *Pastor* o *Pastora*: no se le puede fijar a mano el de Hermano, Hermana u Oficial.
+
+> El cuerpo de oficiales es el que se nombre en **Configuración → Organización → Cuerpo de oficiales** («Oficiales» por defecto).
 
 ### Buscar a una persona en vez de desplegar la lista 🔎
 
@@ -413,9 +415,16 @@ El sistema hace cumplir lo último: al designar a un segundo presidente avisa qu
 
 > Las fichas que traían un cargo de la lista anterior (Pastor, Pastora, Anciano…) **se conservan tal cual** y quedan anotadas en el arranque; al abrir cada una, el cargo antiguo aparece marcado como *(valor anterior)* hasta que se elija el de la escala nueva. Así ninguno se cambia sin querer.
 
-### Un solo cónyuge
+### Un solo cónyuge, y con sus reglas
 
 Antes había dos campos —uno hacia otro pastor y otro hacia un miembro—, que era confuso: el cónyuge es uno solo. Ahora hay **un único campo, Cónyuge**, que se elige entre los **miembros**, porque toda persona de la iglesia lo es, incluida la pastora. El vínculo queda también entre las **fichas de miembro** de ambos, en los dos sentidos, que es donde vive el matrimonio.
+
+El matrimonio del pastor o de la pastora tiene dos reglas que el sistema hace cumplir:
+
+- **Del sexo opuesto**: la esposa del pastor es mujer y el marido de la pastora es varón. Si los dos figuran con el mismo género, no lo guarda y lo dice: *«El cónyuge tiene que ser del sexo opuesto: Pedro Rivas figura como masculino, igual que esta ficha.»* Y si a la otra ficha le falta el género, pide registrarlo antes de vincularlos.
+- **Con trato de Pastor o Pastora, nunca de Hermano, Hermana u Oficial**: al vincular el matrimonio, el cónyuge pasa **solo** a *Pastora* (o a *Pastor*), y ese trato ya no se puede cambiar a mano por uno de hermano: *«A esta persona le corresponde el trato de Pastor o Pastora —por su ficha en Pastores / Guías o por su cónyuge—, así que no puede quedar como "Hermana".»*
+
+Vale en los dos sentidos: la esposa del pastor queda como **Pastora**, y el marido de una pastora registrada queda como **Pastor** en cuanto se vinculan.
 
 Lo que estaba registrado se traspasó solo: lo que apuntaba a otro pastor pasó a su ficha de miembro.
 
@@ -504,7 +513,7 @@ Los administradores tienen en el menú la entrada **Configuración**, con opcion
 
 - **Mantenimiento** — deja el sistema en mantenimiento y define el aviso que verán los usuarios.
 - **Identidad** — nombre y lema de la institución.
-- **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores y quienes reciben el trato de *Oficial*), si el cónyuge del pastor recibe el trato de *Pastor(a)*, porcentaje de la ofrenda que se aparta y si ese reparto se registra solo en tesorería.
+- **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores y quienes reciben el trato de *Oficial*), porcentaje de la ofrenda que se aparta y si ese reparto se registra solo en tesorería.
 - **Preferencias** — símbolo de moneda, registros por página, duración de la sesión, tamaño y calidad de las imágenes al subirlas, cuántos cumpleaños muestra el panel y si la bitácora registra automáticamente.
 
 ### Modo mantenimiento
