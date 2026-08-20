@@ -102,9 +102,43 @@ const CARGO_DIRECTIVA = {
   counselor: 'consejero_id',
 };
 
+/**
+ * Las categorías de tesorería del sistema anterior. Las que la iglesia usa de
+ * verdad —útiles de aseo, calefacción, aportes— se agregaron a la lista de
+ * este sistema en vez de meterlas a la fuerza en "Otro": así los informes por
+ * categoría siguen diciendo lo mismo que antes.
+ */
+const CATEGORIA_INGRESO = {
+  Ofrendas: 'Ofrendas',
+  Aportes: 'Aportes',
+  Donaciones: 'Donaciones',
+  Subvenciones: 'Otro',
+  Diezmos: 'Diezmos',
+};
+
+const CATEGORIA_EGRESO = {
+  'Otros': 'Otro',
+  'Otro': 'Otro',
+  'Servicios Básicos': 'Servicios públicos',
+  'Gastos Básicos (Luz y Agua)': 'Servicios públicos',
+  'Internet': 'Servicios públicos',
+  'Alarma': 'Servicios públicos',
+  'Suministros Calefacción': 'Calefacción',
+  'Suministros Varios': 'Compras',
+  'Útiles de Aseo/Baño': 'Útiles de aseo',
+  'Útiles de Aseo varios': 'Útiles de aseo',
+  'Útiles de Aseo': 'Útiles de aseo',
+  'Ayuda Social': 'Ayuda social',
+  'Eventos': 'Actividades',
+  'Mantenimiento': 'Mantenimiento',
+  'Gasto de Mantenimiento': 'Mantenimiento',
+  'Reparaciones y Mantenciones': 'Mantenimiento',
+};
+
 const TIPO_IGLESIA = { central: 'Iglesia Matriz', sede: 'Iglesia Sede', local: 'Iglesia Local', anexo: 'Iglesia Anexo' };
 
 module.exports = {
   traducir, SEXO, ESTADO_MIEMBRO, TIPO_MIEMBRO, FORMA_INGRESO, ESTADO_CIVIL, TRATO,
   nivelEducacional, TIPO_ACTIVIDAD, ESTADO_ASISTENCIA, MOTIVO, CARGO_DIRECTIVA, TIPO_IGLESIA,
+  CATEGORIA_INGRESO, CATEGORIA_EGRESO,
 };

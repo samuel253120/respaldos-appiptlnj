@@ -31,8 +31,9 @@ module.exports = {
     {
       name: 'categoria', label: 'Categoría', type: 'select', required: true, default: 'Ofrendas',
       options: [
-        'Diezmos', 'Ofrendas', 'Primicias', 'Pro-Templo', 'Donaciones', 'Actividades',
-        'Servicios públicos', 'Mantenimiento', 'Compras', 'Ayuda social', 'Honorarios', 'Viáticos', 'Traspaso', 'Otro',
+        'Diezmos', 'Ofrendas', 'Primicias', 'Aportes', 'Pro-Templo', 'Donaciones', 'Actividades',
+        'Servicios públicos', 'Calefacción', 'Mantenimiento', 'Compras', 'Útiles de aseo',
+        'Ayuda social', 'Honorarios', 'Viáticos', 'Traspaso', 'Otro',
       ],
     },
     { name: 'concepto', label: 'Concepto / Descripción', type: 'text', required: true },

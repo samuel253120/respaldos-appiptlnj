@@ -35,6 +35,7 @@ const MODULOS = [
   ['iglesia', require('./m01-iglesia')],
   ['miembros', require('./m02-miembros')],
   ['cuerpos', require('./m03-cuerpos')],
+  ['tesoreria', require('./m04-tesoreria')],
 ];
 
 function main() {
@@ -51,8 +52,12 @@ function main() {
   console.log(`   origen: ${path.basename(archivo)} · lote ${lote}\n`);
 
   const { db } = require('../db');
+  const equivalencias = require('./equivalencias');
   const informe = [];
-  let iglesiaId = null;
+
+  // La iglesia la fija el primer módulo. Si se corre uno suelto, se recupera
+  // de la tabla de equivalencias: sin ella, el resto no sabe dónde poner nada.
+  let iglesiaId = equivalencias.resolver('iglesias', 'iglesia-central');
 
   for (const [nombre, importar] of MODULOS) {
     if (SOLO && SOLO !== nombre) continue;
