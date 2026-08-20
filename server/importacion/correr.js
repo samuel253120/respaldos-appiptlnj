@@ -34,6 +34,7 @@ const RUTS = String(opcion('ruts', 'detener'));
 const MODULOS = [
   ['iglesia', require('./m01-iglesia')],
   ['miembros', require('./m02-miembros')],
+  ['cuerpos', require('./m03-cuerpos')],
 ];
 
 function main() {
@@ -76,7 +77,9 @@ function main() {
     for (const [clave, valor] of Object.entries(resultado)) {
       if (!clave.startsWith('detalle_') || !Array.isArray(valor) || !valor.length) continue;
       console.log(`  ⚠ ${valor.length} para revisar (${clave.replace('detalle_', '')}):`);
-      valor.forEach((v) => console.log(`     ${v.nombre || ''} — ${v.rut || ''}`));
+      valor.forEach((v) => console.log(
+        '     ' + Object.values(v).filter((x) => x !== null && x !== undefined && x !== '').join(' — ')
+      ));
     }
 
     if (HASTA && HASTA === nombre) break;
