@@ -190,10 +190,14 @@ module.exports = {
       name: 'nivel_educacional', label: 'Nivel educacional', type: 'select',
       seccion: 'Educación y trabajo',
       options: [
-        'Sin estudios formales', 'Básica incompleta', 'Básica completa',
-        'Media incompleta', 'Media completa', 'Técnica incompleta', 'Técnica completa',
-        'Universitaria incompleta', 'Universitaria completa', 'Postgrado',
+        'Sin estudios formales',
+        'Básica en curso', 'Básica incompleta', 'Básica completa',
+        'Media en curso', 'Media incompleta', 'Media completa',
+        'Técnica en curso', 'Técnica incompleta', 'Técnica completa',
+        'Universitaria en curso', 'Universitaria incompleta', 'Universitaria completa',
+        'Postgrado',
       ],
+      help: '«En curso» es quien está estudiando ahora; «incompleta», quien la dejó.',
     },
     {
       name: 'titulo_estudios', label: 'Título o estudios cursados', type: 'text',
@@ -208,7 +212,7 @@ module.exports = {
     // ---------------- Estado civil y familia ----------------
     {
       name: 'estado_civil', label: 'Estado civil', type: 'select', seccion: 'Estado civil y familia',
-      options: ['Soltero(a)', 'Casado(a)', 'Unión libre', 'Viudo(a)', 'Divorciado(a)'],
+      options: ['Soltero(a)', 'Casado(a)', 'Unión libre', 'Separado(a)', 'Viudo(a)', 'Divorciado(a)'],
     },
     {
       name: 'fecha_matrimonio_civil', label: 'Fecha de matrimonio civil', type: 'date',
@@ -219,9 +223,14 @@ module.exports = {
       showIf: { field: 'estado_civil', equals: 'Casado(a)' },
     },
     {
+      name: 'conyuge_nombre', label: 'Nombre del cónyuge', type: 'text',
+      showIf: { field: 'estado_civil', in: ['Casado(a)', 'Unión libre', 'Separado(a)', 'Viudo(a)'] },
+      help: 'Se anota esté o no registrado como miembro.',
+    },
+    {
       name: 'conyuge_id', label: 'Cónyuge (miembro)', type: 'ref', ref: 'miembros',
-      showIf: { field: 'estado_civil', in: ['Casado(a)', 'Unión libre', 'Viudo(a)'] },
-      help: 'Si su cónyuge también está registrado, elíjalo aquí: el vínculo queda en las dos fichas.',
+      showIf: { field: 'estado_civil', in: ['Casado(a)', 'Unión libre', 'Separado(a)', 'Viudo(a)'] },
+      help: 'Si además está registrado, elíjalo aquí: el vínculo queda en las dos fichas.',
     },
 
     // ---------------- Contacto ----------------
