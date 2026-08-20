@@ -323,7 +323,7 @@ La ficha viene ordenada por secciones, para que no sea una lista interminable de
 | **Información médica** | Enfermedades · alergias · indicaciones médicas |
 | **Notas** | **Nota importante** (destacada) · notas |
 
-**Forma de ingreso**: bautismo, conversión, traslado de otra iglesia, reconciliación / restauración, nacido(a) en la iglesia u otro.
+**Forma de ingreso** —por dónde llegó a esta iglesia—: servicio general, redes sociales, traslado de iglesia, nacido en la iglesia, campaña evangelística, invitación de hermano(a) u otro.
 
 **Tipo de miembro**: Miembro Nuevo · Miembro Menor de Edad · Miembro Oyente · Miembro Activo · Miembro Líder. No es lo mismo que el **estado** (activo, inactivo, trasladado…): una persona activa puede ser oyente, y un menor de edad sigue siendo miembro. Aparece como columna y como filtro en el listado.
 

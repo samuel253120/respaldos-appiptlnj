@@ -634,6 +634,53 @@ function tiposDeActividad() {
  * la iglesia sin poder entrar; los datos quedan como estaban y el aviso dice
  * qué revisar.
  */
+/**
+ * La forma de ingreso pasó a la lista que usa la iglesia. Las que significan
+ * lo mismo se renombran solas y las demás quedan como "Otro": no se deja
+ * ningún nombre antiguo dando vueltas. Nadie pierde su ficha: solo cambia el
+ * nombre con que está clasificada.
+ */
+function formasDeIngreso() {
+  const columnas = db.prepare('PRAGMA table_info("miembros")').all().map((c) => c.name);
+  if (!columnas.includes('forma_ingreso')) return;
+
+  const equivalencias = {
+    'Traslado de otra iglesia': 'Traslado de Iglesia',
+    'Nacido(a) en la iglesia': 'Nacido en la Iglesia',
+  };
+  const nuevas = [
+    'Servicio General', 'Redes Sociales', 'Traslado de Iglesia', 'Nacido en la Iglesia',
+    'Campaña Evangelística', 'Invitación de Hermano(a)', 'Otro',
+  ];
+
+  let renombradas = 0;
+  const renombrar = db.prepare('UPDATE miembros SET forma_ingreso = ? WHERE forma_ingreso = ?');
+  for (const [antes, despues] of Object.entries(equivalencias)) {
+    const cuantas = db.prepare('SELECT COUNT(*) AS n FROM miembros WHERE forma_ingreso = ?').get(antes).n;
+    if (!cuantas) continue;
+    renombrar.run(despues, antes);
+    renombradas += cuantas;
+  }
+  if (renombradas) console.log(`🔁 miembros: ${renombradas} forma(s) de ingreso pasaron a los nombres nuevos.`);
+
+  const marcas = nuevas.map(() => '?').join(',');
+  const sobran = db
+    .prepare(
+      `SELECT forma_ingreso AS forma, COUNT(*) AS n FROM miembros
+        WHERE forma_ingreso IS NOT NULL AND forma_ingreso != '' AND forma_ingreso NOT IN (${marcas})
+        GROUP BY forma_ingreso`
+    )
+    .all(...nuevas);
+  if (sobran.length) {
+    db.prepare(`UPDATE miembros SET forma_ingreso = 'Otro' WHERE forma_ingreso NOT IN (${marcas})`).run(...nuevas);
+    console.log(
+      `🔁 miembros: ${sobran.reduce((t, f) => t + f.n, 0)} ficha(s) tenían una forma de ingreso que ya no está en la ` +
+        `lista y quedaron como "Otro" (${sobran.map((f) => `${f.forma}: ${f.n}`).join(', ')}).`
+    );
+  }
+}
+
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -652,6 +699,7 @@ function ejecutarMigraciones() {
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],
     ['aviso de "otro documento"', avisoOtroDocumentoDeMiembros],
     ['tipos de actividad', tiposDeActividad],
+    ['formas de ingreso', formasDeIngreso],
   ];
 
   for (const [nombre, paso] of pasos) {

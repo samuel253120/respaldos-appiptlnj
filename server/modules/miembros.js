@@ -37,6 +37,17 @@
  */
 const { TRATAMIENTOS, tratamientoDe } = require('../tratamiento');
 
+/** Por dónde llegó cada persona a la iglesia. */
+const FORMAS_DE_INGRESO = [
+  'Servicio General',
+  'Redes Sociales',
+  'Traslado de Iglesia',
+  'Nacido en la Iglesia',
+  'Campaña Evangelística',
+  'Invitación de Hermano(a)',
+  'Otro',
+];
+
 /**
  * Cómo participa cada persona en la vida de la iglesia. No es lo mismo que su
  * estado (activo, inactivo…): una persona activa puede ser oyente, y un menor
@@ -221,11 +232,8 @@ module.exports = {
     // ---------------- Vida en la iglesia ----------------
     {
       name: 'forma_ingreso', label: 'Forma de ingreso', type: 'select', seccion: 'Vida en la iglesia',
-      options: [
-        'Bautismo', 'Conversión', 'Traslado de otra iglesia', 'Reconciliación / Restauración',
-        'Nacido(a) en la iglesia', 'Otro',
-      ],
-      help: 'Cómo llegó a ser parte de esta iglesia.',
+      options: FORMAS_DE_INGRESO,
+      help: 'Por dónde llegó a esta iglesia.',
     },
     { name: 'fecha_ingreso', label: 'Fecha de ingreso a la iglesia', type: 'date' },
     { name: 'fecha_conversion', label: 'Fecha de conversión', type: 'date' },
