@@ -153,7 +153,6 @@ module.exports = {
       name: 'genero', label: 'Sexo', type: 'select',
       options: ['Femenino', 'Masculino'],
     },
-    { name: 'documento_identidad', label: 'Otro documento (pasaporte / extranjero)', type: 'text' },
 
     // ------- Adulto responsable (solo para menores de 18) -------
     {

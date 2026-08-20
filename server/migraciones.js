@@ -545,6 +545,30 @@ function menoresDeEdadComoTipoDeMiembro() {
 }
 
 
+/**
+ * La ficha del miembro ya no pide "Otro documento (pasaporte / extranjero)".
+ * La columna se conserva —nada de lo escrito se borra—, pero deja de verse,
+ * así que se avisa una vez de cuántas fichas traían algo ahí.
+ */
+function avisoOtroDocumentoDeMiembros() {
+  if (yaAplicada('aviso_otro_documento_miembros')) return;
+  const columnas = db.prepare('PRAGMA table_info("miembros")').all().map((c) => c.name);
+  if (!columnas.includes('documento_identidad')) return;
+
+  const conDato = db
+    .prepare(`SELECT nombres, apellidos, documento_identidad AS doc FROM miembros
+               WHERE documento_identidad IS NOT NULL AND documento_identidad != ''`)
+    .all();
+  marcarAplicada('aviso_otro_documento_miembros');
+  if (!conDato.length) return;
+  console.log(
+    `ℹ️  miembros: ${conDato.length} ficha(s) tenían algo escrito en "Otro documento", campo que ya no se usa ` +
+      `(${conDato.map((f) => `${f.nombres} ${f.apellidos}: ${f.doc}`).join(', ')}).\n` +
+      '   El dato sigue guardado en la base de datos, solo dejó de mostrarse.'
+  );
+}
+
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
@@ -560,6 +584,7 @@ function ejecutarMigraciones() {
   cargosDePastores();
   tratamientosPermitidos();
   menoresDeEdadComoTipoDeMiembro();
+  avisoOtroDocumentoDeMiembros();
 }
 
 module.exports = { ejecutarMigraciones };

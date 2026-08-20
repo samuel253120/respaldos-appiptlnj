@@ -58,7 +58,7 @@ El identificador de acceso es el **RUT**, no el correo: no cambia y es único po
 
 > Cuentas creadas antes de este cambio que aún no tengan RUT pueden seguir entrando con su correo hasta que se les asigne uno desde el módulo Usuarios (el servidor lo avisa al iniciar).
 
-**Miembros y Pastores** también se identifican por RUT, con la misma validación y sin repetidos (evita registrar dos veces a la misma persona). Para quienes no tengan RUT —extranjeros recién llegados, por ejemplo— existe el campo *Otro documento (pasaporte / extranjero)*.
+**Miembros y Pastores** también se identifican por RUT, con la misma validación y sin repetidos (evita registrar dos veces a la misma persona). En la ficha del pastor, para quien todavía no tenga RUT —un extranjero recién llegado, por ejemplo— existe además el campo *Otro documento (pasaporte / extranjero)*.
 
 Al actualizar un sistema que ya tenía datos, los valores del antiguo campo "Documento de identidad" se convierten solos: los que son RUT válidos pasan al campo RUT y el resto se conserva en *Otro documento*. La conversión se informa al iniciar y no repite trabajo.
 
@@ -313,7 +313,7 @@ La ficha viene ordenada por secciones, para que no sea una lista interminable de
 
 | Sección | Qué lleva |
 |---|---|
-| **Identificación** | Foto · iglesia · RUT · trato · nombres · apellidos · fecha de nacimiento (con la edad al día) · sexo · otro documento |
+| **Identificación** | Foto · iglesia · RUT · trato · nombres · apellidos · fecha de nacimiento (con la edad al día) · sexo |
 | **Adulto responsable** | Solo para **menores de 18**: nombre y apellido, RUT, parentesco y teléfono de quien responde por él |
 | **Educación y trabajo** | Nivel educacional · título o estudios cursados · profesión u oficio · lugar de trabajo o estudio |
 | **Estado civil y familia** | Estado civil · fechas de matrimonio civil y por la iglesia · cónyuge |
