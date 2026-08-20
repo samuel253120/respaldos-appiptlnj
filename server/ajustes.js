@@ -11,12 +11,19 @@
  */
 const { db } = require('./db');
 
-db.exec(`CREATE TABLE IF NOT EXISTS configuracion (
-  clave TEXT PRIMARY KEY,
-  valor TEXT,
-  actualizado_en TEXT DEFAULT (datetime('now','localtime')),
-  actualizado_por INTEGER
-)`);
+// Si no se puede crear (volumen lleno o de solo lectura), se anota y se sigue:
+// el sistema tiene que levantar aunque los ajustes queden con sus valores por
+// defecto, para poder entrar a ver qué pasa.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS configuracion (
+    clave TEXT PRIMARY KEY,
+    valor TEXT,
+    actualizado_en TEXT DEFAULT (datetime('now','localtime')),
+    actualizado_por INTEGER
+  )`);
+} catch (e) {
+  console.error(`⚠️  No se pudo preparar la tabla de configuración: ${e.message}`);
+}
 
 const OPCIONES = [
   {

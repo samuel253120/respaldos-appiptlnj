@@ -21,10 +21,11 @@ try {
   db = new Database(path.join(DATA_DIR, 'iglesias.db'));
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
-  console.log(`💾 Datos en: ${DATA_DIR}`);
+  console.log(`💾 Datos en: ${DATA_DIR}${espacioLibre()}`);
 } catch (e) {
+  const sitio = espacioLibre().trim();
   const explicacion =
-    `No se pudo abrir la base de datos en "${DATA_DIR}". ` +
+    `No se pudo abrir la base de datos en "${DATA_DIR}"${sitio ? ` ${sitio}` : ''}. ` +
     'Revise que la variable DATA_DIR apunte exactamente a la ruta (Mount Path) del volumen ' +
     'del servicio, que el volumen esté conectado y que quede espacio libre en él.';
   console.error(`\n❌ ${explicacion}\n   Detalle técnico: ${e.message}\n`);
@@ -73,6 +74,21 @@ function avisarEnPantalla(explicacion, detalle) {
   }
 }
 
+/**
+ * Cuánto espacio le queda al volumen. Se dice en el arranque porque un disco
+ * lleno es la causa más común de que un sistema que venía funcionando deje de
+ * responder: SQLite no puede ni abrir la base cuando no queda sitio.
+ */
+function espacioLibre() {
+  try {
+    const disco = fs.statfsSync(DATA_DIR);
+    const libres = Math.round((disco.bavail * disco.bsize) / 1048576);
+    return libres < 50 ? ` — ⚠️ solo ${libres} MB libres, haga sitio` : ` (${libres} MB libres)`;
+  } catch (e) {
+    return '';
+  }
+}
+
 /** Tipo de columna SQL para cada tipo de campo del sistema. */
 function sqlType(field) {
   switch (field.type) {
@@ -117,6 +133,17 @@ function migrate() {
   }
 }
 
-migrate();
+// Crear y actualizar las tablas no puede tumbar el arranque: si el volumen
+// está lleno o de solo lectura, se anota el problema y el sistema levanta
+// igual, aunque sea para poder entrar a ver qué pasa.
+try {
+  migrate();
+} catch (e) {
+  console.error(
+    `⚠️  No se pudieron crear o actualizar las tablas: ${e.message}\n` +
+      '   Suele ser falta de espacio en el volumen. El sistema arranca igual, pero no podrá guardar\n' +
+      '   hasta que se libere sitio. Revise /health para verlo.'
+  );
+}
 
 module.exports = { db, DATA_DIR, UPLOADS_DIR };
