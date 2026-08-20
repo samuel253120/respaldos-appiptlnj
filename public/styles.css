@@ -828,7 +828,10 @@ ul.pasar-lista .pl-just input { flex: 1; }
   .pa-estado { flex: 0 0 auto; text-align: right; }
   .pl-cab, .pl-filtros, .pl-avance { padding-left: 14px; padding-right: 14px; }
   .pl-cab .btn { width: 100%; min-height: 44px; }
-  .pl-chips { width: 100%; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; padding-bottom: 2px; }
+  /* Los cinco filtros se ven de una vez, en dos líneas: nada de deslizar
+     para descubrir que hay más */
+  .pl-chips { width: 100%; flex-wrap: wrap; }
+  .pl-chips .chip { flex: 1 1 auto; min-height: 40px; }
   .pl-chips::-webkit-scrollbar { display: none; }
   .pl-chips .chip { white-space: nowrap; }
   ul.pasar-lista li { gap: 8px; padding: 12px 14px; }
