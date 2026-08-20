@@ -571,10 +571,13 @@ function avisoOtroDocumentoDeMiembros() {
 
 /**
  * Las actividades a las que se toma asistencia pasaron a la lista que usa la
- * iglesia. Las que tienen el mismo sentido se renombran solas; las que no
- * calzan con ninguna se conservan tal cual —aparecen marcadas como "(valor
- * anterior)" al abrir la actividad— y se informa de cuáles son, para que
- * alguien elija la que corresponde sin que el sistema lo decida por él.
+ * iglesia. Las que tienen el mismo sentido se renombran solas; de las demás
+ * no queda ningún nombre antiguo dando vueltas: pasan a "Otros", que es lo
+ * que la lista ofrece para lo que no calza en ninguna.
+ *
+ * No se borra ninguna actividad ni ninguna asistencia: solo cambia el nombre
+ * con que están clasificadas, y queda anotado cuáles fueron por si alguien
+ * quiere ponerles después la que corresponde.
  */
 function tiposDeActividad() {
   const columnas = db.prepare('PRAGMA table_info("asistencias")').all().map((c) => c.name);
@@ -612,10 +615,11 @@ function tiposDeActividad() {
     )
     .all(...nuevos);
   if (sobran.length) {
+    db.prepare(`UPDATE asistencias SET tipo_reunion = 'Otros' WHERE tipo_reunion NOT IN (${marcas})`).run(...nuevos);
     console.log(
-      `ℹ️  asistencias: ${sobran.reduce((t, f) => t + f.n, 0)} actividad(es) tienen un tipo que ya no está en la lista ` +
-        `y se conservan como estaban (${sobran.map((f) => `${f.tipo}: ${f.n}`).join(', ')}).\n` +
-        '   Ábralas y elija la actividad que corresponde.'
+      `🔁 asistencias: ${sobran.reduce((t, f) => t + f.n, 0)} actividad(es) tenían un tipo que ya no está en la lista ` +
+        `y quedaron como "Otros" (${sobran.map((f) => `${f.tipo}: ${f.n}`).join(', ')}).\n` +
+        '   Sus asistencias no se tocaron; si alguna corresponde a otra actividad, ábrala y elíjala.'
     );
   }
 }
