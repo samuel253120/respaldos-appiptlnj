@@ -484,6 +484,35 @@ function cargosDePastores() {
 }
 
 
+/**
+ * Los tratos son solo cinco: hermano, hermana, oficial, pastor y pastora. Si
+ * alguna ficha quedó con otro fijado a mano, se deja en blanco para que el
+ * sistema vuelva a calcularlo, y se informa de quiénes se trata.
+ */
+function tratamientosPermitidos() {
+  const columnas = db.prepare('PRAGMA table_info("miembros")').all().map((c) => c.name);
+  if (!columnas.includes('tratamiento_personalizado')) return;
+
+  const permitidos = ['Hermano', 'Hermana', 'Oficial', 'Pastor', 'Pastora'];
+  const marcas = permitidos.map(() => '?').join(',');
+  const fuera = db
+    .prepare(
+      `SELECT id, nombres, apellidos, tratamiento_personalizado AS trato FROM miembros
+        WHERE tratamiento_personalizado IS NOT NULL AND tratamiento_personalizado != ''
+          AND tratamiento_personalizado NOT IN (${marcas})`
+    )
+    .all(...permitidos);
+  if (!fuera.length) return;
+
+  const limpiar = db.prepare('UPDATE miembros SET tratamiento_personalizado = NULL WHERE id = ?');
+  for (const f of fuera) limpiar.run(f.id);
+  console.log(
+    `🔁 miembros: ${fuera.length} trato(s) fijados a mano no están entre los cinco que se usan y se dejaron en ` +
+      `blanco, para que el sistema los calcule: ${fuera.map((f) => `${f.nombres} ${f.apellidos} (era "${f.trato}")`).join(', ')}.`
+  );
+}
+
+
 function ejecutarMigraciones() {
   documentoIdentidadARut('miembros');
   documentoIdentidadARut('pastores');
@@ -497,6 +526,7 @@ function ejecutarMigraciones() {
   actividadesConVariosCuerpos();
   conyugeUnicoDePastores();
   cargosDePastores();
+  tratamientosPermitidos();
 }
 
 module.exports = { ejecutarMigraciones };

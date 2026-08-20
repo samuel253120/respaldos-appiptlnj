@@ -17,8 +17,8 @@
  */
 const { esOficial } = require('./oficiales');
 
-/** Los tratos que se pueden fijar a mano en la ficha. */
-const TRATAMIENTOS = ['Hermano', 'Hermana', 'Oficial', 'Pastor', 'Pastora', 'Diácono', 'Diaconisa', 'Anciano'];
+/** Los únicos tratos que se usan en la iglesia. */
+const TRATAMIENTOS = ['Hermano', 'Hermana', 'Oficial', 'Pastor', 'Pastora'];
 
 const esMujer = (genero) => genero === 'Femenino';
 

@@ -236,7 +236,7 @@ En la iglesia a cada miembro se le dice de una manera, y el sistema la calcula s
 
 El trato aparece como columna en el listado y junto al nombre al abrir la ficha. **No se guarda**: se calcula al leer, así que cuando alguien entra al cuerpo de oficiales o queda registrado como pastor, cambia solo.
 
-Cuando a alguien le corresponda otro trato (diácono, diaconisa, anciano…), se fija a mano en su ficha, en **Trato (fijado a mano)**, y ese manda sobre el cálculo.
+Los tratos son solo esos cinco: **Hermano, Hermana, Oficial, Pastor y Pastora**. Cuando a alguien le corresponda uno distinto del que calcula el sistema, se fija a mano en su ficha, en **Trato (fijado a mano)**, y ese manda sobre el cálculo.
 
 Al cónyuge de un pastor o de una pastora **siempre** le corresponde *Pastor* o *Pastora*: no se le puede fijar a mano el de Hermano, Hermana u Oficial.
 
