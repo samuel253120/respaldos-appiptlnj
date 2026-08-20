@@ -73,6 +73,28 @@ const OPCIONES = [
     ],
   },
   {
+    grupo: 'Acceso',
+    items: [
+      {
+        clave: 'password_inicial', label: 'Contraseña inicial', tipo: 'text', defecto: 'Iglesia2026',
+        ayuda:
+          'La que se le entrega a cada cuenta nueva y la que restablece el administrador cuando alguien ' +
+          'olvida la suya. Al entrar con ella, el sistema obliga a cambiarla por una propia.',
+      },
+      {
+        clave: 'password_minimo', label: 'Largo mínimo de la contraseña', tipo: 'number', defecto: '6',
+        ayuda: 'Cuántos caracteres debe tener, como mínimo, la contraseña que elija cada persona (entre 4 y 40).',
+      },
+      {
+        clave: 'recuperacion_activa', label: 'Permitir recuperar la contraseña con una pregunta', tipo: 'boolean', defecto: '1',
+        publica: true,
+        ayuda:
+          'Cada persona define una pregunta secreta desde «Mi cuenta»; si olvida su contraseña, la responde ' +
+          'en la pantalla de acceso y elige una nueva. Apagado, solo el administrador puede restablecerla.',
+      },
+    ],
+  },
+  {
     grupo: 'Preferencias',
     items: [
       {

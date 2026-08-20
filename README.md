@@ -690,6 +690,48 @@ Al activarlo, **solo los administradores pueden ingresar**. A los demás:
 
 Para agregar más opciones, añadirlas al arreglo `OPCIONES` de `server/ajustes.js`: aparecen solas en la pantalla, con su tipo de campo y valor por defecto.
 
+## Contraseñas: entregarlas, cambiarlas y recuperarlas 🔐
+
+### La contraseña inicial
+
+En **Configuración → Acceso** el administrador define la **contraseña inicial** (*Iglesia2026* por defecto). Es la que reciben todas las cuentas nuevas: al crear un usuario **se deja el campo Contraseña vacío** y el sistema le entrega esa.
+
+Sirve para entrar **una vez**: al hacerlo, el sistema exige cambiarla por una propia antes de dejar pasar a nada más. No es un aviso que se pueda saltar —el servidor cierra el resto del sistema hasta que se cambie—, porque una contraseña que otro conoce no es de quien la usa.
+
+Lo mismo vale si el administrador escribe una contraseña a mano al crear o editar la cuenta: quien entre con ella tendrá que cambiarla.
+
+### Qué puede ver el administrador
+
+En la ficha de cada usuario, al pie, está **Acceso**, que dice en qué estado está su contraseña:
+
+| Estado | Qué muestra |
+|---|---|
+| **Tiene la contraseña inicial del sistema** | El RUT y **la contraseña**, para dictársela a su dueño |
+| **Tiene una contraseña puesta por el administrador** | Que es la que se escribió al crear la cuenta; el sistema no puede mostrarla |
+| **La cambió su dueño el …** | Solo eso: la contraseña que una persona eligió **no se puede ver** |
+
+Esto último no es una limitación que se pueda levantar: el sistema **nunca guarda la contraseña**, guarda una huella suya (bcrypt) que sirve para comprobarla pero no para leerla. Es lo que impide que alguien que consiga una copia de la base de datos —un respaldo, el disco del servidor— se quede con las contraseñas de toda la iglesia, que además muchas personas repiten en su correo o en su banco.
+
+Para eso está el botón **🔄 Restablecer a la contraseña inicial**: deja la cuenta con la inicial, la muestra en pantalla para entregársela, y al entrar con ella su dueño tendrá que elegir una nueva. Resuelve lo mismo —que la persona pueda volver a entrar— sin que nadie tenga que conocer contraseñas ajenas.
+
+### Recuperarla sin molestar a nadie 🔑
+
+Cada persona puede definir, en **Mi cuenta**, una **pregunta de recuperación** (*«¿Cómo se llamaba mi primera mascota?»*). El sistema la ofrece justo después del primer cambio de contraseña, que es cuando sirve.
+
+Si un día la olvida, en la pantalla de acceso usa **¿Olvidó su contraseña?**: escribe su RUT, el sistema le muestra su pregunta, la responde y elige una contraseña nueva. Al responder no importan las mayúsculas, las tildes ni los espacios de más.
+
+- Tras **5 respuestas equivocadas** la recuperación queda **bloqueada**, y solo el administrador la habilita otra vez (botón **🔓 Habilitar su recuperación** en la ficha del usuario). Así, quien conozca el RUT de otro no puede ir probando respuestas.
+- La respuesta también se guarda cifrada: tampoco se puede leer.
+- Quien no haya definido su pregunta, o prefiera no hacerlo, recurre al administrador para que le restablezca la contraseña. Toda la recuperación por pregunta se puede desactivar en **Configuración → Acceso**.
+
+### Mi cuenta 🔐
+
+Cualquier usuario, sea cual sea su rol, tiene en el menú **Sistema → Mi cuenta**: ahí cambia su contraseña (pidiéndole la actual) y define, cambia o quita su pregunta de recuperación.
+
+### El largo mínimo
+
+Se define en **Configuración → Acceso** (6 caracteres por defecto, entre 4 y 40) y rige en todas partes: al cambiarla, al recuperarla y al escribirla el administrador.
+
 ## Permisos personalizados por usuario 🔑
 
 Además del rol, cada usuario puede tener permisos propios. En su ficha hay una tabla de **módulos × acciones** (ver, crear, editar, eliminar):
@@ -830,7 +872,9 @@ POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importa
 
 ## Seguridad
 
-- Contraseñas cifradas con bcrypt; sesiones JWT de 12 h.
+- Contraseñas cifradas con bcrypt: **el sistema no puede leerlas**, ni siquiera para el administrador (ver *Contraseñas*). Sesiones JWT de 12 h.
+- La contraseña que entrega el administrador **obliga a cambiarla** en el primer ingreso, y hasta entonces el servidor no deja hacer nada más.
+- La recuperación por pregunta se **bloquea tras 5 intentos** fallidos.
 - Permisos verificados **en el servidor** en cada petición (la interfaz solo refleja lo permitido).
 - Alcance por iglesia aplicado en el servidor (lectura y escritura).
 - Protecciones: no eliminar el propio usuario ni el último administrador; correo de usuario único.

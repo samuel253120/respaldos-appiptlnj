@@ -726,6 +726,43 @@ function tiposDeServicio() {
 }
 
 
+/**
+ * Las cuentas que ya existían no saben de dónde salió su contraseña. Se
+ * marcan como elegidas por su dueño —que es lo más probable: llevan tiempo
+ * usándose— para no obligar a nadie a cambiarla de golpe. La única excepción
+ * es el administrador de fábrica, que si sigue con "admin123" debe cambiarla.
+ */
+function origenDeLasContrasenas() {
+  if (yaAplicada('origen_contrasenas')) return;
+  const columnas = db.prepare('PRAGMA table_info("usuarios")').all().map((c) => c.name);
+  if (!columnas.includes('password_origen')) return;
+
+  const bcrypt = require('bcryptjs');
+  const cuentas = db.prepare('SELECT id, rut, password FROM usuarios WHERE password_origen IS NULL').all();
+  marcarAplicada('origen_contrasenas');
+  if (!cuentas.length) return;
+
+  const propia = db.prepare(`UPDATE usuarios SET password_origen = 'usuario', debe_cambiar_password = 0 WHERE id = ?`);
+  const deFabrica = db.prepare(`UPDATE usuarios SET password_origen = 'inicial', debe_cambiar_password = 1 WHERE id = ?`);
+  let pendientes = 0;
+  for (const cuenta of cuentas) {
+    const esDeFabrica = cuenta.password && bcrypt.compareSync('admin123', cuenta.password);
+    if (esDeFabrica) {
+      deFabrica.run(cuenta.id);
+      pendientes++;
+    } else {
+      propia.run(cuenta.id);
+    }
+  }
+  console.log(
+    `🔁 usuarios: ${cuentas.length} cuenta(s) revisadas. ` +
+      (pendientes
+        ? `${pendientes} sigue(n) con la contraseña de fábrica y tendrá(n) que cambiarla al entrar.`
+        : 'Ninguna con la contraseña de fábrica.')
+  );
+}
+
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -746,6 +783,7 @@ function ejecutarMigraciones() {
     ['tipos de actividad', tiposDeActividad],
     ['formas de ingreso', formasDeIngreso],
     ['tipos de servicio', tiposDeServicio],
+    ['origen de las contraseñas', origenDeLasContrasenas],
   ];
 
   for (const [nombre, paso] of pasos) {

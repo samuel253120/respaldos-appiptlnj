@@ -15,10 +15,13 @@ const { db } = require('./db');
 function ensureSeed() {
   const usuarios = db.prepare('SELECT COUNT(*) AS c FROM usuarios').get().c;
   if (usuarios === 0) {
+    // La contraseña de fábrica la conoce cualquiera que haya visto el manual:
+    // al entrar con ella, el sistema obliga a cambiarla.
     db.prepare(
-      `INSERT INTO usuarios (rut, nombre, password, rol, activo) VALUES (?, ?, ?, 'admin', 1)`
+      `INSERT INTO usuarios (rut, nombre, password, rol, activo, password_origen, debe_cambiar_password)
+       VALUES (?, ?, ?, 'admin', 1, 'inicial', 1)`
     ).run('11111111-1', 'Administrador', bcrypt.hashSync('admin123', 10));
-    console.log('👤 Usuario administrador creado: RUT 11.111.111-1 / admin123 (cambiar la contraseña)');
+    console.log('👤 Usuario administrador creado: RUT 11.111.111-1 / admin123 (al entrar se le pedirá cambiarla)');
   }
 
   const iglesias = db.prepare('SELECT COUNT(*) AS c FROM iglesias').get().c;

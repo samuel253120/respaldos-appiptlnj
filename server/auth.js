@@ -38,8 +38,18 @@ function bloqueoPorMantenimiento(usuario) {
 
 function publicUser(u) {
   if (!u) return null;
-  const { password, ...rest } = u;
-  return rest;
+  const { password, respuesta_secreta, ...rest } = u;
+  return {
+    ...rest,
+    debe_cambiar_password: !!u.debe_cambiar_password,
+    tiene_pregunta_secreta: !!u.pregunta_secreta,
+  };
+}
+
+/** Lo único que se permite mientras la contraseña siga siendo la entregada. */
+function rutaDeCambio(req) {
+  const camino = req.baseUrl + req.path;
+  return ['/api/auth/me', '/api/auth/cambiar-password', '/api/auth/salir'].includes(camino);
 }
 
 function authRequired(req, res, next) {
@@ -53,6 +63,16 @@ function authRequired(req, res, next) {
 
     const aviso = bloqueoPorMantenimiento(user);
     if (aviso) return res.status(503).json({ error: aviso, mantenimiento: true });
+
+    // Con la contraseña que le entregó el administrador solo puede hacer una
+    // cosa: cambiarla. El resto del sistema queda cerrado hasta entonces, y
+    // se comprueba aquí, no en la pantalla.
+    if (user.debe_cambiar_password && !rutaDeCambio(req)) {
+      return res.status(403).json({
+        error: 'Antes de seguir, cambie su contraseña por una suya.',
+        cambiar_password: true,
+      });
+    }
 
     req.user = publicUser(user);
     next();
@@ -106,6 +126,108 @@ router.post('/login', (req, res) => {
 
 router.get('/me', authRequired, (req, res) => {
   res.json({ user: req.user });
+});
+
+/**
+ * Cambiar la propia contraseña. Se pide la actual —salvo cuando todavía es la
+ * que entregó el administrador y por eso está obligado a cambiarla—, y la
+ * nueva tiene que ser distinta: si no, no habría cambiado nada.
+ */
+router.post('/cambiar-password', authRequired, (req, res) => {
+  const claves = require('./claves');
+  const user = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.user.id);
+  const { actual, nueva } = req.body || {};
+
+  if (!user.debe_cambiar_password) {
+    if (!actual || !bcrypt.compareSync(String(actual), user.password)) {
+      return res.status(400).json({ error: 'La contraseña actual no es correcta' });
+    }
+  }
+  const problema = claves.revisarLargo(nueva);
+  if (problema) return res.status(400).json({ error: problema });
+  if (bcrypt.compareSync(String(nueva), user.password)) {
+    return res.status(400).json({ error: 'La contraseña nueva tiene que ser distinta de la actual' });
+  }
+
+  claves.establecer(user.id, nueva, 'usuario');
+  const actualizado = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(user.id);
+  res.json({ ok: true, user: publicUser(actualizado) });
+});
+
+/** La pregunta secreta de la propia cuenta, y cómo está la recuperación. */
+router.get('/pregunta-secreta', authRequired, (req, res) => {
+  const claves = require('./claves');
+  const user = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.user.id);
+  res.json({ ...claves.estadoRecuperacion(user), estado_clave: claves.estado(user) });
+});
+
+/** Definir (o quitar) la pregunta secreta de la propia cuenta. */
+router.post('/pregunta-secreta', authRequired, (req, res) => {
+  const claves = require('./claves');
+  const { pregunta, respuesta, quitar } = req.body || {};
+  if (quitar) {
+    claves.quitarPregunta(req.user.id);
+    return res.json({ ok: true, tiene_pregunta: false });
+  }
+  const problema = claves.guardarPregunta(req.user.id, pregunta, respuesta);
+  if (problema) return res.status(400).json({ error: problema });
+  res.json({ ok: true, tiene_pregunta: true });
+});
+
+/**
+ * Recuperar la contraseña olvidada, desde la pantalla de acceso: primero se
+ * pide la pregunta de esa cuenta y después se responde eligiendo una nueva.
+ */
+router.post('/recuperar/pregunta', (req, res) => {
+  const claves = require('./claves');
+  const ajustes = require('./ajustes');
+  if (!ajustes.activo('recuperacion_activa')) {
+    return res.status(400).json({ error: 'La recuperación por pregunta está desactivada. Pida al administrador que le restablezca la contraseña.' });
+  }
+  const user = db.prepare('SELECT * FROM usuarios WHERE rut = ?').get(rutUtil.canonico(String((req.body || {}).rut || '')));
+  if (!user || !user.activo) {
+    return res.status(404).json({ error: 'No hay una cuenta activa con ese RUT.' });
+  }
+  const estado = claves.estadoRecuperacion(user);
+  if (!estado.tiene_pregunta) {
+    return res.status(400).json({ error: 'Esa cuenta no tiene pregunta de recuperación. Pida al administrador que le restablezca la contraseña.' });
+  }
+  if (estado.bloqueada) {
+    return res.status(423).json({ error: 'La recuperación quedó bloqueada por demasiados intentos. Pida al administrador que la habilite.' });
+  }
+  res.json({ pregunta: estado.pregunta, intentos_restantes: estado.maximo - estado.intentos });
+});
+
+router.post('/recuperar', (req, res) => {
+  const claves = require('./claves');
+  const ajustes = require('./ajustes');
+  if (!ajustes.activo('recuperacion_activa')) {
+    return res.status(400).json({ error: 'La recuperación por pregunta está desactivada.' });
+  }
+  const { rut, respuesta, nueva } = req.body || {};
+  const user = db.prepare('SELECT * FROM usuarios WHERE rut = ?').get(rutUtil.canonico(String(rut || '')));
+  if (!user || !user.activo) return res.status(404).json({ error: 'No hay una cuenta activa con ese RUT.' });
+
+  const estado = claves.estadoRecuperacion(user);
+  if (!estado.tiene_pregunta) return res.status(400).json({ error: 'Esa cuenta no tiene pregunta de recuperación.' });
+  if (estado.bloqueada) {
+    return res.status(423).json({ error: 'La recuperación quedó bloqueada por demasiados intentos. Pida al administrador que la habilite.' });
+  }
+  const problema = claves.revisarLargo(nueva);
+  if (problema) return res.status(400).json({ error: problema });
+
+  if (!claves.respuestaCorrecta(user, respuesta)) {
+    const quedan = estado.maximo - (estado.intentos + 1);
+    return res.status(401).json({
+      error: quedan > 0
+        ? `La respuesta no coincide. Le quedan ${quedan} intento(s).`
+        : 'La respuesta no coincide y se agotaron los intentos. Pida al administrador que le restablezca la contraseña.',
+    });
+  }
+
+  // La eligió su dueño: no hay nada que cambiar en el primer ingreso
+  claves.establecer(user.id, nueva, 'usuario');
+  res.json({ ok: true });
 });
 
 module.exports = { router, authRequired, requirePerm, JWT_SECRET, bloqueoPorMantenimiento };

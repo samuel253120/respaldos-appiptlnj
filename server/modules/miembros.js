@@ -299,7 +299,7 @@ module.exports = {
 
     /**
      * Designa a este miembro como usuario del sistema: crea su cuenta con sus
-     * mismos datos y una contraseña provisoria que se muestra una sola vez.
+     * mismos datos y la contraseña inicial, que tendrá que cambiar al entrar.
      * Si ya existe una cuenta con su RUT, solo se enlaza.
      */
     router.post('/miembros/:id(\\d+)/usuario', requirePerm('usuarios', 'create'), (req, res) => {
@@ -322,26 +322,27 @@ module.exports = {
         return res.json({ ok: true, usuario_id: conSuRut.id, creado: false, enlazado: true });
       }
 
-      // Contraseña provisoria, para entregarla a la persona y que la cambie
-      const alfabeto = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      const provisoria = Array.from({ length: 8 }, () => alfabeto[Math.floor(Math.random() * alfabeto.length)]).join('');
+      // Se le entrega la contraseña inicial del sistema, la misma para todos:
+      // al entrar con ella, el sistema le obliga a cambiarla por una suya.
+      const inicial = require('../claves').inicial();
 
       const info = db
         .prepare(
-          `INSERT INTO usuarios (rut, nombre, password, rol, iglesia_id, email, telefono, activo, miembro_id, created_by)
-           VALUES (?, ?, ?, 'consulta', ?, ?, ?, 1, ?, ?)`
+          `INSERT INTO usuarios (rut, nombre, password, password_origen, debe_cambiar_password,
+                                 rol, iglesia_id, email, telefono, activo, miembro_id, created_by)
+           VALUES (?, ?, ?, 'inicial', 1, 'consulta', ?, ?, ?, 1, ?, ?)`
         )
         .run(
           miembro.rut,
           `${miembro.nombres || ''} ${miembro.apellidos || ''}`.trim(),
-          bcryptjs.hashSync(provisoria, 10),
+          bcryptjs.hashSync(inicial, 10),
           miembro.iglesia_id || null,
           miembro.email || null,
           miembro.telefono || null,
           miembro.id,
           req.user.id
         );
-      res.status(201).json({ ok: true, usuario_id: info.lastInsertRowid, creado: true, password: provisoria, rut: miembro.rut });
+      res.status(201).json({ ok: true, usuario_id: info.lastInsertRowid, creado: true, password: inicial, rut: miembro.rut });
     });
   },
 

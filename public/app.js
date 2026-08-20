@@ -148,7 +148,17 @@ async function api(method, path, body, isForm) {
     }
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Error del servidor');
+  if (!res.ok) {
+    // Mientras la contraseña siga siendo la que entregó el administrador, el
+    // servidor cierra el resto del sistema: se lleva a cambiarla.
+    if (res.status === 403 && data.cambiar_password) {
+      renderCambioObligatorio(data.error);
+      const err = new Error(data.error);
+      err.cambiarPassword = true;
+      throw err;
+    }
+    throw new Error(data.error || 'Error del servidor');
+  }
   return data;
 }
 /**
@@ -217,6 +227,7 @@ async function boot() {
     renderShell();
     route();
   } catch (e) {
+    if (e && e.cambiarPassword) return; // ya se está mostrando esa pantalla
     renderLogin();
   }
 }
@@ -263,6 +274,11 @@ function route() {
   if (parts[0] === 'informes' && parts[1] === 'asistencia' && MOD['asistencias']) {
     return (location.hash = '#/asistencia/informes');
   }
+  if (parts[0] === 'cuenta') {
+    const cl = document.querySelector('.side-link[data-mod="_cuenta"]');
+    if (cl) cl.classList.add('active');
+    return viewMiCuenta();
+  }
   if (parts[0] === 'config' && USER.rol === 'admin') {
     const cl = document.querySelector('.side-link[data-mod="_config"]');
     if (cl) cl.classList.add('active');
@@ -287,6 +303,7 @@ function renderLogin() {
         <input type="text" id="loginRut" placeholder="RUT (ej: 12.345.678-5)" required autocomplete="username" inputmode="text" />
         <input type="password" id="loginPass" placeholder="Contraseña" required autocomplete="current-password" />
         <button class="btn" type="submit">Iniciar sesión</button>
+        <button type="button" class="enlace-suave" id="olvide">¿Olvidó su contraseña?</button>
         <div class="login-version" id="loginVersion"></div>
       </form>
     </div>`;
@@ -317,6 +334,7 @@ function renderLogin() {
   rutInput.addEventListener('blur', () => {
     if (rutInput.value && !rutInput.value.includes('@')) rutInput.value = rutFormatear(rutInput.value);
   });
+  document.getElementById('olvide').addEventListener('click', () => abrirRecuperacion(rutInput.value));
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const errEl = document.getElementById('loginError');
@@ -336,6 +354,329 @@ function renderLogin() {
 }
 
 /* ---------------- estructura principal ---------------- */
+/* =====================================================================
+ * Contraseñas: cambiarla, recuperarla y la pregunta secreta
+ *
+ * La contraseña que entrega el administrador —la inicial del sistema o una
+ * que él escriba— sirve para entrar una vez: el sistema obliga a cambiarla
+ * por una propia. Después, quien la olvide la recupera respondiendo su
+ * pregunta secreta, y si no la tiene, el administrador se la restablece.
+ * ===================================================================== */
+
+/** Pantalla que aparece en el primer ingreso: no se puede hacer nada más. */
+async function renderCambioObligatorio(aviso) {
+  if (document.getElementById('cambioForm')) return; // ya está en pantalla
+  $app.innerHTML = `
+    <div class="login-wrap">
+      <form class="login-card" id="cambioForm">
+        <img class="logo" src="${IGLESIA.logo}" alt="" />
+        <h1>Cambie su contraseña</h1>
+        <p class="sub">${esc(aviso || 'Está entrando con la contraseña que le entregaron. Elija una suya, que solo usted conozca.')}</p>
+        <div class="login-error" id="cambioError"></div>
+        <input type="password" id="cambioNueva" placeholder="Contraseña nueva" required autocomplete="new-password" />
+        <input type="password" id="cambioRepetir" placeholder="Repítala" required autocomplete="new-password" />
+        <button class="btn" type="submit">Guardar y entrar</button>
+        <button type="button" class="enlace-suave" id="cambioSalir">Salir</button>
+      </form>
+    </div>`;
+  document.getElementById('cambioSalir').addEventListener('click', logout);
+  document.getElementById('cambioForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('cambioError');
+    const nueva = document.getElementById('cambioNueva').value;
+    if (nueva !== document.getElementById('cambioRepetir').value) {
+      err.textContent = 'Las dos contraseñas no coinciden.';
+      return;
+    }
+    err.textContent = '';
+    try {
+      await api('POST', '/auth/cambiar-password', { nueva });
+      toast('Contraseña cambiada');
+      await pedirPreguntaSecreta();
+      await boot();
+    } catch (e2) {
+      err.textContent = e2.message;
+    }
+  });
+}
+
+/**
+ * Justo después de elegir su contraseña se ofrece definir la pregunta con la
+ * que podrá recuperarla. Se puede dejar para después, pero es el momento en
+ * que sirve.
+ */
+function pedirPreguntaSecreta() {
+  return new Promise((resolve) => {
+    const fondo = document.createElement('div');
+    fondo.className = 'modal-fondo';
+    fondo.innerHTML = `
+      <div class="modal" style="max-width:520px">
+        <div class="modal-head"><h3>🔑 Para no quedarse afuera</h3><button class="cerrar">&times;</button></div>
+        <div class="modal-body">
+          <p class="modal-nota" style="margin-top:0">
+            Si algún día olvida su contraseña, respondiendo esta pregunta podrá elegir una nueva usted mismo,
+            sin depender de nadie. Elija algo que solo usted sepa y que no cambie con el tiempo.
+          </p>
+          <div class="fld"><label>Pregunta</label>
+            <input type="text" id="psPregunta" list="psSugerencias" placeholder="Ej: ¿Cómo se llamaba mi primera mascota?" />
+            <datalist id="psSugerencias">
+              <option value="¿Cómo se llamaba mi primera mascota?"></option>
+              <option value="¿En qué ciudad nació mi madre?"></option>
+              <option value="¿Cuál es el nombre de mi abuelo materno?"></option>
+              <option value="¿Cuál fue mi primer trabajo?"></option>
+              <option value="¿En qué año me bauticé?"></option>
+            </datalist>
+          </div>
+          <div class="fld" style="margin-top:12px"><label>Respuesta</label>
+            <input type="text" id="psRespuesta" placeholder="Su respuesta" autocomplete="off" />
+            <div class="help">No importan las mayúsculas ni las tildes al responderla.</div>
+          </div>
+          <div class="form-error" id="psError" style="padding:0"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn secondary" id="psLuego">Ahora no</button>
+          <button class="btn" id="psGuardar">💾 Guardar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(fondo);
+    const cerrar = () => { fondo.remove(); resolve(); };
+    fondo.querySelector('.cerrar').addEventListener('click', cerrar);
+    fondo.querySelector('#psLuego').addEventListener('click', cerrar);
+    fondo.querySelector('#psGuardar').addEventListener('click', async () => {
+      try {
+        await api('POST', '/auth/pregunta-secreta', {
+          pregunta: fondo.querySelector('#psPregunta').value,
+          respuesta: fondo.querySelector('#psRespuesta').value,
+        });
+        toast('Pregunta guardada');
+        cerrar();
+      } catch (e) {
+        fondo.querySelector('#psError').textContent = e.message;
+      }
+    });
+  });
+}
+
+/** Recuperar la contraseña desde la pantalla de acceso, sin haber entrado. */
+function abrirRecuperacion(rutInicial) {
+  const fondo = document.createElement('div');
+  fondo.className = 'modal-fondo';
+  fondo.innerHTML = `
+    <div class="modal" style="max-width:520px">
+      <div class="modal-head"><h3>🔑 Recuperar la contraseña</h3><button class="cerrar">&times;</button></div>
+      <div class="modal-body" id="recBody">
+        <div class="fld"><label>Su RUT</label>
+          <input type="text" id="recRut" value="${esc(rutFormatear(rutInicial || ''))}" placeholder="12.345.678-5" /></div>
+        <div class="form-error" id="recError" style="padding:0"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn secondary" id="recCancelar">Cancelar</button>
+        <button class="btn" id="recSeguir">Continuar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(fondo);
+  const cerrar = () => fondo.remove();
+  fondo.querySelector('.cerrar').addEventListener('click', cerrar);
+  fondo.querySelector('#recCancelar').addEventListener('click', cerrar);
+  const error = (t) => (fondo.querySelector('#recError').textContent = t);
+
+  fondo.querySelector('#recSeguir').addEventListener('click', async () => {
+    const rut = fondo.querySelector('#recRut').value;
+    error('');
+    let datos;
+    try {
+      datos = await api('POST', '/auth/recuperar/pregunta', { rut });
+    } catch (e) {
+      return error(e.message);
+    }
+    // Segundo paso: responder y elegir la contraseña nueva
+    fondo.querySelector('#recBody').innerHTML = `
+      <p class="modal-nota" style="margin-top:0">Responda su pregunta y elija una contraseña nueva.</p>
+      <div class="fld"><label>${esc(datos.pregunta)}</label>
+        <input type="text" id="recRespuesta" autocomplete="off" placeholder="Su respuesta" /></div>
+      <div class="fld" style="margin-top:12px"><label>Contraseña nueva</label>
+        <input type="password" id="recNueva" autocomplete="new-password" /></div>
+      <div class="fld" style="margin-top:12px"><label>Repítala</label>
+        <input type="password" id="recRepetir" autocomplete="new-password" /></div>
+      <div class="help">Le quedan ${datos.intentos_restantes} intento(s).</div>
+      <div class="form-error" id="recError" style="padding:0"></div>`;
+    const boton = fondo.querySelector('#recSeguir');
+    boton.textContent = '💾 Cambiar la contraseña';
+    const nuevoBoton = boton.cloneNode(true); // se reemplazan los escuchas del paso anterior
+    boton.parentNode.replaceChild(nuevoBoton, boton);
+    nuevoBoton.addEventListener('click', async () => {
+      const nueva = fondo.querySelector('#recNueva').value;
+      if (nueva !== fondo.querySelector('#recRepetir').value) {
+        return (fondo.querySelector('#recError').textContent = 'Las dos contraseñas no coinciden.');
+      }
+      try {
+        await api('POST', '/auth/recuperar', {
+          rut, respuesta: fondo.querySelector('#recRespuesta').value, nueva,
+        });
+        cerrar();
+        toast('Contraseña cambiada: ya puede entrar');
+        const pass = document.getElementById('loginPass');
+        if (pass) pass.focus();
+      } catch (e) {
+        fondo.querySelector('#recError').textContent = e.message;
+      }
+    });
+  });
+}
+
+/** Mi cuenta: cambiar la propia contraseña y su pregunta de recuperación. */
+async function viewMiCuenta() {
+  content().innerHTML = `
+    <div class="page-head">
+      <div><h2>🔐 Mi cuenta</h2><p class="sub-iglesia">${esc(USER.nombre)} · ${esc(rutFormatear(USER.rut || ''))}</p></div>
+    </div>
+    <div class="card">
+      <div class="toolbar"><b>Contraseña</b></div>
+      <form class="form-grid" id="mcForm">
+        <div class="fld"><label>Contraseña actual</label><input type="password" id="mcActual" autocomplete="current-password" /></div>
+        <div class="fld"></div>
+        <div class="fld"><label>Contraseña nueva</label><input type="password" id="mcNueva" autocomplete="new-password" /></div>
+        <div class="fld"><label>Repítala</label><input type="password" id="mcRepetir" autocomplete="new-password" /></div>
+        <div class="form-error full" id="mcError"></div>
+        <div class="full" style="text-align:right"><button class="btn" type="submit">💾 Cambiar la contraseña</button></div>
+      </form>
+    </div>
+    <div id="mcPregunta"></div>`;
+
+  document.getElementById('mcForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('mcError');
+    const nueva = document.getElementById('mcNueva').value;
+    if (nueva !== document.getElementById('mcRepetir').value) {
+      err.textContent = 'Las dos contraseñas no coinciden.';
+      return;
+    }
+    err.textContent = '';
+    try {
+      await api('POST', '/auth/cambiar-password', { actual: document.getElementById('mcActual').value, nueva });
+      toast('Contraseña cambiada');
+      document.getElementById('mcForm').reset();
+      pintarPregunta();
+    } catch (e2) {
+      err.textContent = e2.message;
+    }
+  });
+
+  async function pintarPregunta() {
+    const zona = document.getElementById('mcPregunta');
+    let estado;
+    try {
+      estado = await api('GET', '/auth/pregunta-secreta');
+    } catch (e) {
+      zona.innerHTML = '';
+      return;
+    }
+    if (!estado.activa) {
+      zona.innerHTML = `<div class="card" style="margin-top:18px"><div class="empty-state" style="padding:24px">
+        La recuperación por pregunta está desactivada. Si olvida su contraseña, pídale al administrador que se la restablezca.
+      </div></div>`;
+      return;
+    }
+    zona.innerHTML = `
+      <div class="card" style="margin-top:18px">
+        <div class="toolbar">
+          <b>🔑 Pregunta de recuperación</b>
+          <span class="spacer"></span>
+          <span class="badge ${estado.tiene_pregunta ? 'green' : 'amber'}">${estado.tiene_pregunta ? 'Definida' : 'Sin definir'}</span>
+        </div>
+        <div style="padding:16px 18px">
+          <p style="margin-top:0;font-size:13.5px;color:var(--muted)">
+            Con ella puede elegir una contraseña nueva usted mismo si olvida la suya, desde la pantalla de acceso.
+            ${estado.bloqueada ? '<b style="color:var(--danger)">Quedó bloqueada por intentos fallidos: pida al administrador que la habilite.</b>' : ''}
+          </p>
+          ${estado.tiene_pregunta ? `<p style="font-size:14px"><b>${esc(estado.pregunta)}</b></p>` : ''}
+          <button class="btn secondary sm" id="mcDefinir">${estado.tiene_pregunta ? '✏️ Cambiarla' : '➕ Definirla'}</button>
+          ${estado.tiene_pregunta ? '<button class="btn secondary sm" id="mcQuitar">Quitarla</button>' : ''}
+        </div>
+      </div>`;
+    document.getElementById('mcDefinir').addEventListener('click', async () => {
+      await pedirPreguntaSecreta();
+      pintarPregunta();
+    });
+    const quitar = document.getElementById('mcQuitar');
+    if (quitar) {
+      quitar.addEventListener('click', async () => {
+        if (!confirm('¿Quitar su pregunta de recuperación?\n\nSi olvida su contraseña tendrá que pedirle al administrador que se la restablezca.')) return;
+        await api('POST', '/auth/pregunta-secreta', { quitar: true });
+        toast('Pregunta quitada');
+        pintarPregunta();
+      });
+    }
+  }
+  pintarPregunta();
+}
+
+/**
+ * Cómo está el acceso de una cuenta, al pie de su ficha: qué contraseña
+ * tiene, cómo restablecerla y cómo está su recuperación.
+ */
+async function renderClaveUsuario(usuarioId, contenedor) {
+  let d;
+  try {
+    d = await api('GET', `/usuarios/${usuarioId}/clave`);
+  } catch (e) {
+    contenedor.innerHTML = '';
+    return;
+  }
+  const c = d.clave || {};
+  const r = d.recuperacion || {};
+  contenedor.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🔐 Acceso de ${esc(d.nombre || '')}</b>
+        <span class="spacer"></span>
+        <span class="badge ${nivelClase(c.nivel)}">${esc(c.texto || '')}</span>
+      </div>
+      <div style="padding:16px 18px">
+        ${c.clave ? `
+          <div class="clave-provisoria">
+            <div><span class="mut">Entra con el RUT</span><b>${esc(rutFormatear(d.rut || ''))}</b></div>
+            <div><span class="mut">y la contraseña</span><b>${esc(c.clave)}</b></div>
+          </div>` : ''}
+        <p style="font-size:13px;color:var(--muted);margin:12px 0 0">${esc(c.detalle || '')}</p>
+        <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+          ${d.puede_restablecer ? '<button class="btn secondary sm" id="clRestablecer">🔄 Restablecer a la contraseña inicial</button>' : ''}
+          ${r.bloqueada && d.puede_restablecer ? '<button class="btn secondary sm" id="clDesbloquear">🔓 Habilitar su recuperación</button>' : ''}
+        </div>
+        <p style="font-size:12.5px;color:var(--muted);margin:14px 0 0">
+          Pregunta de recuperación: <b>${r.tiene_pregunta ? esc(r.pregunta) : 'sin definir'}</b>${
+            r.bloqueada ? ' — <b style="color:var(--danger)">bloqueada por intentos fallidos</b>' : ''}
+        </p>
+      </div>
+    </div>`;
+
+  const restablecer = document.getElementById('clRestablecer');
+  if (restablecer) {
+    restablecer.addEventListener('click', async () => {
+      if (!confirm(`¿Restablecer la contraseña de ${d.nombre} a la inicial del sistema?\n\n` +
+        'La que tenga ahora dejará de servir, y al entrar tendrá que elegir una nueva.')) return;
+      try {
+        const res = await api('POST', `/usuarios/${usuarioId}/restablecer-clave`);
+        toast('Contraseña restablecida');
+        renderClaveUsuario(usuarioId, contenedor);
+        alert(`Contraseña restablecida.\n\nEntréguele estos datos a ${res.nombre}:\n\n` +
+          `RUT: ${rutFormatear(res.rut || '')}\nContraseña: ${res.clave}\n\n` +
+          'Al entrar, el sistema le pedirá cambiarla por una suya.');
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+  }
+  const desbloquear = document.getElementById('clDesbloquear');
+  if (desbloquear) {
+    desbloquear.addEventListener('click', async () => {
+      await api('POST', `/usuarios/${usuarioId}/desbloquear-recuperacion`);
+      toast('Recuperación habilitada');
+      renderClaveUsuario(usuarioId, contenedor);
+    });
+  }
+}
+
 function renderShell() {
   const groups = {};
   // Los módulos que se manejan dentro de la ficha de otro (los documentos y
@@ -370,11 +711,13 @@ function renderShell() {
           <div class="group-title">Asistencia</div>
           <a class="side-link" data-mod="_asistencia" href="#/asistencia"><span class="ic">📋</span> Asistencia</a>
         </div>` : ''}
-        ${USER.rol === 'admin' ? `
         <div class="side-group">
           <div class="group-title">Sistema</div>
-          <a class="side-link" data-mod="_config" href="#/config"><span class="ic">⚙️</span> Configuración</a>
-        </div>` : ''}
+          <a class="side-link" data-mod="_cuenta" href="#/cuenta"><span class="ic">🔐</span> Mi cuenta</a>
+          ${USER.rol === 'admin'
+            ? '<a class="side-link" data-mod="_config" href="#/config"><span class="ic">⚙️</span> Configuración</a>'
+            : ''}
+        </div>
         <div class="side-footer">Conectado como <b>${esc(USER.nombre)}</b><br>Rol: ${esc(USER.rol)}</div>
       </nav>
       <div class="main">
@@ -387,7 +730,7 @@ function renderShell() {
               ? `<span class="cuerpos-chip" title="Solo ve lo de estos cuerpos">👥 ${esc(USER.cuerpos_asignados.join(' · '))}</span>`
               : ''}
           </div>
-          <div class="who"><span class="avatar">${esc(initials)}</span> <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></div>
+          <a class="who" href="#/cuenta" title="Mi cuenta"><span class="avatar">${esc(initials)}</span> <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></a>
           <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
         </header>
         <div class="content" id="content"></div>
@@ -931,6 +1274,13 @@ async function viewForm(name, id, precarga) {
     const zona = document.createElement('div');
     content().appendChild(zona);
     renderPanelesCuerpo(Number(id), zona);
+  }
+
+  // Cómo está el acceso de esta cuenta, bajo su ficha
+  if (name === 'usuarios' && !isNew) {
+    const zona = document.createElement('div');
+    content().appendChild(zona);
+    renderClaveUsuario(Number(id), zona);
   }
 
   // Acceso al sistema del miembro, bajo su ficha

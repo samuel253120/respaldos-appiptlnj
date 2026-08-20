@@ -6,7 +6,12 @@
  * contacto). El RUT se valida con su dígito verificador y se guarda
  * normalizado como "12345678-9".
  *
- * - La contraseña se cifra con bcrypt antes de guardar (hook beforeSave).
+ * - La contraseña se cifra con bcrypt antes de guardar (hook beforeSave):
+ *   el sistema nunca la guarda en claro, ni siquiera para el administrador.
+ * - Al crear una cuenta sin escribir contraseña, se le entrega la CONTRASEÑA
+ *   INICIAL definida en Configuración → Acceso. Igual que una escrita a mano
+ *   por el administrador, obliga a cambiarla en el primer ingreso: una
+ *   contraseña que otro conoce no es suya.
  * - Al editar, dejar la contraseña vacía la mantiene sin cambios.
  * - No se puede eliminar el propio usuario ni el último administrador.
  *
@@ -47,7 +52,20 @@ module.exports = {
       name: 'miembro_id', label: 'Su ficha de miembro', type: 'ref', ref: 'miembros',
       help: 'Enlazándolo, el RUT, el nombre, el correo y el teléfono quedan iguales en los dos módulos. Si tienen el mismo RUT, el sistema la reconoce sola.',
     },
-    { name: 'password', label: 'Contraseña', type: 'password', required: true, help: 'Al editar, dejar vacío para no cambiarla' },
+    {
+      name: 'password', label: 'Contraseña', type: 'password',
+      help: 'Déjelo vacío y se le entrega la contraseña inicial del sistema. Al entrar, la persona tendrá que cambiarla por una suya.',
+    },
+
+    // --- Estado del acceso: lo maneja el sistema, no se escribe a mano ---
+    { name: 'debe_cambiar_password', label: 'Debe cambiar la contraseña', type: 'boolean', oculto: true },
+    { name: 'password_origen', label: 'Origen de la contraseña', type: 'text', oculto: true },
+    { name: 'password_cambiada_en', label: 'Contraseña cambiada el', type: 'text', oculto: true },
+    { name: 'pregunta_secreta', label: 'Pregunta de recuperación', type: 'text', oculto: true },
+    // Se guarda cifrada y nunca sale del servidor: el motor no devuelve los
+    // campos de tipo contraseña
+    { name: 'respuesta_secreta', label: 'Respuesta de recuperación', type: 'password', oculto: true },
+    { name: 'recuperacion_intentos', label: 'Intentos de recuperación', type: 'number', oculto: true },
     {
       name: 'rol', label: 'Rol', type: 'select', required: true, default: 'consulta',
       options: ROLES.map((r) => ({ value: r.value, label: r.label })),
@@ -72,6 +90,43 @@ module.exports = {
       help: 'Opcional. Ajusta módulo por módulo lo que este usuario puede hacer; donde no se ajuste nada, manda su rol.',
     },
   ],
+  extraRoutes(router, { db, requirePerm }) {
+    const claves = require('../claves');
+
+    /** Cómo está el acceso de esta cuenta: su contraseña y su recuperación. */
+    router.get('/usuarios/:id(\\d+)/clave', requirePerm('usuarios', 'view'), (req, res) => {
+      const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.params.id);
+      if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+      res.json({
+        nombre: usuario.nombre,
+        rut: usuario.rut,
+        clave: claves.estado(usuario),
+        recuperacion: claves.estadoRecuperacion(usuario),
+        puede_restablecer: require('../permissions').can(req.user, 'usuarios', 'edit'),
+      });
+    });
+
+    /**
+     * Restablece la cuenta a la contraseña inicial y la devuelve, para que el
+     * administrador se la entregue a su dueño. Al entrar con ella, el sistema
+     * le obligará a cambiarla.
+     */
+    router.post('/usuarios/:id(\\d+)/restablecer-clave', requirePerm('usuarios', 'edit'), (req, res) => {
+      const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.params.id);
+      if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+      const clave = claves.restablecer(usuario.id);
+      res.json({ ok: true, clave, nombre: usuario.nombre, rut: usuario.rut });
+    });
+
+    /** Vuelve a habilitar la recuperación bloqueada por intentos fallidos. */
+    router.post('/usuarios/:id(\\d+)/desbloquear-recuperacion', requirePerm('usuarios', 'edit'), (req, res) => {
+      const usuario = db.prepare('SELECT id FROM usuarios WHERE id = ?').get(req.params.id);
+      if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+      claves.desbloquearRecuperacion(usuario.id);
+      res.json({ ok: true });
+    });
+  },
+
   hooks: {
     beforeSave(data, { isNew, id, existing, db }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
@@ -141,10 +196,21 @@ module.exports = {
           .get(data.email, id || 0);
         if (dup) return 'Ya existe un usuario con ese correo electrónico';
       }
+      // La contraseña: la que escriba el administrador, o la inicial del
+      // sistema. En los dos casos la persona tendrá que cambiarla al entrar,
+      // porque una contraseña que otro conoce no es suya.
+      const claves = require('../claves');
       if (data.password) {
-        if (String(data.password).length < 6) return 'La contraseña debe tener al menos 6 caracteres';
+        const problema = claves.revisarLargo(data.password);
+        if (problema) return problema;
         data.password = bcrypt.hashSync(String(data.password), 10);
-      } else if (!isNew) {
+        data.password_origen = 'definida';
+        data.debe_cambiar_password = 1;
+      } else if (isNew) {
+        data.password = bcrypt.hashSync(claves.inicial(), 10);
+        data.password_origen = 'inicial';
+        data.debe_cambiar_password = 1;
+      } else {
         delete data.password; // conservar la contraseña actual
       }
       return null;
