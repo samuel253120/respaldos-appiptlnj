@@ -94,7 +94,8 @@ module.exports = {
     },
     {
       name: 'conyuge_id', label: 'Cónyuge', type: 'ref', ref: 'miembros',
-      help: 'Se elige entre los miembros, porque toda persona de la iglesia lo es — incluida la pastora. El vínculo queda también en las fichas de miembro de ambos.',
+      optionsRoute: '/pastores/conyuges?pastor_id={id}',
+      help: 'Se ofrecen los miembros del sexo opuesto. El vínculo queda también en las fichas de miembro de ambos.',
     },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Activo',
@@ -137,6 +138,50 @@ module.exports = {
         );
       db.prepare('UPDATE pastores SET miembro_id = ? WHERE id = ?').run(info.lastInsertRowid, pastor.id);
       res.status(201).json({ ok: true, miembro_id: info.lastInsertRowid, creada: true });
+    });
+
+    /**
+     * Quiénes pueden ser cónyuge de este pastor: los miembros del sexo
+     * opuesto, dentro de lo que el usuario tiene asignado. Mientras la ficha
+     * no diga el sexo del pastor —o sea una ficha nueva— se ofrecen todos los
+     * que tengan género registrado, y la comprobación se hace al guardar.
+     */
+    router.get('/pastores/conyuges', (req, res) => {
+      const { getModule, displayOf } = require('../registry');
+      const alcance = require('../alcance');
+      const miembros = getModule('miembros');
+
+      const pastor = req.query.pastor_id
+        ? db.prepare('SELECT * FROM pastores WHERE id = ?').get(Number(req.query.pastor_id))
+        : null;
+      const suya = pastor ? fichaDeMiembro(pastor, db) : null;
+      const suGenero = suya ? suya.genero : null;
+
+      const cond = ["genero IS NOT NULL", "genero != ''", "(estado IS NULL OR estado != 'Fallecido')"];
+      const params = [];
+      if (suGenero) {
+        cond.push('genero != ?');
+        params.push(suGenero);
+      }
+      if (suya) {
+        cond.push('id != ?');
+        params.push(suya.id);
+      }
+      const suyas = alcance.iglesiasDe(req.user);
+      if (suyas.length) {
+        cond.push(`iglesia_id IN (${suyas.map(() => '?').join(',')})`);
+        params.push(...suyas);
+      }
+
+      const filas = db
+        .prepare(`SELECT * FROM miembros WHERE ${cond.join(' AND ')} ORDER BY apellidos, nombres LIMIT 1000`)
+        .all(...params);
+      res.json(
+        filas.map((f) => {
+          const label = displayOf(miembros, f);
+          return { id: f.id, label, buscar: `${label} ${f.rut || ''} ${f.telefono || ''}`.trim() };
+        })
+      );
     });
 
     /** Cómo está el enlace con su ficha de miembro, para mostrarlo en su ficha. */

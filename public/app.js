@@ -826,7 +826,10 @@ async function viewForm(name, id, precarga) {
   }
 
   const grid = document.getElementById('formGrid');
-  grid.innerHTML = m.fields.filter((f) => !f.computed).map((f) => fieldHtml(f, row, isNew)).join('');
+  grid.innerHTML =
+    // El id del registro viaja oculto: hay selectores cuya lista depende de él
+    (isNew ? '' : `<input type="hidden" name="id" value="${esc(id)}" />`) +
+    m.fields.filter((f) => !f.computed).map((f) => fieldHtml(f, row, isNew)).join('');
 
   // Comportamientos de widgets
   m.fields.filter((f) => !f.computed).forEach((f) => {

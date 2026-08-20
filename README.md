@@ -442,6 +442,8 @@ El sistema hace cumplir lo último: al designar a un segundo presidente avisa qu
 
 Antes había dos campos —uno hacia otro pastor y otro hacia un miembro—, que era confuso: el cónyuge es uno solo. Ahora hay **un único campo, Cónyuge**, que se elige entre los **miembros**, porque toda persona de la iglesia lo es, incluida la pastora. El vínculo queda también entre las **fichas de miembro** de ambos, en los dos sentidos, que es donde vive el matrimonio.
 
+El selector **ya no ofrece a todos los miembros**: muestra solo a los del **sexo opuesto** al del pastor —sacado de su ficha de miembro—, dentro de las iglesias que el usuario administra, y sin incluirlo a él mismo. En una ficha nueva, mientras no se sepa su sexo, ofrece a todos los que tengan género registrado y la comprobación se hace al guardar.
+
 El matrimonio del pastor o de la pastora tiene dos reglas que el sistema hace cumplir:
 
 - **Del sexo opuesto**: la esposa del pastor es mujer y el marido de la pastora es varón. Si los dos figuran con el mismo género, no lo guarda y lo dice: *«El cónyuge tiene que ser del sexo opuesto: Pedro Rivas figura como masculino, igual que esta ficha.»* Y si a la otra ficha le falta el género, pide registrarlo antes de vincularlos.
