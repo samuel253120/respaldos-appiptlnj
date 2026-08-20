@@ -652,6 +652,14 @@ async function viewList(name, filtrosIniciales) {
             ${cols.map((c) => {
               const f = fieldsBy[c];
               const lbl = c === 'id' ? 'ID' : f.label;
+              // La columna de una foto se queda con lo justo: su título
+              // ("Fotografía del cuerpo / grupo") desplazaría al resto fuera
+              // de la pantalla, y la miniatura ya se explica sola.
+              if (f && f.type === 'file') {
+                return `<th class="no-sort col-mini" style="cursor:default" title="${esc(lbl)}">${
+                  (f.accept || '').startsWith('image') ? '📷' : '📎'
+                }</th>`;
+              }
               if (f && f.computed) return `<th class="no-sort" style="cursor:default">${esc(lbl)}</th>`;
               const arrow = st.sort === c ? `<span class="arrow">${st.dir === 'asc' ? '▲' : '▼'}</span>` : '';
               return `<th data-col="${c}">${esc(lbl)} ${arrow}</th>`;
@@ -661,7 +669,10 @@ async function viewList(name, filtrosIniciales) {
           <tbody>
             ${data.rows.map((r) => `
               <tr data-id="${r.id}">
-                ${cols.map((c) => `<td>${cellValue(fieldsBy[c], r, c)}</td>`).join('')}
+                ${cols.map((c) => {
+                  const f = fieldsBy[c];
+                  return `<td${f && f.type === 'file' ? ' class="col-mini"' : ''}>${cellValue(f, r, c)}</td>`;
+                }).join('')}
                 <td style="white-space:nowrap;text-align:right">
                   ${m.printable ? `<button class="btn secondary sm act-print" data-id="${r.id}" title="Imprimir">🖨️</button>` : ''}
                   ${m.perms.delete && !generadoPorOtroModulo(r)

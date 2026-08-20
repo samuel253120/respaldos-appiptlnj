@@ -152,6 +152,9 @@ table.grid tr:hover td { background: #f8fafc; }
 table.grid tr { cursor: pointer; }
 .table-scroll { overflow-x: auto; }
 .thumb { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); }
+/* La columna de la foto ocupa lo justo: la miniatura y nada más */
+table.grid th.col-mini, table.grid td.col-mini { width: 1%; white-space: nowrap; text-align: center; padding-left: 10px; padding-right: 10px; }
+table.grid th.col-mini { font-size: 15px; }
 .empty-state { padding: 48px 20px; text-align: center; color: var(--muted); }
 .empty-state .big { font-size: 40px; margin-bottom: 8px; }
 
