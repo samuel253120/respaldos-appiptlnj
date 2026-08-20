@@ -4,12 +4,13 @@
  * Arranque:  npm start   (o npm run dev para reinicio automático)
  * Variables: PORT (3000), DATA_DIR (./data), JWT_SECRET
  */
+const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const multer = require('multer');
 
-const { db, UPLOADS_DIR } = require('./db');
+const { db, DATA_DIR, UPLOADS_DIR } = require('./db');
 const { router: authRouter, authRequired } = require('./auth');
 const { buildRouter } = require('./crud');
 const { allModules } = require('./registry');
@@ -28,7 +29,33 @@ app.use(express.json({ limit: '10mb' }));
 // Verificación de salud para plataformas de despliegue.
 // Incluye la versión para poder comprobar qué código está realmente en línea.
 const VERSION = require('../package.json').version;
-app.get('/health', (req, res) => res.json({ ok: true, version: VERSION }));
+app.get('/health', (req, res) => {
+  // Además de responder, revisa lo que más falla en un servidor: que la base
+  // conteste y que al volumen le quede espacio. Siempre devuelve 200 mientras
+  // el sistema pueda contestar —el estado va en el contenido—, para que la
+  // plataforma no esconda la explicación detrás de un error en blanco.
+  const salud = { ok: true, version: VERSION, base: 'ok', disco: null };
+  try {
+    db.prepare('SELECT COUNT(*) AS c FROM usuarios').get();
+  } catch (e) {
+    salud.ok = false;
+    salud.base = e.message;
+  }
+  try {
+    fs.accessSync(DATA_DIR, fs.constants.W_OK);
+    const disco = fs.statfsSync(DATA_DIR);
+    const libres = disco.bavail * disco.bsize;
+    salud.disco = `${Math.round(libres / 1048576)} MB libres`;
+    if (libres < 20 * 1048576) {
+      salud.ok = false;
+      salud.aviso = 'Queda muy poco espacio en el volumen: haga sitio antes de que el sistema no pueda guardar.';
+    }
+  } catch (e) {
+    salud.ok = false;
+    salud.disco = e.message;
+  }
+  res.json(salud);
+});
 
 // ---------- Autenticación ----------
 app.use('/api/auth', authRouter);
@@ -346,8 +373,32 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Error interno del servidor' });
 });
 
-ejecutarMigraciones();
-ensureSeed();
+/**
+ * El arranque no se detiene por un tropiezo al preparar los datos.
+ *
+ * Antes, si una migración o la carga inicial fallaban, el proceso moría antes
+ * de escuchar y la plataforma respondía "Application failed to respond": nadie
+ * podía entrar y no se veía por qué. Ahora se anota el problema y el sistema
+ * levanta igual, para poder entrar a revisarlo.
+ */
+function prepararDatos() {
+  try {
+    ejecutarMigraciones();
+  } catch (e) {
+    console.error(`⚠️  Las migraciones no se pudieron completar: ${e.message}`);
+  }
+  try {
+    ensureSeed();
+  } catch (e) {
+    console.error(`⚠️  Los datos iniciales no se pudieron crear: ${e.message}`);
+  }
+}
+
+prepararDatos();
+
+// Un error no atrapado no debe tumbar el servidor: se anota y se sigue
+process.on('uncaughtException', (e) => console.error('⚠️  Error no atrapado:', e && e.stack ? e.stack : e));
+process.on('unhandledRejection', (e) => console.error('⚠️  Promesa rechazada sin atender:', e));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

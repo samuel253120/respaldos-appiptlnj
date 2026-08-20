@@ -23,13 +23,54 @@ try {
   db.pragma('foreign_keys = ON');
   console.log(`💾 Datos en: ${DATA_DIR}`);
 } catch (e) {
-  console.error(
-    `\n❌ No se pudo abrir la base de datos en "${DATA_DIR}".\n` +
-      '   Revise que la variable DATA_DIR apunte exactamente a la ruta (Mount Path)\n' +
-      '   del volumen del servicio y que esa carpeta permita escritura.\n' +
-      `   Detalle técnico: ${e.message}\n`
-  );
-  process.exit(1);
+  const explicacion =
+    `No se pudo abrir la base de datos en "${DATA_DIR}". ` +
+    'Revise que la variable DATA_DIR apunte exactamente a la ruta (Mount Path) del volumen ' +
+    'del servicio, que el volumen esté conectado y que quede espacio libre en él.';
+  console.error(`\n❌ ${explicacion}\n   Detalle técnico: ${e.message}\n`);
+  avisarEnPantalla(explicacion, e.message);
+  // Sin base de datos no hay sistema que levantar, pero el proceso queda vivo
+  // sirviendo la explicación: así, en vez de un error en blanco de la
+  // plataforma, se ve en el navegador qué hay que arreglar.
+  process.on('uncaughtException', () => {});
+  throw e;
+}
+
+/**
+ * Servidor mínimo de avería: cuando no hay base de datos, responde a todo con
+ * la explicación, para que quien entre sepa qué pasa sin mirar los registros
+ * del servidor.
+ */
+function avisarEnPantalla(explicacion, detalle) {
+  try {
+    const http = require('http');
+    const puerto = process.env.PORT || 3000;
+    http
+      .createServer((req, res) => {
+        if (req.url === '/health') {
+          // 200 a propósito: el proceso está vivo y puede explicar qué pasa.
+          // Si respondiera con error, la plataforma escondería la explicación.
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          return res.end(JSON.stringify({ ok: false, base: detalle, detalle: explicacion }));
+        }
+        res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(
+          `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+           <title>Sistema fuera de servicio</title>
+           <div style="font-family:system-ui,sans-serif;max-width:640px;margin:12vh auto;padding:0 22px;color:#0f172a">
+             <h1 style="font-size:22px">⚠️ El sistema no pudo abrir su base de datos</h1>
+             <p style="line-height:1.6;font-size:15px">${explicacion}</p>
+             <p style="line-height:1.6;font-size:13px;color:#64748b">Detalle técnico: ${detalle}</p>
+             <p style="line-height:1.6;font-size:13px;color:#64748b">
+               Los datos no se han perdido: están en el volumen. En cuanto el volumen vuelva a estar
+               disponible y con espacio, el sistema arranca solo.</p>
+           </div>`
+        );
+      })
+      .listen(puerto, () => console.error(`   Aviso publicado en el puerto ${puerto}.`));
+  } catch (err) {
+    /* si ni eso se puede, queda el mensaje en el registro */
+  }
 }
 
 /** Tipo de columna SQL para cada tipo de campo del sistema. */

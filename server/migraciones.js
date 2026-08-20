@@ -625,23 +625,45 @@ function tiposDeActividad() {
 }
 
 
+/**
+ * Corre todas las migraciones, cada una por su cuenta.
+ *
+ * Si alguna falla —una base con datos inesperados, el disco lleno—, se anota
+ * en el registro y se sigue con las demás: **el sistema tiene que levantar
+ * igual**. Que no se pueda transformar un dato viejo no es razón para dejar a
+ * la iglesia sin poder entrar; los datos quedan como estaban y el aviso dice
+ * qué revisar.
+ */
 function ejecutarMigraciones() {
-  documentoIdentidadARut('miembros');
-  documentoIdentidadARut('pastores');
-  normalizarTipoCuerpos();
-  directivaCuerpoAHistorico();
-  renombrarCargosDirectiva();
-  oficialSupervisorAMiembro();
-  movimientosACuentas();
-  fondoParaLaCorporacion();
-  asistenciasNominales();
-  actividadesConVariosCuerpos();
-  conyugeUnicoDePastores();
-  cargosDePastores();
-  tratamientosPermitidos();
-  menoresDeEdadComoTipoDeMiembro();
-  avisoOtroDocumentoDeMiembros();
-  tiposDeActividad();
+  const pasos = [
+    ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
+    ['RUT de los pastores', () => documentoIdentidadARut('pastores')],
+    ['tipo de los cuerpos', normalizarTipoCuerpos],
+    ['directivas al histórico', directivaCuerpoAHistorico],
+    ['cargos de las directivas', renombrarCargosDirectiva],
+    ['oficial supervisor', oficialSupervisorAMiembro],
+    ['movimientos a cuentas', movimientosACuentas],
+    ['fondo para la corporación', fondoParaLaCorporacion],
+    ['asistencias nominales', asistenciasNominales],
+    ['actividades con varios cuerpos', actividadesConVariosCuerpos],
+    ['cónyuge de los pastores', conyugeUnicoDePastores],
+    ['cargos de los pastores', cargosDePastores],
+    ['tratos permitidos', tratamientosPermitidos],
+    ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],
+    ['aviso de "otro documento"', avisoOtroDocumentoDeMiembros],
+    ['tipos de actividad', tiposDeActividad],
+  ];
+
+  for (const [nombre, paso] of pasos) {
+    try {
+      paso();
+    } catch (e) {
+      console.error(
+        `⚠️  No se pudo aplicar la migración "${nombre}": ${e.message}\n` +
+          '   Los datos quedan como estaban y el sistema sigue funcionando.'
+      );
+    }
+  }
 }
 
 module.exports = { ejecutarMigraciones };
