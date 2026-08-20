@@ -274,10 +274,10 @@ function route() {
   if (parts[0] === 'informes' && parts[1] === 'asistencia' && MOD['asistencias']) {
     return (location.hash = '#/asistencia/informes');
   }
-  if (parts[0] === 'cuenta') {
+  if (parts[0] === 'cuenta' || parts[0] === 'perfil') {
     const cl = document.querySelector('.side-link[data-mod="_cuenta"]');
     if (cl) cl.classList.add('active');
-    return viewMiCuenta();
+    return viewMiPerfil(precarga);
   }
   if (parts[0] === 'config' && USER.rol === 'admin') {
     const cl = document.querySelector('.side-link[data-mod="_config"]');
@@ -524,12 +524,124 @@ function abrirRecuperacion(rutInicial) {
   });
 }
 
-/** Mi cuenta: cambiar la propia contraseña y su pregunta de recuperación. */
-async function viewMiCuenta() {
+/**
+ * Mi perfil: los datos propios de cada persona y su seguridad.
+ *
+ * Los campos se dibujan con la misma maquinaria que cualquier ficha del
+ * sistema —mismas etiquetas, mismas listas, mismas condiciones—, pero el
+ * servidor decide cuáles son suyos: lo que resuelve la iglesia no aparece
+ * aquí para cambiarlo, sino al lado, para verlo.
+ *
+ * Si la persona está enlazada a su ficha de miembro, lo que guarda va allá y
+ * su cuenta de usuario queda al día sola.
+ */
+async function viewMiPerfil(precarga) {
+  const pestana = (precarga && precarga.tab) === 'seguridad' ? 'seguridad' : 'datos';
   content().innerHTML = `
     <div class="page-head">
-      <div><h2>🔐 Mi cuenta</h2><p class="sub-iglesia">${esc(USER.nombre)} · ${esc(rutFormatear(USER.rut || ''))}</p></div>
+      <div>
+        <h2>🙋 Mi perfil</h2>
+        <p class="sub-iglesia">${esc(USER.nombre)} · ${esc(rutFormatear(USER.rut || ''))}</p>
+      </div>
     </div>
+    <div class="tabs" id="perfilTabs">
+      <button data-tab="datos" class="${pestana === 'datos' ? 'on' : ''}">📝 Mis datos</button>
+      <button data-tab="seguridad" class="${pestana === 'seguridad' ? 'on' : ''}">🔐 Seguridad</button>
+    </div>
+    <div id="tabDatos" ${pestana === 'datos' ? '' : 'hidden'}></div>
+    <div id="tabSeguridad" ${pestana === 'seguridad' ? '' : 'hidden'}></div>`;
+
+  content().querySelectorAll('#perfilTabs button').forEach((b) => {
+    b.addEventListener('click', () => {
+      content().querySelectorAll('#perfilTabs button').forEach((x) => x.classList.toggle('on', x === b));
+      document.getElementById('tabDatos').hidden = b.dataset.tab !== 'datos';
+      document.getElementById('tabSeguridad').hidden = b.dataset.tab !== 'seguridad';
+    });
+  });
+
+  renderSeguridad(document.getElementById('tabSeguridad'));
+  renderMisDatos(document.getElementById('tabDatos'));
+}
+
+/** Los datos propios, con el mismo formulario que usa el resto del sistema. */
+async function renderMisDatos(zona) {
+  let d;
+  try {
+    d = await api('GET', '/auth/perfil');
+  } catch (e) {
+    zona.innerHTML = `<div class="card"><div class="empty-state" style="padding:26px">${esc(e.message)}</div></div>`;
+    return;
+  }
+
+  const f = d.ficha;
+  zona.innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <b>Lo que decide la iglesia</b>
+        <span class="spacer"></span>
+        <span style="color:var(--muted);font-size:12.5px">esto se cambia en la oficina</span>
+      </div>
+      <div class="perfil-fijos">
+        <div><span class="mut">RUT</span><b>${esc(rutFormatear(f.rut || ''))}</b></div>
+        ${f.tratamiento ? `<div><span class="mut">Trato</span><b>${esc(f.tratamiento)}</b></div>` : ''}
+        <div><span class="mut">Iglesia</span><b>${esc(f.iglesia || '—')}</b></div>
+        ${f.tipo_miembro ? `<div><span class="mut">Tipo de miembro</span><b>${esc(f.tipo_miembro)}</b></div>` : ''}
+        ${f.estado ? `<div><span class="mut">Estado</span><b>${esc(f.estado)}</b></div>` : ''}
+        ${f.fecha_bautismo ? `<div><span class="mut">Bautismo</span><b>${esc(fmtDate(f.fecha_bautismo))}</b></div>` : ''}
+        <div><span class="mut">Rol en el sistema</span><b>${esc(f.rol || '')}</b></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>📝 Mis datos</b>
+        <span class="spacer"></span>
+        <span style="color:var(--muted);font-size:12.5px">${d.enlazado
+          ? 'se guardan en su ficha de miembro'
+          : 'su cuenta todavía no está enlazada a una ficha de miembro'}</span>
+      </div>
+      <form id="recForm">
+        <div class="form-grid" id="formGrid">
+          ${d.campos.map((campo) => fieldHtml(campo, d.datos, false)).join('')}
+        </div>
+        <div class="form-error" id="perfilError"></div>
+        <div class="form-foot"><button class="btn" type="submit">💾 Guardar mis datos</button></div>
+      </form>
+    </div>`;
+
+  // Los mismos comportamientos que en cualquier ficha: foto que se ajusta al
+  // subirla, edad al lado de la fecha, listas con buscador y campos que solo
+  // aplican según otro (las fechas de matrimonio).
+  d.campos.forEach((campo) => {
+    if (campo.type === 'file') initFileField(campo);
+    if (campo.type === 'select') initSelectBuscable(campo);
+    if (campo.mostrarEdad) initEdad(campo);
+  });
+  aplicarCondiciones();
+
+  document.getElementById('recForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('perfilError');
+    err.textContent = '';
+    try {
+      const r = await api('PUT', '/auth/perfil', collectForm({ fields: d.campos }));
+      toast('Sus datos quedaron guardados');
+      // El nombre puede haber cambiado: la barra superior tiene que reflejarlo
+      const me = await api('GET', '/auth/me');
+      USER = { ...USER, ...me.user };
+      const quien = document.querySelector('.who b');
+      if (quien) quien.textContent = USER.nombre;
+      d.datos = r.perfil ? r.perfil.datos : d.datos;
+    } catch (e2) {
+      err.textContent = e2.message;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
+}
+
+/** Seguridad: la propia contraseña y la pregunta con que se recupera. */
+function renderSeguridad(zona) {
+  zona.innerHTML = `
     <div class="card">
       <div class="toolbar"><b>Contraseña</b></div>
       <form class="form-grid" id="mcForm">
@@ -713,7 +825,7 @@ function renderShell() {
         </div>` : ''}
         <div class="side-group">
           <div class="group-title">Sistema</div>
-          <a class="side-link" data-mod="_cuenta" href="#/cuenta"><span class="ic">🔐</span> Mi cuenta</a>
+          <a class="side-link" data-mod="_cuenta" href="#/perfil"><span class="ic">🙋</span> Mi perfil</a>
           ${USER.rol === 'admin'
             ? '<a class="side-link" data-mod="_config" href="#/config"><span class="ic">⚙️</span> Configuración</a>'
             : ''}
@@ -730,7 +842,7 @@ function renderShell() {
               ? `<span class="cuerpos-chip" title="Solo ve lo de estos cuerpos">👥 ${esc(USER.cuerpos_asignados.join(' · '))}</span>`
               : ''}
           </div>
-          <a class="who" href="#/cuenta" title="Mi cuenta"><span class="avatar">${esc(initials)}</span> <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></a>
+          <a class="who" href="#/perfil" title="Mi perfil"><span class="avatar">${esc(initials)}</span> <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></a>
           <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
         </header>
         <div class="content" id="content"></div>

@@ -252,7 +252,7 @@ module.exports = {
     {
       name: 'emergencia_nombre', label: 'Nombre del contacto', type: 'text',
       seccion: 'Contacto de emergencia',
-      help: 'A quién avisar si le ocurre algo a este miembro.',
+      help: 'A quién avisar en caso de emergencia.',
     },
     {
       name: 'emergencia_parentesco', label: 'Parentesco', type: 'select',

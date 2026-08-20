@@ -690,6 +690,36 @@ Al activarlo, **solo los administradores pueden ingresar**. A los demás:
 
 Para agregar más opciones, añadirlas al arreglo `OPCIONES` de `server/ajustes.js`: aparecen solas en la pantalla, con su tipo de campo y valor por defecto.
 
+## Mi perfil: cada persona mantiene sus datos 🙋
+
+Toda persona con acceso al sistema tiene, en **Sistema → Mi perfil** (o tocando su nombre arriba a la derecha), una pantalla con dos pestañas: **Mis datos** y **Seguridad**.
+
+### Lo suyo y lo de la iglesia
+
+Arriba se ve, **sin poder cambiarlo**, lo que resuelve la iglesia: su RUT, su trato, su iglesia, su tipo de miembro, su estado, su bautismo y su rol en el sistema. Eso se cambia en la oficina, no en el perfil.
+
+Debajo, **lo que sí es suyo**, ordenado en las mismas secciones que su ficha:
+
+| Sección | Qué puede mantener al día |
+|---|---|
+| **Identificación** | Su foto, nombres, apellidos, fecha de nacimiento y sexo |
+| **Educación y trabajo** | Nivel educacional, título, profesión u oficio, lugar de trabajo |
+| **Estado civil y familia** | Estado civil y las fechas de matrimonio |
+| **Contacto** | Teléfono, correo y dirección |
+| **Contacto de emergencia** | Nombre, parentesco y teléfono |
+| **Información médica** | Enfermedades, alergias e indicaciones |
+
+Son **los mismos campos** de la ficha de miembro —mismas etiquetas, mismas listas, mismas condiciones—, porque salen de la misma definición: lo que se agregue mañana a la ficha aparece también aquí si es un dato propio de la persona.
+
+### Se guarda donde corresponde
+
+- Si la cuenta está **enlazada a su ficha de miembro**, lo que la persona edita **se guarda en esa ficha** —que es donde vive el dato— y su cuenta de usuario queda al día sola: el nombre, el correo y el teléfono se mantienen iguales en los dos módulos, como siempre.
+- Si **no** está enlazada, se guarda en su cuenta, y el perfil lo dice.
+
+Todo cambio queda anotado en el **historial del miembro**, igual que si lo hubiera hecho la oficina: *«Teléfono: (vacío) → +56 9 8765 4321 · Dirección: (vacío) → Los Aromos 123»*. Los datos de salud, como siempre, se anotan sin copiar su contenido.
+
+> El servidor solo acepta esos campos: si llegara cualquier otro —el estado, el tipo de miembro, la iglesia, el RUT—, lo descarta. Nadie puede ascenderse a sí mismo editando su perfil.
+
 ## Contraseñas: entregarlas, cambiarlas y recuperarlas 🔐
 
 ### La contraseña inicial
@@ -724,9 +754,9 @@ Si un día la olvida, en la pantalla de acceso usa **¿Olvidó su contraseña?**
 - La respuesta también se guarda cifrada: tampoco se puede leer.
 - Quien no haya definido su pregunta, o prefiera no hacerlo, recurre al administrador para que le restablezca la contraseña. Toda la recuperación por pregunta se puede desactivar en **Configuración → Acceso**.
 
-### Mi cuenta 🔐
+### Seguridad, en Mi perfil 🔐
 
-Cualquier usuario, sea cual sea su rol, tiene en el menú **Sistema → Mi cuenta**: ahí cambia su contraseña (pidiéndole la actual) y define, cambia o quita su pregunta de recuperación.
+Cualquier usuario, sea cual sea su rol, tiene en el menú **Sistema → Mi perfil → Seguridad**: ahí cambia su contraseña (pidiéndole la actual) y define, cambia o quita su pregunta de recuperación.
 
 ### El largo mínimo
 

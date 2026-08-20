@@ -49,7 +49,7 @@ function publicUser(u) {
 /** Lo único que se permite mientras la contraseña siga siendo la entregada. */
 function rutaDeCambio(req) {
   const camino = req.baseUrl + req.path;
-  return ['/api/auth/me', '/api/auth/cambiar-password', '/api/auth/salir'].includes(camino);
+  return ['/api/auth/me', '/api/auth/cambiar-password', '/api/auth/pregunta-secreta'].includes(camino);
 }
 
 function authRequired(req, res, next) {
@@ -152,6 +152,20 @@ router.post('/cambiar-password', authRequired, (req, res) => {
   claves.establecer(user.id, nueva, 'usuario');
   const actualizado = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(user.id);
   res.json({ ok: true, user: publicUser(actualizado) });
+});
+
+/** Los datos propios que cada persona puede mantener al día. */
+router.get('/perfil', authRequired, (req, res) => {
+  const perfil = require('./perfil').leer(req.user.id);
+  if (!perfil) return res.status(404).json({ error: 'No se encontró su cuenta' });
+  res.json(perfil);
+});
+
+router.put('/perfil', authRequired, (req, res) => {
+  const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.user.id);
+  const resultado = require('./perfil').guardar(usuario, req.body || {});
+  if (resultado.error) return res.status(400).json({ error: resultado.error });
+  res.json({ ...resultado, perfil: require('./perfil').leer(req.user.id) });
 });
 
 /** La pregunta secreta de la propia cuenta, y cómo está la recuperación. */

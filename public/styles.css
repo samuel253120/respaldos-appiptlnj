@@ -891,6 +891,14 @@ table.rut-cotejo { margin-top: 10px; border-collapse: collapse; font-size: 13px;
 table.rut-cotejo td { padding: 4px 16px 4px 0; color: var(--muted); }
 table.rut-cotejo td b { color: var(--marca-azul); font-variant-numeric: tabular-nums; }
 
+/* Mi perfil: lo que decide la iglesia, para verlo sin poder cambiarlo */
+.perfil-fijos {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px 18px; padding: 16px 18px;
+}
+.perfil-fijos .mut { display: block; font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.perfil-fijos b { font-size: 14px; color: var(--marca-azul); }
+
 /* Enlaces discretos: "¿Olvidó su contraseña?", "Salir" */
 .enlace-suave {
   background: none; border: none; color: var(--muted); cursor: pointer;
