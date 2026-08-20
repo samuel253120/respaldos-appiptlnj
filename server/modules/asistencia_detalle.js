@@ -11,9 +11,9 @@
  * motivo. Los motivos de emergencia, de otra actividad de la iglesia y de
  * "otro motivo" piden además el detalle, para que la justificación diga algo.
  *
- * Normalmente no se llena aquí una por una, sino desde "Pasar lista" al pie
- * de la actividad. Este listado sirve para buscar y filtrar las marcas
- * (quién faltó, con qué motivo, en qué fechas).
+ * No se llena aquí una por una, sino marcando la lista en la pantalla de
+ * Asistencia, así que este módulo no ocupa lugar en el menú: existe para
+ * guardar las marcas y para llevar el permiso de tomarlas.
  */
 const MOTIVOS_CON_DETALLE = ['Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
 
@@ -24,6 +24,7 @@ module.exports = {
   icon: '✔️',
   group: 'Personas',
   order: 23,
+  menu: false,
   display: '{estado}',
   searchFields: ['detalle'],
   listFields: ['asistencia_id', 'miembro_id', 'estado', 'motivo', 'detalle'],

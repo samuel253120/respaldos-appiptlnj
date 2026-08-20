@@ -251,15 +251,17 @@ function route() {
     if (parts[2] === 'edit' && parts[3]) return viewForm(name, parts[3]);
     return viewList(name, precarga);
   }
+  if (parts[0] === 'asistencia' && MOD['asistencias']) {
+    const al = document.querySelector('.side-link[data-mod="_asistencia"]');
+    if (al) al.classList.add('active');
+    return viewAsistencia({ ...precarga, tab: parts[1] === 'informes' ? 'informes' : precarga.tab });
+  }
+  // Direcciones antiguas: llevan a la misma pantalla, que ahora reúne todo
   if (parts[0] === 'pasar-lista' && MOD['asistencias']) {
-    const pl = document.querySelector('.side-link[data-mod="_pasarlista"]');
-    if (pl) pl.classList.add('active');
-    return parts[1] ? viewTomarAsistencia(parts[1]) : viewPasarLista();
+    return (location.hash = parts[1] ? `#/asistencia?actividad=${parts[1]}` : '#/asistencia');
   }
   if (parts[0] === 'informes' && parts[1] === 'asistencia' && MOD['asistencias']) {
-    const il = document.querySelector('.side-link[data-mod="_infoasis"]');
-    if (il) il.classList.add('active');
-    return viewInformeAsistencia(precarga);
+    return (location.hash = '#/asistencia/informes');
   }
   if (parts[0] === 'config' && USER.rol === 'admin') {
     const cl = document.querySelector('.side-link[data-mod="_config"]');
@@ -366,8 +368,7 @@ function renderShell() {
         ${MOD['asistencias'] ? `
         <div class="side-group">
           <div class="group-title">Asistencia</div>
-          <a class="side-link" data-mod="_pasarlista" href="#/pasar-lista"><span class="ic">🖐️</span> Pasar Lista</a>
-          <a class="side-link" data-mod="_infoasis" href="#/informes/asistencia"><span class="ic">📈</span> Informes de Asistencia</a>
+          <a class="side-link" data-mod="_asistencia" href="#/asistencia"><span class="ic">📋</span> Asistencia</a>
         </div>` : ''}
         ${USER.rol === 'admin' ? `
         <div class="side-group">
@@ -485,7 +486,7 @@ async function viewDashboard() {
         <h3>📋 Últimas asistencias</h3>
         <ul class="mini-list">
           ${d.ultimasAsistencias.length ? d.ultimasAsistencias.map((a) => `
-            <li onclick="location.hash='#/m/asistencias/edit/${a.id}'">
+            <li onclick="location.hash='#/asistencia?actividad=${a.id}'">
               <span>${esc(a.tipo_reunion)}${a.cuerpo ? ` <span class="mut">— ${esc(a.cuerpo)}</span>` : ''}</span>
               <span class="mut">${fmtDate(a.fecha)} · ${a.marcados ? `${a.presentes} de ${a.marcados}` : 'sin lista'}</span>
             </li>`).join('') : '<li class="mut">Sin registros aún</li>'}
@@ -896,17 +897,14 @@ async function viewForm(name, id, precarga) {
     renderFichaMiembroPastor(Number(id), row, zona);
   }
 
-  // Pasar lista bajo la ficha de la actividad, y un atajo a la pantalla
-  // completa, que es como se toma desde el teléfono
+  // La actividad se maneja en la pantalla de Asistencia; si alguien llega
+  // igual a su ficha, se le ofrece volver allá para pasar la lista
   if (name === 'asistencias' && !isNew) {
     const acciones = content().querySelector('.page-head .actions');
     if (acciones) {
       acciones.insertAdjacentHTML('afterbegin',
-        `<a class="btn secondary" href="#/pasar-lista/${esc(id)}">🖐️ Pasar lista</a>`);
+        `<a class="btn secondary" href="#/asistencia?actividad=${esc(id)}">🖐️ Pasar lista</a>`);
     }
-    const zona = document.createElement('div');
-    content().appendChild(zona);
-    renderPasarLista(Number(id), zona);
   }
 
   // Estado de la cuenta de tesorería bajo su ficha
@@ -1642,7 +1640,10 @@ function collectForm(m) {
  * promedios de asistencia, inasistencia y justificación por día, por cuerpo y
  * por miembro. Se puede acotar por fechas e imprimir.
  */
-async function viewInformeAsistencia(precarga) {
+/** Lo último que devolvió el informe, para poder bajarlo a una planilla. */
+let INFORME = null;
+
+async function renderInformeAsistencia(contenedor, precarga) {
   const st = {
     tipo: (precarga && precarga.tipo) || 'general',
     cuerpo_id: (precarga && precarga.cuerpo_id) || '',
@@ -1651,25 +1652,17 @@ async function viewInformeAsistencia(precarga) {
     hasta: (precarga && precarga.hasta) || '',
   };
 
-  content().innerHTML = `
-    <div class="page-head">
-      <div>
-        <h2>📈 Informes de Asistencia</h2>
-        <p class="sub-iglesia">${esc(USER.iglesia_nombre || 'Todas las iglesias')}</p>
-      </div>
-      <div class="actions"><button class="btn secondary" id="btnImprimirInf">🖨️ Imprimir</button></div>
-    </div>
+  contenedor.innerHTML = `
     <div class="card">
       <div class="toolbar" id="infFiltros"></div>
     </div>
     <div id="infResultado"><p style="padding:18px">Cargando…</p></div>`;
 
-  document.getElementById('btnImprimirInf').addEventListener('click', () => window.print());
   await getOptions('cuerpos').catch(() => []);
   await getOptions('miembros').catch(() => []);
   const cuerpos = optionsCache['cuerpos'] || [];
 
-  const filtros = document.getElementById('infFiltros');
+  const filtros = contenedor.querySelector('#infFiltros');
   filtros.innerHTML = `
     <select id="infTipo">
       <option value="general" ${st.tipo === 'general' ? 'selected' : ''}>Informe general</option>
@@ -1740,7 +1733,7 @@ async function viewInformeAsistencia(precarga) {
     </div>`;
 
   async function cargar() {
-    const caja = document.getElementById('infResultado');
+    const caja = contenedor.querySelector('#infResultado');
     if (st.tipo === 'cuerpo' && !st.cuerpo_id) {
       caja.innerHTML = '<div class="card"><div class="empty-state" style="padding:26px">Elija un cuerpo para ver su informe.</div></div>';
       return;
@@ -1791,6 +1784,13 @@ async function viewInformeAsistencia(precarga) {
     let cuerpoTexto = '';
     if (st.tipo === 'cuerpo') cuerpoTexto = (d.porCuerpo[0] || {}).cuerpo || '';
     if (st.tipo === 'persona') cuerpoTexto = (d.porMiembro[0] || {}).miembro || '';
+
+    // Lo que se está viendo, por si se quiere bajar a una planilla
+    INFORME = {
+      datos: d, periodo,
+      titulo: st.tipo === 'general' ? 'General'
+        : st.tipo === 'cuerpo' ? `Por cuerpo — ${cuerpoTexto}` : `Por persona — ${cuerpoTexto}`,
+    };
 
     caja.innerHTML = `
       <div class="informe-hoja">
@@ -1851,13 +1851,62 @@ async function viewInformeAsistencia(precarga) {
     // Desde el promedio por miembro se salta a su informe personal
     caja.querySelectorAll('tr[data-ver]').forEach((tr) => {
       tr.addEventListener('click', () => {
-        location.hash = `#/informes/asistencia?tipo=persona&miembro_id=${tr.dataset.ver}` +
-          (st.desde ? `&desde=${st.desde}` : '') + (st.hasta ? `&hasta=${st.hasta}` : '');
+        renderInformeAsistencia(contenedor, {
+          tipo: 'persona', miembro_id: tr.dataset.ver, desde: st.desde, hasta: st.hasta,
+        });
       });
     });
   }
 
   cargar();
+}
+
+/**
+ * Baja el informe que se está viendo como planilla (CSV, que Excel abre sin
+ * más). Se arma con lo mismo que muestra la pantalla, para que cuadre.
+ */
+function exportarInformeCSV() {
+  if (!INFORME) return toast('Primero vea un informe.', true);
+  const d = INFORME.datos;
+  const comilla = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  // En Chile el decimal se escribe con coma; el separador de columnas es ";"
+  const numero = (v) => comilla(String(v).replace('.', ','));
+  const lineas = [];
+  const bloque = (titulo, columna, filas, campo) => {
+    if (!filas.length) return;
+    lineas.push([comilla(titulo)].join(';'));
+    lineas.push([columna, 'Presentes', 'Ausentes', 'Justificados', '% asistencia', '% inasistencia', '% justificación'].map(comilla).join(';'));
+    filas.forEach((f) => lineas.push([
+      comilla(campo(f)), f.presentes, f.ausentes, f.justificados,
+      numero(f.pct_presente), numero(f.pct_ausente), numero(f.pct_justificado),
+    ].join(';')));
+    lineas.push('');
+  };
+
+  lineas.push([comilla('Informe de asistencia'), comilla(INFORME.titulo)].join(';'));
+  lineas.push([comilla('Período'), comilla(INFORME.periodo)].join(';'));
+  lineas.push('');
+  bloque('Resumen general', 'Total', [d.general], () => 'Todo');
+  bloque('Por cuerpo', 'Cuerpo / Grupo', d.porCuerpo, (f) => f.cuerpo || '—');
+  bloque('Por día', 'Fecha', d.porDia, (f) => f.fecha);
+  bloque('Actividad por actividad', 'Actividad', d.porActividad, (f) => `${f.fecha} ${f.actividad || ''}`.trim());
+  bloque('Por miembro', 'Miembro', d.porMiembro, (f) => f.miembro || '—');
+  if (d.porMotivo && d.porMotivo.length) {
+    lineas.push([comilla('Motivos de las justificaciones')].join(';'));
+    lineas.push([comilla('Motivo'), comilla('Veces')].join(';'));
+    d.porMotivo.forEach((m) => lineas.push([comilla(m.motivo), m.n].join(';')));
+  }
+
+  // El BOM hace que Excel reconozca las tildes
+  const blob = new Blob(['\ufeff' + lineas.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const enlace = document.createElement('a');
+  enlace.href = URL.createObjectURL(blob);
+  enlace.download = `asistencia-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  setTimeout(() => URL.revokeObjectURL(enlace.href), 1000);
+  toast('Planilla descargada');
 }
 
 /* ---------------- vistas de impresión ---------------- */
@@ -2527,19 +2576,34 @@ async function renderFichaMiembroPastor(pastorId, row, contenedor) {
   }
 }
 
-/**
- * Pasar lista: los integrantes del cuerpo con sus tres botones —Presente,
- * Ausente, Justificado—, el motivo cuando se justifica y el detalle cuando el
- * motivo lo exige. Se guardan todas las marcas de una vez.
- */
 /* =====================================================================
- * Pasar lista
+ * Asistencia: un solo lugar
  *
- * Pensado para el teléfono, que es donde se toma la asistencia: botones
- * grandes, buscador para dar con una persona entre muchas, barra de acciones
- * siempre a la vista y un borrador guardado en el propio teléfono, de modo
- * que si se corta la señal o se cierra la pantalla no se pierde lo marcado.
+ * Aquí se hace todo lo de asistencia: crear la actividad, tomar la lista y
+ * ver los informes. Nada de saltar entre pantallas.
+ *
+ * Está pensado para el teléfono, que es donde se toma la asistencia casi
+ * siempre: calendario del mes con un punto en los días que tienen actividad,
+ * las actividades del día elegido, y debajo la lista para marcar con botones
+ * grandes, buscador, filtros y guardado automático con respaldo en el propio
+ * teléfono, para no perder nada si se corta la señal.
  * ===================================================================== */
+
+/** Lo que se está mirando en la pantalla de Asistencia. */
+const ASIS = {
+  tab: 'registrar',
+  vista: 'calendario',
+  mes: null,          // primer día del mes que se muestra
+  dia: null,          // 'YYYY-MM-DD' elegido en el calendario
+  cuerpo_id: '',
+  tipo: '',
+  actividadId: null,
+  agenda: null,
+};
+
+const ISO = (f) => `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
+const HOY = () => ISO(new Date());
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 /** Lo marcado y todavía no guardado, en el propio teléfono. */
 function leerBorrador(clave) {
@@ -2565,101 +2629,451 @@ function borrarBorrador(clave) {
   }
 }
 
-/** Pantalla para elegir a qué actividad pasarle lista. */
-async function viewPasarLista() {
+/* ---------------- la pantalla ---------------- */
+
+async function viewAsistencia(precarga) {
+  const p = precarga || {};
+  if (p.tab) ASIS.tab = p.tab === 'informes' ? 'informes' : 'registrar';
+  if (p.dia) { ASIS.dia = p.dia; ASIS.mes = new Date(p.dia + 'T00:00:00'); }
+  if (p.actividad) ASIS.actividadId = Number(p.actividad);
+  if (!ASIS.mes) ASIS.mes = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  if (!ASIS.dia) ASIS.dia = HOY();
+
   content().innerHTML = `
     <div class="page-head">
-      <h2>🖐️ Pasar lista</h2>
-      <div class="actions" id="plAcciones"></div>
+      <div>
+        <h2>📋 Asistencia</h2>
+        <p class="sub-iglesia">Registro e informes · ${esc(USER.iglesia_nombre || 'Todas las iglesias')}</p>
+      </div>
+      <div class="actions" id="asisAcciones"></div>
     </div>
-    <div id="plActividades"><div class="card"><div class="empty-state" style="padding:26px">Cargando…</div></div></div>`;
+    <div class="tabs" id="asisTabs">
+      <button data-tab="registrar" class="${ASIS.tab === 'registrar' ? 'on' : ''}">🖐️ Registrar</button>
+      <button data-tab="informes" class="${ASIS.tab === 'informes' ? 'on' : ''}">📈 Informes</button>
+    </div>
+    <div id="tabRegistrar" ${ASIS.tab === 'registrar' ? '' : 'hidden'}>
+      <div class="card">
+        <div class="toolbar asis-filtros" id="asisFiltros"></div>
+        <div id="asisAgenda"><div class="empty-state" style="padding:26px">Cargando…</div></div>
+      </div>
+      <div id="asisDelDia"></div>
+      <div id="asisMarcar"></div>
+    </div>
+    <div id="tabInformes" ${ASIS.tab === 'informes' ? '' : 'hidden'}></div>`;
 
-  let datos;
+  content().querySelectorAll('#asisTabs button').forEach((b) => {
+    b.addEventListener('click', () => {
+      ASIS.tab = b.dataset.tab;
+      content().querySelectorAll('#asisTabs button').forEach((x) => x.classList.toggle('on', x === b));
+      document.getElementById('tabRegistrar').hidden = ASIS.tab !== 'registrar';
+      document.getElementById('tabInformes').hidden = ASIS.tab === 'registrar';
+      pintarAcciones();
+      if (ASIS.tab === 'informes' && !document.getElementById('tabInformes').dataset.listo) {
+        document.getElementById('tabInformes').dataset.listo = '1';
+        renderInformeAsistencia(document.getElementById('tabInformes'));
+      }
+    });
+  });
+
+  await getOptions('cuerpos').catch(() => []);
+  pintarAcciones();
+  pintarFiltros();
+  await cargarAgenda();
+  if (ASIS.tab === 'informes') {
+    document.getElementById('tabInformes').dataset.listo = '1';
+    renderInformeAsistencia(document.getElementById('tabInformes'));
+  }
+}
+
+/** Los botones de la cabecera, distintos en cada pestaña. */
+function pintarAcciones() {
+  const zona = document.getElementById('asisAcciones');
+  if (!zona) return;
+  zona.innerHTML = ASIS.tab === 'informes'
+    ? `<button class="btn secondary" id="asisPDF">🖨️ PDF</button>
+       <button class="btn secondary" id="asisExcel">⬇️ Excel</button>`
+    : `<button class="btn secondary" id="asisHoy">📅 Hoy</button>`;
+  const pdf = document.getElementById('asisPDF');
+  if (pdf) pdf.addEventListener('click', () => window.print());
+  const excel = document.getElementById('asisExcel');
+  if (excel) excel.addEventListener('click', exportarInformeCSV);
+  const hoy = document.getElementById('asisHoy');
+  if (hoy) {
+    hoy.addEventListener('click', () => {
+      ASIS.dia = HOY();
+      ASIS.mes = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      ASIS.actividadId = null;
+      cargarAgenda();
+    });
+  }
+}
+
+function pintarFiltros() {
+  const cuerpos = optionsCache['cuerpos'] || [];
+  const tipos = (MOD['asistencias'].fields.find((f) => f.name === 'tipo_reunion') || {}).options || [];
+  const zona = document.getElementById('asisFiltros');
+  zona.innerHTML = `
+    <select id="asisCuerpo">
+      <option value="">Todos los cuerpos</option>
+      ${cuerpos.map((c) => `<option value="${c.id}" ${String(ASIS.cuerpo_id) === String(c.id) ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
+    </select>
+    <select id="asisTipo">
+      <option value="">Todos los tipos</option>
+      ${tipos.map((t) => `<option value="${esc(t)}" ${ASIS.tipo === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+    </select>
+    <span class="spacer"></span>
+    <div class="vista-toggle" id="asisVista">
+      <button type="button" data-vista="calendario" class="${ASIS.vista === 'calendario' ? 'on' : ''}" title="Calendario">🗓️</button>
+      <button type="button" data-vista="lista" class="${ASIS.vista === 'lista' ? 'on' : ''}" title="Lista">☰</button>
+    </div>
+    <button class="btn" id="asisNueva" hidden>➕ Actividad</button>`;
+
+  document.getElementById('asisCuerpo').addEventListener('change', (e) => {
+    ASIS.cuerpo_id = e.target.value;
+    cargarAgenda();
+  });
+  document.getElementById('asisTipo').addEventListener('change', (e) => {
+    ASIS.tipo = e.target.value;
+    cargarAgenda();
+  });
+  zona.querySelectorAll('#asisVista button').forEach((b) => {
+    b.addEventListener('click', () => {
+      ASIS.vista = b.dataset.vista;
+      zona.querySelectorAll('#asisVista button').forEach((x) => x.classList.toggle('on', x === b));
+      pintarAgenda();
+    });
+  });
+  document.getElementById('asisNueva').addEventListener('click', () => abrirActividad(null));
+}
+
+/** Trae las actividades del mes que se está mirando. */
+async function cargarAgenda() {
+  const primero = new Date(ASIS.mes.getFullYear(), ASIS.mes.getMonth(), 1);
+  const ultimo = new Date(ASIS.mes.getFullYear(), ASIS.mes.getMonth() + 1, 0);
+  const params = new URLSearchParams({ desde: ISO(primero), hasta: ISO(ultimo) });
+  if (ASIS.cuerpo_id) params.set('cuerpo_id', ASIS.cuerpo_id);
+  if (ASIS.tipo) params.set('tipo', ASIS.tipo);
   try {
-    datos = await api('GET', '/asistencias/pendientes');
+    ASIS.agenda = await api('GET', '/asistencias/agenda?' + params.toString());
   } catch (e) {
-    document.getElementById('plActividades').innerHTML =
-      `<div class="card"><div class="empty-state" style="padding:26px">${esc(e.message)}</div></div>`;
+    document.getElementById('asisAgenda').innerHTML =
+      `<div class="empty-state" style="padding:26px">${esc(e.message)}</div>`;
     return;
   }
+  const nueva = document.getElementById('asisNueva');
+  if (nueva) nueva.hidden = !ASIS.agenda.puede_crear;
+  pintarAgenda();
+}
 
-  if (datos.puede_crear) {
-    document.getElementById('plAcciones').innerHTML =
-      '<a class="btn secondary" href="#/m/asistencias/new">➕ Nueva actividad</a>';
+function actividadesDe(dia) {
+  return ((ASIS.agenda && ASIS.agenda.actividades) || []).filter((a) => a.fecha === dia);
+}
+
+function pintarAgenda() {
+  if (ASIS.vista === 'lista') pintarListaDeActividades();
+  else pintarCalendario();
+  pintarDelDia();
+}
+
+/** Calendario del mes, con un punto en los días que tienen actividad. */
+function pintarCalendario() {
+  const año = ASIS.mes.getFullYear();
+  const mes = ASIS.mes.getMonth();
+  const primero = new Date(año, mes, 1);
+  const dias = new Date(año, mes + 1, 0).getDate();
+  const desplaza = (primero.getDay() + 6) % 7; // la semana empieza el lunes
+
+  const porDia = {};
+  ((ASIS.agenda && ASIS.agenda.actividades) || []).forEach((a) => {
+    (porDia[a.fecha] = porDia[a.fecha] || []).push(a);
+  });
+
+  const celdas = [];
+  for (let i = 0; i < desplaza; i++) celdas.push('<span class="cal-vacio"></span>');
+  for (let d = 1; d <= dias; d++) {
+    const iso = ISO(new Date(año, mes, d));
+    const delDia = porDia[iso] || [];
+    const completas = delDia.length && delDia.every((a) => a.convocados && a.marcados >= a.convocados);
+    const sinTomar = delDia.some((a) => !a.marcados);
+    const punto = delDia.length
+      ? `<i class="pt ${completas ? 'ok' : sinTomar ? 'falta' : 'medio'}" title="${delDia.length} actividad(es)"></i>`
+      : '';
+    celdas.push(
+      `<button type="button" class="cal-dia ${iso === HOY() ? 'hoy' : ''} ${iso === ASIS.dia ? 'sel' : ''}"
+               data-dia="${iso}">${d}${punto}</button>`
+    );
   }
 
-  const tarjeta = (a) => {
-    const falta = Math.max(0, a.convocados - a.marcados);
-    const estado = !a.convocados
-      ? { texto: 'Sin integrantes', clase: 'gris' }
-      : falta === 0
-        ? { texto: 'Lista completa', clase: 'ok' }
-        : a.marcados
-          ? { texto: `Faltan ${falta}`, clase: 'medio' }
-          : { texto: 'Sin tomar', clase: 'bajo' };
-    const pct = a.convocados ? Math.round((a.marcados / a.convocados) * 100) : 0;
-    return `
-      <li data-id="${a.id}">
-        <div class="pa-dia">
-          <b>${esc(diaSemanaYMes(a.fecha))}</b>
-          <span>${esc(cuandoFue(a.fecha))}${a.hora_inicio ? ' · ' + esc(a.hora_inicio) : ''}</span>
-        </div>
-        <div class="pa-que">
-          <b>${esc(a.tipo_reunion || 'Actividad')}</b>
-          <span>${esc(a.cuerpos.join(' + ') || 'sin cuerpos')}${a.lugar ? ' · ' + esc(a.lugar) : ''}</span>
-          <div class="pa-barra"><span style="width:${pct}%"></span></div>
-        </div>
-        <div class="pa-estado">
-          <span class="badge ${nivelClase(estado.clase)}">${esc(estado.texto)}</span>
-          <span class="mut">${a.marcados} de ${a.convocados}</span>
-        </div>
-      </li>`;
-  };
+  document.getElementById('asisAgenda').innerHTML = `
+    <div class="cal">
+      <div class="cal-cab">
+        <button type="button" id="calAnt" title="Mes anterior">‹</button>
+        <b>${MESES[mes]} ${año}</b>
+        <button type="button" id="calSig" title="Mes siguiente">›</button>
+      </div>
+      <div class="cal-grilla">
+        ${['LUN','MAR','MIÉ','JUE','VIE','SÁB','DOM'].map((d) => `<span class="cal-dow">${d}</span>`).join('')}
+        ${celdas.join('')}
+      </div>
+    </div>`;
 
-  document.getElementById('plActividades').innerHTML = datos.actividades.length
-    ? `<div class="card">
-         <div class="toolbar">
-           <b>Actividades de los últimos dos meses</b>
-           <span class="spacer"></span>
-           <span style="color:var(--muted);font-size:13px">${datos.actividades.length} actividad(es)</span>
-         </div>
-         <ul class="pl-actividades">${datos.actividades.map(tarjeta).join('')}</ul>
-       </div>`
-    : `<div class="card"><div class="empty-state" style="padding:30px">
-         Todavía no hay actividades registradas en los últimos dos meses.
-         ${datos.puede_crear ? 'Cree una en <a href="#/m/asistencias/new">Asistencias</a> y vuelva aquí.' : ''}
-       </div></div>`;
-
-  content().querySelectorAll('ul.pl-actividades li').forEach((li) => {
-    li.addEventListener('click', () => (location.hash = `#/pasar-lista/${li.dataset.id}`));
+  document.getElementById('calAnt').addEventListener('click', () => {
+    ASIS.mes = new Date(año, mes - 1, 1);
+    cargarAgenda();
+  });
+  document.getElementById('calSig').addEventListener('click', () => {
+    ASIS.mes = new Date(año, mes + 1, 1);
+    cargarAgenda();
+  });
+  document.querySelectorAll('.cal-dia').forEach((b) => {
+    b.addEventListener('click', () => {
+      ASIS.dia = b.dataset.dia;
+      ASIS.actividadId = null;
+      pintarCalendario();
+      pintarDelDia();
+    });
   });
 }
 
-/** Pantalla completa para tomar la asistencia de una actividad. */
-async function viewTomarAsistencia(id) {
-  content().innerHTML = `
-    <div class="page-head">
-      <h2>🖐️ Pasar lista</h2>
-      <div class="actions"><button class="btn secondary" id="btnBack">← Volver</button></div>
-    </div>
-    <div id="plZona"></div>`;
-  document.getElementById('btnBack').addEventListener('click', () => (location.hash = '#/pasar-lista'));
-  renderPasarLista(Number(id), document.getElementById('plZona'), { completa: true });
+/** Las actividades del mes como lista, para quien prefiera verlas seguidas. */
+function pintarListaDeActividades() {
+  const actividades = (ASIS.agenda && ASIS.agenda.actividades) || [];
+  document.getElementById('asisAgenda').innerHTML = actividades.length
+    ? `<ul class="pl-actividades">${actividades.map((a) => `
+        <li data-id="${a.id}" data-dia="${a.fecha}">
+          <div class="pa-dia">
+            <b>${esc(diaSemanaYMes(a.fecha))}</b>
+            <span>${esc(cuandoFue(a.fecha))}${a.hora_inicio ? ' · ' + esc(a.hora_inicio) : ''}</span>
+          </div>
+          <div class="pa-que">
+            <b>${esc(a.tipo_reunion || 'Actividad')}</b>
+            <span>${esc(a.cuerpos.map((c) => c.nombre).join(', ') || 'sin cuerpos')}${a.lugar ? ' · ' + esc(a.lugar) : ''}</span>
+            <div class="pa-barra"><span style="width:${a.convocados ? Math.round((a.marcados / a.convocados) * 100) : 0}%"></span></div>
+          </div>
+          <div class="pa-estado">
+            ${etiquetaAvance(a)}
+            <span class="mut">${a.marcados} de ${a.convocados}</span>
+          </div>
+        </li>`).join('')}</ul>`
+    : `<div class="empty-state" style="padding:30px">No hay actividades en ${MESES[ASIS.mes.getMonth()]} de ${ASIS.mes.getFullYear()}.</div>`;
+
+  document.querySelectorAll('#asisAgenda .pl-actividades li').forEach((li) => {
+    li.addEventListener('click', () => {
+      ASIS.dia = li.dataset.dia;
+      ASIS.actividadId = Number(li.dataset.id);
+      pintarDelDia();
+      irA('asisMarcar');
+    });
+  });
 }
 
+/** Lleva la pantalla a una zona, sin que la barra de arriba la tape. */
+function irA(id) {
+  const zona = document.getElementById(id);
+  if (!zona) return;
+  const alto = (document.querySelector('.topbar') || {}).offsetHeight || 0;
+  window.scrollTo({ top: zona.getBoundingClientRect().top + window.scrollY - alto - 8, behavior: 'smooth' });
+}
+
+function etiquetaAvance(a) {
+  const falta = Math.max(0, a.convocados - a.marcados);
+  const estado = !a.convocados
+    ? { texto: 'Sin integrantes', clase: 'gris' }
+    : falta === 0
+      ? { texto: 'Lista completa', clase: 'ok' }
+      : a.marcados
+        ? { texto: `Faltan ${falta}`, clase: 'medio' }
+        : { texto: 'Sin tomar', clase: 'bajo' };
+  return `<span class="badge ${nivelClase(estado.clase)}">${esc(estado.texto)}</span>`;
+}
+
+/** Las actividades del día elegido, y debajo la lista de la que se elija. */
+function pintarDelDia() {
+  const zona = document.getElementById('asisDelDia');
+  const delDia = actividadesDe(ASIS.dia);
+
+  // Si hay una sola, se abre sola: un toque menos
+  if (!ASIS.actividadId && delDia.length === 1) ASIS.actividadId = delDia[0].id;
+  if (ASIS.actividadId && !delDia.some((a) => a.id === ASIS.actividadId)) {
+    const suya = ((ASIS.agenda && ASIS.agenda.actividades) || []).find((a) => a.id === ASIS.actividadId);
+    if (suya) ASIS.dia = suya.fecha;
+    else ASIS.actividadId = null;
+  }
+
+  const puedeEditar = ASIS.agenda && ASIS.agenda.puede_editar;
+  const puedeEliminar = ASIS.agenda && ASIS.agenda.puede_eliminar;
+
+  zona.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>Actividades del ${esc(diaSemanaYMes(ASIS.dia))}</b>
+        <span class="spacer"></span>
+        <span style="color:var(--muted);font-size:13px">${delDia.length || 'sin'} actividad(es)</span>
+      </div>
+      ${delDia.length ? `<ul class="asis-actividades">${delDia.map((a) => `
+        <li data-id="${a.id}" class="${a.id === ASIS.actividadId ? 'on' : ''}">
+          <div class="aa-datos">
+            <div class="aa-tit">
+              <span class="badge ${badgeClass(a.tipo_reunion)}">${esc(a.tipo_reunion || 'Actividad')}</span>
+              ${a.hora_inicio ? `<span class="mut">${esc(a.hora_inicio)}</span>` : ''}
+              ${a.lugar ? `<span class="mut">· ${esc(a.lugar)}</span>` : ''}
+            </div>
+            <div class="aa-cuerpos">${esc(a.cuerpos.map((c) => c.nombre).join(', ') || 'sin cuerpos')}</div>
+          </div>
+          <div class="aa-avance">
+            <b>${a.marcados}/${a.convocados}</b>
+            ${etiquetaAvance(a)}
+          </div>
+          <div class="aa-acc">
+            ${puedeEditar ? '<button class="ico" data-editar title="Editar la actividad">✏️</button>' : ''}
+            ${puedeEliminar ? '<button class="ico" data-borrar title="Eliminar la actividad">🗑️</button>' : ''}
+          </div>
+        </li>`).join('')}</ul>`
+        : `<div class="empty-state" style="padding:26px">
+             No hay actividades este día.${ASIS.agenda && ASIS.agenda.puede_crear ? ' Cree una con ➕ Actividad.' : ''}
+           </div>`}
+    </div>`;
+
+  zona.querySelectorAll('li[data-id]').forEach((li) => {
+    li.addEventListener('click', (ev) => {
+      if (ev.target.closest('.aa-acc')) return;
+      const yaEstaba = ASIS.actividadId === Number(li.dataset.id);
+      ASIS.actividadId = Number(li.dataset.id);
+      pintarDelDia();
+      // Con varias actividades en el día, la lista queda lejos: se va a ella
+      if (!yaEstaba) setTimeout(() => irA('asisMarcar'), 150);
+    });
+    const editar = li.querySelector('[data-editar]');
+    if (editar) {
+      editar.addEventListener('click', () => abrirActividad(delDia.find((a) => a.id === Number(li.dataset.id))));
+    }
+    const borrar = li.querySelector('[data-borrar]');
+    if (borrar) {
+      borrar.addEventListener('click', async () => {
+        const a = delDia.find((x) => x.id === Number(li.dataset.id));
+        if (!confirm(`¿Eliminar la actividad "${a.tipo_reunion}" del ${fmtDate(a.fecha)}?\n\n` +
+          `Se borrarán también sus ${a.marcados} marca(s) de asistencia. Esta acción no se puede deshacer.`)) return;
+        try {
+          await api('DELETE', `/asistencias/${a.id}`);
+          toast('Actividad eliminada');
+          if (ASIS.actividadId === a.id) ASIS.actividadId = null;
+          cargarAgenda();
+        } catch (e) {
+          toast(e.message, true);
+        }
+      });
+    }
+  });
+
+  const marcar = document.getElementById('asisMarcar');
+  marcar.innerHTML = '';
+  if (ASIS.actividadId) renderPasarLista(ASIS.actividadId, marcar, { alGuardar: refrescarAvance });
+}
+
+/** Deja al día el contador de la actividad sin volver a pintar toda la pantalla. */
+function refrescarAvance(resumen) {
+  const a = ((ASIS.agenda && ASIS.agenda.actividades) || []).find((x) => x.id === ASIS.actividadId);
+  if (!a) return;
+  a.presentes = resumen.presentes;
+  a.ausentes = resumen.ausentes;
+  a.justificados = resumen.justificados;
+  a.marcados = resumen.presentes + resumen.ausentes + resumen.justificados;
+  const li = document.querySelector(`.asis-actividades li[data-id="${a.id}"]`);
+  if (li) li.querySelector('.aa-avance').innerHTML = `<b>${a.marcados}/${a.convocados}</b>${etiquetaAvance(a)}`;
+  if (ASIS.vista === 'calendario') pintarCalendario();
+}
+
+/* ---------------- crear o editar una actividad ---------------- */
+
+function abrirActividad(actividad) {
+  const editando = !!actividad;
+  const tipos = (MOD['asistencias'].fields.find((f) => f.name === 'tipo_reunion') || {}).options || [];
+  const cuerpos = optionsCache['cuerpos'] || [];
+  const elegidos = new Set(editando ? actividad.cuerpos.map((c) => c.id) : (ASIS.cuerpo_id ? [Number(ASIS.cuerpo_id)] : []));
+
+  const fondo = document.createElement('div');
+  fondo.className = 'modal-fondo';
+  fondo.innerHTML = `
+    <div class="modal" style="max-width:560px">
+      <div class="modal-head"><h3>${editando ? '✏️ Editar actividad' : '➕ Nueva actividad'}</h3><button class="cerrar">&times;</button></div>
+      <div class="modal-body">
+        <div class="modal-fila">
+          <div class="fld"><label>Fecha <span class="req">*</span></label>
+            <input type="date" id="acFecha" value="${esc(editando ? fmtDate(actividad.fecha) : ASIS.dia)}" /></div>
+          <div class="fld"><label>Hora</label>
+            <input type="time" id="acHora" value="${esc(editando ? actividad.hora_inicio || '' : '')}" /></div>
+        </div>
+        <div class="fld" style="margin-top:12px"><label>Actividad <span class="req">*</span></label>
+          <select id="acTipo">${tipos.map((t) => `<option value="${esc(t)}" ${editando && actividad.tipo_reunion === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+        </div>
+        <div class="fld" style="margin-top:12px">
+          <label>Cuerpos convocados <span class="req">*</span></label>
+          <div class="chips-elegir" id="acCuerpos">
+            ${cuerpos.map((c) => `
+              <button type="button" class="chip ${elegidos.has(c.id) ? 'on' : ''}" data-id="${c.id}">${esc(c.label)}</button>`).join('')}
+          </div>
+          <div class="help">Se le pasará lista a los integrantes de todos los que elija.</div>
+        </div>
+        <div class="fld" style="margin-top:12px"><label>Lugar</label>
+          <input type="text" id="acLugar" value="${esc(editando ? actividad.lugar || '' : '')}" /></div>
+        <div class="fld" style="margin-top:12px"><label>Observaciones</label>
+          <textarea id="acObs">${esc(editando ? actividad.observaciones || '' : '')}</textarea></div>
+        <div class="form-error" id="acError" style="padding:0"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn secondary" id="acCancelar">Cancelar</button>
+        <button class="btn" id="acGuardar">💾 Guardar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(fondo);
+  const cerrar = () => fondo.remove();
+  fondo.querySelector('.cerrar').addEventListener('click', cerrar);
+  fondo.querySelector('#acCancelar').addEventListener('click', cerrar);
+  fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(); });
+  fondo.querySelectorAll('#acCuerpos .chip').forEach((chip) => {
+    chip.addEventListener('click', () => chip.classList.toggle('on'));
+  });
+
+  fondo.querySelector('#acGuardar').addEventListener('click', async () => {
+    const datos = {
+      fecha: fondo.querySelector('#acFecha').value,
+      hora_inicio: fondo.querySelector('#acHora').value || null,
+      tipo_reunion: fondo.querySelector('#acTipo').value,
+      cuerpos: [...fondo.querySelectorAll('#acCuerpos .chip.on')].map((c) => Number(c.dataset.id)),
+      lugar: fondo.querySelector('#acLugar').value || null,
+      observaciones: fondo.querySelector('#acObs').value || null,
+    };
+    if (!datos.fecha) return (fondo.querySelector('#acError').textContent = 'Indique la fecha.');
+    if (!datos.cuerpos.length) return (fondo.querySelector('#acError').textContent = 'Elija al menos un cuerpo.');
+    try {
+      const guardada = editando
+        ? await api('PUT', `/asistencias/${actividad.id}`, datos)
+        : await api('POST', '/asistencias', datos);
+      toast(editando ? 'Actividad actualizada' : 'Actividad creada');
+      cerrar();
+      ASIS.dia = datos.fecha;
+      ASIS.mes = new Date(datos.fecha + 'T00:00:00');
+      ASIS.actividadId = guardada.id;
+      cargarAgenda();
+    } catch (e) {
+      fondo.querySelector('#acError').textContent = e.message;
+    }
+  });
+}
+
+/* ---------------- pasar lista ---------------- */
+
 /**
- * La lista en sí. Se usa igual al pie de la ficha de una actividad y en la
- * pantalla completa del teléfono.
+ * La lista para marcar: buscador, filtros por estado, avance y los tres
+ * botones por persona. Se guarda sola y deja respaldo en el teléfono.
  */
 async function renderPasarLista(asistenciaId, contenedor, opciones) {
-  const completa = !!(opciones && opciones.completa);
+  const alGuardar = (opciones && opciones.alGuardar) || null;
   let datos;
   try {
     datos = await api('GET', `/asistencias/${asistenciaId}/lista`);
   } catch (e) {
-    contenedor.innerHTML = completa
-      ? `<div class="card"><div class="empty-state" style="padding:26px">${esc(e.message)}</div></div>`
-      : '';
+    contenedor.innerHTML = `<div class="card" style="margin-top:18px"><div class="empty-state" style="padding:26px">${esc(e.message)}</div></div>`;
     return;
   }
   // Pasar lista depende del permiso de "Toma de Asistencia", no del de crear
@@ -2695,6 +3109,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
         class="${p.estado ? 'marcado' : ''}">
       <div class="pl-quien">
         <b>${esc(p.nombre)}</b>
+        ${p.cuerpo ? `<span class="pl-cuerpo-chip">${esc(p.cuerpo)}</span>` : ''}
         ${p.rut ? `<span class="mut">${esc(rutFormatear(p.rut))}</span>` : ''}
       </div>
       <div class="pl-botones">
@@ -2711,13 +3126,12 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
       </div>
     </li>`;
 
-  const cuerpos = (datos.actividad.cuerpos || []).map((c) => c.nombre).join(' + ') || 'sin cuerpos';
   contenedor.innerHTML = `
-    <div class="card pl-card${completa ? ' completa' : ''}" ${completa ? '' : 'style="margin-top:18px"'}>
+    <div class="card pl-card" style="margin-top:18px">
       <div class="pl-cab">
         <div class="pl-que">
-          <b>🖐️ ${esc(datos.actividad.tipo || 'Actividad')}</b>
-          <span>${esc(cuerpos)} · ${esc(diaSemanaYMes(datos.actividad.fecha))} (${esc(cuandoFue(datos.actividad.fecha))})</span>
+          <b>🖐️ ${esc(datos.actividad.tipo || 'Actividad')} <span class="mut">${esc(diaSemanaYMes(datos.actividad.fecha).toLowerCase())}</span></b>
+          <span>${(datos.actividad.cuerpos || []).map((c) => `<span class="badge">${esc(c.nombre)}</span>`).join(' ') || 'sin cuerpos'}</span>
         </div>
         ${puedeEditar && datos.personas.length
           ? '<button class="btn secondary sm" id="plTodos">✓ Todos presentes</button>'
@@ -2726,25 +3140,20 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
       ${datos.personas.length ? `
         ${recuperadas ? `<div class="pl-recuperado">📵 Se recuperaron ${recuperadas} marca(s) que habían quedado sin guardar en este teléfono. Revíselas y guarde.</div>` : ''}
         <div class="pl-filtros">
-          <input type="search" id="plBuscar" placeholder="Buscar por nombre o RUT…" autocomplete="off" />
+          <input type="search" id="plBuscar" placeholder="🔎 Buscar miembro por nombre o RUT…" autocomplete="off" />
           <div class="pl-chips">
             <button type="button" class="chip on" data-filtro="todos">Todos</button>
+            <button type="button" class="chip verde" data-filtro="Presente">Presentes</button>
+            <button type="button" class="chip roja" data-filtro="Ausente">Ausentes</button>
+            <button type="button" class="chip ambar" data-filtro="Justificado">Justificados</button>
             <button type="button" class="chip" data-filtro="sin">Sin marcar</button>
           </div>
         </div>
-        <ul class="pasar-lista">${(() => {
-          // Agrupadas por cuerpo, con su encabezado cuando hay más de uno
-          const variosCuerpos = new Set(datos.personas.map((p) => p.cuerpo || '')).size > 1;
-          let cuerpoActual = null;
-          return datos.personas.map((p) => {
-            let cabecera = '';
-            if (variosCuerpos && p.cuerpo !== cuerpoActual) {
-              cuerpoActual = p.cuerpo;
-              cabecera = `<li class="pl-cuerpo">${esc(p.cuerpo || 'Sin cuerpo')}</li>`;
-            }
-            return cabecera + fila(p);
-          }).join('');
-        })()}</ul>
+        <div class="pl-avance">
+          <div class="pl-avance-tit"><span>Progreso de marcado</span><b id="plPct">0/0 (0%)</b></div>
+          <div class="pa-barra"><span id="plBarra" style="width:0%"></span></div>
+        </div>
+        <ul class="pasar-lista">${datos.personas.map(fila).join('')}</ul>
         <div class="pl-sinresultados" hidden>Nadie con ese nombre en esta lista.</div>
         <div class="pl-barra">
           <div class="pl-resumen" id="plResumen"></div>
@@ -2791,17 +3200,18 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
       else cuenta.sin++;
     });
     const total = filas().length;
+    const marcados = total - cuenta.sin;
+    const pct = total ? Math.round((marcados / total) * 100) : 0;
+    document.getElementById('plPct').textContent = `${marcados}/${total} (${pct}%)`;
+    document.getElementById('plBarra').style.width = `${pct}%`;
     document.getElementById('plResumen').innerHTML =
-      `<b>${total - cuenta.sin} de ${total}</b>
-       <span class="badge green">${cuenta.Presente} presentes</span>
+      `<span class="badge green">${cuenta.Presente} presentes</span>
        <span class="badge red">${cuenta.Ausente} ausentes</span>
        <span class="badge blue">${cuenta.Justificado} justificados</span>
        ${cuenta.sin ? `<span class="badge">${cuenta.sin} sin marcar</span>` : ''}`;
     const chip = contenedor.querySelector('[data-filtro="sin"]');
-    if (chip) {
-      chip.textContent = `Sin marcar (${cuenta.sin})`;
-      chip.disabled = cuenta.sin === 0 && !chip.classList.contains('on');
-    }
+    if (chip) chip.textContent = `Sin marcar (${cuenta.sin})`;
+    return cuenta;
   };
 
   const guardar = async (automatico) => {
@@ -2819,6 +3229,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
       sinGuardar = false;
       const hora = new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
       pintarEstado(`Guardado a las ${hora}`, 'ok-texto');
+      if (alGuardar) alGuardar(r);
       if (!automatico) {
         toast(`Lista guardada: ${r.presentes} presentes, ${r.ausentes} ausentes, ${r.justificados} justificados`);
       }
@@ -2837,6 +3248,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     marcasDe().forEach((m) => (porId[m.miembro_id] = m));
     guardarBorrador(CLAVE, porId);
     resumen();
+    filtrar();
     pintarEstado(incompletas() ? `Falta el motivo de ${incompletas()} justificación(es)` : 'Sin guardar', 'aviso-texto');
     if (!puedeEditar) return;
     clearTimeout(reloj);
@@ -2851,6 +3263,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     const motivo = li.querySelector('.pl-motivo').value;
     li.querySelector('.pl-detalle').hidden = !CON_DETALLE.includes(motivo);
     li.classList.toggle('marcado', !!estado);
+    li.dataset.estado = estado || '';
   };
 
   lista.querySelectorAll('.pl-b').forEach((b) => {
@@ -2887,25 +3300,24 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   const btnGuardar = document.getElementById('plGuardar');
   if (btnGuardar) btnGuardar.addEventListener('click', () => guardar(false));
 
-  // Buscador y chips: dar con una persona entre muchas sin desplazarse
-  const filtrar = () => {
+  // Buscador y filtros: dar con una persona entre muchas sin desplazarse
+  function filtrar() {
     const texto = textoBuscable((document.getElementById('plBuscar') || {}).value || '');
-    const soloSinMarcar = !!contenedor.querySelector('.chip.on[data-filtro="sin"]');
+    const activo = contenedor.querySelector('.pl-chips .chip.on');
+    const filtro = activo ? activo.dataset.filtro : 'todos';
     let visibles = 0;
     filas().forEach((li) => {
       const calza = !texto || texto.split(/\s+/).every((t) => li.dataset.buscar.includes(t));
-      const pendiente = !li.querySelector('.pl-b.on');
-      const mostrar = calza && (!soloSinMarcar || pendiente);
+      const marcado = li.querySelector('.pl-b.on');
+      const estado = marcado ? marcado.dataset.estado : '';
+      const porEstado = filtro === 'todos' || (filtro === 'sin' ? !estado : estado === filtro);
+      const mostrar = calza && porEstado;
       li.hidden = !mostrar;
       if (mostrar) visibles++;
     });
-    // Los encabezados de cuerpo sobran cuando se está filtrando
-    lista.querySelectorAll('li.pl-cuerpo').forEach((li) => {
-      li.hidden = !!texto || soloSinMarcar;
-    });
     const vacio = contenedor.querySelector('.pl-sinresultados');
     if (vacio) vacio.hidden = visibles > 0;
-  };
+  }
   const buscador = document.getElementById('plBuscar');
   if (buscador) buscador.addEventListener('input', filtrar);
   contenedor.querySelectorAll('.pl-chips .chip').forEach((chip) => {
@@ -2916,6 +3328,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     });
   });
 
+  filas().forEach(pintarFila);
   resumen();
   if (recuperadas) pintarEstado('Sin guardar', 'aviso-texto');
 }

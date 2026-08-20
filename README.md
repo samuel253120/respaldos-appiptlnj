@@ -16,8 +16,8 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 |---|---|
 | **Organización** | Iglesias (con su foto, su historial y sus documentos) · Pastores / Guías (con su historial ministerial y sus documentos) · Cuerpos / Grupos (con su foto) · Directivas de Cuerpos |
 | **Servicios** | Registro de Servicios (cultos: salmo, mensaje, asistencia y ofrenda) |
-| **Personas** | Miembros · Asistencias (actividades y pasar lista) · Toma de Asistencia · Bitácora de Miembros · Documentos de Miembros |
-| **Asistencia** | Pasar Lista (pensado para el teléfono) · Informes de Asistencia (general, por cuerpo y por persona) |
+| **Personas** | Miembros · Bitácora de Miembros · Documentos de Miembros |
+| **Asistencia** | Asistencia: calendario, actividades, toma de lista e informes en una sola pantalla, pensada para el teléfono |
 | **Finanzas** | Cuentas de Tesorería (corporación e iglesias) · Tesorería (ingresos/egresos con resumen y balance) · Traspasos entre Cuentas · Ayudas Sociales · Inventarios (de iglesia y de cuerpos) |
 | **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · Documentos · Certificados · Credenciales · Solicitudes |
 | **Administración** | Usuarios (roles y permisos) |
@@ -429,32 +429,40 @@ Cada traspaso genera **sus dos movimientos en Tesorería** —un egreso en el or
 
 Al crear una iglesia nueva se le crean solas su **tesorería general** y su **fondo para la corporación**. A cada iglesia que no lo tenga se le crea su **Fondo para la corporación**, y los movimientos que ya estaban registrados **no se pierden ni cambian de nivel**: cada uno pasa a la cuenta general que le corresponde según su iglesia (o a la de la corporación si no tenía), creándola si hacía falta. Queda anotado en el arranque: *«🔁 tesorería: 4 movimiento(s) asignados a su cuenta general»*.
 
-## Asistencia por cuerpo 📋
+## Asistencia: todo en un solo lugar 📋
 
-La asistencia se toma **por cuerpo y en cada actividad**: la reunión del cuerpo, un ensayo, una salida. Cada actividad guarda su fecha, la hora, el lugar, **los cuerpos convocados** y la **lista nominal** de quién estuvo.
+Crear la actividad, tomar la lista y ver los informes se hacen en **una sola pantalla**: en el menú hay una única entrada, **Asistencia**. No hay que saltar entre módulos ni buscar la actividad en un listado para poder marcarla.
 
-### Una actividad puede convocar a varios cuerpos
+Está pensada para el teléfono, que es donde se toma la asistencia casi siempre.
 
-En **Cuerpos convocados** se elige uno o varios: a una actividad conjunta pueden asistir Damas y Caballeros a la vez. Al pasar lista aparecen los integrantes de todos ellos, **agrupados por cuerpo** y con su encabezado, y quien pertenece a dos cuerpos aparece una sola vez. En los informes cada persona sigue contando en **su** cuerpo, así que un encuentro conjunto no mezcla los promedios.
+### Registrar
 
-### Pasar lista 🖐️ — pensado para el teléfono
+Dos pestañas encabezan la pantalla: **🖐️ Registrar** y **📈 Informes**.
 
-La asistencia casi siempre se toma **de pie, con el teléfono en la mano**, así que tiene su propia entrada en el menú —**Asistencia → Pasar Lista**— y una pantalla completa, sin el formulario de la actividad estorbando.
+**1. El calendario del mes.** Cada día con actividad lleva un punto, y el color dice cómo va: **verde** si la lista está completa, **ámbar** si falta gente por marcar, **rojo** si no se ha tomado. Las flechas cambian de mes y el botón **📅 Hoy** vuelve al día de hoy. Con el botón **☰** se cambia a ver el mes como lista corrida, para quien prefiera leerlas seguidas.
 
-**1. Elegir la actividad.** Se abren las actividades de los últimos dos meses, con el día en palabras (*«Jueves 20 de agosto — hoy»*), los cuerpos convocados y **cuánto lleva cada una**: *Sin tomar*, *Faltan 6* o *Lista completa*, con su barra de avance. Un toque en la actividad y ya se está pasando lista.
+Arriba, dos filtros: por **cuerpo** y por **tipo de actividad**.
 
-**2. Marcar.** Cada persona ocupa una fila con tres botones grandes —**Presente**, **Ausente**, **Justificado**— de 46 píxeles de alto, cómodos para el pulgar. Volver a pulsar el mismo botón la desmarca.
+**2. Las actividades del día.** Al tocar un día se abren sus actividades, cada una con su tipo, su hora, su lugar, los cuerpos convocados y **cuánto lleva**: *«12/28 — Faltan 16»*, *«Lista completa»* o *«Sin tomar»*. Se editan (✏️) y se eliminan (🗑️) ahí mismo. Si el día tiene una sola actividad, se abre sola.
 
+**3. ➕ Actividad.** Se crea sin salir de la pantalla: fecha (viene puesta la del día elegido), hora, tipo, **cuerpos convocados** —se tocan los que van—, lugar y observaciones. Al guardar queda elegida y con su lista lista para marcar.
+
+**4. La lista.** Al elegir una actividad, la pantalla baja sola a su lista:
+
+- Cada persona en su fila, con **el cuerpo por el que va** y tres botones grandes —**Presente**, **Ausente**, **Justificado**— de 46 píxeles de alto, cómodos para el pulgar. Volver a pulsar el mismo botón la desmarca.
 - **Buscador**: se escribe parte del nombre o del RUT y la lista se reduce a esa persona, sin desplazarse por sesenta nombres. No importan tildes ni mayúsculas.
-- **Sin marcar (N)**: deja a la vista solo a quienes faltan, que es lo que uno busca al final.
-- **✓ Todos presentes**: marca a los que están a la vista y **sin marcar**, sin pisar lo ya decidido. Con el filtro puesto, solo a esos.
-- **Barra siempre a la vista**: abajo, pegada a la pantalla, va el recuento en vivo —*«12 de 45 · 10 presentes · 1 ausente…»*— y el botón **Guardar lista**, sin tener que volver arriba.
+- **Filtros**: *Todos · Presentes · Ausentes · Justificados · Sin marcar (N)*, para revisar al final quiénes faltan.
+- **Progreso de marcado**: *«12/28 (43%)»* con su barra, siempre a la vista.
+- **✓ Todos presentes**: marca a los que están a la vista y **sin marcar**, sin pisar lo ya decidido. Con un filtro puesto, solo a esos.
+- **Barra pegada abajo**: el recuento en vivo y el botón **Guardar lista**, sin tener que volver arriba.
 
-**3. Nada se pierde.** Lo marcado queda guardado **en el propio teléfono** al instante, y **se guarda solo** unos segundos después de la última marca: la barra dice *«Guardado a las 19:42»*. Si se corta la señal, se cierra la pantalla o se apaga el teléfono a media lista, al volver a abrirla aparece el aviso *«Se recuperaron 8 marcas que habían quedado sin guardar en este teléfono»* y se sigue donde se iba.
+**5. Nada se pierde.** Lo marcado queda guardado **en el propio teléfono** al instante, y **se guarda solo** unos segundos después de la última marca: la barra dice *«Guardado a las 19:42»*, y el contador de la actividad se actualiza al tiro. Si se corta la señal, se cierra la pantalla o se apaga el teléfono a media lista, al volver a abrirla aparece el aviso *«Se recuperaron 8 marcas que habían quedado sin guardar en este teléfono»* y se sigue donde se iba.
 
 > El guardado automático **espera** si hay una justificación sin motivo o sin detalle: la barra avisa *«Falta el motivo de 1 justificación(es)»* y no manda nada a medias. En cuanto se completa, guarda.
 
-Al pie de la ficha de la actividad sigue estando la misma lista, para trabajar desde el computador, con un botón **🖐️ Pasar lista** que lleva a la pantalla completa.
+### Una actividad puede convocar a varios cuerpos
+
+En **Cuerpos convocados** se elige uno o varios: a una actividad conjunta pueden asistir Damas y Caballeros a la vez. Al pasar lista aparecen los integrantes de todos ellos —cada uno con la etiqueta de su cuerpo— y quien pertenece a dos cuerpos aparece una sola vez. En los informes cada persona sigue contando en **su** cuerpo, así que un encuentro conjunto no mezcla los promedios.
 
 Cuando alguien queda **Justificado** se pide el motivo:
 
@@ -473,19 +481,26 @@ El detalle es obligatorio en esos tres casos y el sistema no deja guardar la lis
 - **Asistencias** manda sobre **crear y modificar actividades**.
 - **Toma de Asistencia** manda sobre **pasar lista**.
 
-Así, a alguien se le puede dejar tomar la asistencia sin dejarlo crear actividades: en su ficha de usuario se marca *Asistencias → solo Ver* y *Toma de Asistencia → Ver, Crear y Editar* (ver **Permisos personalizados**). Esa persona entra a la actividad, marca a todos y guarda la lista, pero no ve el botón de crear actividades ni el de guardar la actividad, y si lo intentara por fuera de la pantalla, el servidor lo rechaza.
+Así, a alguien se le puede dejar tomar la asistencia sin dejarlo crear actividades: en su ficha de usuario se marca *Asistencias → solo Ver* y *Toma de Asistencia → Ver, Crear y Editar* (ver **Permisos personalizados**). Esa persona ve el calendario y las actividades, marca a todos y guarda la lista, pero no le aparecen ➕ Actividad ni los botones de editar y eliminar, y si lo intentara por fuera de la pantalla, el servidor lo rechaza.
 
 El rol **Secretario** trae los dos permisos.
 
-En el listado de actividades se ve de un vistazo cuántos hubo de cada tipo y el **porcentaje de asistencia**, con su color: verde desde 80%, amarillo desde 60%, rojo bajo eso.
+> Los dos módulos que sostienen esto —**Asistencias** (las actividades) y **Toma de Asistencia** (la marca de cada persona)— ya no ocupan lugar propio en el menú: todo se maneja desde la pantalla de Asistencia. Siguen existiendo como módulos, con su API y sus permisos, que son los que aparecen en la ficha de usuario.
 
 ## Informes de asistencia 📈
 
-En **Informes → Informes de Asistencia** se sacan tres informes, acotados por el período que se elija:
+En la misma pantalla de **Asistencia**, pestaña **📈 Informes**, se sacan tres informes, acotados por el período que se elija:
 
 - **General** — todo lo registrado.
 - **Por cuerpo** — se elige el cuerpo.
 - **Por persona** — se busca a la persona por nombre o RUT.
+
+### Llevarlos a papel o a una planilla
+
+En la cabecera de la pestaña hay dos botones:
+
+- **🖨️ PDF** imprime el informe tal como se ve, con el membrete de la iglesia y sin el menú ni los filtros (desde el diálogo de impresión se guarda como PDF).
+- **⬇️ Excel** baja lo mismo como planilla (`.csv`, que Excel abre directo), con el resumen y las tablas por cuerpo, por día, actividad por actividad y por miembro. Los decimales van con coma y las tildes salen bien.
 
 ### Cómo se cuenta cuando alguien está en varios cuerpos
 
@@ -783,7 +798,10 @@ GET    /api/<modulo>/:id
 POST   /api/<modulo>
 PUT    /api/<modulo>/:id
 DELETE /api/<modulo>/:id
-GET    /api/asistencias/pendientes  actividades a las que pasar lista, con su avance
+GET    /api/asistencias/agenda      actividades de un período, con su avance
+GET    /api/asistencias/:id/lista   integrantes convocados con su marca
+POST   /api/asistencias/:id/lista   guarda todas las marcas de una vez
+GET    /api/asistencias/informe     informes y promedios
 GET    /api/tesoreria/resumen       ingresos, egresos, balance y por categoría
 POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importación masiva
 ```
@@ -799,7 +817,7 @@ POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importa
 
 La interfaz es totalmente adaptable (menú lateral táctil, formularios de una columna, tablas con desplazamiento) y puede **instalarse como aplicación** en el teléfono: en Android (Chrome) menú ⋮ → *Agregar a la pantalla principal*; en iPhone (Safari) Compartir → *Agregar a pantalla de inicio*.
 
-Lo que más se usa desde el teléfono está pensado para eso: **pasar lista** tiene su propia pantalla con botones grandes, buscador, barra de acciones fija y guardado automático con respaldo en el propio teléfono (ver **Pasar lista**), y las **fotos** se ajustan de tamaño antes de subirse, para que carguen aun con mala señal.
+Lo que más se usa desde el teléfono está pensado para eso: **Asistencia** reúne el calendario, las actividades y la toma de lista en una sola pantalla, con botones grandes, buscador, filtros, barra de acciones fija y guardado automático con respaldo en el propio teléfono (ver **Asistencia: todo en un solo lugar**), y las **fotos** se ajustan de tamaño antes de subirse, para que carguen aun con mala señal.
 
 ## Publicar en internet 🌐
 

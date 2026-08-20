@@ -15,7 +15,7 @@
  * puede dejar pasar lista sin dejarlo crear actividades.
  *
  * Rutas propias:
- *   GET  /asistencias/pendientes  actividades a las que pasar lista, con su avance
+ *   GET  /asistencias/agenda      actividades de un período, con su avance
  *   GET  /asistencias/:id/lista   integrantes del cuerpo con su marca
  *   POST /asistencias/:id/lista   guarda todas las marcas de una vez
  *   GET  /asistencias/informe     informes y promedios (general, por cuerpo,
@@ -92,6 +92,10 @@ module.exports = {
   icon: '📋',
   group: 'Personas',
   order: 22,
+  // Todo lo de asistencia —crear actividades, pasar lista e informes— vive en
+  // una sola pantalla, la de Asistencia, así que este módulo no ocupa además
+  // un lugar propio en el menú.
+  menu: false,
   display: '{tipo_reunion} — {fecha}',
   dateField: 'fecha',
   printable: true,
@@ -167,29 +171,57 @@ module.exports = {
      * necesario de una vez: no hace falta entrar a cada actividad para saber
      * cuál falta.
      */
-    router.get('/asistencias/pendientes', requirePerm('asistencias', 'view'), (req, res) => {
+    /**
+     * La agenda de asistencia: las actividades de un período —normalmente el
+     * mes que se está mirando en el calendario—, con cuántos integrantes
+     * convoca cada una y cuántos van marcados.
+     *
+     * Es lo que alimenta el módulo de Asistencia completo, así que responde
+     * de una vez todo lo que la pantalla necesita: no hace falta entrar a
+     * cada actividad para saber cuál falta ni quién puede marcarla.
+     */
+    router.get('/asistencias/agenda', requirePerm('asistencias', 'view'), (req, res) => {
       const alcance = require('../alcance');
       const params = [];
-      const cond = ["fecha >= date('now','localtime','-60 days')"];
+      const cond = [];
+      if (req.query.desde) {
+        cond.push('fecha >= ?');
+        params.push(String(req.query.desde).slice(0, 10));
+      }
+      if (req.query.hasta) {
+        cond.push('fecha <= ?');
+        params.push(String(req.query.hasta).slice(0, 10));
+      }
+      if (req.query.tipo) {
+        cond.push('tipo_reunion = ?');
+        params.push(String(req.query.tipo));
+      }
+      if (req.query.cuerpo_id) {
+        cond.push('EXISTS (SELECT 1 FROM json_each(asistencias.cuerpos) WHERE json_each.value = ?)');
+        params.push(Number(req.query.cuerpo_id));
+      }
       const suyo = alcance.condiciones(module.exports, req.user, params);
       if (suyo) cond.push(suyo);
 
       const filas = db
-        .prepare(`SELECT * FROM asistencias WHERE ${cond.join(' AND ')} ORDER BY fecha DESC, hora_inicio DESC LIMIT 60`)
+        .prepare(
+          `SELECT * FROM asistencias ${cond.length ? `WHERE ${cond.join(' AND ')}` : ''}
+            ORDER BY fecha DESC, hora_inicio DESC LIMIT 400`
+        )
         .all(...params);
 
+      const nombreCuerpo = db.prepare('SELECT id, nombre FROM cuerpos WHERE id = ?');
       const actividades = filas.map((a) => {
         const c = conteo(a.id, db);
-        const cuerpos = idsDeCuerpos(a.cuerpos)
-          .map((id) => (db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(id) || {}).nombre)
-          .filter(Boolean);
         return {
           id: a.id,
           fecha: a.fecha,
           hora_inicio: a.hora_inicio || null,
           tipo_reunion: a.tipo_reunion,
           lugar: a.lugar || null,
-          cuerpos,
+          observaciones: a.observaciones || null,
+          iglesia_id: a.iglesia_id || null,
+          cuerpos: idsDeCuerpos(a.cuerpos).map((id) => nombreCuerpo.get(id)).filter(Boolean),
           convocados: integrantesConvocados(a, db).size,
           marcados: c.total,
           presentes: c.presentes,
@@ -200,8 +232,11 @@ module.exports = {
 
       res.json({
         actividades,
+        tipos: TIPOS_DE_ACTIVIDAD,
         puede_marcar: can(req.user, 'asistencia_detalle', 'create') && can(req.user, 'asistencia_detalle', 'edit'),
         puede_crear: can(req.user, 'asistencias', 'create'),
+        puede_editar: can(req.user, 'asistencias', 'edit'),
+        puede_eliminar: can(req.user, 'asistencias', 'delete'),
       });
     });
 
