@@ -224,6 +224,8 @@ El sistema hace cumplir lo primero: al designar una segunda matriz avisa cuál l
 
 El tipo aparece como columna y como filtro en el listado de iglesias. Las iglesias registradas antes de esta distinción quedan **sin tipo**, a la espera de que se les asigne: el sistema no lo adivina. Una iglesia nueva se crea como *Iglesia Local*, que es lo más habitual.
 
+> **Para más adelante: de cuál depende cada una.** Los tipos forman una jerarquía —el anexo depende de una local o de una sede, la local depende de una sede, y todas dependen de la matriz—, pero **todavía no se registra ese vínculo**: por ahora el tipo se guarda solo, sin decir de quién depende cada iglesia. Se implementará cuando haya más iglesias que ordenar; entonces la organización podrá verse como árbol y sumar, por ejemplo, la membresía de una sede con todos sus anexos.
+
 ## Cada iglesia y cada cuerpo con su fotografía 📸
 
 Tanto la **iglesia** como cada **cuerpo o grupo** llevan su propia fotografía —el templo, el cuerpo reunido—, que se ve como miniatura en el listado y en su ficha. Se saca con el teléfono y al subirla se ajusta sola de tamaño, igual que la foto de un miembro.
