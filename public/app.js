@@ -23,8 +23,8 @@ const $app = document.getElementById('app');
 
 /* Identidad institucional (logo y nombre de la iglesia) */
 const IGLESIA = {
-  nombre: 'Iglesia Pentecostal Triunfante',
-  lema: '«La Nueva Jerusalén»',
+  nombre: 'Iglesia Pentecostal Triunfante La Nueva Jerusalén',
+  lema: '',
   logo: '/img/logo.png',
 };
 
@@ -36,7 +36,8 @@ function fmtMoney(n) {
   if (n == null || n === '') return '';
   return '$ ' + Number(n).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
-function fmtDate(s) {
+/** La fecha como la guarda el computador: aaaa-mm-dd, para un campo de fecha. */
+function fechaISO(s) {
   if (!s) return '';
   return String(s).slice(0, 10);
 }
@@ -217,6 +218,11 @@ async function boot() {
   if (!TOKEN) return renderLogin();
   try {
     const meta = await api('GET', '/meta');
+    // El nombre y el lema salen de Configuración, no del programa
+    if (meta.institucion) {
+      if (meta.institucion.nombre) IGLESIA.nombre = meta.institucion.nombre;
+      IGLESIA.lema = meta.institucion.lema || '';
+    }
     MODULES = meta.modules;
     MOD = {};
     MODULES.forEach((m) => (MOD[m.name] = m));
@@ -298,7 +304,7 @@ function renderLogin() {
       <form class="login-card" id="loginForm">
         <img class="logo" src="${IGLESIA.logo}" alt="${esc(IGLESIA.nombre)}" />
         <h1>${esc(IGLESIA.nombre)}</h1>
-        <p class="lema">${esc(IGLESIA.lema)}</p>
+        ${IGLESIA.lema ? `<p class="lema">${esc(IGLESIA.lema)}</p>` : ''}
         <p class="sub">Ingrese con su RUT para continuar</p>
         <div class="login-error" id="loginError"></div>
         <input type="text" id="loginRut" placeholder="RUT (ej: 12.345.678-5)" required autocomplete="username" inputmode="text" />
@@ -312,6 +318,22 @@ function renderLogin() {
   fetch('/api/configuracion/publica')
     .then((r) => r.json())
     .then((c) => {
+      // La identidad configurada manda sobre la que trae el programa
+      if (c.iglesia_nombre) {
+        IGLESIA.nombre = c.iglesia_nombre;
+        const titulo = document.querySelector('.login-card h1');
+        const logo = document.querySelector('.login-card .logo');
+        if (titulo) titulo.textContent = c.iglesia_nombre;
+        if (logo) logo.alt = c.iglesia_nombre;
+      }
+      IGLESIA.lema = c.iglesia_lema || '';
+      const lema = document.querySelector('.login-card p.lema');
+      if (lema) lema.remove();
+      if (IGLESIA.lema) {
+        const titulo = document.querySelector('.login-card h1');
+        if (titulo) titulo.insertAdjacentHTML('afterend', `<p class="lema">${esc(IGLESIA.lema)}</p>`);
+      }
+
       if (String(c.mantenimiento_activo) === '1') {
         const errEl = document.getElementById('loginError');
         if (errEl) {
@@ -588,7 +610,7 @@ async function renderMisDatos(zona) {
         <div><span class="mut">Iglesia</span><b>${esc(f.iglesia || '—')}</b></div>
         ${f.tipo_miembro ? `<div><span class="mut">Tipo de miembro</span><b>${esc(f.tipo_miembro)}</b></div>` : ''}
         ${f.estado ? `<div><span class="mut">Estado</span><b>${esc(f.estado)}</b></div>` : ''}
-        ${f.fecha_bautismo ? `<div><span class="mut">Bautismo</span><b>${esc(fmtDate(f.fecha_bautismo))}</b></div>` : ''}
+        ${f.fecha_bautismo ? `<div><span class="mut">Bautismo</span><b>${esc(fechaCorta(f.fecha_bautismo))}</b></div>` : ''}
         <div><span class="mut">Rol en el sistema</span><b>${esc(f.rol || '')}</b></div>
       </div>
     </div>
@@ -813,7 +835,7 @@ function renderShell() {
       <nav class="sidebar" id="sidebar">
         <div class="brand">
           <img class="logo" src="${IGLESIA.logo}" alt="" />
-          <span class="txt"><b>${esc(IGLESIA.nombre)}</b><i>${esc(IGLESIA.lema)}</i></span>
+          <span class="txt"><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}</span>
         </div>
         <div class="side-group">
           <a class="side-link" data-mod="_dash" href="#/"><span class="ic">📊</span> Panel de control</a>
@@ -889,8 +911,8 @@ async function viewDashboard() {
   if (d.finanzas) {
     finHtml = `
       <div class="fin-cards">
-        <div class="fin green"><div class="lbl">Ingresos del mes (${esc(d.finanzas.mes)})</div><div class="num">${fmtMoney(d.finanzas.ingresos_mes)}</div></div>
-        <div class="fin red"><div class="lbl">Egresos del mes</div><div class="num">${fmtMoney(d.finanzas.egresos_mes)}</div></div>
+        <div class="fin green"><div class="lbl">Ingresos de ${esc(mesLegible(d.finanzas.mes))}</div><div class="num">${fmtMoney(d.finanzas.ingresos_mes)}</div></div>
+        <div class="fin red"><div class="lbl">Egresos de ${esc(mesLegible(d.finanzas.mes))}</div><div class="num">${fmtMoney(d.finanzas.egresos_mes)}</div></div>
         <div class="fin blue"><div class="lbl">Balance histórico</div><div class="num">${fmtMoney(d.finanzas.balance_total)}</div></div>
         <div class="fin slate"><div class="lbl">Ingresos históricos</div><div class="num">${fmtMoney(d.finanzas.ingresos_total)}</div></div>
       </div>`;
@@ -924,27 +946,24 @@ async function viewDashboard() {
 
   content().innerHTML = `
     <div class="page-head">
-      <div>
-        <h2>📊 Panel de control</h2>
-        <p class="sub-iglesia">${esc(USER.iglesia_nombre || 'Todas las iglesias')}</p>
-      </div>
+      <h2>📊 Panel de control</h2>
     </div>
     <div class="stats">
       ${statDefs.map(([name, ic, lbl, num]) => `
         <div class="stat" onclick="location.hash='#/m/${name}'">
-          <div class="ic">${ic}</div><div class="num">${num}</div><div class="lbl">${lbl}</div>
+          <div class="num">${num}</div><div class="lbl">${lbl}</div><div class="ic">${ic}</div>
         </div>`).join('')}
     </div>
     ${finHtml}
-    ${MOD['miembros'] ? cumpleHtml : ''}
     <div class="dash-cols">
+      ${MOD['miembros'] ? cumpleHtml : ''}
       <div class="card">
         <h3>📋 Últimas asistencias</h3>
         <ul class="mini-list">
           ${d.ultimasAsistencias.length ? d.ultimasAsistencias.map((a) => `
             <li onclick="location.hash='#/asistencia?actividad=${a.id}'">
               <span>${esc(a.tipo_reunion)}${a.cuerpo ? ` <span class="mut">— ${esc(a.cuerpo)}</span>` : ''}</span>
-              <span class="mut">${fmtDate(a.fecha)} · ${a.marcados ? `${a.presentes} de ${a.marcados}` : 'sin lista'}</span>
+              <span class="mut">${fechaCorta(a.fecha)} · ${a.marcados ? `${a.presentes} de ${a.marcados}` : 'sin lista'}</span>
             </li>`).join('') : '<li class="mut">Sin registros aún</li>'}
         </ul>
       </div>
@@ -1110,7 +1129,12 @@ async function viewList(name, filtrosIniciales) {
     }
     const cols = m.listFields
       .filter((c) => fieldsBy[c] || c === 'id')
-      .filter((c) => c !== 'iglesia_id' || variasIglesias);
+      .filter((c) => c !== 'iglesia_id' || variasIglesias)
+      // Una columna de fotos donde nadie tiene foto es una columna vacía
+      .filter((c) => {
+        const f = fieldsBy[c];
+        return !f || f.type !== 'file' || data.rows.some((r) => r[c]);
+      });
     const wrap = document.getElementById('tableWrap');
     if (!data.rows.length) {
       wrap.innerHTML = `<div class="empty-state"><div class="big">${m.icon}</div>No hay registros${st.q || Object.values(st.filters).some(Boolean) ? ' con los filtros aplicados' : ''}.</div>`;
@@ -1132,9 +1156,10 @@ async function viewList(name, filtrosIniciales) {
                   (f.accept || '').startsWith('image') ? '📷' : '📎'
                 }</th>`;
               }
-              if (f && f.computed) return `<th class="no-sort" style="cursor:default">${esc(lbl)}</th>`;
+              const alineado = f && ['money', 'number'].includes(f.type) ? ' num' : '';
+              if (f && f.computed) return `<th class="no-sort${alineado}" style="cursor:default">${esc(lbl)}</th>`;
               const arrow = st.sort === c ? `<span class="arrow">${st.dir === 'asc' ? '▲' : '▼'}</span>` : '';
-              return `<th data-col="${c}">${esc(lbl)} ${arrow}</th>`;
+              return `<th data-col="${c}"${alineado ? ` class="${alineado.trim()}"` : ''}>${esc(lbl)} ${arrow}</th>`;
             }).join('')}
             <th class="no-sort"></th>
           </tr></thead>
@@ -1143,8 +1168,11 @@ async function viewList(name, filtrosIniciales) {
               <tr data-id="${r.id}">
                 ${cols.map((c) => {
                   const f = fieldsBy[c];
+                  const clase = f && f.type === 'file' ? 'col-mini'
+                    : f && ['money', 'number'].includes(f.type) ? 'num'
+                    : f && ['rut', 'date', 'time'].includes(f.type) ? 'cifra' : '';
                   return `<td data-col="${esc(c)}" data-label="${esc(etiquetaCol(c))}"${
-                    f && f.type === 'file' ? ' class="col-mini"' : ''}>${cellValue(f, r, c)}</td>`;
+                    clase ? ` class="${clase}"` : ''}>${cellValue(f, r, c)}</td>`;
                 }).join('')}
                 <td class="acciones" style="white-space:nowrap;text-align:right">
                   ${m.printable ? `<button class="btn secondary sm act-print" data-id="${r.id}" title="Imprimir">🖨️</button>` : ''}
@@ -1279,7 +1307,7 @@ function cellValue(f, row, col) {
     case 'boolean':
       return v ? '<span class="badge green">Sí</span>' : '<span class="badge red">No</span>';
     case 'date':
-      return fmtDate(v);
+      return esc(fechaCorta(v));
     case 'rut':
       return esc(rutFormatear(v));
     case 'persona':
@@ -1290,8 +1318,16 @@ function cellValue(f, row, col) {
       if (!v) return '';
       if (/\.(jpe?g|png|gif|webp)$/i.test(v)) return `<img class="thumb" src="/uploads/${esc(v)}" alt="" />`;
       return `<a href="/uploads/${esc(v)}" target="_blank" onclick="event.stopPropagation()">📎 archivo</a>`;
-    case 'select':
-      return v == null || v === '' ? '' : `<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`;
+    case 'select': {
+      if (v == null || v === '') return '';
+      // Lo normal se lee como texto; lo que se sale de lo normal, con
+      // distintivo. Ciento setenta y nueve veces "Activo" en verde no informa
+      // nada: lo que hay que ver es el que no lo está.
+      const esLoHabitual = f.default != null && String(v) === String(f.default);
+      return esLoHabitual
+        ? `<span class="valor-normal">${esc(selectLabel(f, v))}</span>`
+        : `<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`;
+    }
     default:
       return esc(v);
   }
@@ -1324,6 +1360,13 @@ function fechaCorta(iso) {
   const s = String(iso || '').slice(0, 10);
   const [y, m, d] = s.split('-');
   return y && m && d ? `${d}-${m}-${y}` : s;
+}
+
+/** "2026-08": el mes como se nombra, no como lo guarda el computador. */
+function mesLegible(aaaaMm) {
+  const [y, m] = String(aaaaMm || '').split('-');
+  const nombre = MESES[Number(m) - 1];
+  return nombre ? `${nombre.toLowerCase()} de ${y}` : String(aaaaMm || '');
 }
 
 /** El teléfono en formato internacional, para llamar o escribir por WhatsApp. */
@@ -1953,15 +1996,23 @@ function fieldHtml(f, row, isNew) {
       break;
     case 'boolean':
       return `${seccion}<div class="fld check${wide}"${condicionAttrs(f)}><input type="checkbox" id="chk_${f.name}" name="${f.name}" ${val ? 'checked' : ''} /><label for="chk_${f.name}">${esc(f.label)}</label>${help}</div>`;
-    case 'file':
+    case 'file': {
+      // El control del navegador dice "Choose File" en inglés y no se puede
+      // traducir: se esconde y se pone un botón propio que sí habla como el
+      // resto del sistema.
+      const esFoto = String(f.accept || '').startsWith('image');
       input = `
         <div class="filefld" id="ff_${f.name}">
           <input type="hidden" name="${f.name}" value="${esc(val)}" />
-          <input type="file" id="file_${f.name}" ${f.accept ? `accept="${esc(f.accept)}"` : ''} />
-          <span class="fname" id="fname_${f.name}">${val ? `<a href="/uploads/${esc(val)}" target="_blank">📎 ${esc(nombreArchivo(val))}</a>` : ''}</span>
+          <input type="file" id="file_${f.name}" class="oculto-de-verdad" ${f.accept ? `accept="${esc(f.accept)}"` : ''} />
+          <label class="btn secondary sm" for="file_${f.name}">${esFoto ? '📷 Elegir foto' : '📎 Elegir archivo'}</label>
+          <span class="fname" id="fname_${f.name}">${val
+            ? `<a href="/uploads/${esc(val)}" target="_blank">📎 ${esc(nombreArchivo(val))}</a>`
+            : '<span class="sin-archivo">Ningún archivo elegido</span>'}</span>
           ${val && /\.(jpe?g|png|gif|webp)$/i.test(val) ? `<img class="preview" src="/uploads/${esc(val)}" alt="" />` : ''}
         </div>`;
       break;
+    }
     case 'password':
       input = `<input type="password" name="${f.name}" value="" autocomplete="new-password" ${f.required && isNew ? 'required' : ''} />`;
       break;
@@ -1995,7 +2046,7 @@ function fieldHtml(f, row, isNew) {
       input = `<input type="number" step="any" name="${f.name}" value="${esc(val)}" ${f.required ? 'required' : ''} />`;
       break;
     case 'date':
-      input = `<input type="date" name="${f.name}" value="${esc(fmtDate(val))}" ${f.required ? 'required' : ''} />`;
+      input = `<input type="date" name="${f.name}" value="${esc(fechaISO(val))}" ${f.required ? 'required' : ''} />`;
       break;
     case 'time':
       input = `<input type="time" name="${f.name}" value="${esc(val)}" />`;
@@ -2783,7 +2834,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
       <div class="informe-hoja">
         <div class="print-only membrete">
           <img src="${IGLESIA.logo}" alt="" />
-          <div><b>${esc(IGLESIA.nombre)}</b><i>${esc(IGLESIA.lema)}</i></div>
+          <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}</div>
         </div>
         <h3 class="informe-tit">
           ${st.tipo === 'general' ? 'Informe general de asistencia'
@@ -2797,10 +2848,10 @@ async function renderInformeAsistencia(contenedor, precarga) {
             ? tabla('Su asistencia en cada cuerpo', conEtiqueta(d.porMiembroCuerpo, 'cuerpo'), 'Cuerpo / Grupo')
             : ''}
           ${tabla('Actividad por actividad', d.porActividad.map((x) => ({
-              ...x, etiqueta: `${fmtDate(x.fecha)} · ${x.actividad || ''}`,
+              ...x, etiqueta: `${fechaCorta(x.fecha)} · ${x.actividad || ''}`,
             })), 'Actividad')}
           ${tabla('Promedio por día', conEtiqueta(d.porDia.map((x) => ({
-              ...x, fecha: `${fmtDate(x.fecha)}${x.actividades > 1 ? ` (${x.actividades} actividades)` : ''}`,
+              ...x, fecha: `${fechaCorta(x.fecha)}${x.actividades > 1 ? ` (${x.actividades} actividades)` : ''}`,
             })), 'fecha'), 'Fecha')}
           <div class="card" style="margin-bottom:18px">
             <h3>Detalle de sus marcas</h3>
@@ -2810,7 +2861,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
               <tbody>
                 ${d.marcas.map((m) => `
                   <tr>
-                    <td>${fmtDate(m.fecha)}</td><td>${esc(m.cuerpo || '')}</td><td>${esc(m.actividad || '')}</td>
+                    <td>${fechaCorta(m.fecha)}</td><td>${esc(m.cuerpo || '')}</td><td>${esc(m.actividad || '')}</td>
                     <td><span class="badge ${m.estado === 'Presente' ? 'green' : m.estado === 'Ausente' ? 'red' : 'blue'}">${esc(m.estado)}</span></td>
                     <td>${esc(m.motivo || '')}</td><td>${esc(m.detalle || '')}</td>
                   </tr>`).join('')}
@@ -2821,10 +2872,10 @@ async function renderInformeAsistencia(contenedor, precarga) {
         : `
           ${tabla('Promedio por cuerpo', conEtiqueta(d.porCuerpo, 'cuerpo'), 'Cuerpo / Grupo')}
           ${tabla('Promedio por día', conEtiqueta(d.porDia.map((x) => ({
-              ...x, fecha: `${fmtDate(x.fecha)}${x.actividades > 1 ? ` (${x.actividades} actividades)` : ''}`,
+              ...x, fecha: `${fechaCorta(x.fecha)}${x.actividades > 1 ? ` (${x.actividades} actividades)` : ''}`,
             })), 'fecha'), 'Fecha')}
           ${tabla('Actividad por actividad', d.porActividad.map((x) => ({
-              ...x, etiqueta: `${fmtDate(x.fecha)} · ${x.actividad || ''}`,
+              ...x, etiqueta: `${fechaCorta(x.fecha)} · ${x.actividad || ''}`,
             })), 'Actividad')}
           ${tabla('Promedio por miembro', conEtiqueta(d.porMiembro, 'miembro'), 'Miembro', (f) => f.miembro_id)}
           ${motivos}`}
@@ -2939,7 +2990,7 @@ function printCertificado(row) {
     <div class="print-sheet cert-sheet">
       <div class="cert-inner">
         <img class="cert-logo" src="${IGLESIA.logo}" alt="" />
-        <div class="church">${esc(IGLESIA.nombre)}<br><span class="lema">${esc(IGLESIA.lema)}</span></div>
+        <div class="church">${esc(IGLESIA.nombre)}${IGLESIA.lema ? `<br><span class="lema">${esc(IGLESIA.lema)}</span>` : ''}</div>
         <div class="local">${esc(row.iglesia_id_label || '')}</div>
         <h1>Certificado de ${esc(row.tipo || '')}</h1>
         <div class="cert-no">N.º ${esc(row.numero || '')}</div>
@@ -2975,8 +3026,8 @@ function printCredencial(row) {
             <div class="nm">${esc(row.nombre_titular || '')}</div>
             <div><span class="lbl">Cargo:</span> ${esc(row.cargo || row.tipo || '')}</div>
             <div><span class="lbl">N.º:</span> ${esc(row.numero || '')}</div>
-            <div><span class="lbl">Emitida:</span> ${fmtDate(row.fecha_emision)}</div>
-            <div><span class="lbl">Vence:</span> ${fmtDate(row.fecha_vencimiento) || 'Indefinida'}</div>
+            <div><span class="lbl">Emitida:</span> ${fechaCorta(row.fecha_emision)}</div>
+            <div><span class="lbl">Vence:</span> ${fechaCorta(row.fecha_vencimiento) || 'Indefinida'}</div>
           </div>
         </div>
         <div class="cred-foot">
@@ -2995,7 +3046,7 @@ function printActa(m, row, esAsamblea) {
         <img src="${IGLESIA.logo}" alt="" />
         <div>
           <b>${esc(IGLESIA.nombre)}</b>
-          <i>${esc(IGLESIA.lema)}</i>
+          ${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}
         </div>
       </div>
       <h1>${esAsamblea ? 'Acta de Asamblea' : 'Acta de Reunión'} N.º ${esc(row.numero_acta || '')}</h1>
@@ -3027,7 +3078,7 @@ function printServicio(m, row) {
     <div class="print-sheet print-generic">
       <div class="membrete">
         <img src="${IGLESIA.logo}" alt="" />
-        <div><b>${esc(IGLESIA.nombre)}</b><i>${esc(IGLESIA.lema)}</i></div>
+        <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}</div>
       </div>
       <h1>Registro de Servicio</h1>
       <div class="sub">${esc(row.iglesia_id_label || '')} — ${fechaLarga(row.fecha)}</div>
@@ -3077,7 +3128,7 @@ function printGenerico(m, row) {
     <div class="print-sheet print-generic">
       <div class="membrete">
         <img src="${IGLESIA.logo}" alt="" />
-        <div><b>${esc(IGLESIA.nombre)}</b><i>${esc(IGLESIA.lema)}</i></div>
+        <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}</div>
       </div>
       <h1>${esc(m.labelSingular)}</h1>
       <div class="sub">Registro N.º ${row.id} — impreso el ${fechaLarga(new Date().toISOString())}</div>
@@ -4065,7 +4116,7 @@ async function viewAsistencia(precarga) {
     <div class="page-head">
       <div>
         <h2>📋 Asistencia</h2>
-        <p class="sub-iglesia">Registro e informes · ${esc(USER.iglesia_nombre || 'Todas las iglesias')}</p>
+        <p class="sub-iglesia">Actividades, listas e informes</p>
       </div>
       <div class="actions" id="asisAcciones"></div>
     </div>
@@ -4076,9 +4127,12 @@ async function viewAsistencia(precarga) {
     <div id="tabRegistrar" ${ASIS.tab === 'registrar' ? '' : 'hidden'}>
       <div class="card">
         <div class="toolbar asis-filtros" id="asisFiltros"></div>
-        <div id="asisAgenda"><div class="empty-state" style="padding:26px">Cargando…</div></div>
+        <!-- En pantalla ancha el mes y el día elegido van uno al lado del otro -->
+        <div class="asis-tablero">
+          <div id="asisAgenda"><div class="empty-state" style="padding:26px">Cargando…</div></div>
+          <div id="asisDelDia"></div>
+        </div>
       </div>
-      <div id="asisDelDia"></div>
       <div id="asisMarcar"></div>
     </div>
     <div id="tabInformes" ${ASIS.tab === 'informes' ? '' : 'hidden'}></div>`;
@@ -4375,7 +4429,7 @@ function pintarDelDia() {
     if (borrar) {
       borrar.addEventListener('click', async () => {
         const a = delDia.find((x) => x.id === Number(li.dataset.id));
-        if (!confirm(`¿Eliminar la actividad "${a.tipo_reunion}" del ${fmtDate(a.fecha)}?\n\n` +
+        if (!confirm(`¿Eliminar la actividad "${a.tipo_reunion}" del ${fechaCorta(a.fecha)}?\n\n` +
           `Se borrarán también sus ${a.marcados} marca(s) de asistencia. Esta acción no se puede deshacer.`)) return;
         try {
           await api('DELETE', `/asistencias/${a.id}`);
@@ -4423,7 +4477,7 @@ function abrirActividad(actividad) {
       <div class="modal-body">
         <div class="modal-fila">
           <div class="fld"><label>Fecha <span class="req">*</span></label>
-            <input type="date" id="acFecha" value="${esc(editando ? fmtDate(actividad.fecha) : ASIS.dia)}" /></div>
+            <input type="date" id="acFecha" value="${esc(editando ? fechaISO(actividad.fecha) : ASIS.dia)}" /></div>
           <div class="fld"><label>Hora</label>
             <input type="time" id="acHora" value="${esc(editando ? actividad.hora_inicio || '' : '')}" /></div>
         </div>
@@ -4785,7 +4839,7 @@ async function renderEstadoCuenta(cuentaId, contenedor) {
         ${e.ultimos.length ? `<ul class="mini-list mov-list">
           ${e.ultimos.map((m) => `
             <li onclick="location.hash='#/m/tesoreria/edit/${m.id}'">
-              <span>${fmtDate(m.fecha)} · ${esc(m.concepto)} <span class="mut">— ${esc(m.categoria || '')}</span></span>
+              <span>${fechaCorta(m.fecha)} · ${esc(m.concepto)} <span class="mut">— ${esc(m.categoria || '')}</span></span>
               <b class="${m.tipo === 'Egreso' ? 'monto-egreso' : 'monto-ingreso'}">${m.tipo === 'Egreso' ? '−' : '+'} ${fmtMoney(m.monto)}</b>
             </li>`).join('')}
         </ul>` : '<div class="empty-state" style="padding:26px">Esta cuenta todavía no tiene movimientos.</div>'}
@@ -4914,7 +4968,7 @@ async function renderDocumentos(panel, id, contenedor) {
               <div class="dd">
                 <b>${esc(d.nombre || '')}</b>
                 <span class="badge ${badgeClass(d.tipo)}">${esc(d.tipo || '')}</span>
-                <div class="dfe">${d.fecha ? fmtDate(d.fecha) : ''}${d.observaciones ? ' — ' + esc(d.observaciones) : ''}</div>
+                <div class="dfe">${d.fecha ? fechaCorta(d.fecha) : ''}${d.observaciones ? ' — ' + esc(d.observaciones) : ''}</div>
               </div>
               <div class="da">
                 ${d.archivo ? `<a class="btn sm secondary" href="/uploads/${esc(d.archivo)}" target="_blank">Ver</a>` : ''}
@@ -4956,7 +5010,7 @@ async function renderHistorial(panel, id, contenedor) {
               const editado = r.created_at && r.updated_at && r.created_at !== r.updated_at;
               return `
               <li class="${r.origen === 'Automático' ? 'auto' : 'manual'}">
-                <div class="hf">${fmtDate(r.fecha)}</div>
+                <div class="hf">${fechaCorta(r.fecha)}</div>
                 <div class="hc">
                   <span class="badge ${badgeClass(r.tipo)}">${esc(r.tipo)}</span>
                   <div class="hd">${esc(r.descripcion)}</div>
@@ -5024,7 +5078,7 @@ function abrirAnotacion(panel, id, alGuardar, registro) {
         ${editando && registro.origen === 'Automático'
           ? '<div class="aviso-auto">⚙️ Este registro lo generó el sistema al ocurrir el hecho. Se puede corregir su texto, y quedará marcado como editado.</div>'
           : ''}
-        <div class="fld"><label>Fecha</label><input type="date" id="anFecha" value="${esc(fmtDate(valor('fecha', new Date().toISOString().slice(0, 10))))}" /></div>
+        <div class="fld"><label>Fecha</label><input type="date" id="anFecha" value="${esc(fechaISO(valor('fecha', new Date().toISOString().slice(0, 10))))}" /></div>
         <div class="fld" style="margin-top:12px"><label>Tipo</label>
           <select id="anTipo">${tipos.map((t) => `<option value="${esc(t)}" ${t === valor('tipo', 'Anotación') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
         </div>
@@ -5118,7 +5172,7 @@ async function renderPanelesCuerpo(cuerpoId, contenedor) {
                 <b>${esc(d.periodo)}</b>
                 <span class="badge ${d.estado === 'Vigente' ? 'green' : ''}">${esc(d.estado)}</span>
               </div>
-              <div class="df">${fmtDate(d.fecha_inicio)}${d.fecha_termino ? ' — ' + fmtDate(d.fecha_termino) : ''}</div>
+              <div class="df">${fechaCorta(d.fecha_inicio)}${d.fecha_termino ? ' — ' + fechaCorta(d.fecha_termino) : ''}</div>
               <div class="dc">
                 ${cargo(d, 'oficial_supervisor_id', 'Oficial supervisor(a)')}
                 ${cargo(d, 'primer_jefe_id', 'Primer jefe/a')}

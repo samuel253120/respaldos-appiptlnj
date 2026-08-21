@@ -58,7 +58,7 @@ a:hover { text-decoration: underline; }
 /* ---------- Layout ---------- */
 .layout { display: flex; min-height: 100vh; }
 .sidebar {
-  width: 248px; background: var(--sidebar-bg); color: var(--sidebar-fg);
+  width: 236px; background: var(--sidebar-bg); color: var(--sidebar-fg);
   flex-shrink: 0; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto;
 }
 .sidebar .brand {
@@ -70,7 +70,7 @@ a:hover { text-decoration: underline; }
   background: #fff; border-radius: 50%; padding: 3px;
 }
 .sidebar .brand .txt { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
-.sidebar .brand .txt b { font-size: 12.5px; font-weight: 700; }
+.sidebar .brand .txt b { font-size: 13px; font-weight: 700; letter-spacing: .1px; }
 .sidebar .brand .txt i { font-size: 11.5px; font-style: normal; color: var(--marca-oro); }
 .side-group { margin-top: 14px; }
 .side-group .group-title {
@@ -88,7 +88,7 @@ a:hover { text-decoration: underline; }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar {
-  background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 24px;
+  background: var(--card); border-bottom: 1px solid var(--border); padding: 9px 22px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; top: 0; z-index: 20;
 }
 .iglesia-local {
@@ -101,10 +101,8 @@ a:hover { text-decoration: underline; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .page-head .sub-iglesia {
-  font-size: 13.5px; color: var(--marca-azul); font-weight: 600; margin-top: 2px;
-  display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--muted); font-weight: 500; margin-top: 1px;
 }
-.page-head .sub-iglesia::before { content: '⛪'; font-size: 13px; }
 .topbar .who { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .topbar .who b { color: var(--text); }
 .avatar {
@@ -126,28 +124,51 @@ a:hover { text-decoration: underline; }
 .btn.danger:hover { background: #b91c1c; }
 .btn.sm { padding: 5px 10px; font-size: 12.5px; }
 
-.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
-.page-head h2 { font-size: 21px; display: flex; align-items: center; gap: 10px; }
-.page-head .actions { display: flex; gap: 8px; }
+/* Los botones que van dentro de una fila de tabla: se notan al pasar por
+   encima, no antes. Un tacho rojo en cada fila es ruido, no información. */
+table.grid .btn.sm { background: transparent; border: 1px solid transparent; color: var(--muted); padding: 4px 7px; }
+table.grid tr:hover .btn.sm { border-color: var(--border); background: #fff; }
+table.grid .btn.sm:hover { color: var(--text); background: #fff; border-color: var(--border); }
+table.grid .btn.danger.sm:hover { background: #fee2e2; border-color: #fecaca; color: var(--danger); }
+/* En una pantalla táctil no existe "pasar por encima": ahí los botones de la
+   fila tienen que verse siempre, o nadie los encuentra. */
+@media (hover: none) {
+  table.grid .btn.sm { border-color: var(--border); background: #fff; color: var(--text); }
+}
+
+.page-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px 16px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.page-head h2 { font-size: 20px; display: flex; align-items: center; gap: 9px; letter-spacing: -0.2px; }
+.page-head .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); }
 .card .card-body { padding: 18px 20px; }
 
-.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 11px 14px; border-bottom: 1px solid var(--border); }
 .toolbar input[type="search"], .toolbar input[type="date"], .toolbar select {
-  padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px; background: #fff;
+  padding: 7px 11px; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px;
+  background: #fff; height: 34px;
 }
-.toolbar input[type="search"] { min-width: 220px; }
+/* El buscador crece; los filtros se quedan en su tamaño, aunque una opción
+   traiga el nombre completo de la iglesia */
+.toolbar input[type="search"] { flex: 1 1 200px; min-width: 160px; max-width: 320px; }
+.toolbar select { flex: 0 1 auto; max-width: 190px; }
 .toolbar .spacer { flex: 1; }
 .toolbar label.range { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 
 table.grid { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 table.grid th {
-  text-align: left; padding: 10px 14px; background: #f8fafc; color: var(--muted); font-size: 12px;
-  text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap;
+  text-align: left; padding: 8px 12px; background: #f8fafc; color: var(--muted); font-size: 11.5px;
+  text-transform: uppercase; letter-spacing: 0.6px; border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap;
 }
 table.grid th .arrow { font-size: 10px; }
-table.grid td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.grid td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+/* Lo que se lee como número —RUT, montos, fechas, edades— con cifras de
+   ancho fijo: así las columnas quedan derechas de arriba abajo */
+table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.grid td.cifra { font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.grid tr:hover td { background: #f8fafc; }
 table.grid tr { cursor: pointer; }
 .table-scroll { overflow-x: auto; }
@@ -166,6 +187,8 @@ table.grid th.col-mini { font-size: 15px; }
 .badge.red { background: #fee2e2; color: #991b1b; }
 .badge.yellow { background: #fef3c7; color: #92400e; }
 .badge.blue { background: #dbeafe; color: #1e40af; }
+/* El valor esperado de una lista: se lee, no se destaca */
+.valor-normal { color: var(--muted); }
 
 .pager { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; font-size: 13px; color: var(--muted); }
 .pager .pages { display: flex; gap: 6px; }
@@ -174,24 +197,29 @@ table.grid th.col-mini { font-size: 15px; }
 .pager button:disabled { opacity: 0.4; cursor: default; }
 
 /* ---------- Formularios ---------- */
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; padding: 20px; }
+/* Las columnas se acomodan al ancho que haya: tres en un computador, dos en
+   una pantalla mediana, una en el teléfono. Un RUT no necesita medio metro de
+   caja para caber. */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(288px, 1fr)); gap: 14px 18px; padding: 18px 20px; }
 .form-grid .full { grid-column: 1 / -1; }
 /* Un campo ancho (la tabla de permisos) no debe estirar su columna: que se
    deslice por dentro en vez de arrastrar de lado a toda la página. */
 .form-grid > * { min-width: 0; }
-.fld label { display: block; font-size: 12.5px; font-weight: 600; color: #475569; margin-bottom: 5px; }
+.fld label { display: block; font-size: 12.5px; font-weight: 600; color: #475569; margin-bottom: 4px; }
 .fld label .req { color: var(--danger); }
 .fld input, .fld select, .fld textarea {
-  width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px;
+  width: 100%; padding: 8px 11px; border: 1px solid var(--border); border-radius: 8px;
   font-size: 14px; background: #fff; font-family: inherit;
 }
 .fld input:focus, .fld select:focus, .fld textarea:focus { outline: 2px solid #bfdbfe; border-color: var(--accent); }
-.fld textarea { min-height: 96px; resize: vertical; }
-.fld .help { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+.fld textarea { min-height: 84px; resize: vertical; }
+.fld .help { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+/* Las fechas y los números no ocupan toda la columna: se leen mejor cortos */
+.fld input[type="date"], .fld input[type="time"], .fld input[type="number"] { max-width: 210px; }
 
 /* Secciones dentro de una ficha larga */
 .form-seccion {
-  display: flex; align-items: center; gap: 12px; margin: 10px 0 -4px;
+  display: flex; align-items: center; gap: 12px; margin: 12px 0 -2px;
   font-size: 12.5px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
   color: var(--marca-azul);
 }
@@ -247,13 +275,14 @@ table.grid th.col-mini { font-size: 15px; }
   table.grid-lista, table.grid-lista tbody, table.grid-lista tr, table.grid-lista td { display: block; width: auto; }
   table.grid-lista thead { display: none; }
   table.grid-lista tr {
-    border: 1px solid var(--border); border-radius: 12px; margin: 10px; padding: 10px 14px;
+    position: relative;
+    border: 1px solid var(--border); border-radius: 12px; margin: 8px 10px; padding: 9px 12px;
     background: var(--card); box-shadow: var(--shadow);
   }
   table.grid-lista tr:hover td { background: transparent; }
   table.grid-lista td {
-    border: 0; padding: 5px 0; display: flex; gap: 14px; align-items: baseline;
-    justify-content: space-between; text-align: right; font-size: 14px;
+    border: 0; padding: 3px 0; display: flex; gap: 14px; align-items: baseline;
+    justify-content: space-between; text-align: right; font-size: 13.5px; line-height: 1.35;
   }
   table.grid-lista td::before {
     content: attr(data-label); flex: none; text-align: left;
@@ -269,7 +298,7 @@ table.grid th.col-mini { font-size: 15px; }
   table.grid-lista td[data-col="tratamiento"]::before { display: none; }
   /* El nombre encabeza la tarjeta */
   table.grid-lista td[data-col="nombres"], table.grid-lista td[data-col="nombre"],
-  table.grid-lista td[data-col="apellidos"] { font-size: 16px; font-weight: 700; }
+  table.grid-lista td[data-col="apellidos"] { font-size: 15.5px; font-weight: 700; line-height: 1.22; }
   table.grid-lista td[data-col="nombres"]::before, table.grid-lista td[data-col="nombre"]::before,
   table.grid-lista td[data-col="apellidos"]::before { display: none; }
   table.grid-lista td[data-col="nombres"], table.grid-lista td[data-col="nombre"] { padding-bottom: 0; }
@@ -279,8 +308,18 @@ table.grid th.col-mini { font-size: 15px; }
   /* La foto, arriba de todo */
   table.grid-lista td.col-mini { width: auto; justify-content: flex-start; padding: 2px 0 6px; }
   table.grid-lista td.col-mini::before { display: none; }
-  table.grid-lista td.acciones { justify-content: flex-end; padding-top: 10px; }
+  /* Imprimir y borrar van en la esquina de la tarjeta, no en una fila propia:
+     una fila entera para dos botones chicos es media pantalla desperdiciada
+     cuando hay que recorrer ciento setenta y nueve fichas. */
+  table.grid-lista td.acciones {
+    position: absolute; top: 7px; right: 9px; padding: 0; gap: 4px; justify-content: flex-end;
+  }
   table.grid-lista td.acciones::before { display: none; }
+  /* Y el nombre no se mete por debajo de ellos */
+  table.grid-lista td[data-col="tratamiento"], table.grid-lista td[data-col="nombres"],
+  table.grid-lista td[data-col="nombre"], table.grid-lista td[data-col="apellidos"] { padding-right: 78px; }
+  /* Y se ven siempre: en el teléfono no hay ratón que pasar por encima */
+  table.grid-lista .btn.sm { border-color: var(--border); background: #fff; color: var(--text); }
   table.grid-lista .thumb { width: 46px; height: 46px; }
 }
 
@@ -382,32 +421,62 @@ table.grid th.col-mini { font-size: 15px; }
 /* file */
 .filefld { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .filefld img.preview { width: 54px; height: 54px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
-.filefld .fname { font-size: 12.5px; color: var(--muted); word-break: break-all; }
+.filefld .fname { font-size: 12.5px; color: var(--muted); word-break: break-all; flex: 1 1 120px; min-width: 0; }
+.filefld .sin-archivo { color: #94a3b8; }
+/* El control del navegador se esconde, pero sigue estando: lo abre la etiqueta */
+.fld input.oculto-de-verdad, .oculto-de-verdad {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.fld input.oculto-de-verdad { width: 1px; }
+.filefld label.btn { flex: none; }
 
-/* ---------- Dashboard ---------- */
-.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 22px; }
+/* ---------- Panel de control ---------- */
+/* Los conteos: el número manda, el ícono acompaña. Caben todos en una fila
+   sin que ninguno quede solo en la siguiente. */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(146px, 1fr)); gap: 10px; margin-bottom: 14px; }
 .stat {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 16px 18px; box-shadow: var(--shadow); cursor: pointer; transition: transform .12s;
+  padding: 11px 14px; box-shadow: var(--shadow); cursor: pointer; transition: border-color .12s, box-shadow .12s;
+  display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 8px;
 }
-.stat:hover { transform: translateY(-2px); }
-.stat .ic { font-size: 24px; }
-.stat .num { font-size: 26px; font-weight: 800; margin: 4px 0 2px; }
-.stat .lbl { font-size: 12.5px; color: var(--muted); }
-.fin-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 22px; }
-.fin { border-radius: var(--radius); padding: 16px 18px; color: #fff; box-shadow: var(--shadow); }
-.fin.green { background: linear-gradient(135deg, #16a34a, #15803d); }
-.fin.red { background: linear-gradient(135deg, #dc2626, #b91c1c); }
-.fin.blue { background: linear-gradient(135deg, #2563eb, #1e40af); }
-.fin.slate { background: linear-gradient(135deg, #475569, #334155); }
-.fin .lbl { font-size: 12px; opacity: 0.85; }
-.fin .num { font-size: 22px; font-weight: 800; margin-top: 4px; }
-.dash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.dash-cols h3 { font-size: 15px; padding: 14px 18px 0; }
+.stat:hover { border-color: #c7d2e8; box-shadow: 0 2px 8px rgba(22,38,92,.10); }
+.stat .ic { font-size: 17px; grid-row: 1 / span 2; grid-column: 2; opacity: .75; }
+.stat .num { font-size: 23px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.stat .lbl { font-size: 12px; color: var(--muted); grid-column: 1; line-height: 1.3; }
+
+/* El dinero: el color dice qué es, sin pintar el bloque entero. Un tablero no
+   necesita cuatro cuadrados de color para decir cuatro cifras. */
+.fin-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.fin {
+  border-radius: var(--radius); padding: 11px 14px; background: var(--card);
+  border: 1px solid var(--border); border-left: 3px solid var(--muted); box-shadow: var(--shadow);
+}
+.fin.green { border-left-color: var(--success); }
+.fin.red { border-left-color: var(--danger); }
+.fin.blue { border-left-color: var(--accent); }
+.fin.slate { border-left-color: #64748b; }
+.fin .lbl { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.fin .num { font-size: 21px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; color: var(--text); }
+.fin.green .num { color: #15803d; }
+.fin.red .num { color: #b91c1c; }
+.fin.blue .num { color: var(--accent-dark); }
+.dash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.dash-cols > * { min-width: 0; }
+.dash-cols h3 { font-size: 14.5px; padding: 13px 16px 0; }
+/* Las tres tarjetas se acomodan solas en dos columnas: la que termina antes
+   deja lugar a la siguiente, en vez de dejar media pantalla en blanco. */
 .mini-list { list-style: none; padding: 8px 6px; }
-.mini-list li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; font-size: 13px; border-radius: 8px; }
+/* Si no cabe en una línea, el dato de la derecha baja a la siguiente: nunca
+   se estira la columna ni aparece una barra para desplazarse de lado. */
+.mini-list li {
+  display: flex; justify-content: space-between; gap: 4px 10px; padding: 8px 12px;
+  font-size: 13px; border-radius: 8px; flex-wrap: wrap;
+}
 .mini-list li:hover { background: #f8fafc; }
-.mini-list .mut { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.mini-list .mut { color: var(--muted); font-size: 12px; }
+.mini-list li > .mut { white-space: nowrap; }
+.mini-list li > span { min-width: 0; }
 
 /* resumen tesorería en el listado */
 .treasury-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
@@ -511,11 +580,12 @@ table.grid th.col-mini { font-size: 15px; }
   .iglesia-local { padding: 5px 10px 5px 8px; }
   .iglesia-local .nm { max-width: 42vw; font-size: 12.5px; }
   .page-head h2 { font-size: 18px; }
-  .stats { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
-  .stat { padding: 12px 14px; }
-  .stat .num { font-size: 22px; }
-  .fin-cards, .treasury-summary { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
-  .fin { padding: 12px 14px; }
+  .stats { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { padding: 10px 12px; }
+  .stat .num { font-size: 20px; }
+  .stat .ic { font-size: 15px; }
+  .fin-cards, .treasury-summary { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .fin { padding: 10px 12px; }
   .fin .num { font-size: 18px; }
   .toolbar { padding: 10px 12px; gap: 8px; }
   .toolbar input[type="search"] { min-width: 0; flex: 1 1 100%; }
@@ -523,7 +593,9 @@ table.grid th.col-mini { font-size: 15px; }
      estiraba la barra fuera de la pantalla: se le pone freno. */
   .toolbar select, .toolbar label.range { flex: 1 1 45%; min-width: 0; max-width: 100%; }
   .toolbar label.range input { flex: 1; min-width: 0; }
-  table.grid td, table.grid th { padding: 9px 10px; }
+  /* La tabla que sigue siendo tabla, con celdas más cómodas al tacto. La que
+     se dibuja como tarjetas manda sobre su propio espacio, más arriba. */
+  table.grid:not(.grid-lista) td, table.grid:not(.grid-lista) th { padding: 9px 10px; }
   .btn { padding: 10px 16px; }                                /* botones cómodos al tacto */
   .pager { flex-wrap: wrap; gap: 8px; justify-content: center; }
   .form-foot { padding: 12px 14px; }
@@ -718,27 +790,29 @@ ul.historial li .ha .ico:hover { background: #e2e8f0; }
 .modal-nota a { color: var(--marca-azul); }
 
 /* Próximos cumpleaños en el panel de control */
-.card.cumples { margin-bottom: 18px; }
-ul.cumple-list { list-style: none; padding: 4px 0; margin: 0; }
+.card.cumples { margin-bottom: 0; }
+ul.cumple-list { list-style: none; padding: 2px 0; margin: 0; }
 ul.cumple-list li {
-  display: flex; align-items: center; gap: 13px;
-  padding: 11px 18px; border-bottom: 1px solid var(--border); cursor: pointer;
+  display: flex; align-items: center; gap: 11px;
+  padding: 7px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
 }
 ul.cumple-list li:last-child { border-bottom: none; }
 ul.cumple-list li:hover { background: #f8fafc; }
 ul.cumple-list li.hoy { background: #fffdf5; border-left: 3px solid var(--marca-oro); }
 ul.cumple-list .av {
-  flex: 0 0 42px; width: 42px; height: 42px; border-radius: 50%; overflow: hidden;
+  flex: 0 0 32px; width: 32px; height: 32px; border-radius: 50%; overflow: hidden;
   background: var(--marca-azul); color: #fff; display: flex; align-items: center;
-  justify-content: center; font-weight: 700; font-size: 16px;
+  justify-content: center; font-weight: 700; font-size: 13px;
 }
 ul.cumple-list .av img { width: 100%; height: 100%; object-fit: cover; }
 ul.cumple-list .dt { flex: 1; min-width: 0; }
-ul.cumple-list .dt b { display: block; font-size: 14.5px; color: var(--marca-azul); }
-ul.cumple-list .dt .mut { font-size: 12.5px; color: var(--muted); }
+ul.cumple-list .dt b { display: block; font-size: 13.5px; color: var(--marca-azul); line-height: 1.3; }
+ul.cumple-list .dt .mut { font-size: 12px; color: var(--muted); }
 @media (max-width: 700px) {
-  ul.cumple-list li { gap: 10px; padding: 10px 14px; }
-  ul.cumple-list .av { flex-basis: 36px; width: 36px; height: 36px; font-size: 14px; }
+  ul.cumple-list li { gap: 9px; padding: 7px 12px; flex-wrap: wrap; }
+  ul.cumple-list .av { flex-basis: 30px; width: 30px; height: 30px; font-size: 12.5px; }
+  ul.cumple-list .dt b { font-size: 13px; }
+  ul.cumple-list .badge { font-size: 10.5px; }
 }
 
 /* Saldos por cuenta en el listado de Tesorería */
@@ -800,13 +874,14 @@ ul.mov-list .monto-egreso { color: var(--danger); font-variant-numeric: tabular-
    un brazo de distancia. */
 
 /* Pestañas Registrar / Informes */
-.tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tabs { display: inline-flex; gap: 4px; margin-bottom: 14px; background: #e8edf7; border-radius: 10px; padding: 3px; }
 .tabs button {
-  flex: 1 1 0; border: 1px solid var(--border); background: #fff; color: #475569;
-  padding: 12px 16px; border-radius: 10px; font-size: 14px; font-weight: 700;
-  font-family: inherit; cursor: pointer; min-height: 46px;
+  border: none; background: transparent; color: #475569;
+  padding: 7px 18px; border-radius: 8px; font-size: 13.5px; font-weight: 700;
+  font-family: inherit; cursor: pointer; min-height: 34px;
 }
-.tabs button.on { background: var(--marca-azul); border-color: var(--marca-azul); color: #fff; }
+.tabs button:hover { color: var(--marca-azul); }
+.tabs button.on { background: #fff; color: var(--marca-azul); box-shadow: 0 1px 2px rgba(15,23,42,.12); }
 
 .asis-filtros select { flex: 1 1 160px; min-width: 0; }
 .vista-toggle { display: flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
@@ -817,20 +892,32 @@ ul.mov-list .monto-egreso { color: var(--danger); font-variant-numeric: tabular-
 .vista-toggle button.on { background: var(--marca-azul); color: #fff; }
 
 /* Calendario del mes */
-.cal { padding: 6px 14px 14px; }
-.cal-cab { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 10px 0 14px; }
-.cal-cab b { font-size: 15.5px; color: var(--marca-azul); min-width: 160px; text-align: center; }
+.cal { padding: 6px 14px 14px; max-width: 560px; }
+/* En pantalla ancha, el mes a la izquierda y el día elegido a su lado: se ve
+   el calendario y la lista de una vez, sin desplazarse. */
+@media (min-width: 1100px) {
+  .asis-tablero {
+    display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr);
+    gap: 0; align-items: stretch;
+  }
+  .asis-tablero .cal { max-width: none; border-right: 1px solid var(--border); }
+  .asis-tablero #asisDelDia .card {
+    margin-top: 0 !important; border: 0; box-shadow: none; border-radius: 0; height: 100%;
+  }
+}
+.cal-cab { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 8px 0 10px; }
+.cal-cab b { font-size: 15px; color: var(--marca-azul); min-width: 150px; text-align: center; }
 .cal-cab button {
-  border: 1px solid var(--border); background: #fff; cursor: pointer; width: 40px; height: 40px;
-  border-radius: 10px; font-size: 20px; line-height: 1; color: var(--marca-azul); font-family: inherit;
+  border: 1px solid var(--border); background: #fff; cursor: pointer; width: 34px; height: 34px;
+  border-radius: 9px; font-size: 18px; line-height: 1; color: var(--marca-azul); font-family: inherit;
 }
 .cal-cab button:hover { background: #f1f5f9; }
 .cal-grilla { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .cal-dow { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); padding: 4px 0 6px; letter-spacing: 0.3px; }
-.cal-vacio { height: 44px; }
+.cal-vacio { height: 38px; }
 .cal-dia {
-  position: relative; height: 44px; border: 1px solid transparent; background: transparent;
-  border-radius: 10px; cursor: pointer; font-size: 14px; color: #334155; font-family: inherit;
+  position: relative; height: 38px; border: 1px solid transparent; background: transparent;
+  border-radius: 9px; cursor: pointer; font-size: 13.5px; color: #334155; font-family: inherit;
   display: flex; align-items: center; justify-content: center;
 }
 .cal-dia:hover { background: #f1f5f9; }

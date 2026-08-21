@@ -727,6 +727,46 @@ function tiposDeServicio() {
 
 
 /**
+ * El nombre oficial de la institución es «Iglesia Pentecostal Triunfante La
+ * Nueva Jerusalén», todo junto: «La Nueva Jerusalén» no es un lema, es parte
+ * del nombre. Antes venían separados, con el segundo puesto como lema.
+ *
+ * Solo se cambia lo que quedó de aquella separación: si alguien ya escribió
+ * otro nombre o su propio lema, se respeta.
+ */
+function nombreOficialDeLaIglesia() {
+  if (yaAplicada('nombre_oficial_iglesia')) return;
+  const NOMBRE = 'Iglesia Pentecostal Triunfante La Nueva Jerusalén';
+  const ANTES = 'Iglesia Pentecostal Triunfante';
+  const LEMA_ANTES = '«La Nueva Jerusalén»';
+
+  const valor = (clave) => {
+    const fila = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(clave);
+    return fila ? fila.valor : null;
+  };
+  const guardar = (clave, nuevo) =>
+    db.prepare(
+      `INSERT INTO configuracion (clave, valor) VALUES (?, ?)
+       ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = datetime('now','localtime')`
+    ).run(clave, nuevo);
+
+  marcarAplicada('nombre_oficial_iglesia');
+
+  const nombre = valor('iglesia_nombre');
+  const lema = valor('iglesia_lema');
+  let cambios = 0;
+  if (nombre === null || nombre.trim() === '' || nombre.trim() === ANTES) {
+    guardar('iglesia_nombre', NOMBRE);
+    cambios++;
+  }
+  if (lema !== null && lema.trim() === LEMA_ANTES) {
+    guardar('iglesia_lema', '');
+    cambios++;
+  }
+  if (cambios) console.log(`🔁 identidad: el nombre oficial quedó como "${NOMBRE}".`);
+}
+
+/**
  * Las cuentas que ya existían no saben de dónde salió su contraseña. Se
  * marcan como elegidas por su dueño —que es lo más probable: llevan tiempo
  * usándose— para no obligar a nadie a cambiarla de golpe. La única excepción
@@ -784,6 +824,7 @@ function ejecutarMigraciones() {
     ['formas de ingreso', formasDeIngreso],
     ['tipos de servicio', tiposDeServicio],
     ['origen de las contraseñas', origenDeLasContrasenas],
+    ['nombre oficial de la iglesia', nombreOficialDeLaIglesia],
   ];
 
   for (const [nombre, paso] of pasos) {

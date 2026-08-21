@@ -1,4 +1,4 @@
-# Sistema de Gestión — Iglesia Pentecostal Triunfante «La Nueva Jerusalén»
+# Sistema de Gestión — Iglesia Pentecostal Triunfante La Nueva Jerusalén
 
 <img src="public/img/logo-128.png" alt="Emblema de la iglesia" width="110" align="right" />
 

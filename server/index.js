@@ -159,6 +159,11 @@ app.get('/api/meta', authRequired, (req, res) => {
     modules: mods,
     roles: ROLES,
     permisosCatalogo,
+    // La identidad de la institución: el nombre y el lema que se configuran
+    institucion: {
+      nombre: ajustes.obtener('iglesia_nombre') || '',
+      lema: ajustes.obtener('iglesia_lema') || '',
+    },
     // Ajustes que la interfaz necesita para trabajar (no son públicos)
     ajustes: {
       imagen_lado_maximo: Math.min(4000, Math.max(600, Number(ajustes.obtener('imagen_lado_maximo')) || 1600)),

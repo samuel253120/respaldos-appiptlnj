@@ -44,8 +44,15 @@ const OPCIONES = [
   {
     grupo: 'Identidad',
     items: [
-      { clave: 'iglesia_nombre', label: 'Nombre de la institución', tipo: 'text', defecto: 'Iglesia Pentecostal Triunfante', publica: true },
-      { clave: 'iglesia_lema', label: 'Lema', tipo: 'text', defecto: '«La Nueva Jerusalén»', publica: true },
+      {
+        clave: 'iglesia_nombre', label: 'Nombre de la institución', tipo: 'text', publica: true,
+        defecto: 'Iglesia Pentecostal Triunfante La Nueva Jerusalén',
+        ayuda: 'El nombre oficial, tal como debe salir en la pantalla de ingreso, en los certificados y en las credenciales.',
+      },
+      {
+        clave: 'iglesia_lema', label: 'Lema', tipo: 'text', defecto: '', publica: true,
+        ayuda: 'Va bajo el nombre. Si se deja en blanco, no aparece en ninguna parte.',
+      },
     ],
   },
   {
