@@ -87,6 +87,25 @@ Límite: 5.000 filas por archivo (divida el archivo si tiene más). La importaci
 
 **Si el sistema de origen no exporta CSV**, casi siempre se puede: copiar la tabla en pantalla y pegarla en Excel o Google Sheets, y desde ahí *Guardar como CSV*.
 
+### Traer los datos completos del sistema anterior 🚚
+
+Para el traspaso desde el sistema que la iglesia usaba antes hay una importación aparte, en `server/importacion/`, que no pasa por CSV: lee la exportación completa y la traduce módulo por módulo, en el orden en que se pueden escribir sin romper vínculos.
+
+Cómo se corre —el ensayo hace todo el trabajo y lo deshace al final, así se ven los conteos sin tocar nada—:
+
+```bash
+node server/importacion/correr.js --prueba     # ensayo
+node server/importacion/correr.js              # de verdad
+node server/importacion/informe.js             # la verificación final
+```
+
+Reglas que valen para todos los módulos:
+
+- **Todo o nada.** Cada módulo se importa dentro de una transacción: si algo no cuadra —un dato obligatorio vacío, una referencia que no resuelve, un código que no se sabe traducir—, se detiene y no deja nada a medias. Prefiere parar y preguntar antes que guardar un valor que no corresponde.
+- **Idempotente.** Cada fila del origen queda anotada en una tabla de equivalencias con su id de allá y su id de acá. Correr la importación dos veces no duplica nada: la segunda vez actualiza.
+- **Nada se inventa.** Un RUT con el dígito cambiado no se «corrige» —se conserva y queda anotado en el historial de esa persona—, y un archivo que no llegó no deja la ficha apuntando al vacío: su ruta espera en la lista de pendientes.
+- **Se informa lo que no se pudo traer.** El informe final cuenta las dos bases módulo por módulo, revisa las relaciones y deja por escrito qué quedó fuera y por qué.
+
 ## Usuarios, roles y alcance por iglesia
 
 Roles disponibles (editables en `server/permissions.js`):
