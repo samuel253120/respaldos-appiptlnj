@@ -38,6 +38,14 @@ const MODULOS = [
   ['tesoreria', require('./m04-tesoreria')],
   ['asistencia', require('./m05-asistencia')],
   ['servicios', require('./m06-servicios')],
+  ['usuarios', require('./m07-usuarios')],
+  ['bitacora', require('./m09-bitacora')],
+  ['actas', require('./m11-actas')],
+  ['documentos', require('./m12-documentos')],
+  // La segunda pasada enlaza los matrimonios; el pastor va después, para que
+  // su cónyuge quede enlazada de una vez
+  ['segunda-pasada', require('./m10-segunda-pasada')],
+  ['pastores', require('./m08-pastor')],
 ];
 
 function main() {
@@ -54,6 +62,12 @@ function main() {
   console.log(`   origen: ${path.basename(archivo)} · lote ${lote}\n`);
 
   const { db } = require('../db');
+  // Lo mismo que hace el sistema al arrancar: si la base está recién creada,
+  // deja la iglesia, el administrador y las cuentas de tesorería en su lugar.
+  // Así la importación se puede correr sobre una base nueva sin levantar el
+  // servidor primero.
+  require('../migraciones').ejecutarMigraciones();
+  require('../seed').ensureSeed();
   const equivalencias = require('./equivalencias');
   const informe = [];
 
