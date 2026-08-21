@@ -358,6 +358,9 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 // ---------- Importación masiva desde archivos ----------
 app.use('/api/importar', importarRouter);
 
+// ---------- Traspaso desde el sistema anterior ----------
+app.use('/api/importacion', require('./importacion/web').router);
+
 // ---------- CRUD genérico de todos los módulos ----------
 app.use('/api', buildRouter());
 

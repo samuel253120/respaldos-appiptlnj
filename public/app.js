@@ -3351,7 +3351,11 @@ async function viewConfiguracion() {
         <div class="toolbar"><b>${esc(g.grupo)}</b></div>
         <div class="form-grid">${g.items.map(campo).join('')}</div>
       </div>`).join('')}
-    <div id="cfgEstado"></div>`;
+    <div id="cfgEstado"></div>
+    <div id="cfgTraspaso"></div>`;
+
+  // El traspaso desde el sistema anterior, al pie de la configuración
+  renderTraspaso(document.getElementById('cfgTraspaso'));
 
   document.getElementById('cfgGuardar').addEventListener('click', async () => {
     const cambios = {};
@@ -3366,8 +3370,224 @@ async function viewConfiguracion() {
       document.getElementById('cfgEstado').innerHTML = mantenimiento
         ? `<div class="resultado warn"><b>🛠️ El sistema quedó en mantenimiento.</b> Solo los administradores pueden ingresar. Desactive esta opción para volver a la normalidad.</div>`
         : '';
+      // El traspaso depende del modo mantenimiento: al cambiarlo, su panel se
+      // pinta de nuevo para que el botón de importar quede como corresponde
+      renderTraspaso(document.getElementById('cfgTraspaso'));
     } catch (e) {
       toast(e.message, true);
+    }
+  });
+}
+
+/* =====================================================================
+ * Traspaso desde el sistema anterior
+ *
+ * La importación se puede correr desde la consola del servidor, pero quien
+ * tiene que mirar los conteos y decir "sí, esos son nuestros datos" es la
+ * iglesia. Esta pantalla pone lo mismo al alcance de la mano, en cuatro
+ * pasos y en el orden en que hay que hacerlos:
+ *
+ *   1. guardar un respaldo de lo que hay hoy;
+ *   2. el ensayo, que hace todo el trabajo y lo deshace al final;
+ *   3. la importación de verdad, que exige el modo mantenimiento;
+ *   4. el informe, que compara las dos bases y revisa las relaciones.
+ * ===================================================================== */
+
+async function renderTraspaso(contenedor, mostrarDespues) {
+  let estado;
+  try {
+    estado = await api('GET', '/importacion/estado');
+  } catch (e) {
+    contenedor.innerHTML = ''; // sin permiso o sin el módulo: no se muestra
+    return;
+  }
+
+  const filas = [
+    ['miembros', 'Miembros'], ['cuerpos', 'Cuerpos y grupos'], ['actividades', 'Actividades'],
+    ['marcas', 'Marcas de asistencia'], ['servicios', 'Servicios'], ['movimientos', 'Movimientos de tesorería'],
+    ['anotaciones', 'Anotaciones de bitácora'], ['documentos', 'Documentos'], ['usuarios', 'Usuarios'],
+  ];
+
+  const sinOrigen = !estado.origen;
+  const yaImportado = estado.ya_importado > 0;
+
+  contenedor.innerHTML = `
+    <div class="card" style="margin-bottom:18px">
+      <div class="toolbar">
+        <b>🚚 Traspaso desde el sistema anterior</b>
+        <span class="spacer"></span>
+        ${yaImportado ? `<span class="badge blue">Ya se importó una vez</span>` : ''}
+      </div>
+
+      ${sinOrigen ? `
+        <div class="card-body">
+          <p style="color:var(--muted);margin:0">
+            No encuentro el archivo con los datos del sistema anterior
+            (<code>importacion/origen-v10.json</code>). Sin él no hay nada que traspasar.
+          </p>
+        </div>` : `
+        <div class="card-body" style="padding-bottom:6px">
+          <p style="margin:0 0 12px;color:var(--muted);font-size:13.5px">
+            Archivo <b>${esc(estado.origen.archivo)}</b> · volcado del ${esc(String(estado.origen.lote).slice(0, 10))}.
+            La importación se puede repetir sin miedo: cada registro se reconoce y se actualiza, no se duplica.
+          </p>
+          <div class="table-scroll">
+            <table class="grid">
+              <thead><tr><th>Qué</th><th style="text-align:right">Archivo</th><th style="text-align:right">Hoy</th></tr></thead>
+              <tbody>
+                ${filas.map(([clave, etiqueta]) => `
+                  <tr>
+                    <td>${esc(etiqueta)}</td>
+                    <td style="text-align:right;font-variant-numeric:tabular-nums">${estado.origen.trae[clave]}</td>
+                    <td style="text-align:right;font-variant-numeric:tabular-nums">${estado.hoy[clave]}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="traspaso-pasos">
+          <div class="tp">
+            <b>1 · Guardar lo que hay</b>
+            <span>Un respaldo de la base completa, en su computador, por si algo sale mal.</span>
+            <button class="btn secondary sm" id="tpRespaldo">💾 Descargar respaldo</button>
+          </div>
+          <div class="tp">
+            <b>2 · Ensayo</b>
+            <span>Hace todo el trabajo y lo deshace al final. Sirve para ver los conteos sin tocar nada.</span>
+            <button class="btn secondary sm" id="tpEnsayo">🧪 Correr el ensayo</button>
+          </div>
+          <div class="tp">
+            <b>3 · Importar de verdad</b>
+            <span>
+              ${estado.mantenimiento
+                ? 'El sistema está en mantenimiento: se puede importar.'
+                : 'Primero active el modo mantenimiento, arriba en esta misma pantalla.'}
+            </span>
+            <button class="btn sm" id="tpImportar" ${estado.mantenimiento && estado.ultimo_ensayo ? '' : 'disabled'}>📥 Importar</button>
+          </div>
+          <div class="tp">
+            <b>4 · Verificar</b>
+            <span>Compara las dos bases módulo por módulo y revisa que las relaciones quedaran intactas.</span>
+            <button class="btn secondary sm" id="tpInforme">📋 Ver el informe</button>
+          </div>
+        </div>
+
+        <div id="tpSalida"></div>`}
+    </div>`;
+
+  if (sinOrigen) return;
+
+  const salida = document.getElementById('tpSalida');
+  const pintar = (titulo, lineas, clase) => {
+    salida.innerHTML = `
+      <div class="consola ${clase || ''}">
+        <div class="consola-cab">
+          <b>${esc(titulo)}</b>
+          <button class="btn secondary sm" id="tpCerrar">Cerrar</button>
+        </div>
+        <pre>${esc(lineas.join('\n'))}</pre>
+      </div>`;
+    document.getElementById('tpCerrar').addEventListener('click', () => { salida.innerHTML = ''; });
+    salida.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  const correr = async (boton, prueba) => {
+    const texto = boton.textContent;
+    boton.disabled = true;
+    boton.textContent = prueba ? 'Ensayando…' : 'Importando…';
+    salida.innerHTML = `<div class="consola"><pre>Trabajando… no cierre esta página.</pre></div>`;
+    try {
+      const r = await api('POST', '/importacion/correr', { prueba, ruts: 'conservar' });
+      pintar(
+        `${prueba ? '🧪 Ensayo' : '📥 Importación'} · ${r.segundos} segundos`,
+        r.lineas,
+        r.error ? 'mal' : 'bien'
+      );
+      if (!r.error) toast(prueba ? 'El ensayo terminó bien' : 'Importación terminada');
+      else toast('La importación se detuvo: revise el detalle', true);
+      if (!prueba && !r.error) {
+        // Los conteos de arriba cambiaron, pero lo que acaba de pasar se queda
+        // en pantalla: es lo que hay que leer antes de seguir.
+        renderTraspaso(contenedor, {
+          titulo: `📥 Importación · ${r.segundos} segundos`,
+          lineas: r.lineas,
+          clase: 'bien',
+        });
+      }
+    } catch (e) {
+      pintar('No se pudo correr', [e.message], 'mal');
+      toast(e.message, true);
+    } finally {
+      boton.disabled = false;
+      boton.textContent = texto;
+    }
+  };
+
+  if (mostrarDespues) pintar(mostrarDespues.titulo, mostrarDespues.lineas, mostrarDespues.clase);
+
+  document.getElementById('tpEnsayo').addEventListener('click', (e) => correr(e.currentTarget, true));
+
+  document.getElementById('tpImportar').addEventListener('click', (e) => {
+    if (!confirm(
+      '¿Importar los datos del sistema anterior?\n\n' +
+      'Se puede repetir sin duplicar nada, pero conviene tener el respaldo guardado antes.'
+    )) return;
+    correr(e.currentTarget, false);
+  });
+
+  document.getElementById('tpInforme').addEventListener('click', async (e) => {
+    const boton = e.currentTarget;
+    boton.disabled = true;
+    try {
+      const r = await api('GET', '/importacion/informe');
+      pintar('📋 Informe de la importación', r.texto.split('\n'), r.todo_cuadra ? 'bien' : 'mal');
+
+      // Para guardarlo: el texto ya está acá, no hace falta pedirlo de nuevo
+      const guardar = document.createElement('button');
+      guardar.className = 'btn secondary sm';
+      guardar.textContent = '⬇️ Guardarlo';
+      guardar.addEventListener('click', () => {
+        const url = URL.createObjectURL(new Blob([r.texto], { type: 'text/plain;charset=utf-8' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `informe-importacion-${HOY()}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+      });
+      salida.querySelector('.consola-cab').appendChild(guardar);
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  document.getElementById('tpRespaldo').addEventListener('click', async (e) => {
+    const boton = e.currentTarget;
+    boton.disabled = true;
+    boton.textContent = 'Preparando…';
+    try {
+      const r = await fetch('/api/importacion/respaldo', { headers: { Authorization: 'Bearer ' + TOKEN } });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'No se pudo preparar el respaldo');
+      const nombre = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombre ? nombre[1] : 'respaldo.db';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast('Respaldo descargado');
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      boton.disabled = false;
+      boton.textContent = '💾 Descargar respaldo';
     }
   });
 }

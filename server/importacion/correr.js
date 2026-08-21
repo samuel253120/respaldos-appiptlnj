@@ -12,23 +12,13 @@
  *
  * Al terminar imprime los conteos de cada módulo. Si algo no cuadra, se
  * detiene ahí mismo sin dejar nada a medias.
+ *
+ * Lo mismo se puede hacer desde la propia aplicación (Configuración →
+ * Traspaso), que usa `correr()` de acá y muestra estas mismas líneas en
+ * pantalla: quien tiene que decidir no necesita una consola.
  */
 const fs = require('fs');
 const path = require('path');
-
-const argumentos = process.argv.slice(2);
-const opcion = (nombre, porDefecto) => {
-  const i = argumentos.indexOf('--' + nombre);
-  if (i === -1) return porDefecto;
-  const siguiente = argumentos[i + 1];
-  return siguiente && !siguiente.startsWith('--') ? siguiente : true;
-};
-
-const PRUEBA = !!opcion('prueba', false);
-const RUTA = String(opcion('datos', 'importacion/origen-v10.json'));
-const SOLO = opcion('modulo', null);
-const HASTA = opcion('hasta', null);
-const RUTS = String(opcion('ruts', 'detener'));
 
 /** Los módulos, en el orden en que se pueden importar sin romper vínculos. */
 const MODULOS = [
@@ -48,18 +38,61 @@ const MODULOS = [
   ['pastores', require('./m08-pastor')],
 ];
 
-function main() {
-  const archivo = path.isAbsolute(RUTA) ? RUTA : path.join(process.cwd(), RUTA);
+/** El archivo de origen que viene con el sistema. */
+const ORIGEN_POR_DEFECTO = path.join(__dirname, '..', '..', 'importacion', 'origen-v10.json');
+
+/** Lee el volcado del sistema anterior. */
+function leerOrigen(ruta) {
+  const archivo = ruta
+    ? (path.isAbsolute(ruta) ? ruta : path.join(process.cwd(), ruta))
+    : ORIGEN_POR_DEFECTO;
   if (!fs.existsSync(archivo)) {
-    console.error(`\n❌ No encuentro el archivo de origen: ${archivo}\n`);
-    process.exit(1);
+    const e = new Error(`No encuentro el archivo de origen: ${archivo}`);
+    e.codigo = 'sin-origen';
+    throw e;
   }
   const crudo = JSON.parse(fs.readFileSync(archivo, 'utf8'));
-  const origen = crudo.data || crudo;
-  const lote = crudo.extraido_en || new Date().toISOString().slice(0, 19);
+  return {
+    archivo,
+    nombre: path.basename(archivo),
+    datos: crudo.data || crudo,
+    descartadas: crudo.descartadas || {},
+    lote: crudo.extraido_en || new Date().toISOString().slice(0, 19),
+  };
+}
 
-  console.log(`\n${PRUEBA ? '🧪 ENSAYO — no se guardará nada' : '📥 IMPORTACIÓN'}`);
-  console.log(`   origen: ${path.basename(archivo)} · lote ${lote}\n`);
+/** El resumen de un módulo, en una línea. */
+function resumenDe(nombre, resultado) {
+  const detalle = Object.entries(resultado)
+    .filter(([k]) => !['modulo', 'prueba', 'id_destino'].includes(k) && !k.startsWith('detalle_'))
+    .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+    .join(' · ');
+  return `✔ ${nombre.padEnd(12)} ${detalle}`;
+}
+
+/** Señal interna para deshacer un ensayo completo al terminarlo. */
+class EnsayoTerminado extends Error {}
+
+/**
+ * Corre la importación completa y devuelve lo que pasó: las líneas que se
+ * muestran (las mismas en la consola y en pantalla), el resultado de cada
+ * módulo y, si algo se detuvo, dónde y por qué.
+ *
+ * En modo ensayo, los módulos escriben de verdad —uno necesita lo que dejó el
+ * anterior: sin miembros no hay integrantes de cuerpos— y al final se deshace
+ * todo junto, de una vez. Por eso el ensayo sirve igual sobre una base vacía.
+ *
+ * No lanza: un módulo que falla deja `error` en el resultado y detiene el
+ * resto, porque el orden importa.
+ */
+function correr({ ruta, prueba = false, ruts = 'detener', solo = null, hasta = null } = {}) {
+  const origen = leerOrigen(ruta);
+  const lineas = [];
+  const decir = (t) => lineas.push(t);
+
+  decir(prueba ? '🧪 ENSAYO — no se guardará nada' : '📥 IMPORTACIÓN');
+  decir(`   origen: ${origen.nombre} · lote ${origen.lote}`);
+  decir('');
 
   const { db } = require('../db');
   // Lo mismo que hace el sistema al arrancar: si la base está recién creada,
@@ -69,48 +102,102 @@ function main() {
   require('../migraciones').ejecutarMigraciones();
   require('../seed').ensureSeed();
   const equivalencias = require('./equivalencias');
-  const informe = [];
 
+  const resultados = [];
   // La iglesia la fija el primer módulo. Si se corre uno suelto, se recupera
   // de la tabla de equivalencias: sin ella, el resto no sabe dónde poner nada.
   let iglesiaId = equivalencias.resolver('iglesias', 'iglesia-central');
+  let error = null;
 
+  const pasarPorLosModulos = () => {
   for (const [nombre, importar] of MODULOS) {
-    if (SOLO && SOLO !== nombre) continue;
+    if (solo && solo !== nombre) continue;
     let resultado;
     try {
-      resultado = importar(origen, { lote, prueba: PRUEBA, iglesiaId, rutsInvalidos: RUTS });
+      // En el ensayo, cada módulo escribe: lo que se deshace es todo junto,
+      // al final. Así el módulo que viene encuentra lo que dejó el anterior.
+      resultado = importar(origen.datos, { lote: origen.lote, prueba: false, iglesiaId, rutsInvalidos: ruts });
     } catch (e) {
-      console.error(`\n❌ Se detuvo en "${nombre}":\n\n${e.message}\n`);
-      console.error('   No se guardó nada de ese módulo. Corrija el origen o la traducción y vuelva a correr.\n');
-      process.exit(1);
+      error = { modulo: nombre, mensaje: e.message };
+      decir('');
+      decir(`❌ Se detuvo en "${nombre}":`);
+      decir('');
+      e.message.split('\n').forEach((l) => decir(l));
+      decir('');
+      decir('   No se guardó nada de ese módulo. Corrija el origen o la traducción y vuelva a correr.');
+      break;
     }
     if (nombre === 'iglesia') iglesiaId = resultado.id_destino;
-    informe.push(resultado);
-
-    const detalle = Object.entries(resultado)
-      .filter(([k]) => !['modulo', 'prueba', 'id_destino'].includes(k) && !k.startsWith('detalle_'))
-      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
-      .join(' · ');
-    console.log(`✔ ${nombre.padEnd(12)} ${detalle}`);
+    resultados.push(resultado);
+    decir(resumenDe(nombre, resultado));
 
     // Lo que quedó pendiente de revisar se dice acá mismo, no en letra chica
     for (const [clave, valor] of Object.entries(resultado)) {
       if (!clave.startsWith('detalle_') || !Array.isArray(valor) || !valor.length) continue;
-      console.log(`  ⚠ ${valor.length} para revisar (${clave.replace('detalle_', '')}):`);
-      valor.forEach((v) => console.log(
+      decir(`  ⚠ ${valor.length} para revisar (${clave.replace('detalle_', '')}):`);
+      valor.forEach((v) => decir(
         '     ' + Object.values(v).filter((x) => x !== null && x !== undefined && x !== '').join(' — ')
       ));
     }
 
-    if (HASTA && HASTA === nombre) break;
+    if (hasta && hasta === nombre) break;
+  }
+  };
+
+  if (prueba) {
+    // Todo el ensayo dentro de una transacción que se deshace al terminar:
+    // la base queda exactamente como estaba.
+    try {
+      db.transaction(() => {
+        pasarPorLosModulos();
+        throw new EnsayoTerminado();
+      })();
+    } catch (e) {
+      if (!(e instanceof EnsayoTerminado)) throw e;
+    }
+  } else {
+    pasarPorLosModulos();
+  }
+
+  if (!error) {
+    decir('');
+    decir(prueba
+      ? '🧪 Era un ensayo: la base quedó como estaba.'
+      : '✅ Listo. Los conteos de arriba son lo que quedó guardado.');
+  }
+
+  return { lineas, resultados, error, prueba, origen: { nombre: origen.nombre, lote: origen.lote } };
+}
+
+function main() {
+  const argumentos = process.argv.slice(2);
+  const opcion = (nombre, porDefecto) => {
+    const i = argumentos.indexOf('--' + nombre);
+    if (i === -1) return porDefecto;
+    const siguiente = argumentos[i + 1];
+    return siguiente && !siguiente.startsWith('--') ? siguiente : true;
+  };
+
+  let salida;
+  try {
+    salida = correr({
+      ruta: opcion('datos', null) === true ? null : opcion('datos', null),
+      prueba: !!opcion('prueba', false),
+      ruts: String(opcion('ruts', 'detener')),
+      solo: opcion('modulo', null) || null,
+      hasta: opcion('hasta', null) || null,
+    });
+  } catch (e) {
+    console.error(`\n❌ ${e.message}\n`);
+    process.exit(1);
   }
 
   console.log('');
-  if (PRUEBA) console.log('🧪 Era un ensayo: la base quedó como estaba.\n');
-  else console.log('✅ Listo. Los conteos de arriba son lo que quedó guardado.\n');
-  return informe;
+  salida.lineas.forEach((l) => console.log(l));
+  console.log('');
+  if (salida.error) process.exit(1);
+  return salida.resultados;
 }
 
 if (require.main === module) main();
-module.exports = { main };
+module.exports = { main, correr, leerOrigen, MODULOS, ORIGEN_POR_DEFECTO };

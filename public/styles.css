@@ -202,6 +202,42 @@ table.grid th.col-mini { font-size: 15px; }
 .fld.destacado label { color: #92400e; }
 .fld.destacado textarea, .fld.destacado input { border-color: #fbbf24; background: #fffbeb; }
 
+/* ---------- Traspaso desde el sistema anterior ---------- */
+.traspaso-pasos {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px; padding: 16px 18px 18px;
+}
+.traspaso-pasos .tp {
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: #f8fafc;
+}
+.traspaso-pasos .tp b { font-size: 13.5px; color: var(--marca-azul); }
+.traspaso-pasos .tp span { font-size: 12.5px; color: var(--muted); line-height: 1.45; flex: 1; }
+.traspaso-pasos .tp .btn { margin-top: 4px; }
+
+/* La salida de la importación, tal como se vería en la consola */
+.consola { margin: 0 18px 18px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.consola-cab {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  background: #f8fafc; border-bottom: 1px solid var(--border); font-size: 13.5px;
+}
+.consola-cab b { flex: 1; }
+.consola pre {
+  margin: 0; padding: 14px 16px; max-height: 460px; overflow: auto;
+  font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+  font-size: 12.5px; line-height: 1.6; white-space: pre; color: var(--text); background: var(--card);
+}
+.consola.bien { border-color: #86efac; }
+.consola.bien .consola-cab { background: #f0fdf4; color: #14532d; }
+.consola.mal { border-color: #fca5a5; }
+.consola.mal .consola-cab { background: #fef2f2; color: #991b1b; }
+
+@media (max-width: 700px) {
+  .traspaso-pasos { grid-template-columns: 1fr; padding: 14px; }
+  .consola { margin: 0 14px 14px; }
+  .consola pre { font-size: 11.5px; }
+}
+
 /* ---------- El listado en el teléfono: tarjetas, no una tabla ancha ---------- */
 /* En pantalla chica una tabla de nueve columnas obliga a desplazarse de lado y
    deja la mitad de los datos fuera de la vista. Cada fila se dibuja entonces

@@ -146,4 +146,4 @@ try {
   );
 }
 
-module.exports = { db, DATA_DIR, UPLOADS_DIR };
+module.exports = { db, DATA_DIR, UPLOADS_DIR, DB_PATH: path.join(DATA_DIR, 'iglesias.db') };

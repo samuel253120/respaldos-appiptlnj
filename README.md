@@ -99,6 +99,8 @@ node server/importacion/correr.js              # de verdad
 node server/importacion/informe.js             # la verificación final
 ```
 
+Y desde la propia aplicación, sin consola: **Configuración → Traspaso desde el sistema anterior**, al pie de la pantalla y solo para el administrador. Muestra qué trae el archivo y qué hay hoy, y ofrece los cuatro pasos en orden: **guardar un respaldo** de la base completa, correr el **ensayo**, **importar** de verdad y ver el **informe**. Dos resguardos van puestos ahí: importar de verdad exige el **modo mantenimiento activo** y haber corrido antes el **ensayo**.
+
 Reglas que valen para todos los módulos:
 
 - **Todo o nada.** Cada módulo se importa dentro de una transacción: si algo no cuadra —un dato obligatorio vacío, una referencia que no resuelve, un código que no se sabe traducir—, se detiene y no deja nada a medias. Prefiere parar y preguntar antes que guardar un valor que no corresponde.
