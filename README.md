@@ -909,16 +909,33 @@ Los cinco escalones cubren lo corriente; para lo que no calce con ninguno están
 
 Los módulos van **agrupados y plegables**, con un buscador arriba, y cada grupo tiene sus propios atajos para aplicar un escalón a todo el grupo de una vez. Abajo, un **resumen en castellano** dice qué va a poder hacer esa persona, sin tener que leer una tabla de cien casillas.
 
-### Perfiles listos
+### Perfiles de permisos 🎭
 
-Cuatro botones dejan la tabla armada para los casos que se repiten, y después se ajusta lo que haga falta:
+Un **perfil** es un juego de permisos con nombre —*«Tesorero de cuerpo»*, *«Secretaria de cuerpo»*— que se arma una vez y se le pone a las personas que hacen ese trabajo. Es un módulo como cualquier otro: se **crea, se edita y se elimina** desde el sistema.
+
+El perfil queda **enlazado**, no copiado: si mañana se decide que los tesoreros de cuerpo también vean las actas, se cambia el perfil y **cambian todos los que lo tienen puesto**, sin abrir uno por uno.
+
+Al pie de la ficha de cada perfil está **quiénes lo tienen**, y se le puede poner **a varios de una vez** marcándolos en una lista. También se pone desde la ficha de cada usuario, en *Perfil de permisos*.
+
+Un perfil que alguien está usando **no se puede eliminar** —el sistema dice cuántos lo tienen—: primero hay que cambiárselo, o archivarlo. Un perfil archivado ya no se ofrece al asignar, pero sigue funcionando para quienes ya lo tienen.
+
+El sistema trae tres para partir, y se editan como cualquier otro dato:
 
 | Perfil | Para qué |
 |---|---|
-| **💰 Tesorero(a) de un cuerpo** | Lleva la plata de su cuerpo: sus cuentas, sus movimientos y sus cuotas |
-| **📝 Secretario(a) de un cuerpo** | Pasa la lista y lleva las actas de su cuerpo; la tesorería la mira, no la toca |
-| **👥 Líder de un cuerpo** | Maneja la gente y las actividades de su cuerpo, sin tocar la plata |
-| **👀 Solo mirar** | Consulta todo, no cambia nada |
+| **Tesorero(a) de cuerpo** | Lleva la plata de su cuerpo: sus cuentas, sus movimientos y sus cuotas |
+| **Secretario(a) de cuerpo** | Pasa la lista y lleva las actas de su cuerpo; la tesorería la mira, no la toca |
+| **Líder de cuerpo** | Maneja la gente y las actividades de su cuerpo, sin tocar la plata |
+
+### El orden: de lo particular a lo general
+
+Tres escalones deciden lo que puede hacer cada persona. Gana el primero que diga algo sobre ese módulo:
+
+1. **Las excepciones de esa persona** — en su ficha, para lo que se salga de su perfil
+2. **El perfil que tenga asignado**
+3. **Su rol**
+
+En la ficha del usuario el editor lo dice en la cabecera: *«Acá van solo las excepciones de esta persona. Lo que no se ajuste sigue su perfil.»*
 
 ### Los permisos y el alcance trabajan juntos
 

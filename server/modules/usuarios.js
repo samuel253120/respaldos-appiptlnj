@@ -86,12 +86,29 @@ module.exports = {
     { name: 'telefono', label: 'Teléfono (opcional)', type: 'tel' },
     { name: 'activo', label: 'Activo', type: 'boolean', default: 1 },
     {
-      name: 'permisos', label: 'Permisos personalizados', type: 'permisos',
-      help: 'Opcional. Ajusta módulo por módulo lo que este usuario puede hacer; donde no se ajuste nada, manda su rol.',
+      name: 'perfil_id', label: 'Perfil de permisos', type: 'ref', ref: 'perfiles_permisos',
+      optionsRoute: '/perfiles_permisos/activos',
+      seccion: 'Qué puede hacer',
+      help:
+        'El trabajo que hace esta persona: «Tesorero de cuerpo», «Secretaria de cuerpo»… El perfil queda ' +
+        'enlazado, así que si se cambia el perfil cambian todos los que lo tienen. En blanco, manda su rol.',
+    },
+    {
+      name: 'permisos', label: 'Excepciones para esta persona', type: 'permisos',
+      help:
+        'Solo para lo que se salga de su perfil. Lo que se ajuste acá manda sobre el perfil y sobre el rol; ' +
+        'lo que no, sigue lo que diga el perfil (o el rol, si no tiene perfil).',
     },
   ],
   extraRoutes(router, { db, requirePerm }) {
     const claves = require('../claves');
+
+    /** Los perfiles que se pueden asignar hoy (los archivados no se ofrecen). */
+    router.get('/perfiles_permisos/activos', (req, res) => {
+      res.json(
+        db.prepare("SELECT id, nombre AS label FROM perfiles_permisos WHERE estado = 'Activo' ORDER BY nombre").all()
+      );
+    });
 
     /** Cómo está el acceso de esta cuenta: su contraseña y su recuperación. */
     router.get('/usuarios/:id(\\d+)/clave', requirePerm('usuarios', 'view'), (req, res) => {

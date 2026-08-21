@@ -143,6 +143,16 @@ app.get('/api/meta', authRequired, (req, res) => {
   // Catálogo para el editor de permisos personalizados (solo administradores)
   let permisosCatalogo = null;
   if (req.user.rol === 'admin') {
+    // Los perfiles, para que el editor sepa de dónde sale lo que no se ajusta
+    const perfiles = {};
+    try {
+      for (const p of db.prepare('SELECT id, nombre, permisos FROM perfiles_permisos').all()) {
+        let tabla = {};
+        try { tabla = JSON.parse(p.permisos || '{}') || {}; } catch (e) { tabla = {}; }
+        perfiles[p.id] = { nombre: p.nombre, permisos: tabla };
+      }
+    } catch (e) { /* la tabla se crea al arrancar; si aún no está, van vacíos */ }
+
     permisosCatalogo = {
       acciones: ACCIONES,
       modulos: allModules().map((m) => ({ name: m.name, label: m.label, group: m.group })),
@@ -152,6 +162,7 @@ app.get('/api/meta', authRequired, (req, res) => {
           Object.fromEntries(allModules().map((m) => [m.name, permisosDelRol(r.value, m.name)])),
         ])
       ),
+      perfiles,
     };
   }
 

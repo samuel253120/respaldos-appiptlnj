@@ -791,6 +791,17 @@ table.grid th.col-mini { font-size: 15px; }
 .perm-tabla .marca { color: var(--accent); font-size: 18px; line-height: 0; vertical-align: middle; }
 .perm-tabla input[type=checkbox] { width: auto; cursor: pointer; }
 
+/* La lista para ponerle un perfil a varios usuarios de una vez */
+ul.perfil-elegir { list-style: none; padding: 4px 0; margin: 0; }
+ul.perfil-elegir li { border-bottom: 1px solid #f1f5f9; }
+ul.perfil-elegir li:last-child { border-bottom: none; }
+ul.perfil-elegir label {
+  display: flex; align-items: center; gap: 11px; padding: 9px 16px; cursor: pointer; font-size: 14px;
+}
+ul.perfil-elegir label:hover { background: #f8fafc; }
+ul.perfil-elegir input[type=checkbox] { width: auto; flex: none; }
+ul.perfil-elegir .mut { color: var(--muted); font-size: 12.5px; }
+
 /* Lo que queda, dicho en castellano */
 .perm-resumen {
   margin-top: 14px; padding: 12px 14px; border: 1px solid var(--border);

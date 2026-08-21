@@ -7,6 +7,10 @@
  * ADMINISTRABLE: para ajustar qué puede hacer cada rol, editar esta matriz.
  * Para agregar un rol nuevo, añadirlo a ROLES y darle sus permisos aquí;
  * aparecerá automáticamente en el formulario de usuarios.
+ *
+ * El rol es el piso. Encima van los PERFILES DE PERMISOS —que se crean y se
+ * editan desde el propio sistema, en su módulo— y encima de todo, las
+ * excepciones de cada persona. Ver can() más abajo.
  */
 
 const ROLES = [
@@ -28,6 +32,7 @@ const MATRIX = {
   pastor: {
     '*': ALL,
     usuarios: [],
+    perfiles_permisos: [],
   },
   secretario: {
     '*': RO,
@@ -56,6 +61,7 @@ const MATRIX = {
     traspasos: [],
     cuotas_cuerpo: [],
     usuarios: [],
+    perfiles_permisos: [],
   },
   tesorero: {
     '*': RO,
@@ -66,6 +72,7 @@ const MATRIX = {
     ayudas_sociales: ALL,
     inventarios: RW,
     usuarios: [],
+    perfiles_permisos: [],
   },
   consulta: {
     '*': RO,
@@ -74,6 +81,7 @@ const MATRIX = {
     traspasos: [],
     cuotas_cuerpo: [],
     usuarios: [],
+    perfiles_permisos: [],
   },
 };
 
@@ -92,36 +100,79 @@ function permisosDelRol(rol, moduleName) {
   return especifico !== undefined ? especifico : perms['*'] || [];
 }
 
-/** Permisos personalizados de un usuario, si tiene. */
-function permisosPropios(usuario) {
-  if (!usuario || !usuario.permisos) return null;
+/** Lee una tabla de permisos guardada como JSON, sin reventar. */
+function leerTabla(valor) {
+  if (!valor) return null;
   try {
-    const p = typeof usuario.permisos === 'string' ? JSON.parse(usuario.permisos) : usuario.permisos;
+    const p = typeof valor === 'string' ? JSON.parse(valor) : valor;
     return p && typeof p === 'object' ? p : null;
   } catch (e) {
     return null;
   }
 }
 
+/** Permisos propios de un usuario: sus excepciones, si tiene. */
+function permisosPropios(usuario) {
+  return usuario ? leerTabla(usuario.permisos) : null;
+}
+
+/**
+ * Los permisos del perfil que tenga asignado, si tiene.
+ *
+ * Se lee de la base en el momento, no de una copia guardada en el usuario:
+ * de eso se trata que el perfil quede enlazado, que al cambiarlo cambien
+ * todos los que lo tienen puesto.
+ */
+function permisosDelPerfil(usuario) {
+  if (!usuario || !usuario.perfil_id) return null;
+  // Tardío: db carga los módulos, y los módulos usan este archivo
+  const { db } = require('./db');
+  const perfil = db.prepare('SELECT permisos FROM perfiles_permisos WHERE id = ?').get(usuario.perfil_id);
+  return perfil ? leerTabla(perfil.permisos) : null;
+}
+
 /**
  * ¿Puede ejecutar la acción sobre el módulo?
  *
- * Acepta el usuario completo (con sus permisos personalizados) o solo el
- * nombre del rol. Los permisos personalizados reemplazan a los del rol
- * únicamente en los módulos donde estén definidos; en el resto sigue
- * mandando el rol.
+ * Acepta el usuario completo o solo el nombre del rol. De lo más particular
+ * a lo más general, gana el primero que diga algo sobre ese módulo:
+ *
+ *   1. las excepciones de esta persona
+ *   2. el perfil que tenga asignado
+ *   3. su rol
+ *
+ * Cada escalón manda solo en los módulos donde diga algo; en los demás pasa
+ * la decisión al siguiente.
  */
 function can(usuarioOrRol, moduleName, action) {
   const esUsuario = usuarioOrRol && typeof usuarioOrRol === 'object';
   const rol = esUsuario ? usuarioOrRol.rol : usuarioOrRol;
 
   if (esUsuario) {
-    const propios = permisosPropios(usuarioOrRol);
-    if (propios && Array.isArray(propios[moduleName])) {
-      return propios[moduleName].includes(action);
+    for (const tabla of [permisosPropios(usuarioOrRol), permisosDelPerfil(usuarioOrRol)]) {
+      if (tabla && Array.isArray(tabla[moduleName])) return tabla[moduleName].includes(action);
     }
   }
   return permisosDelRol(rol, moduleName).includes(action);
 }
 
-module.exports = { ROLES, ACCIONES, MATRIX, can, permisosDelRol, permisosPropios };
+/**
+ * Lo que le queda a un usuario en cada módulo, ya resuelto. Lo usa el editor
+ * para mostrar de dónde sale cada permiso.
+ */
+function permisosEfectivos(usuario, modulos) {
+  const propios = permisosPropios(usuario) || {};
+  const delPerfil = permisosDelPerfil(usuario) || {};
+  const salida = {};
+  for (const nombre of modulos) {
+    if (Array.isArray(propios[nombre])) salida[nombre] = { acciones: propios[nombre], origen: 'excepcion' };
+    else if (Array.isArray(delPerfil[nombre])) salida[nombre] = { acciones: delPerfil[nombre], origen: 'perfil' };
+    else salida[nombre] = { acciones: permisosDelRol(usuario.rol, nombre), origen: 'rol' };
+  }
+  return salida;
+}
+
+module.exports = {
+  ROLES, ACCIONES, MATRIX,
+  can, permisosDelRol, permisosPropios, permisosDelPerfil, permisosEfectivos,
+};

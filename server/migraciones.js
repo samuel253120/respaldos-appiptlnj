@@ -454,6 +454,67 @@ function conyugeUnicoDePastores() {
 
 
 /**
+ * Los perfiles de permisos que venían escritos en el programa pasan a ser
+ * registros que la iglesia puede crear, editar y eliminar por su cuenta.
+ *
+ * Se crean solo si no hay ninguno: si alguien ya armó los suyos, no se le
+ * agregan estos encima.
+ */
+function perfilesDePermisos() {
+  if (yaAplicada('perfiles_de_permisos')) return;
+  const columnas = db.prepare('PRAGMA table_info("perfiles_permisos")').all().map((c) => c.name);
+  if (!columnas.includes('permisos')) return;
+  marcarAplicada('perfiles_de_permisos');
+
+  const cuantos = db.prepare('SELECT COUNT(*) c FROM perfiles_permisos').get().c;
+  if (cuantos) return;
+
+  const DE_FABRICA = [
+    {
+      nombre: 'Tesorero(a) de cuerpo',
+      descripcion: 'Lleva la plata de su cuerpo: sus cuentas, sus movimientos y sus cuotas.',
+      permisos: {
+        cuerpos: ['view'], integrantes_cuerpo: ['view'], miembros: ['view'],
+        cuentas_tesoreria: ['view', 'create', 'edit'],
+        tesoreria: ['view', 'create', 'edit'],
+        cuotas_cuerpo: ['view', 'create', 'edit', 'delete'],
+        actas_reuniones: ['view'], directivas: ['view'], asistencias: ['view'],
+      },
+    },
+    {
+      nombre: 'Secretario(a) de cuerpo',
+      descripcion: 'Pasa la lista y lleva las actas de su cuerpo. La tesorería la mira, no la toca.',
+      permisos: {
+        cuerpos: ['view'], integrantes_cuerpo: ['view', 'create', 'edit'], miembros: ['view'],
+        asistencias: ['view', 'create', 'edit'], asistencia_detalle: ['view', 'create', 'edit'],
+        actas_reuniones: ['view', 'create', 'edit'],
+        evaluaciones_integrantes: ['view', 'create', 'edit'],
+        directivas: ['view'],
+        tesoreria: ['view'], cuentas_tesoreria: ['view'], cuotas_cuerpo: ['view'],
+      },
+    },
+    {
+      nombre: 'Líder de cuerpo',
+      descripcion: 'Maneja la gente y las actividades de su cuerpo, sin tocar la plata.',
+      permisos: {
+        cuerpos: ['view', 'edit'], integrantes_cuerpo: ['view', 'create', 'edit'],
+        evaluaciones_integrantes: ['view', 'create', 'edit'], miembros: ['view'],
+        asistencias: ['view', 'create', 'edit'], asistencia_detalle: ['view', 'create', 'edit'],
+        actas_reuniones: ['view', 'create', 'edit'], directivas: ['view'],
+        tesoreria: ['view'], cuentas_tesoreria: ['view'], cuotas_cuerpo: ['view'],
+      },
+    },
+  ];
+
+  const crear = db.prepare(
+    "INSERT INTO perfiles_permisos (nombre, descripcion, estado, permisos) VALUES (?, ?, 'Activo', ?)"
+  );
+  for (const p of DE_FABRICA) crear.run(p.nombre, p.descripcion, JSON.stringify(p.permisos));
+  console.log(`🔁 permisos: se crearon ${DE_FABRICA.length} perfiles para partir; se editan y se borran como cualquier otro dato.`);
+}
+
+
+/**
  * Quién cobra cuota mensual. Los cuerpos formales sí —tienen deberes y
  * derechos—; los grupos, que son agrupaciones de servicio sin obligaciones
  * formales, no. Cada uno lo cambia después en su ficha.
@@ -1038,6 +1099,7 @@ function ejecutarMigraciones() {
     ['actividades con varios cuerpos', actividadesConVariosCuerpos],
     ['cónyuge de los pastores', conyugeUnicoDePastores],
     ['integrantes con su ficha', integrantesConSuPropiaFicha],
+    ['perfiles de permisos', perfilesDePermisos],
     ['quién cobra cuota', cuerposQueCobranCuota],
     ['tesorería de cada cuerpo', tesoreriaDeCadaCuerpo],
     ['actas con texto con formato', actasConTextoConFormato],

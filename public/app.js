@@ -1833,6 +1833,13 @@ async function viewForm(name, id, precarga) {
   // Al traspasar, se muestra cuánto hay en la cuenta de origen
   if (name === 'traspasos') mostrarSaldoOrigen();
 
+  // El perfil muestra a quiénes se les puso, y deja ponérselo a más
+  if (name === 'perfiles_permisos' && !isNew) {
+    const zona = document.createElement('div');
+    content().appendChild(zona);
+    renderUsuariosDelPerfil(Number(id), zona);
+  }
+
   // El pastor es también miembro: se avisa si le falta su ficha
   if (name === 'pastores' && !isNew) {
     const zona = document.createElement('div');
@@ -4387,63 +4394,18 @@ const ATAJOS_PERMISO = [
   { clave: 'todo', texto: 'Todo', titulo: 'Incluye eliminar', acciones: ['view', 'create', 'edit', 'delete'] },
 ];
 
-/** Los perfiles que la iglesia usa a menudo, listos para aplicar de una vez. */
-const PERFILES_PERMISO = [
-  {
-    clave: 'tesorero_cuerpo',
-    texto: '💰 Tesorero(a) de un cuerpo',
-    ayuda: 'Lleva la plata de su cuerpo: sus cuentas, sus movimientos y sus cuotas. Del resto, solo mira lo suyo.',
-    permisos: {
-      cuerpos: ['view'], integrantes_cuerpo: ['view'], miembros: ['view'],
-      cuentas_tesoreria: ['view', 'create', 'edit'],
-      tesoreria: ['view', 'create', 'edit'],
-      cuotas_cuerpo: ['view', 'create', 'edit', 'delete'],
-      actas_reuniones: ['view'], directivas: ['view'], asistencias: ['view'],
-    },
-  },
-  {
-    clave: 'secretario_cuerpo',
-    texto: '📝 Secretario(a) de un cuerpo',
-    ayuda: 'Pasa la lista de su cuerpo y lleva sus actas. La tesorería la mira, no la toca.',
-    permisos: {
-      cuerpos: ['view'], integrantes_cuerpo: ['view', 'create', 'edit'], miembros: ['view'],
-      asistencias: ['view', 'create', 'edit'], asistencia_detalle: ['view', 'create', 'edit'],
-      actas_reuniones: ['view', 'create', 'edit'],
-      evaluaciones_integrantes: ['view', 'create', 'edit'],
-      directivas: ['view'],
-      tesoreria: ['view'], cuentas_tesoreria: ['view'], cuotas_cuerpo: ['view'],
-    },
-  },
-  {
-    clave: 'lider_cuerpo',
-    texto: '👥 Líder de un cuerpo',
-    ayuda: 'Ve todo lo de su cuerpo y maneja su gente y sus actividades, sin tocar la plata.',
-    permisos: {
-      cuerpos: ['view', 'edit'], integrantes_cuerpo: ['view', 'create', 'edit'],
-      evaluaciones_integrantes: ['view', 'create', 'edit'], miembros: ['view'],
-      asistencias: ['view', 'create', 'edit'], asistencia_detalle: ['view', 'create', 'edit'],
-      actas_reuniones: ['view', 'create', 'edit'], directivas: ['view'],
-      tesoreria: ['view'], cuentas_tesoreria: ['view'], cuotas_cuerpo: ['view'],
-    },
-  },
-  {
-    clave: 'solo_mirar',
-    texto: '👀 Solo mirar',
-    ayuda: 'Puede entrar y consultar, sin cambiar nada en ninguna parte.',
-    permisos: null,   // se arma en el momento: ver en todo
-  },
-];
-
 /**
- * Editor de permisos de un usuario.
+ * Editor de una tabla de permisos. Lo usan dos pantallas:
  *
- * El rol da el punto de partida; acá se afina módulo por módulo lo que esta
- * persona en particular puede hacer. Cada módulo se deja en uno de cinco
- * escalones —nada, solo ver, ver y corregir, ver agregar y corregir, todo— o
- * se marcan las casillas sueltas, para los casos que no calzan con ninguno.
+ *   · el PERFIL, donde se arma el juego de permisos de un trabajo —«Tesorero
+ *     de cuerpo»— desde cero;
+ *   · el USUARIO, donde se ajustan las excepciones de una persona sobre lo
+ *     que ya le da su perfil o su rol.
  *
- * Lo que queda seleccionado se resume abajo en castellano, para poder
- * revisarlo sin leer una tabla de cien casillas.
+ * Cada módulo se deja en uno de cinco escalones —nada, solo ver, ver y
+ * corregir, ver agregar y corregir, todo— o se marcan las casillas sueltas,
+ * para los casos que no calzan con ninguno. Lo que queda se resume abajo en
+ * castellano, para revisarlo sin leer una tabla de cien casillas.
  */
 function initPermisos(f, row, rolActual) {
   const caja = document.getElementById('perm_' + f.name);
@@ -4451,6 +4413,7 @@ function initPermisos(f, row, rolActual) {
 
   const asignados = row[f.name] && typeof row[f.name] === 'object' ? { ...row[f.name] } : {};
   const { acciones, modulos, porRol } = PERMISOS_CATALOGO;
+  const PERFILES_ASIGNABLES = PERMISOS_CATALOGO.perfiles || {};
   let buscando = '';
   const cerrados = new Set();
 
@@ -4472,11 +4435,19 @@ function initPermisos(f, row, rolActual) {
     return [...porGrupo.entries()];
   };
 
+  // En la ficha de un perfil no hay rol: el perfil se arma desde cero
+  const esPerfil = f.name === 'permisos' && !document.querySelector('#recForm [name="rol"]') && !rolActual;
+
   const dibujar = () => {
     const selRol = document.querySelector('#recForm [name="rol"]');
     const rol = selRol ? selRol.value : rolActual;
-    const delRol = porRol[rol] || {};
-    const efectivosDe = (m) => (Array.isArray(asignados[m.name]) ? asignados[m.name] : (delRol[m.name] || []));
+    const selPerfil = document.querySelector('#recForm [name="perfil_id"]');
+    const perfilId = selPerfil ? selPerfil.value : null;
+    const delPerfil = perfilId && PERFILES_ASIGNABLES[perfilId] ? PERFILES_ASIGNABLES[perfilId].permisos : null;
+    // De dónde sale lo que NO se ajuste acá: el perfil si tiene, si no el rol
+    const base = esPerfil ? {} : (delPerfil || porRol[rol] || {});
+    const deDonde = esPerfil ? '' : delPerfil ? 'su perfil' : 'su rol';
+    const efectivosDe = (m) => (Array.isArray(asignados[m.name]) ? asignados[m.name] : (base[m.name] || []));
 
     const personalizados = Object.keys(asignados).length;
     const resumen = modulos
@@ -4490,16 +4461,11 @@ function initPermisos(f, row, rolActual) {
 
     caja.innerHTML = `
       <div class="perm-cabecera">
-        <span>El rol da el punto de partida. Acá se afina, módulo por módulo, lo que <b>esta persona</b> puede hacer.
-          Los módulos sin personalizar siguen al rol.</span>
-        <button type="button" class="btn secondary sm" id="permLimpiar"
-          ${personalizados ? '' : 'disabled'}>Volver todo al rol${personalizados ? ` (${personalizados})` : ''}</button>
-      </div>
-
-      <div class="perm-perfiles">
-        <span class="tit">Partir de un perfil:</span>
-        ${PERFILES_PERMISO.map((p) => `
-          <button type="button" class="btn secondary sm" data-perfil="${p.clave}" title="${esc(p.ayuda)}">${p.texto}</button>`).join('')}
+        <span>${esPerfil
+          ? 'Marque lo que va a poder hacer quien tenga este perfil. Lo que quede sin marcar, no lo podrá hacer.'
+          : `Acá van solo las <b>excepciones</b> de esta persona. Lo que no se ajuste sigue ${deDonde}.`}</span>
+        <button type="button" class="btn secondary sm" id="permLimpiar" ${personalizados ? '' : 'disabled'}>
+          ${esPerfil ? 'Desmarcar todo' : `Sin excepciones${personalizados ? ` (${personalizados})` : ''}`}</button>
       </div>
 
       <div class="perm-buscar">
@@ -4554,9 +4520,11 @@ function initPermisos(f, row, rolActual) {
       </div>
 
       <div class="perm-resumen">
-        <b>Al final, esta persona podrá:</b>
-        ${resumen.length ? `<ul>${resumen.join('')}</ul>` : '<p class="mut">Nada todavía: no tiene ningún módulo con permiso.</p>'}
-        <p class="mut">Y solo sobre las iglesias y los cuerpos que tenga asignados más arriba.</p>
+        <b>${esPerfil ? 'Quien tenga este perfil podrá:' : 'Al final, esta persona podrá:'}</b>
+        ${resumen.length ? `<ul>${resumen.join('')}</ul>` : '<p class="mut">Nada todavía: no hay ningún módulo con permiso.</p>'}
+        <p class="mut">${esPerfil
+          ? 'Y solo sobre las iglesias y los cuerpos que tenga asignados cada usuario en su ficha.'
+          : 'Y solo sobre las iglesias y los cuerpos que tenga asignados más arriba.'}</p>
       </div>`;
 
     caja.dataset.value = JSON.stringify(asignados);
@@ -4588,28 +4556,14 @@ function initPermisos(f, row, rolActual) {
     caja.querySelectorAll('.perm-acc').forEach((cb) =>
       cb.addEventListener('change', () => {
         const mod = cb.dataset.mod;
-        const base = Array.isArray(asignados[mod]) ? asignados[mod] : (delRol[mod] || []);
-        const set = new Set(base);
+        const desde = Array.isArray(asignados[mod]) ? asignados[mod] : (base[mod] || []);
+        const set = new Set(desde);
         cb.checked ? set.add(cb.dataset.acc) : set.delete(cb.dataset.acc);
         // Sin poder mirar no se puede hacer nada más: se van los demás con él
         if (cb.dataset.acc === 'view' && !cb.checked) set.clear();
         else if (set.size) set.add('view');
         asignados[mod] = [...set];
         dibujar();
-      }));
-
-    caja.querySelectorAll('[data-perfil]').forEach((b) =>
-      b.addEventListener('click', () => {
-        const perfil = PERFILES_PERMISO.find((p) => p.clave === b.dataset.perfil);
-        if (!perfil) return;
-        Object.keys(asignados).forEach((k) => delete asignados[k]);
-        for (const m of modulos) {
-          asignados[m.name] = perfil.permisos
-            ? [...(perfil.permisos[m.name] || [])]
-            : ['view'];
-        }
-        dibujar();
-        toast(`Permisos de «${perfil.texto.replace(/^\S+\s/, '')}» aplicados. Revíselos y asigne su cuerpo más arriba.`);
       }));
 
     const limpiar = caja.querySelector('#permLimpiar');
@@ -4632,6 +4586,8 @@ function initPermisos(f, row, rolActual) {
   dibujar();
   const selRol = document.querySelector('#recForm [name="rol"]');
   if (selRol) selRol.addEventListener('change', dibujar);
+  const selPerfil = document.querySelector('#recForm [name="perfil_id"]');
+  if (selPerfil) selPerfil.addEventListener('change', dibujar);
 }
 
 /* =====================================================================
@@ -6187,6 +6143,84 @@ async function renderActasCuerpo(cuerpoId, caja) {
           <span class="mut">Se pueden adjuntar como documento o escribir acá mismo.</span>
         </div>`}
     </div>`;
+}
+
+/**
+ * Quiénes tienen puesto un perfil de permisos, al pie de su ficha.
+ *
+ * Desde acá se le pone a varios de una vez y se le saca a quien corresponda,
+ * que es como se trabaja de verdad: se arma el perfil una vez y después se
+ * reparte. Como el perfil queda enlazado, lo que se cambie arriba les cambia
+ * a todos los que aparecen en esta lista.
+ */
+async function renderUsuariosDelPerfil(perfilId, contenedor) {
+  const d = await api('GET', `/perfiles_permisos/${perfilId}/usuarios`).catch(() => null);
+  if (!d) return;
+  const puedeAsignar = MOD['usuarios'] && MOD['usuarios'].perms.edit;
+
+  contenedor.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>👤 Quiénes tienen este perfil</b>
+        <span style="color:var(--muted);font-size:13px">${fmtNumero(d.usuarios.length)} usuario(s)</span>
+      </div>
+      ${d.usuarios.length ? `<ul class="mini-list">
+        ${d.usuarios.map((u) => `
+          <li>
+            <span><b>${esc(u.nombre)}</b>
+              <span class="mut">${esc(rutFormatear(u.rut))}${u.iglesia ? ` · ${esc(iglesiaDeTrabajo(u.iglesia))}` : ''}</span>
+              ${u.activo ? '' : '<span class="badge">Inactivo</span>'}</span>
+            <span class="mut">
+              <a class="btn secondary sm" href="#/m/usuarios/edit/${u.id}">✏️ Su ficha</a>
+              ${puedeAsignar ? `<button class="btn secondary sm quitar-perfil" data-usuario="${u.id}">Quitárselo</button>` : ''}
+            </span>
+          </li>`).join('')}
+      </ul>` : `<div class="empty-state" style="padding:24px">
+          Todavía no se le puso a nadie.<br>
+          <span class="mut">Elíjalos abajo, o póngaselo desde la ficha de cada usuario.</span>
+        </div>`}
+
+      ${puedeAsignar && d.disponibles.length ? `
+        <div class="toolbar" style="border-top:1px solid var(--border)">
+          <b style="font-size:13.5px">Ponérselo a más usuarios</b>
+          <span class="spacer"></span>
+          <button class="btn sm" id="perfAsignar" disabled>➕ Ponérselo a los marcados</button>
+        </div>
+        <ul class="pasar-lista perfil-elegir">
+          ${d.disponibles.map((u) => `
+            <li>
+              <label>
+                <input type="checkbox" value="${u.id}" />
+                <span><b>${esc(u.nombre)}</b> <span class="mut">${esc(rutFormatear(u.rut))} · ${esc(u.rol)}</span></span>
+              </label>
+            </li>`).join('')}
+        </ul>` : ''}
+    </div>`;
+
+  const recargar = () => renderUsuariosDelPerfil(perfilId, contenedor);
+
+  contenedor.querySelectorAll('.quitar-perfil').forEach((b) =>
+    b.addEventListener('click', async () => {
+      try {
+        await api('DELETE', `/perfiles_permisos/${perfilId}/usuarios/${b.dataset.usuario}`);
+        toast('Perfil quitado');
+        recargar();
+      } catch (e) { toast(e.message, true); }
+    }));
+
+  const boton = contenedor.querySelector('#perfAsignar');
+  if (!boton) return;
+  const casillas = [...contenedor.querySelectorAll('.perfil-elegir input[type=checkbox]')];
+  const revisar = () => { boton.disabled = !casillas.some((c) => c.checked); };
+  casillas.forEach((c) => c.addEventListener('change', revisar));
+  boton.addEventListener('click', async () => {
+    const elegidos = casillas.filter((c) => c.checked).map((c) => Number(c.value));
+    try {
+      const r = await api('POST', `/perfiles_permisos/${perfilId}/usuarios`, { usuarios: elegidos });
+      toast(`Perfil puesto a ${fmtNumero(r.puestos)} usuario(s)`);
+      recargar();
+    } catch (e) { toast(e.message, true); }
+  });
 }
 
 /* ---------------- inicio ---------------- */
