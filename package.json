@@ -1,12 +1,13 @@
 {
   "name": "sistema-gestion-iglesias",
-  "version": "1.38.0",
+  "version": "1.38.1",
   "description": "Sistema integral para la gestión de múltiples iglesias: miembros, cuerpos, asistencias, tesorería, inventarios, actas, documentos, ayudas sociales, certificados, credenciales, solicitudes y usuarios.",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "seed": "node server/seed.js"
+    "seed": "node server/seed.js",
+    "humo": "node pruebas/humo.js"
   },
   "engines": {
     "node": "22.x"
@@ -18,5 +19,8 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
 }

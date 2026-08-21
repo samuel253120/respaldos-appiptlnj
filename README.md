@@ -946,6 +946,21 @@ Y un módulo acepta `menu: false`, para no ocupar lugar en el menú y manejarse 
 - `extraRoutes(router, ctx)` — endpoints propios (ej.: `GET /api/tesoreria/resumen`).
 - `printable: true` — habilita la vista de impresión (Certificados, Credenciales y Actas ya traen plantillas elegantes; el resto usa una ficha genérica).
 
+### Prueba de humo: que ninguna pantalla se rompa
+
+Como el sistema arma solas todas sus pantallas, un error en el motor las rompe todas a la vez. `pruebas/humo.js` abre **cada módulo tres veces** —su listado, el formulario de uno nuevo y el de editar el primer registro— más el panel, asistencia, informes, el perfil y configuración, en computador (1366) y en teléfono (390), y avisa si alguna:
+
+- se queda pegada en *«Cargando…»*
+- se sale de lado (hay que desplazarse en horizontal)
+- tira un error en el navegador
+
+```bash
+npm install && npx playwright install chromium          # una sola vez
+URL=http://localhost:3000 RUT=11.111.111-1 CLAVE=... npm run humo
+```
+
+Cualquier módulo nuevo queda cubierto solo: la lista de pantallas sale del propio sistema, no de un listado escrito a mano. Playwright es dependencia de desarrollo y **no viaja en la imagen de producción**.
+
 ## API REST
 
 Todas las rutas bajo `/api`, autenticadas con `Authorization: Bearer <token>`:

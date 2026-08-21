@@ -2135,7 +2135,7 @@ function fieldHtml(f, row, isNew) {
       input = `<div class="multiref" id="mr_${f.name}" data-name="${f.name}"></div>`;
       break;
     case 'boolean':
-      return `${seccion}<div class="fld check${wide}"${condicionAttrs(f)}><input type="checkbox" id="chk_${f.name}" name="${f.name}" ${val ? 'checked' : ''} /><label for="chk_${f.name}">${esc(f.label)}</label>${help}</div>`;
+      return `<div class="fld check${wide}"${condicionAttrs(f)}><input type="checkbox" id="chk_${f.name}" name="${f.name}" ${val ? 'checked' : ''} /><label for="chk_${f.name}">${esc(f.label)}</label>${help}</div>`;
     case 'file': {
       // El control del navegador dice "Choose File" en inglés y no se puede
       // traducir: se esconde y se pone un botón propio que sí habla como el
