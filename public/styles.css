@@ -732,24 +732,74 @@ table.grid th.col-mini { font-size: 15px; }
 /* La tabla de permisos es ancha: se desliza dentro de su propia caja, para
    que no arrastre de lado a toda la página en el teléfono. */
 .permisos-editor { border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
-.permisos-editor .perm-tabla { min-width: 480px; }
 .perm-cabecera {
-  display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #f8fafc;
-  border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--muted); flex-wrap: wrap;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  font-size: 12.5px; color: var(--muted); margin-bottom: 12px; line-height: 1.45;
 }
-.perm-cabecera span { flex: 1; min-width: 220px; }
+.perm-cabecera span { flex: 1; min-width: 240px; }
+
+/* Los perfiles que se usan a menudo, para partir de uno y ajustar */
+.perm-perfiles {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 10px 12px; background: #f8fafc; border: 1px solid var(--border);
+  border-radius: 10px; margin-bottom: 12px;
+}
+.perm-perfiles .tit { font-size: 12.5px; font-weight: 600; color: #475569; margin-right: 4px; }
+
+.perm-buscar { margin-bottom: 10px; }
+.perm-buscar input {
+  width: 100%; max-width: 320px; padding: 7px 11px; border: 1px solid var(--border);
+  border-radius: 8px; font-size: 13.5px; background: #fff;
+}
+
+/* Cada grupo de módulos, plegable, con sus atajos para todo el grupo */
+.perm-grupo { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+.pg-cab {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 12px; background: #f8fafc; cursor: pointer; font-size: 13px;
+}
+.pg-cab:hover { background: #f1f5f9; }
+.pg-cab .flecha { color: var(--muted); width: 12px; }
+.pg-cab .mut { color: var(--muted); font-size: 12px; }
+.pg-cab .spacer { flex: 1; }
+
+/* Los escalones: nada, solo ver, ver y corregir, agregar, todo */
+.perm-tabla .chip, .pg-cab .chip {
+  border: 1px solid var(--border); background: #fff; border-radius: 999px;
+  padding: 3px 10px; font-size: 11.5px; font-family: inherit; color: #475569; cursor: pointer;
+  white-space: nowrap;
+}
+.perm-tabla .chip:hover, .pg-cab .chip:hover { border-color: var(--accent); color: var(--accent-dark); }
+.perm-tabla .chip.on {
+  background: var(--marca-azul); border-color: var(--marca-azul); color: #fff; font-weight: 600;
+}
+.pg-cab .chip.sm { padding: 2px 8px; font-size: 11px; }
+
 .perm-tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
 .perm-tabla th {
-  background: #f8fafc; padding: 8px 10px; text-align: left; font-size: 11.5px; color: var(--muted);
-  text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  text-align: left; padding: 7px 12px; background: #fff; color: var(--muted);
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.4px;
+  border-bottom: 1px solid var(--border); white-space: nowrap;
 }
-.perm-tabla th.c, .perm-tabla td.c { text-align: center; }
-.perm-tabla td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
-.perm-tabla tr.personalizado td { background: #eef6ff; }
-.perm-tabla tr.personalizado td:first-child { font-weight: 600; }
-.perm-tabla .grp { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.perm-tabla th.c, .perm-tabla td.c { text-align: center; width: 1%; }
+.perm-tabla td { padding: 7px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.perm-tabla tr:last-child td { border-bottom: none; }
+.perm-tabla td.nom { white-space: nowrap; }
+.perm-tabla td.atajos, .perm-tabla th.atajos { white-space: nowrap; }
+.perm-tabla td.atajos { display: flex; flex-wrap: wrap; gap: 4px; }
+.perm-tabla tr.personalizado td.nom { font-weight: 700; color: var(--marca-azul); }
+.perm-tabla .marca { color: var(--accent); font-size: 18px; line-height: 0; vertical-align: middle; }
 .perm-tabla input[type=checkbox] { width: auto; cursor: pointer; }
-.perm-tabla input[type=checkbox]:disabled { opacity: 0.45; cursor: default; }
+
+/* Lo que queda, dicho en castellano */
+.perm-resumen {
+  margin-top: 14px; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: 10px; background: #f8fafc; font-size: 13px;
+}
+.perm-resumen ul { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; }
+.perm-resumen li { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+.perm-resumen li .mut { color: var(--muted); font-size: 12.5px; }
+.perm-resumen p.mut { margin: 10px 0 0; font-size: 12px; }
 
 /* ---------- Historial del miembro ---------- */
 ul.historial { list-style: none; padding: 6px 0; margin: 0; }

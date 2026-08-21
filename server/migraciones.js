@@ -474,33 +474,38 @@ function cuerposQueCobranCuota() {
 
 
 /**
- * Cada cuerpo lleva su propia tesorería, igual que las iglesias. A los que ya
- * estaban se les crea su cuenta general; las demás cuentas —las de trabajos
+ * Cada cuerpo lleva sus dos cuentas: su tesorería general y la de las cuotas
+ * de sus integrantes, que se manejan aparte. Las demás —las de trabajos
  * específicos— las abre cada cuerpo cuando las necesita.
  *
- * No lleva marca de aplicada a propósito: revisa cuerpo por cuerpo si le
- * falta la cuenta, así que también le sirve a los que se creen después de
- * una restauración o de un traspaso.
+ * No lleva marca de aplicada a propósito: revisa cuerpo por cuerpo cuáles le
+ * faltan, así que también le sirve a los que se creen después de una
+ * restauración o de un traspaso.
  */
 function tesoreriaDeCadaCuerpo() {
   const columnas = db.prepare('PRAGMA table_info("cuentas_tesoreria")').all().map((c) => c.name);
   if (!columnas.includes('cuerpo_id')) return;
 
-  const crear = db.prepare(
-    `INSERT INTO cuentas_tesoreria (nombre, ambito, iglesia_id, cuerpo_id, tipo, estado, saldo_inicial, descripcion)
-     VALUES (?, 'Cuerpo / Grupo', ?, ?, 'General', 'Activa', 0, ?)`
-  );
-  const yaTiene = db.prepare("SELECT id FROM cuentas_tesoreria WHERE cuerpo_id = ? AND tipo = 'General'");
+  const { crearLasQueFalten } = require('./cuentas-de-cuerpos');
   let cuentas = 0;
   for (const c of db.prepare('SELECT id, nombre, iglesia_id FROM cuerpos').all()) {
-    if (yaTiene.get(c.id)) continue;
-    crear.run(
-      `Tesorería — ${c.nombre}`, c.iglesia_id, c.id,
-      'Tesorería general del cuerpo. Acá entran sus cuotas y sus ingresos propios.'
-    );
-    cuentas++;
+    cuentas += crearLasQueFalten(db, c);
   }
-  if (cuentas) console.log(`🔁 cuerpos: ${cuentas} cuerpo(s) estrenaron su tesorería general.`);
+  if (cuentas) console.log(`🔁 cuerpos: se crearon ${cuentas} cuenta(s) de tesorería que faltaban.`);
+
+  // Las cuotas que hubieran entrado a la tesorería general se pasan a la
+  // cuenta de cuotas, que es donde corresponde que estén.
+  const mudadas = db.prepare(
+    `UPDATE tesoreria
+        SET cuenta_id = (SELECT id FROM cuentas_tesoreria
+                          WHERE cuerpo_id = tesoreria.cuerpo_id AND tipo = 'Cuotas de integrantes')
+      WHERE id IN (SELECT movimiento_id FROM cuotas_cuerpo WHERE movimiento_id IS NOT NULL)
+        AND EXISTS (SELECT 1 FROM cuentas_tesoreria
+                     WHERE cuerpo_id = tesoreria.cuerpo_id AND tipo = 'Cuotas de integrantes')`
+  ).run();
+  if (mudadas.changes) {
+    console.log(`🔁 cuotas: ${mudadas.changes} pago(s) pasaron a la cuenta de cuotas de su cuerpo.`);
+  }
 }
 
 

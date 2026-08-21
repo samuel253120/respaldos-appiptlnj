@@ -138,18 +138,13 @@ module.exports = {
     { name: 'descripcion', label: 'Descripción', type: 'textarea' },
   ],
   hooks: {
-    /** Cada cuerpo estrena su propia tesorería general, como las iglesias. */
+    /**
+     * Cada cuerpo estrena dos cuentas: su tesorería general y la de las
+     * cuotas de sus integrantes, que se manejan aparte.
+     */
     afterSave(fila, { isNew, db }) {
       if (!isNew) return;
-      const ya = db.prepare("SELECT id FROM cuentas_tesoreria WHERE cuerpo_id = ? AND tipo = 'General'").get(fila.id);
-      if (ya) return;
-      db.prepare(
-        `INSERT INTO cuentas_tesoreria (nombre, ambito, iglesia_id, cuerpo_id, tipo, estado, saldo_inicial, descripcion)
-         VALUES (?, 'Cuerpo / Grupo', ?, ?, 'General', 'Activa', 0, ?)`
-      ).run(
-        `Tesorería — ${fila.nombre}`, fila.iglesia_id, fila.id,
-        'Tesorería general del cuerpo. Acá entran sus cuotas y sus ingresos propios.'
-      );
+      require('../cuentas-de-cuerpos').crearLasQueFalten(db, fila);
     },
   },
 

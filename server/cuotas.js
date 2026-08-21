@@ -7,8 +7,6 @@
  * la planilla en la ficha del cuerpo, para que los dos hagan exactamente lo
  * mismo.
  */
-const { db } = require('./db');
-
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -20,14 +18,16 @@ const OPCIONES_MES = MESES.map((nombre, i) => ({ value: String(i + 1).padStart(2
 const nombreDelMes = (mes) => (OPCIONES_MES.find((m) => m.value === String(mes)) || {}).label || String(mes);
 
 /**
- * Deja en la tesorería del cuerpo el ingreso que corresponde a este pago: lo
- * crea, lo corrige o lo retira, según lo que diga la cuota. Se puede apagar
- * en Configuración → Organización.
+ * Deja el ingreso que corresponde a este pago en la cuenta de cuotas del
+ * cuerpo —que es aparte de su tesorería general, porque es plata que se
+ * maneja por separado—: lo crea, lo corrige o lo retira, según lo que diga la
+ * cuota. Se puede apagar en Configuración → Organización.
  */
-function sincronizarConLaTesoreria(fila, conexion = db) {
+function sincronizarConLaTesoreria(fila, conexion) {
   const registrar = require('./ajustes').activo('cuota_registra_tesoreria');
+  // Las cuotas van a su propia cuenta: es plata que el cuerpo maneja aparte
   const cuenta = conexion
-    .prepare("SELECT id FROM cuentas_tesoreria WHERE cuerpo_id = ? AND tipo = 'General'")
+    .prepare("SELECT id FROM cuentas_tesoreria WHERE cuerpo_id = ? AND tipo = 'Cuotas de integrantes'")
     .get(fila.cuerpo_id);
   const guardado = fila.movimiento_id
     ? conexion.prepare('SELECT id FROM tesoreria WHERE id = ?').get(fila.movimiento_id)

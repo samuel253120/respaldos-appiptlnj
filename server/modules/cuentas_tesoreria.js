@@ -77,10 +77,11 @@ module.exports = {
     },
     {
       name: 'tipo', label: 'Tipo de cuenta', type: 'select', required: true, default: 'Proyecto / Trabajo',
-      options: ['General', 'Fondo para la corporación', 'Proyecto / Trabajo'],
+      options: ['General', 'Fondo para la corporación', 'Cuotas de integrantes', 'Proyecto / Trabajo'],
       help:
         'La cuenta «General» es la tesorería del nivel: una por corporación, una por iglesia y una por cuerpo. ' +
-        'El «Fondo para la corporación» es donde cada iglesia aparta lo que después le traspasa a la corporación.',
+        'El «Fondo para la corporación» es donde cada iglesia aparta lo que después le traspasa a la corporación. ' +
+        'Las «Cuotas de integrantes» son las de cada cuerpo, que se manejan aparte de su tesorería general.',
     },
     { name: 'responsable', label: 'Responsable', type: 'persona', ref: 'miembros' },
     { name: 'fecha_apertura', label: 'Fecha de apertura', type: 'date' },
@@ -127,8 +128,17 @@ module.exports = {
         return 'El «Fondo para la corporación» es una cuenta de una iglesia local: es donde la iglesia aparta lo que después traspasa a la corporación';
       }
 
+      // Las cuotas son de un cuerpo: no existen a nivel de iglesia ni de corporación
+      if (dato('tipo') === 'Cuotas de integrantes' && ambito !== 'Cuerpo / Grupo') {
+        return 'La cuenta de «Cuotas de integrantes» es de un cuerpo o grupo: son las cuotas que pagan sus integrantes';
+      }
+
       // Una sola cuenta "General" y un solo "Fondo para la corporación" por nivel
-      const unicas = { General: 'la cuenta general', 'Fondo para la corporación': 'el fondo para la corporación' };
+      const unicas = {
+        General: 'la cuenta general',
+        'Fondo para la corporación': 'el fondo para la corporación',
+        'Cuotas de integrantes': 'la cuenta de cuotas',
+      };
       const tipo = dato('tipo');
       if (unicas[tipo]) {
         const cuerpoId = ambito === 'Cuerpo / Grupo' ? dato('cuerpo_id') : null;

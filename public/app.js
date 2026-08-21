@@ -4374,73 +4374,259 @@ async function abrirLimpieza(contenedor) {
 /* =====================================================================
  * Editor de permisos personalizados por usuario
  * ===================================================================== */
+/**
+ * Combinaciones que se repiten, para no tener que marcar casilla por casilla.
+ * Son las que se piden de verdad: alguien que solo mira, alguien que anota
+ * pero no borra, alguien que corrige lo que ya está pero no agrega.
+ */
+const ATAJOS_PERMISO = [
+  { clave: 'nada', texto: 'Nada', titulo: 'Este módulo no le aparece', acciones: [] },
+  { clave: 'ver', texto: 'Solo ver', titulo: 'Puede mirar, no tocar', acciones: ['view'] },
+  { clave: 'corregir', texto: 'Ver y corregir', titulo: 'Puede mirar y corregir lo que ya está, pero no agregar ni eliminar', acciones: ['view', 'edit'] },
+  { clave: 'anotar', texto: 'Ver, agregar y corregir', titulo: 'Puede trabajar en el módulo, pero no eliminar nada', acciones: ['view', 'create', 'edit'] },
+  { clave: 'todo', texto: 'Todo', titulo: 'Incluye eliminar', acciones: ['view', 'create', 'edit', 'delete'] },
+];
+
+/** Los perfiles que la iglesia usa a menudo, listos para aplicar de una vez. */
+const PERFILES_PERMISO = [
+  {
+    clave: 'tesorero_cuerpo',
+    texto: '💰 Tesorero(a) de un cuerpo',
+    ayuda: 'Lleva la plata de su cuerpo: sus cuentas, sus movimientos y sus cuotas. Del resto, solo mira lo suyo.',
+    permisos: {
+      cuerpos: ['view'], integrantes_cuerpo: ['view'], miembros: ['view'],
+      cuentas_tesoreria: ['view', 'create', 'edit'],
+      tesoreria: ['view', 'create', 'edit'],
+      cuotas_cuerpo: ['view', 'create', 'edit', 'delete'],
+      actas_reuniones: ['view'], directivas: ['view'], asistencias: ['view'],
+    },
+  },
+  {
+    clave: 'secretario_cuerpo',
+    texto: '📝 Secretario(a) de un cuerpo',
+    ayuda: 'Pasa la lista de su cuerpo y lleva sus actas. La tesorería la mira, no la toca.',
+    permisos: {
+      cuerpos: ['view'], integrantes_cuerpo: ['view', 'create', 'edit'], miembros: ['view'],
+      asistencias: ['view', 'create', 'edit'], asistencia_detalle: ['view', 'create', 'edit'],
+      actas_reuniones: ['view', 'create', 'edit'],
+      evaluaciones_integrantes: ['view', 'create', 'edit'],
+      directivas: ['view'],
+      tesoreria: ['view'], cuentas_tesoreria: ['view'], cuotas_cuerpo: ['view'],
+    },
+  },
+  {
+    clave: 'lider_cuerpo',
+    texto: '👥 Líder de un cuerpo',
+    ayuda: 'Ve todo lo de su cuerpo y maneja su gente y sus actividades, sin tocar la plata.',
+    permisos: {
+      cuerpos: ['view', 'edit'], integrantes_cuerpo: ['view', 'create', 'edit'],
+      evaluaciones_integrantes: ['view', 'create', 'edit'], miembros: ['view'],
+      asistencias: ['view', 'create', 'edit'], asistencia_detalle: ['view', 'create', 'edit'],
+      actas_reuniones: ['view', 'create', 'edit'], directivas: ['view'],
+      tesoreria: ['view'], cuentas_tesoreria: ['view'], cuotas_cuerpo: ['view'],
+    },
+  },
+  {
+    clave: 'solo_mirar',
+    texto: '👀 Solo mirar',
+    ayuda: 'Puede entrar y consultar, sin cambiar nada en ninguna parte.',
+    permisos: null,   // se arma en el momento: ver en todo
+  },
+];
+
+/**
+ * Editor de permisos de un usuario.
+ *
+ * El rol da el punto de partida; acá se afina módulo por módulo lo que esta
+ * persona en particular puede hacer. Cada módulo se deja en uno de cinco
+ * escalones —nada, solo ver, ver y corregir, ver agregar y corregir, todo— o
+ * se marcan las casillas sueltas, para los casos que no calzan con ninguno.
+ *
+ * Lo que queda seleccionado se resume abajo en castellano, para poder
+ * revisarlo sin leer una tabla de cien casillas.
+ */
 function initPermisos(f, row, rolActual) {
   const caja = document.getElementById('perm_' + f.name);
   if (!caja || !PERMISOS_CATALOGO) return;
 
   const asignados = row[f.name] && typeof row[f.name] === 'object' ? { ...row[f.name] } : {};
   const { acciones, modulos, porRol } = PERMISOS_CATALOGO;
+  let buscando = '';
+  const cerrados = new Set();
+
+  const mismasAcciones = (a, b) => {
+    const x = [...(a || [])].sort().join(',');
+    const y = [...(b || [])].sort().join(',');
+    return x === y;
+  };
+  const atajoDe = (lista) => (ATAJOS_PERMISO.find((a) => mismasAcciones(a.acciones, lista)) || {}).clave || null;
+
+  const grupos = () => {
+    const porGrupo = new Map();
+    const texto = buscando.trim().toLowerCase();
+    for (const m of modulos) {
+      if (texto && !`${m.label} ${m.group}`.toLowerCase().includes(texto)) continue;
+      if (!porGrupo.has(m.group)) porGrupo.set(m.group, []);
+      porGrupo.get(m.group).push(m);
+    }
+    return [...porGrupo.entries()];
+  };
 
   const dibujar = () => {
-    const rol = document.querySelector('#recForm [name="rol"]') ? document.querySelector('#recForm [name="rol"]').value : rolActual;
+    const selRol = document.querySelector('#recForm [name="rol"]');
+    const rol = selRol ? selRol.value : rolActual;
     const delRol = porRol[rol] || {};
+    const efectivosDe = (m) => (Array.isArray(asignados[m.name]) ? asignados[m.name] : (delRol[m.name] || []));
+
+    const personalizados = Object.keys(asignados).length;
+    const resumen = modulos
+      .map((m) => ({ m, acc: efectivosDe(m) }))
+      .filter((x) => x.acc.length)
+      .map((x) => {
+        const atajo = ATAJOS_PERMISO.find((a) => mismasAcciones(a.acciones, x.acc));
+        const como = atajo ? atajo.texto.toLowerCase() : x.acc.map((a) => (acciones.find((y) => y.value === a) || {}).label || a).join(' + ').toLowerCase();
+        return `<li><b>${esc(x.m.label)}</b><span class="mut">${esc(como)}</span></li>`;
+      });
+
     caja.innerHTML = `
       <div class="perm-cabecera">
-        <span>Los módulos sin marcar siguen el rol seleccionado. Marque uno para darle permisos propios a este usuario.</span>
-        <button type="button" class="btn secondary sm" id="permLimpiar">Quitar todos los ajustes</button>
+        <span>El rol da el punto de partida. Acá se afina, módulo por módulo, lo que <b>esta persona</b> puede hacer.
+          Los módulos sin personalizar siguen al rol.</span>
+        <button type="button" class="btn secondary sm" id="permLimpiar"
+          ${personalizados ? '' : 'disabled'}>Volver todo al rol${personalizados ? ` (${personalizados})` : ''}</button>
       </div>
-      <div class="table-scroll">
-        <table class="perm-tabla">
-          <thead>
-            <tr>
-              <th>Módulo</th>
-              <th class="c">Personalizar</th>
-              ${acciones.map((a) => `<th class="c">${esc(a.label)}</th>`).join('')}
-            </tr>
-          </thead>
-          <tbody>
-            ${modulos.map((m) => {
-              const propio = Array.isArray(asignados[m.name]);
-              const efectivos = propio ? asignados[m.name] : (delRol[m.name] || []);
-              return `<tr class="${propio ? 'personalizado' : ''}">
-                <td>${esc(m.label)} <span class="grp">${esc(m.group)}</span></td>
-                <td class="c"><input type="checkbox" class="perm-on" data-mod="${m.name}" ${propio ? 'checked' : ''} /></td>
-                ${acciones.map((a) => `
-                  <td class="c">
-                    <input type="checkbox" class="perm-acc" data-mod="${m.name}" data-acc="${a.value}"
-                      ${efectivos.includes(a.value) ? 'checked' : ''} ${propio ? '' : 'disabled'} />
-                  </td>`).join('')}
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
+
+      <div class="perm-perfiles">
+        <span class="tit">Partir de un perfil:</span>
+        ${PERFILES_PERMISO.map((p) => `
+          <button type="button" class="btn secondary sm" data-perfil="${p.clave}" title="${esc(p.ayuda)}">${p.texto}</button>`).join('')}
+      </div>
+
+      <div class="perm-buscar">
+        <input type="search" id="permBuscar" placeholder="Buscar un módulo…" value="${esc(buscando)}" autocomplete="off" />
+      </div>
+
+      <div class="perm-grupos">
+        ${grupos().map(([grupo, suyos]) => {
+          const abierto = !cerrados.has(grupo);
+          return `
+          <div class="perm-grupo ${abierto ? '' : 'cerrado'}">
+            <div class="pg-cab" data-grupo="${esc(grupo)}">
+              <span class="flecha">${abierto ? '▾' : '▸'}</span>
+              <b>${esc(grupo)}</b>
+              <span class="mut">${suyos.length} módulo(s)</span>
+              <span class="spacer"></span>
+              ${ATAJOS_PERMISO.map((a) => `
+                <button type="button" class="chip sm" data-grupo-atajo="${esc(grupo)}" data-atajo="${a.clave}"
+                  title="Aplicar «${esc(a.texto)}» a todo ${esc(grupo)}">${esc(a.texto)}</button>`).join('')}
+            </div>
+            ${abierto ? `
+            <table class="perm-tabla">
+              <thead><tr>
+                <th>Módulo</th>
+                <th class="atajos">Qué puede hacer</th>
+                ${acciones.map((a) => `<th class="c">${esc(a.label)}</th>`).join('')}
+              </tr></thead>
+              <tbody>
+                ${suyos.map((m) => {
+                  const propio = Array.isArray(asignados[m.name]);
+                  const efectivos = efectivosDe(m);
+                  const cual = atajoDe(efectivos);
+                  return `<tr class="${propio ? 'personalizado' : ''}">
+                    <td class="nom">${esc(m.label)}
+                      ${propio ? '<span class="marca" title="Personalizado para esta persona">•</span>' : ''}</td>
+                    <td class="atajos">
+                      ${ATAJOS_PERMISO.map((a) => `
+                        <button type="button" class="chip ${cual === a.clave ? 'on' : ''}"
+                          data-mod="${m.name}" data-atajo="${a.clave}" title="${esc(a.titulo)}">${esc(a.texto)}</button>`).join('')}
+                    </td>
+                    ${acciones.map((a) => `
+                      <td class="c">
+                        <input type="checkbox" class="perm-acc" data-mod="${m.name}" data-acc="${a.value}"
+                          ${efectivos.includes(a.value) ? 'checked' : ''} />
+                      </td>`).join('')}
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+
+      <div class="perm-resumen">
+        <b>Al final, esta persona podrá:</b>
+        ${resumen.length ? `<ul>${resumen.join('')}</ul>` : '<p class="mut">Nada todavía: no tiene ningún módulo con permiso.</p>'}
+        <p class="mut">Y solo sobre las iglesias y los cuerpos que tenga asignados más arriba.</p>
       </div>`;
+
     caja.dataset.value = JSON.stringify(asignados);
 
-    caja.querySelectorAll('.perm-on').forEach((cb) => {
-      cb.addEventListener('change', () => {
-        const mod = cb.dataset.mod;
-        if (cb.checked) asignados[mod] = [...(delRol[mod] || [])];
-        else delete asignados[mod];
+    // ---- lo que hace cada control ----
+    const ponerA = (modulo, atajo) => {
+      const a = ATAJOS_PERMISO.find((x) => x.clave === atajo);
+      if (!a) return;
+      asignados[modulo] = [...a.acciones];
+    };
+
+    caja.querySelectorAll('[data-atajo][data-mod]').forEach((b) =>
+      b.addEventListener('click', () => { ponerA(b.dataset.mod, b.dataset.atajo); dibujar(); }));
+
+    caja.querySelectorAll('[data-grupo-atajo]').forEach((b) =>
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        for (const m of modulos.filter((x) => x.group === b.dataset.grupoAtajo)) ponerA(m.name, b.dataset.atajo);
         dibujar();
-      });
-    });
-    caja.querySelectorAll('.perm-acc').forEach((cb) => {
+      }));
+
+    caja.querySelectorAll('.pg-cab').forEach((cab) =>
+      cab.addEventListener('click', () => {
+        const g = cab.dataset.grupo;
+        cerrados.has(g) ? cerrados.delete(g) : cerrados.add(g);
+        dibujar();
+      }));
+
+    caja.querySelectorAll('.perm-acc').forEach((cb) =>
       cb.addEventListener('change', () => {
         const mod = cb.dataset.mod;
-        if (!Array.isArray(asignados[mod])) return;
-        const set = new Set(asignados[mod]);
-        if (cb.checked) set.add(cb.dataset.acc);
-        else set.delete(cb.dataset.acc);
+        const base = Array.isArray(asignados[mod]) ? asignados[mod] : (delRol[mod] || []);
+        const set = new Set(base);
+        cb.checked ? set.add(cb.dataset.acc) : set.delete(cb.dataset.acc);
+        // Sin poder mirar no se puede hacer nada más: se van los demás con él
+        if (cb.dataset.acc === 'view' && !cb.checked) set.clear();
+        else if (set.size) set.add('view');
         asignados[mod] = [...set];
-        caja.dataset.value = JSON.stringify(asignados);
-      });
-    });
-    const limpiar = document.getElementById('permLimpiar');
+        dibujar();
+      }));
+
+    caja.querySelectorAll('[data-perfil]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const perfil = PERFILES_PERMISO.find((p) => p.clave === b.dataset.perfil);
+        if (!perfil) return;
+        Object.keys(asignados).forEach((k) => delete asignados[k]);
+        for (const m of modulos) {
+          asignados[m.name] = perfil.permisos
+            ? [...(perfil.permisos[m.name] || [])]
+            : ['view'];
+        }
+        dibujar();
+        toast(`Permisos de «${perfil.texto.replace(/^\S+\s/, '')}» aplicados. Revíselos y asigne su cuerpo más arriba.`);
+      }));
+
+    const limpiar = caja.querySelector('#permLimpiar');
     if (limpiar) limpiar.addEventListener('click', () => {
       Object.keys(asignados).forEach((k) => delete asignados[k]);
       dibujar();
     });
+
+    const buscador = caja.querySelector('#permBuscar');
+    if (buscador) {
+      buscador.addEventListener('input', () => {
+        buscando = buscador.value;
+        dibujar();
+        const otra = caja.querySelector('#permBuscar');
+        if (otra) { otra.focus(); otra.setSelectionRange(otra.value.length, otra.value.length); }
+      });
+    }
   };
 
   dibujar();

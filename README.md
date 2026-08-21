@@ -289,13 +289,20 @@ Cada evaluación queda con su fecha, quién decidió y **el informe** —adjunto
 
 ### La tesorería de cada cuerpo
 
-Cada cuerpo tiene **su propia tesorería general**, que se crea sola, y puede abrir **las cuentas que necesite** para trabajos específicos. Se ven en su ficha con el saldo de cada una y los últimos movimientos.
+Cada cuerpo estrena **dos cuentas**, que se crean solas, porque son bolsillos que se manejan por separado:
+
+| Cuenta | Qué lleva |
+|---|---|
+| **Tesorería — <cuerpo>** | Lo que el cuerpo recauda y gasta en su trabajo |
+| **Cuotas — <cuerpo>** | Las cuotas mensuales de sus integrantes |
+
+Además puede abrir **las cuentas que necesite** para trabajos específicos. Todas se ven en su ficha con el saldo de cada una y los últimos movimientos.
 
 Las cuentas de tesorería tienen ahora tres niveles: **Corporación**, **Iglesia local** y **Cuerpo / Grupo**.
 
 ### Las cuotas mensuales
 
-Cada cuerpo define **su cuota mensual** en su ficha. El panel muestra una planilla del año: una fila por integrante y una columna por mes. **Un toque en la casilla marca el mes como pagado**, y ese pago entra como ingreso a la tesorería del propio cuerpo.
+Cada cuerpo define **su cuota mensual** en su ficha. El panel muestra una planilla del año: una fila por integrante y una columna por mes. **Un toque en la casilla marca el mes como pagado**, y ese pago entra como ingreso a la cuenta **Cuotas** del propio cuerpo —no a su tesorería general, porque es plata que se maneja aparte—.
 
 Hay dos maneras de no deber cuota, y las dos se respetan solas:
 
@@ -888,11 +895,38 @@ Se define en **Configuración → Acceso** (6 caracteres por defecto, entre 4 y 
 
 ## Permisos personalizados por usuario 🔑
 
-Además del rol, cada usuario puede tener permisos propios. En su ficha hay una tabla de **módulos × acciones** (ver, crear, editar, eliminar):
+El rol da el punto de partida. En la ficha de cada usuario se afina, **módulo por módulo**, lo que esa persona en particular puede hacer. Cada módulo se deja en uno de cinco escalones:
 
-- Los módulos sin marcar siguen lo que otorga el rol.
-- Al marcar **Personalizar** en un módulo, ese usuario pasa a regirse por lo que se marque ahí — sirve tanto para **dar** permisos que el rol no da (ej. un secretario que sí puede ver Tesorería) como para **quitar** los que sí da.
-- Todo se verifica en el servidor en cada petición.
+| Escalón | Qué puede |
+|---|---|
+| **Nada** | El módulo no le aparece |
+| **Solo ver** | Mira, no toca |
+| **Ver y corregir** | Corrige lo que ya está, pero no agrega ni elimina |
+| **Ver, agregar y corregir** | Trabaja en el módulo, pero no elimina nada |
+| **Todo** | Incluye eliminar |
+
+Los cinco escalones cubren lo corriente; para lo que no calce con ninguno están las **casillas sueltas** (ver · crear · editar · eliminar) al lado de cada módulo. Si se quita *ver*, se van todas las demás con él: sin poder mirar no se puede hacer nada.
+
+Los módulos van **agrupados y plegables**, con un buscador arriba, y cada grupo tiene sus propios atajos para aplicar un escalón a todo el grupo de una vez. Abajo, un **resumen en castellano** dice qué va a poder hacer esa persona, sin tener que leer una tabla de cien casillas.
+
+### Perfiles listos
+
+Cuatro botones dejan la tabla armada para los casos que se repiten, y después se ajusta lo que haga falta:
+
+| Perfil | Para qué |
+|---|---|
+| **💰 Tesorero(a) de un cuerpo** | Lleva la plata de su cuerpo: sus cuentas, sus movimientos y sus cuotas |
+| **📝 Secretario(a) de un cuerpo** | Pasa la lista y lleva las actas de su cuerpo; la tesorería la mira, no la toca |
+| **👥 Líder de un cuerpo** | Maneja la gente y las actividades de su cuerpo, sin tocar la plata |
+| **👀 Solo mirar** | Consulta todo, no cambia nada |
+
+### Los permisos y el alcance trabajan juntos
+
+Los permisos dicen **qué acciones** puede hacer; las **iglesias** y los **cuerpos** asignados dicen **sobre qué datos**. Un tesorero de cuerpo se arma con las dos cosas: el perfil, más su cuerpo asignado.
+
+Un usuario con el cuerpo *Dorcas* asignado y ese perfil ve, comprobado: **un** cuerpo (el suyo), **sus dos cuentas** de tesorería —ni las de la iglesia ni las de la corporación—, **34 miembros** de los 179 del sistema, y si intenta abrir otro cuerpo o crear un acta, el servidor lo rechaza.
+
+Todo se verifica en el servidor en cada petición: no depende de lo que muestre la pantalla.
 
 ## Bitácora de miembros 🗒️
 
