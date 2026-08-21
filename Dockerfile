@@ -22,6 +22,11 @@ COPY package.json ./
 COPY server ./server
 COPY public ./public
 
+# Los datos del sistema anterior, para el traspaso que se hace desde
+# Configuración → Traspaso. Una vez importados y verificados, esta carpeta se
+# puede sacar del repositorio y volver a desplegar: deja de hacer falta.
+COPY importacion ./importacion
+
 # /data guarda la base de datos y los archivos subidos. NO se declara aquí
 # con VOLUME: Railway rechaza esa instrucción y exige que el volumen se
 # conecte desde su panel (Mount Path /data). Con Docker Compose el volumen
