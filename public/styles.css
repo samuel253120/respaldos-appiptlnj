@@ -224,16 +224,40 @@ table.grid th.col-mini { font-size: 15px; }
 .fld textarea { min-height: 84px; resize: vertical; }
 .fld .help { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
 /* Las fechas y los números no ocupan toda la columna: se leen mejor cortos */
-.fld input[type="date"], .fld input[type="time"], .fld input[type="number"] { max-width: 210px; }
+.fld input[type="date"], .fld input[type="time"], .fld input.numero, .fld .conplata { max-width: 210px; }
 
-/* Secciones dentro de una ficha larga */
-.form-seccion {
-  display: flex; align-items: center; gap: 12px; margin: 12px 0 -2px;
-  font-size: 12.5px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+/* Los números se escriben con los miles separados, con cifras de ancho fijo
+   para que no bailen al teclear. Cuando es plata, el signo va pegado a la
+   caja: se ve que es un monto sin tener que leer la etiqueta. */
+.fld input.numero { font-variant-numeric: tabular-nums; }
+.conplata { position: relative; display: block; }
+.conplata .signo {
+  position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); font-weight: 700; pointer-events: none;
+}
+.fld .conplata input { padding-left: 25px; }
+
+/* Una ficha larga se lee por partes: cada sección en su caja, con su número.
+   Cuarenta casillas seguidas no se leen; siete bloques de cinco, sí. */
+.form-bloques { display: grid; gap: 12px; padding: 16px; }
+.form-bloque {
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: 2px 14px 10px; margin: 0; min-width: 0;   /* min-width: los fieldset se resisten a encoger */
+}
+/* Lo que va antes del primer título no se encierra: no tiene nombre que poner */
+.form-bloque.suelto { border: 0; padding: 0; }
+.form-bloque > legend {
+  padding: 0 8px; margin-left: 2px;
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
   color: var(--marca-azul);
 }
-.form-seccion::after { content: ""; flex: 1; height: 1px; background: var(--border); }
-.form-grid > .form-seccion:first-child { margin-top: 0; }
+.form-bloque > legend .nb {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 19px; height: 19px; border-radius: 50%; flex: none;
+  background: var(--marca-azul); color: #fff; font-size: 11px; letter-spacing: 0;
+}
+.form-bloque .form-grid { padding: 8px 0 0; }
 
 /* Campo destacado: lo que no se puede pasar por alto */
 .fld.destacado label { color: #92400e; }
@@ -578,6 +602,8 @@ table.grid th.col-mini { font-size: 15px; }
 @media (max-width: 900px) {
   body { font-size: 15px; }
   .form-grid { grid-template-columns: 1fr; padding: 14px; gap: 14px; }
+  .form-bloques { padding: 12px; gap: 10px; }
+  .form-bloque { padding: 2px 11px 8px; }
   .dash-cols { grid-template-columns: 1fr; }
   .menu-toggle { display: block; }
   .sidebar { position: fixed; z-index: 50; left: -270px; transition: left 0.22s; width: 264px; box-shadow: 4px 0 24px rgba(0,0,0,0.3); }

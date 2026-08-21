@@ -65,9 +65,51 @@ function etiquetaDeRef(f, texto) {
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+/**
+ * Un número como se lee acá: los miles separados con punto y los decimales
+ * con coma. 1869969 → "1.869.969".
+ */
+function fmtNumero(n) {
+  if (n == null || n === '') return '';
+  const x = Number(n);
+  if (!Number.isFinite(x)) return String(n);
+  return x.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+/**
+ * Lo mismo, pero es plata: lleva el signo adelante. 4954295 → "$ 4.954.295".
+ * El espacio es de los que no se cortan: el signo nunca queda en otra línea.
+ */
 function fmtMoney(n) {
   if (n == null || n === '') return '';
-  return '$ ' + Number(n).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return '$ ' + fmtNumero(n);
+}
+
+/**
+ * El número que hay escrito en un campo de los que separan los miles.
+ * "1.869.969" → 1869969. Devuelve null cuando no hay nada que leer.
+ */
+function numeroEscrito(texto) {
+  const limpio = String(texto == null ? '' : texto).replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+  if (limpio === '' || limpio === '-' || limpio === '.') return null;
+  const n = Number(limpio);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * El texto de un campo numérico con los miles ya separados, respetando lo que
+ * se está escribiendo: el signo menos solo, la coma decimal recién puesta.
+ */
+function conMiles(texto) {
+  const s = String(texto == null ? '' : texto);
+  const negativo = s.trim().startsWith('-');
+  const soloNumero = s.replace(/[^\d,]/g, '');
+  const coma = soloNumero.indexOf(',');
+  const entera = (coma < 0 ? soloNumero : soloNumero.slice(0, coma)).replace(/^0+(?=\d)/, '');
+  const decimal = coma < 0 ? '' : ',' + soloNumero.slice(coma + 1).replace(/,/g, '').slice(0, 2);
+  const conPuntos = entera.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  if (!conPuntos && !decimal) return negativo ? '-' : '';
+  return (negativo ? '-' : '') + conPuntos + decimal;
 }
 /** La fecha como la guarda el computador: aaaa-mm-dd, para un campo de fecha. */
 function fechaISO(s) {
@@ -224,7 +266,8 @@ function valoresDelFormulario() {
   if (!form) return {};
   const valores = {};
   form.querySelectorAll('[name]').forEach((el) => {
-    if (valores[el.name] === undefined || el.value) valores[el.name] = el.value;
+    const valor = el.classList.contains('numero') ? numeroEscrito(el.value) : el.value;
+    if (valores[el.name] === undefined || el.value) valores[el.name] = valor == null ? '' : valor;
   });
   return valores;
 }
@@ -992,7 +1035,7 @@ async function viewDashboard() {
     <div class="stats">
       ${statDefs.map(([name, ic, lbl, num]) => `
         <div class="stat" onclick="location.hash='#/m/${name}'">
-          <div class="num">${num}</div><div class="lbl">${lbl}</div><div class="ic">${ic}</div>
+          <div class="num">${esc(fmtNumero(num))}</div><div class="lbl">${lbl}</div><div class="ic">${ic}</div>
         </div>`).join('')}
     </div>
     ${finHtml}
@@ -1272,7 +1315,7 @@ async function viewList(name, filtrosIniciales) {
       btns.push(`<button class="${p === data.page ? 'cur' : ''}" data-p="${p}">${p}</button>`);
     }
     pager.innerHTML = `
-      <span>${data.total} registro${data.total === 1 ? '' : 's'}</span>
+      <span>${esc(fmtNumero(data.total))} registro${data.total === 1 ? '' : 's'}</span>
       <span class="pages">
         <button data-p="${data.page - 1}" ${data.page <= 1 ? 'disabled' : ''}>‹</button>
         ${btns.join('')}
@@ -1296,7 +1339,7 @@ async function viewList(name, filtrosIniciales) {
         <div class="fin green"><div class="lbl">Ingresos (período filtrado)</div><div class="num">${fmtMoney(r.ingresos)}</div></div>
         <div class="fin red"><div class="lbl">Egresos</div><div class="num">${fmtMoney(r.egresos)}</div></div>
         <div class="fin blue"><div class="lbl">Balance</div><div class="num">${fmtMoney(r.balance)}</div></div>
-        <div class="fin slate"><div class="lbl">Movimientos</div><div class="num">${r.movimientos}</div></div>
+        <div class="fin slate"><div class="lbl">Movimientos</div><div class="num">${esc(fmtNumero(r.movimientos))}</div></div>
         ${cuentas.length ? `
           <div class="saldos-cuentas">
             <div class="sc-tit">Saldo de cada cuenta <span class="mut">(no depende del período filtrado)</span></div>
@@ -1345,6 +1388,8 @@ function cellValue(f, row, col) {
       return esc((row[f.name + '_labels'] || []).slice(0, 3).join(', ')) + ((row[f.name + '_labels'] || []).length > 3 ? '…' : '');
     case 'money':
       return fmtMoney(v);
+    case 'number':
+      return esc(fmtNumero(v));
     case 'boolean':
       return v ? '<span class="badge green">Sí</span>' : '<span class="badge red">No</span>';
     case 'date':
@@ -1453,6 +1498,8 @@ function valorFicha(f, row) {
       return v ? '<span class="badge green">Sí</span>' : '<span class="badge">No</span>';
     case 'money':
       return vacio ? '' : fmtMoney(v);
+    case 'number':
+      return vacio ? '' : esc(fmtNumero(v));
     case 'date': {
       if (vacio) return '';
       const edad = f.mostrarEdad ? edadDeFecha(v) : '';
@@ -1711,7 +1758,7 @@ async function viewForm(name, id, precarga) {
         <button class="btn secondary" id="btnBack">← Volver</button>
       </div>
     </div>
-    <div class="card"><form id="recForm"><div class="form-grid" id="formGrid"><p>Cargando…</p></div>
+    <div class="card"><form id="recForm"><div id="formGrid"><div class="form-grid"><p>Cargando…</p></div></div>
     <div class="form-error" id="formError"></div>
     <div class="form-foot" id="formFoot"></div></form></div>`;
   document.getElementById('btnBack').addEventListener('click', () => (location.hash = `#/m/${name}`));
@@ -1723,7 +1770,8 @@ async function viewForm(name, id, precarga) {
     try {
       row = await api('GET', `/${name}/${id}`);
     } catch (e) {
-      content().querySelector('#formGrid').innerHTML = `<p style="color:var(--danger)">${esc(e.message)}</p>`;
+      content().querySelector('#formGrid').innerHTML =
+        `<div class="form-grid"><p style="color:var(--danger)">${esc(e.message)}</p></div>`;
       return;
     }
   }
@@ -1752,11 +1800,12 @@ async function viewForm(name, id, precarga) {
   grid.innerHTML =
     // El id del registro viaja oculto: hay selectores cuya lista depende de él
     (isNew ? '' : `<input type="hidden" name="id" value="${esc(id)}" />`) +
-    m.fields.filter((f) => !f.computed).map((f) => fieldHtml(f, row, isNew)).join('');
+    formularioEnBloques(m.fields.filter((f) => !f.computed), row, isNew);
 
   // Comportamientos de widgets
   m.fields.filter((f) => !f.computed).forEach((f) => {
     if (f.type === 'multiref') initMultiref(f, row);
+    if (f.type === 'money' || f.type === 'number') initNumero(f);
     if (f.type === 'file') initFileField(f);
     if (f.type === 'rut') {
       const el = document.querySelector(`#recForm [name="${f.name}"]`);
@@ -1773,6 +1822,7 @@ async function viewForm(name, id, precarga) {
 
   // Campos que solo aplican según el valor de otro (showIf)
   aplicarCondiciones();
+  renumerarBloques();
 
   // Al traspasar, se muestra cuánto hay en la cuenta de origen
   if (name === 'traspasos') mostrarSaldoOrigen();
@@ -1916,6 +1966,7 @@ function aplicarCondiciones() {
       }
       div.style.display = visible ? '' : 'none';
     });
+    renumerarBloques();
   };
 
   const controles = new Set();
@@ -1927,6 +1978,24 @@ function aplicarCondiciones() {
     control.addEventListener('input', evaluar); // la fecha de nacimiento, al escribirla
   });
   evaluar();
+}
+
+/**
+ * Los bloques se numeran por lo que se ve, no por lo que existe: si el de
+ * «Adulto responsable» no aplica —porque el miembro es mayor de edad—, el
+ * siguiente es el 2 y no el 3. Se vuelve a numerar cada vez que aparece o
+ * desaparece uno.
+ */
+function renumerarBloques() {
+  const form = document.getElementById('recForm');
+  if (!form) return;
+  let numero = 0;
+  form.querySelectorAll('.form-bloque').forEach((caja) => {
+    const marca = caja.querySelector(':scope > legend .nb');
+    if (!marca) return;
+    if (caja.style.display === 'none') return;
+    marca.textContent = ++numero;
+  });
 }
 
 /** Marca un control como de solo lectura (campos que se calculan solos). */
@@ -1950,16 +2019,46 @@ function condicionAttrs(f) {
   return ` data-showif-field="${esc(f.showIf.field)}" data-showif-valor="${esc(valor)}"${tipo}`;
 }
 
+/**
+ * El formulario, repartido en bloques numerados: cada campo que declara
+ * `seccion` abre uno nuevo y los que le siguen quedan adentro. Así una ficha
+ * larga se lee por partes —«3. Contacto»— en vez de ser una sola lista de
+ * cuarenta casillas.
+ *
+ * Un módulo que no declara secciones se dibuja como siempre, sin cajas: no
+ * tiene sentido encerrar seis campos en un cajón sin nombre.
+ */
+function formularioEnBloques(campos, row, isNew) {
+  const bloques = [];
+  for (const f of campos) {
+    if (f.seccion || !bloques.length) bloques.push({ titulo: f.seccion || '', abre: f, campos: [] });
+    bloques[bloques.length - 1].campos.push(f);
+  }
+  const sinTitulo = !bloques.some((b) => b.titulo);
+  const grilla = (b) => `<div class="form-grid">${b.campos.map((f) => fieldHtml(f, row, isNew)).join('')}</div>`;
+  if (sinTitulo) return bloques.map(grilla).join('');
+
+  let numero = 0;
+  const cajas = bloques.map((b) => {
+    if (!b.titulo) return `<div class="form-bloque suelto">${grilla(b)}</div>`;
+    numero++;
+    // El bloque se muestra u oculta junto con el campo que lo abre
+    return `
+      <fieldset class="form-bloque"${condicionAttrs(b.abre)}>
+        <legend><span class="nb">${numero}</span> ${esc(b.titulo)}</legend>
+        ${grilla(b)}
+      </fieldset>`;
+  });
+  return `<div class="form-bloques">${cajas.join('')}</div>`;
+}
+
 function fieldHtml(f, row, isNew) {
   const val = row[f.name] != null ? row[f.name] : isNew && f.default != null ? f.default : '';
   const req = f.required ? '<span class="req">*</span>' : '';
   const help = f.help ? `<div class="help">${esc(f.help)}</div>` : '';
-  const wide = f.type === 'textarea' || f.type === 'multiref' || f.type === 'permisos' ? ' full' : '';
-  // Encabezado de sección: el campo que la abre lo declara con `seccion`.
-  // Lleva la misma condición que él, para que se oculten juntos.
-  const seccion = f.seccion
-    ? `<div class="form-seccion full"${condicionAttrs(f)}><span>${esc(f.seccion)}</span></div>`
-    : '';
+  // Ancho completo: lo que de suyo ocupa toda la fila, y lo que el módulo pida
+  // (un buscador de libros al lado de tres casillas de números queda apretado)
+  const wide = f.ancho === 'completo' || ['textarea', 'multiref', 'permisos'].includes(f.type) ? ' full' : '';
   let input = '';
   switch (f.type) {
     case 'textarea':
@@ -2083,9 +2182,18 @@ function fieldHtml(f, row, isNew) {
       input = `<div class="permisos-editor" id="perm_${f.name}"></div>`;
       break;
     case 'money':
-    case 'number':
-      input = `<input type="number" step="any" name="${f.name}" value="${esc(val)}" ${f.required ? 'required' : ''} />`;
+    case 'number': {
+      // Se escribe con los miles ya separados —113.130, no 113130— así que la
+      // caja es de texto: la del navegador para números no deja ponerles
+      // puntos. Al guardar se manda el número pelado.
+      const escrito = val === '' || val == null ? '' : conMiles(String(val).replace('.', ','));
+      const caja = `<input type="text" inputmode="decimal" class="numero" name="${f.name}"
+             value="${esc(escrito)}" autocomplete="off" ${f.required ? 'required' : ''} />`;
+      input = f.type === 'money'
+        ? `<div class="conplata"><span class="signo">$</span>${caja}</div>`
+        : caja;
       break;
+    }
     case 'date':
       input = `<input type="date" name="${f.name}" value="${esc(fechaISO(val))}" ${f.required ? 'required' : ''} />`;
       break;
@@ -2113,7 +2221,39 @@ function fieldHtml(f, row, isNew) {
   }
   if (f.readonly) input = marcarSoloLectura(input);
   const clases = `fld${wide}${f.readonly ? ' calculado' : ''}${f.destacado ? ' destacado' : ''}`;
-  return `${seccion}<div class="${clases}"${condicionAttrs(f)}><label>${esc(f.label)} ${req}</label>${input}${help}</div>`;
+  return `<div class="${clases}"${condicionAttrs(f)}><label>${esc(f.label)} ${req}</label>${input}${help}</div>`;
+}
+
+/**
+ * Un campo numérico se va separando en miles a medida que se escribe, sin que
+ * el cursor se mueva de donde estaba: se cuenta cuántas cifras había antes de
+ * él y se lo devuelve después de esas mismas cifras.
+ */
+function initNumero(f) {
+  const el = document.querySelector(`#recForm [name="${f.name}"].numero`);
+  if (!el || el.disabled) return;
+
+  el.addEventListener('input', () => {
+    const antes = el.value;
+    const hasta = el.selectionStart == null ? antes.length : el.selectionStart;
+    const cifrasAntes = antes.slice(0, hasta).replace(/[^\d,]/g, '').length;
+    const despues = conMiles(antes);
+    if (despues === antes) return;
+    el.value = despues;
+    let vistas = 0;
+    let donde = 0;
+    while (donde < despues.length && vistas < cifrasAntes) {
+      if (/[\d,]/.test(despues[donde])) vistas++;
+      donde++;
+    }
+    el.setSelectionRange(donde, donde);
+  });
+
+  // Al salir queda parejo, sin ceros ni comas sueltas
+  el.addEventListener('blur', () => {
+    const n = numeroEscrito(el.value);
+    el.value = n === null ? '' : conMiles(String(n).replace('.', ','));
+  });
 }
 
 /**
@@ -2306,8 +2446,7 @@ function initCalculados(m) {
 
   const num = (nombre) => {
     const el = form.querySelector(`[name="${nombre}"]`);
-    const n = Number(el ? el.value : 0);
-    return Number.isFinite(n) ? n : 0;
+    return (el ? numeroEscrito(el.value) : null) || 0;
   };
   const redondear = (n) => Math.round(n * 100) / 100;
 
@@ -2319,7 +2458,7 @@ function initCalculados(m) {
       else if (c.tipo === 'resta') v = redondear(c.campos.reduce((a, n, i) => (i === 0 ? num(n) : a - num(n)), 0));
       else if (c.tipo === 'porcentaje') v = redondear((num(c.campo) * (Number(c.porcentaje) || 0)) / 100);
       const el = form.querySelector(`[name="${f.name}"]`);
-      if (el && v !== null) el.value = v;
+      if (el && v !== null) el.value = el.classList.contains('numero') ? conMiles(String(v).replace('.', ',')) : v;
     }
   };
 
@@ -2703,6 +2842,12 @@ function collectForm(m) {
       const el = form.querySelector(`[name="${f.name}"]`);
       if (!el) continue;
       if (f.type === 'password' && el.value === '') continue; // no cambiar contraseña
+      if (f.type === 'money' || f.type === 'number') {
+        // La caja muestra 113.130; lo que viaja es 113130
+        const n = numeroEscrito(el.value);
+        data[f.name] = n === null ? '' : n;
+        continue;
+      }
       data[f.name] = el.value;
       if (f.type === 'persona') {
         const enlace = form.querySelector(`[name="${f.name}_id"]`);
@@ -2803,7 +2948,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
           ${filas.map((f) => `
             <tr ${verMas ? `data-ver="${verMas(f)}" style="cursor:pointer"` : ''}>
               <td>${esc(f.etiqueta)}</td>
-              <td>${f.presentes}</td><td>${f.ausentes}</td><td>${f.justificados}</td>
+              <td class="num">${esc(fmtNumero(f.presentes))}</td><td class="num">${esc(fmtNumero(f.ausentes))}</td><td class="num">${esc(fmtNumero(f.justificados))}</td>
               <td><b>${pct(f.pct_presente)}</b></td><td>${pct(f.pct_ausente)}</td><td>${pct(f.pct_justificado)}</td>
               <td style="min-width:140px">${barra(f)}</td>
             </tr>`).join('')}
@@ -2843,8 +2988,8 @@ async function renderInformeAsistencia(contenedor, precarga) {
 
     const resumen = `
       <div class="stats informe-stats">
-        <div class="stat"><div class="ic">📋</div><div class="num">${g.actividades}</div><div class="lbl">Actividades</div></div>
-        <div class="stat"><div class="ic">🧍</div><div class="num">${g.personas}</div><div class="lbl">Personas</div></div>
+        <div class="stat"><div class="ic">📋</div><div class="num">${esc(fmtNumero(g.actividades))}</div><div class="lbl">Actividades</div></div>
+        <div class="stat"><div class="ic">🧍</div><div class="num">${esc(fmtNumero(g.personas))}</div><div class="lbl">Personas</div></div>
         <div class="stat"><div class="ic">✅</div><div class="num">${pct(g.pct_presente)}</div><div class="lbl">Promedio de asistencia</div></div>
         <div class="stat"><div class="ic">❌</div><div class="num">${pct(g.pct_ausente)}</div><div class="lbl">Promedio de inasistencia</div></div>
         <div class="stat"><div class="ic">📝</div><div class="num">${pct(g.pct_justificado)}</div><div class="lbl">Promedio de justificación</div></div>
@@ -2854,7 +2999,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
       <div class="card" style="margin-bottom:18px">
         <h3>Motivos de las justificaciones</h3>
         <ul class="mini-list">
-          ${d.porMotivo.map((m) => `<li><span>${esc(m.motivo)}</span><span class="mut">${m.n} vez(ces)</span></li>`).join('')}
+          ${d.porMotivo.map((m) => `<li><span>${esc(m.motivo)}</span><span class="mut">${esc(fmtNumero(m.n))} vez(ces)</span></li>`).join('')}
         </ul>
       </div>` : '';
 

@@ -59,7 +59,7 @@ module.exports = {
   ],
 
   fields: [
-    { name: 'fecha', label: 'Fecha', type: 'date', required: true },
+    { name: 'fecha', label: 'Fecha', type: 'date', required: true, seccion: 'Fecha y hora' },
     { name: 'hora_inicio', label: 'Hora de inicio', type: 'time' },
     {
       name: 'tipo', label: 'Tipo de servicio', type: 'select', default: TIPOS_DE_SERVICIO[0],
@@ -70,17 +70,19 @@ module.exports = {
     // ---- Coordinación ----
     {
       name: 'coordinador', label: 'Coordinador(a)', type: 'persona', ref: 'miembros', buscador: true,
+      seccion: 'Coordinador',
       help: 'Búsquelo entre los miembros o escriba el nombre si no está registrado.',
     },
 
     // ---- Salmo (devocional) ----
     {
       name: 'salmista', label: 'Salmista (quien leyó el salmo)', type: 'persona', ref: 'miembros', buscador: true,
+      seccion: 'Salmista',
       help: 'Búsquelo entre los miembros o escriba el nombre si no está registrado.',
     },
     {
       name: 'salmo_libro', label: 'Salmo: libro', type: 'select', options: LIBROS, buscador: true,
-      help: 'Escriba las primeras letras del libro.',
+      seccion: 'Lectura del salmo', ancho: 'completo', help: 'Escriba las primeras letras del libro.',
     },
     { name: 'salmo_capitulo', label: 'Salmo: capítulo', type: 'number' },
     { name: 'salmo_versiculo_inicial', label: 'Salmo: versículo inicial', type: 'number' },
@@ -89,19 +91,20 @@ module.exports = {
     // ---- Mensaje ----
     {
       name: 'predicador', label: 'Predicador(a)', type: 'persona', ref: 'miembros', buscador: true,
+      seccion: 'Predicador',
       help: 'Búsquelo entre los miembros o escriba el nombre si no está registrado.',
     },
-    { name: 'mensaje_titulo', label: 'Tema del mensaje', type: 'text' },
+    { name: 'mensaje_titulo', label: 'Tema del mensaje', type: 'text', seccion: 'Mensaje bíblico', ancho: 'completo' },
     {
       name: 'mensaje_libro', label: 'Mensaje: libro', type: 'select', options: LIBROS, buscador: true,
-      help: 'Escriba las primeras letras del libro.',
+      ancho: 'completo', help: 'Escriba las primeras letras del libro.',
     },
     { name: 'mensaje_capitulo', label: 'Mensaje: capítulo', type: 'number' },
     { name: 'mensaje_versiculo_inicial', label: 'Mensaje: versículo inicial', type: 'number' },
     { name: 'mensaje_versiculo_final', label: 'Mensaje: versículo final', type: 'number' },
 
     // ---- Asistencia ----
-    { name: 'asistencia_adultos', label: 'Asistencia de adultos', type: 'number' },
+    { name: 'asistencia_adultos', label: 'Asistencia de adultos', type: 'number', seccion: 'Asistencia' },
     { name: 'asistencia_ninos', label: 'Asistencia de niños', type: 'number' },
     {
       name: 'asistencia_total', label: 'Total general de asistencia', type: 'number', readonly: true,
@@ -110,7 +113,7 @@ module.exports = {
     },
 
     // ---- Ofrenda ----
-    { name: 'ofrenda_total', label: 'Ofrenda recibida (total)', type: 'money' },
+    { name: 'ofrenda_total', label: 'Ofrenda recibida (total)', type: 'money', seccion: 'Ofrenda' },
     {
       name: 'ofrenda_fondo', label: 'Aparte para el fondo', type: 'money', readonly: true,
       calcula: { tipo: 'porcentaje', campo: 'ofrenda_total', opcion: 'ofrenda_porcentaje_fondo' },
@@ -123,7 +126,7 @@ module.exports = {
     },
 
     // ---- Cierre ----
-    { name: 'hora_termino', label: 'Hora de término', type: 'time' },
+    { name: 'hora_termino', label: 'Hora de término', type: 'time', seccion: 'Cierre' },
     { name: 'observaciones', label: 'Observaciones generales', type: 'textarea' },
 
     // Los dos ingresos que la ofrenda de este servicio dejó en Tesorería

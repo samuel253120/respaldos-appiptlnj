@@ -23,7 +23,7 @@ module.exports = {
   filterFields: ['cuenta_id', 'tipo', 'categoria'],
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
-    { name: 'fecha', label: 'Fecha', type: 'date', required: true },
+    { name: 'fecha', label: 'Fecha', type: 'date', required: true, seccion: 'Qué movimiento es' },
     {
       name: 'tipo', label: 'Tipo', type: 'select', required: true, default: 'Ingreso',
       options: ['Ingreso', 'Egreso'],
@@ -36,7 +36,7 @@ module.exports = {
         'Ayuda social', 'Honorarios', 'Viáticos', 'Traspaso', 'Otro',
       ],
     },
-    { name: 'concepto', label: 'Concepto / Descripción', type: 'text', required: true },
+    { name: 'concepto', label: 'Concepto / Descripción', type: 'text', required: true, seccion: 'Monto y forma de pago' },
     { name: 'monto', label: 'Monto', type: 'money', required: true },
     {
       name: 'metodo', label: 'Método', type: 'select', default: 'Efectivo',
@@ -52,7 +52,7 @@ module.exports = {
       help: 'Se toma de la cuenta elegida. Las cuentas de la corporación no pertenecen a una iglesia.',
     },
     { name: 'cuerpo_id', label: 'Cuerpo / Grupo (si aplica)', type: 'ref', ref: 'cuerpos' },
-    { name: 'comprobante', label: 'Comprobante (imagen o PDF)', type: 'file' },
+    { name: 'comprobante', label: 'Comprobante (imagen o PDF)', type: 'file', seccion: 'Respaldo y notas' },
     { name: 'notas', label: 'Notas', type: 'textarea' },
     // Movimientos generados por un traspaso o por la ofrenda de un servicio
     // (se manejan desde allá, para que los dos lados queden siempre cuadrados)
