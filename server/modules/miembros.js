@@ -143,6 +143,7 @@ module.exports = {
     // ---------------- Identificación ----------------
     {
       name: 'foto', label: 'Foto', type: 'file', accept: 'image/*', seccion: 'Identificación',
+      recorte: 'cuadrado',
       help: 'Se puede sacar con el teléfono: al subirla se ajusta sola de tamaño para que cargue rápido.',
     },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },

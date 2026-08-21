@@ -33,6 +33,7 @@ module.exports = {
   fields: [
     {
       name: 'foto', label: 'Fotografía del templo', type: 'file', accept: 'image/*',
+      recorte: 'cuadrado',
       help: 'La foto con la que se reconoce a esta iglesia. Se puede sacar con el teléfono: al subirla se ajusta sola de tamaño.',
     },
     { name: 'nombre', label: 'Nombre', type: 'text', required: true },

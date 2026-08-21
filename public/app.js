@@ -2141,11 +2141,13 @@ function fieldHtml(f, row, isNew) {
       // traducir: se esconde y se pone un botón propio que sí habla como el
       // resto del sistema.
       const esFoto = String(f.accept || '').startsWith('image');
+      const hayFoto = val && /\.(jpe?g|png|webp)$/i.test(val);
       input = `
         <div class="filefld" id="ff_${f.name}">
           <input type="hidden" name="${f.name}" value="${esc(val)}" />
           <input type="file" id="file_${f.name}" class="oculto-de-verdad" ${f.accept ? `accept="${esc(f.accept)}"` : ''} />
           <label class="btn secondary sm" for="file_${f.name}">${esFoto ? '📷 Elegir foto' : '📎 Elegir archivo'}</label>
+          ${f.recorte ? `<button type="button" class="btn secondary sm" id="ajustar_${f.name}" ${hayFoto ? '' : 'hidden'}>✂️ Ajustar</button>` : ''}
           <span class="fname" id="fname_${f.name}">${val
             ? `<a href="/uploads/${esc(val)}" target="_blank">📎 ${esc(nombreArchivo(val))}</a>`
             : '<span class="sin-archivo">Ningún archivo elegido</span>'}</span>
@@ -2783,13 +2785,276 @@ async function reducirImagen(file) {
   }
 }
 
+/**
+ * Editor de fotos: recortar, girar y ajustar el brillo y el contraste antes
+ * de guardar.
+ *
+ * Las fotos de perfil se muestran cuadradas en todo el sistema —redondas en
+ * los cumpleaños, cuadradas en las fichas y en las credenciales—, así que el
+ * recorte es cuadrado: lo que se ve en el marco es exactamente lo que va a
+ * quedar guardado. Se arrastra para mover, se acerca con la rueda o con dos
+ * dedos, y las dos barras corrigen una foto quemada o una tomada a oscuras.
+ *
+ * Devuelve el archivo listo para subir, o null si la persona se arrepiente.
+ */
+function ajustarImagen(fuente, { titulo = 'Ajustar la foto' } = {}) {
+  return new Promise((resolver) => {
+    const LADO = 320;                                    // el marco en pantalla
+    const salida = Math.max(200, Number(AJUSTES.imagen_lado_maximo) || 1600);
+    const calidad = (Number(AJUSTES.imagen_calidad) || 88) / 100;
+
+    const fondo = document.createElement('div');
+    fondo.className = 'modal-fondo';
+    fondo.innerHTML = `
+      <div class="modal editor-foto" style="max-width:420px">
+        <div class="modal-head"><h3>✂️ ${esc(titulo)}</h3><button class="cerrar" title="Cerrar">&times;</button></div>
+        <div class="modal-body">
+          <div class="ef-marco"><canvas id="efLienzo" width="${LADO}" height="${LADO}"></canvas></div>
+          <p class="ef-ayuda">Arrastre la foto para moverla y use la barra para acercarla. Lo que se ve en el marco es lo que queda guardado.</p>
+          <label class="ef-barra"><span>Acercar</span><input type="range" id="efZoom" min="100" max="400" value="100" /></label>
+          <label class="ef-barra"><span>Brillo</span><input type="range" id="efBrillo" min="-100" max="100" value="0" /></label>
+          <label class="ef-barra"><span>Contraste</span><input type="range" id="efContraste" min="-100" max="100" value="0" /></label>
+          <div class="ef-botones">
+            <button class="btn secondary sm" id="efGirar">↻ Girar</button>
+            <button class="btn secondary sm" id="efReiniciar">↺ Dejar como estaba</button>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn secondary" id="efCancelar">Cancelar</button>
+          <button class="btn" id="efUsar" disabled>💾 Usar esta foto</button>
+        </div>
+      </div>`;
+    document.body.appendChild(fondo);
+
+    const lienzo = fondo.querySelector('#efLienzo');
+    const ctx = lienzo.getContext('2d', { willReadFrequently: true });
+    const zoom = fondo.querySelector('#efZoom');
+    const brillo = fondo.querySelector('#efBrillo');
+    const contraste = fondo.querySelector('#efContraste');
+    let imagen = null;
+    let giro = 0;
+    let x = 0;
+    let y = 0;
+    let terminado = false;
+
+    const cerrar = (resultado) => {
+      if (terminado) return;
+      terminado = true;
+      fondo.remove();
+      resolver(resultado);
+    };
+
+    /** El zoom que hace que la foto cubra el marco justo, sin bordes vacíos. */
+    const escalaMinima = () => {
+      const derecho = giro % 180 === 0;
+      const ancho = derecho ? imagen.width : imagen.height;
+      const alto = derecho ? imagen.height : imagen.width;
+      return Math.max(LADO / ancho, LADO / alto);
+    };
+    const escalaActual = () => escalaMinima() * (Number(zoom.value) / 100);
+
+    /** No se deja arrastrar la foto más allá de sus bordes */
+    const encajar = () => {
+      const e = escalaActual();
+      const derecho = giro % 180 === 0;
+      const ancho = (derecho ? imagen.width : imagen.height) * e;
+      const alto = (derecho ? imagen.height : imagen.width) * e;
+      const sobraX = Math.max(0, (ancho - LADO) / 2);
+      const sobraY = Math.max(0, (alto - LADO) / 2);
+      x = Math.min(sobraX, Math.max(-sobraX, x));
+      y = Math.min(sobraY, Math.max(-sobraY, y));
+    };
+
+    /**
+     * El brillo y el contraste se aplican píxel a píxel en vez de con el
+     * filtro del lienzo: así se ve igual en cualquier navegador y lo que se
+     * guarda es idéntico a lo que se vio.
+     */
+    const corregir = (contexto, ancho, alto) => {
+      const b = Number(brillo.value);
+      const c = Number(contraste.value);
+      if (!b && !c) return;
+      const datos = contexto.getImageData(0, 0, ancho, alto);
+      const p = datos.data;
+      const factor = (259 * (c * 2.55 + 255)) / (255 * (259 - c * 2.55));
+      for (let i = 0; i < p.length; i += 4) {
+        for (let k = 0; k < 3; k++) {
+          let v = p[i + k] + b;
+          v = factor * (v - 128) + 128;
+          p[i + k] = v < 0 ? 0 : v > 255 ? 255 : v;
+        }
+      }
+      contexto.putImageData(datos, 0, 0);
+    };
+
+    const dibujarEn = (contexto, lado) => {
+      const proporcion = lado / LADO;
+      contexto.save();
+      contexto.fillStyle = '#fff';           // el JPEG no tiene transparencia
+      contexto.fillRect(0, 0, lado, lado);
+      contexto.imageSmoothingEnabled = true;
+      contexto.imageSmoothingQuality = 'high';
+      contexto.translate(lado / 2 + x * proporcion, lado / 2 + y * proporcion);
+      contexto.rotate((giro * Math.PI) / 180);
+      const e = escalaActual() * proporcion;
+      contexto.scale(e, e);
+      contexto.drawImage(imagen, -imagen.width / 2, -imagen.height / 2);
+      contexto.restore();
+      corregir(contexto, lado, lado);
+    };
+
+    const pintar = () => {
+      if (!imagen) return;
+      encajar();
+      dibujarEn(ctx, LADO);
+    };
+
+    // ---- mover con el dedo o con el ratón ----
+    let arrastrando = false;
+    let desdeX = 0;
+    let desdeY = 0;
+    let origenX = 0;
+    let origenY = 0;
+    const punto = (e) => (e.touches && e.touches[0] ? e.touches[0] : e);
+    // En una pantalla angosta el marco se dibuja más chico de lo que mide por
+    // dentro: el arrastre se convierte para que la foto siga al dedo.
+    const razon = () => LADO / (lienzo.getBoundingClientRect().width || LADO);
+    const tomar = (e) => {
+      if (e.touches && e.touches.length > 1) return;
+      arrastrando = true;
+      desdeX = punto(e).clientX;
+      desdeY = punto(e).clientY;
+      origenX = x;
+      origenY = y;
+    };
+    const mover = (e) => {
+      if (!arrastrando) return;
+      const r = razon();
+      x = origenX + (punto(e).clientX - desdeX) * r;
+      y = origenY + (punto(e).clientY - desdeY) * r;
+      pintar();
+      if (e.cancelable) e.preventDefault();
+    };
+    const soltar = () => { arrastrando = false; };
+    lienzo.addEventListener('mousedown', tomar);
+    window.addEventListener('mousemove', mover);
+    window.addEventListener('mouseup', soltar);
+    lienzo.addEventListener('touchstart', tomar, { passive: true });
+    lienzo.addEventListener('touchmove', mover, { passive: false });
+    lienzo.addEventListener('touchend', soltar);
+
+    // ---- acercar con la rueda o con dos dedos ----
+    lienzo.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      zoom.value = Math.min(400, Math.max(100, Number(zoom.value) - Math.sign(e.deltaY) * 8));
+      pintar();
+    }, { passive: false });
+
+    let separacion = 0;
+    lienzo.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) separacion = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    }, { passive: true });
+    lienzo.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 2 || !separacion) return;
+      const ahora = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      zoom.value = Math.min(400, Math.max(100, Number(zoom.value) * (ahora / separacion)));
+      separacion = ahora;
+      pintar();
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+
+    [zoom, brillo, contraste].forEach((b) => b.addEventListener('input', pintar));
+    fondo.querySelector('#efGirar').addEventListener('click', () => {
+      giro = (giro + 90) % 360;
+      x = 0; y = 0;
+      pintar();
+    });
+    fondo.querySelector('#efReiniciar').addEventListener('click', () => {
+      giro = 0; x = 0; y = 0;
+      zoom.value = 100; brillo.value = 0; contraste.value = 0;
+      pintar();
+    });
+
+    fondo.querySelector('.cerrar').addEventListener('click', () => cerrar(null));
+    fondo.querySelector('#efCancelar').addEventListener('click', () => cerrar(null));
+    fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(null); });
+
+    fondo.querySelector('#efUsar').addEventListener('click', async () => {
+      // El recorte se dibuja de nuevo, en grande. Nunca con más resolución de
+      // la que tiene el pedazo recortado: acercarse no inventa detalle.
+      const cabe = Math.round(LADO / escalaActual());
+      const lado = Math.max(200, Math.min(salida, cabe));
+      const grande = document.createElement('canvas');
+      grande.width = lado;
+      grande.height = lado;
+      dibujarEn(grande.getContext('2d', { willReadFrequently: true }), lado);
+      const blob = await new Promise((res) => grande.toBlob(res, 'image/jpeg', calidad));
+      if (!blob) return cerrar(null);
+      cerrar(new File([blob], 'foto.jpg', { type: 'image/jpeg' }));
+    });
+
+    // ---- se carga la foto ----
+    (async () => {
+      try {
+        imagen = typeof fuente === 'string'
+          ? await new Promise((ok, mal) => {
+              const i = new Image();
+              i.onload = () => ok(i);
+              i.onerror = () => mal(new Error('No se pudo abrir la foto guardada'));
+              i.src = fuente;
+            })
+          : await createImageBitmap(fuente);
+        fondo.querySelector('#efUsar').disabled = false;
+        pintar();
+      } catch (e) {
+        toast('No se pudo abrir la imagen', true);
+        cerrar(null);
+      }
+    })();
+  });
+}
+
 function initFileField(f) {
   const fileInput = document.getElementById('file_' + f.name);
   if (!fileInput) return;
+  const caja = document.getElementById('ff_' + f.name);
+  if (!caja) return;
+  const nameEl = document.getElementById('fname_' + f.name);
+  const hidden = caja.querySelector('input[type=hidden]');
+  const botonAjustar = document.getElementById('ajustar_' + f.name);
+
+  /** Deja el campo mostrando el archivo que quedó guardado. */
+  const mostrar = (r, detalle) => {
+    hidden.value = r.filename;
+    nameEl.innerHTML = `<a href="${esc(r.url)}" target="_blank">📎 ${esc(r.original)}</a>${detalle || ''}`;
+    const esImagen = /\.(jpe?g|png|webp)$/i.test(r.filename);
+    if (esImagen) {
+      let img = caja.querySelector('img.preview');
+      if (!img) {
+        img = document.createElement('img');
+        img.className = 'preview';
+        caja.appendChild(img);
+      }
+      img.src = r.url + '?v=' + Date.now();   // sin caché: la foto acaba de cambiar
+    }
+    if (botonAjustar) botonAjustar.hidden = !esImagen;
+  };
+
+  const subir = async (archivo, aviso) => {
+    const fd = new FormData();
+    fd.append('archivo', archivo);
+    nameEl.textContent = 'Subiendo…';
+    const r = await api('POST', '/upload', fd, true);
+    mostrar(r, `<span class="fmeta">${tamanoLegible(archivo.size)}</span>`);
+    toast(aviso);
+    return r;
+  };
+
   fileInput.addEventListener('change', async () => {
     const original = fileInput.files[0];
     if (!original) return;
-    const nameEl = document.getElementById('fname_' + f.name);
     nameEl.textContent = original.type.startsWith('image/') ? 'Preparando la imagen…' : 'Subiendo…';
     try {
       const ajustada = await reducirImagen(original);
@@ -2797,26 +3062,26 @@ function initFileField(f) {
       fd.append('archivo', ajustada.file);
       nameEl.textContent = 'Subiendo…';
       const r = await api('POST', '/upload', fd, true);
-      const hidden = document.querySelector(`#ff_${f.name} input[type=hidden]`);
-      hidden.value = r.filename;
       const detalle = ajustada.reducida
         ? `<span class="fmeta">imagen ajustada a ${ajustada.ancho}×${ajustada.alto} — de ${tamanoLegible(ajustada.antes)} a ${tamanoLegible(ajustada.despues)}</span>`
         : `<span class="fmeta">${tamanoLegible(original.size)}</span>`;
-      nameEl.innerHTML = `<a href="${esc(r.url)}" target="_blank">📎 ${esc(r.original)}</a>${detalle}`;
-      // Vista previa inmediata de la imagen recién subida
-      const caja = document.getElementById('ff_' + f.name);
-      if (caja && /\.(jpe?g|png|webp)$/i.test(r.filename)) {
-        let img = caja.querySelector('img.preview');
-        if (!img) {
-          img = document.createElement('img');
-          img.className = 'preview';
-          caja.appendChild(img);
-        }
-        img.src = r.url;
-      }
+      mostrar(r, detalle);
       toast(ajustada.reducida ? 'Imagen ajustada y subida' : 'Archivo subido');
     } catch (e) {
       nameEl.textContent = '';
+      toast(e.message, true);
+    }
+  });
+
+  // Recortar, girar y corregir el brillo y el contraste de la foto guardada
+  if (!botonAjustar) return;
+  botonAjustar.addEventListener('click', async () => {
+    if (!hidden.value) return;
+    const recortada = await ajustarImagen(`/uploads/${hidden.value}`, { titulo: `Ajustar: ${f.label}` });
+    if (!recortada) return;
+    try {
+      await subir(recortada, 'Foto ajustada');
+    } catch (e) {
       toast(e.message, true);
     }
   });

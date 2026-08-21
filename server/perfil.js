@@ -41,11 +41,13 @@ function camposDe(modulo, nombres) {
   return nombres
     .map((n) => def.fields.find((f) => f.name === n))
     .filter(Boolean)
-    .map(({ name, label, type, options, sugerencias, help, accept, showIf, seccion, mostrarEdad, buscador, sensible }) => ({
+    .map(({ name, label, type, options, sugerencias, help, accept, showIf, seccion, mostrarEdad,
+            buscador, sensible, ancho, recorte }) => ({
       name, label, type, options: options || null, sugerencias: sugerencias || null,
       help: help || null, accept: accept || null,
       showIf: showIf || null, seccion: seccion || null, mostrarEdad: !!mostrarEdad,
       buscador: buscador === undefined ? null : !!buscador, sensible: !!sensible,
+      ancho: ancho || null, recorte: recorte || null,
       required: false, default: null, ref: null, optionsRoute: null, readonly: false,
       calcula: null, destacado: false, computed: false,
     }));

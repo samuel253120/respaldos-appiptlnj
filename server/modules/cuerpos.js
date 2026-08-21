@@ -83,6 +83,7 @@ module.exports = {
   fields: [
     {
       name: 'foto', label: 'Fotografía del cuerpo / grupo', type: 'file', accept: 'image/*',
+      recorte: 'cuadrado',
       help: 'La foto con la que se reconoce a este cuerpo o grupo. Al subirla se ajusta sola de tamaño.',
     },
     { name: 'nombre', label: 'Nombre', type: 'text', required: true, help: 'Ej: Damas, Caballeros, Jóvenes, Coro, Escuela Dominical…' },

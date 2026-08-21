@@ -462,7 +462,7 @@ table.grid th.col-mini { font-size: 15px; }
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 .fld input.oculto-de-verdad { width: 1px; }
-.filefld label.btn { flex: none; }
+.filefld .btn, .filefld label.btn { flex: none; white-space: nowrap; }
 
 /* ---------- Panel de control ---------- */
 /* Los conteos: el número manda, el ícono acompaña. Caben todos en una fila
@@ -824,6 +824,21 @@ ul.historial li .ha .ico:hover { background: #e2e8f0; }
   background: #fffbeb; border: 1px solid #fde68a; color: #92400e;
   padding: 10px 12px; border-radius: 9px; font-size: 13px; margin-bottom: 14px;
 }
+/* ---------- Editor de fotos: recortar, girar, brillo y contraste ---------- */
+/* El marco es lo que va a quedar guardado: cuadrado, como se muestran las
+   fotos en las fichas, en los cumpleaños y en las credenciales. */
+.ef-marco {
+  width: 320px; max-width: 100%; margin: 0 auto 10px;
+  border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0f172a;
+}
+.ef-marco canvas { display: block; width: 100%; height: auto; cursor: grab; touch-action: none; }
+.ef-marco canvas:active { cursor: grabbing; }
+.ef-ayuda { font-size: 12.5px; color: var(--muted); text-align: center; margin: 0 0 14px; line-height: 1.45; }
+.ef-barra { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; font-size: 13px; }
+.ef-barra span { flex: 0 0 78px; color: #475569; font-weight: 600; }
+.ef-barra input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.ef-botones { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+
 .modal-nota { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
 .modal-nota a { color: var(--marca-azul); }
 
