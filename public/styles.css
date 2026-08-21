@@ -1067,6 +1067,12 @@ ul.mov-list .monto-egreso { color: var(--danger); font-variant-numeric: tabular-
 .tabs button:hover { color: var(--marca-azul); }
 .tabs button.on { background: #fff; color: var(--marca-azul); box-shadow: 0 1px 2px rgba(15,23,42,.12); }
 
+/* Cuando la actividad convoca a varios cuerpos y a esta persona le toca uno */
+.pl-solo-suyos {
+  display: inline-block; margin-top: 4px; font-size: 12px; color: var(--marca-oro-oscuro);
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 999px; padding: 2px 10px;
+}
+
 .asis-filtros select { flex: 1 1 160px; min-width: 0; }
 .vista-toggle { display: flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
 .vista-toggle button {

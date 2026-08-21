@@ -50,14 +50,29 @@ function idsDeCuerpos(valor) {
 }
 
 /**
- * Integrantes de todos los cuerpos convocados a una actividad, con el cuerpo
- * por el que entra cada uno. Quien está en dos cuerpos aparece una sola vez,
- * en el primero.
+ * A qué cuerpos de esta actividad le toca pasar lista a este usuario.
+ *
+ * A una actividad puede asistir más de un cuerpo. Quien tiene cuerpos
+ * asignados solo pasa lista a los suyos: aunque la actividad convoque a
+ * siete, él ve y marca únicamente a los de su cuerpo. Sin cuerpos asignados
+ * —el caso del administrador— le tocan todos los convocados.
  */
-function integrantesConvocados(actividad, db) {
+function cuerposQueLeTocan(actividad, usuario) {
+  const convocados = idsDeCuerpos(actividad.cuerpos);
+  const suyos = require('../alcance').cuerposDe(usuario);
+  if (!suyos.length) return convocados;
+  return convocados.filter((id) => suyos.includes(Number(id)));
+}
+
+/**
+ * Integrantes de los cuerpos que le tocan a este usuario en esta actividad,
+ * con el cuerpo por el que entra cada uno. Quien está en dos de esos cuerpos
+ * aparece una sola vez, en el primero.
+ */
+function integrantesConvocados(actividad, db, usuario) {
   const { idsDeIntegrantes } = require('../integrantes');
   const mapa = new Map();
-  for (const cuerpoId of idsDeCuerpos(actividad.cuerpos)) {
+  for (const cuerpoId of cuerposQueLeTocan(actividad, usuario)) {
     const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
     if (!cuerpo) continue;
     for (const id of idsDeIntegrantes(db, cuerpo.id)) {
@@ -68,10 +83,11 @@ function integrantesConvocados(actividad, db) {
 }
 
 /** Cuenta las marcas de una actividad. */
-function conteo(asistenciaId, db) {
+function conteo(asistenciaId, db, cuerpos) {
+  const acota = cuerpos && cuerpos.length ? ` AND cuerpo_id IN (${cuerpos.map(() => '?').join(',')})` : '';
   const filas = db
-    .prepare('SELECT estado, COUNT(*) AS n FROM asistencia_detalle WHERE asistencia_id = ? GROUP BY estado')
-    .all(asistenciaId);
+    .prepare(`SELECT estado, COUNT(*) AS n FROM asistencia_detalle WHERE asistencia_id = ?${acota} GROUP BY estado`)
+    .all(asistenciaId, ...(acota ? cuerpos : []));
   const de = (e) => (filas.find((f) => f.estado === e) || {}).n || 0;
   const presentes = de('Presente');
   const ausentes = de('Ausente');
@@ -251,13 +267,17 @@ module.exports = {
         return res.status(403).json({ error: 'Esa actividad está fuera de lo que tiene asignado' });
       }
 
-      const convocados = integrantesConvocados(actividad, db);
+      const leTocan = cuerposQueLeTocan(actividad, req.user);
+      const convocados = integrantesConvocados(actividad, db, req.user);
       const marcas = db.prepare('SELECT * FROM asistencia_detalle WHERE asistencia_id = ?').all(actividad.id);
       const porMiembro = new Map(marcas.map((m) => [m.miembro_id, m]));
 
-      // Quien ya tiene marca pero salió del cuerpo se sigue mostrando
+      // Quien ya tiene marca pero salió del cuerpo se sigue mostrando, siempre
+      // que su marca sea de un cuerpo que a esta persona le toque pasar
+      const suyos = require('../alcance').cuerposDe(req.user);
       for (const m of marcas) {
         if (convocados.has(m.miembro_id)) continue;
+        if (suyos.length && !suyos.includes(Number(m.cuerpo_id))) continue;
         const cuerpo = m.cuerpo_id ? db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(m.cuerpo_id) : null;
         convocados.set(m.miembro_id, {
           cuerpo_id: m.cuerpo_id || null,
@@ -285,15 +305,19 @@ module.exports = {
         .filter(Boolean)
         .sort((a, b) => (a.cuerpo || '').localeCompare(b.cuerpo || '') || a.nombre.localeCompare(b.nombre));
 
-      const cuerpos = idsDeCuerpos(actividad.cuerpos).map((id) => {
+      const cuerpos = leTocan.map((id) => {
         const c = db.prepare('SELECT id, nombre FROM cuerpos WHERE id = ?').get(id);
         return c ? { id: c.id, nombre: c.nombre } : null;
       }).filter(Boolean);
+      // Cuando la actividad convoca a más cuerpos de los que le tocan, se dice
+      const convocadosEnTotal = idsDeCuerpos(actividad.cuerpos).length;
 
       res.json({
         actividad: {
           id: actividad.id, fecha: actividad.fecha, tipo: actividad.tipo_reunion,
           cuerpos,
+          solo_los_suyos: cuerpos.length < convocadosEnTotal,
+          cuerpos_convocados: convocadosEnTotal,
         },
         personas,
         motivos_con_detalle: MOTIVOS_CON_DETALLE,
@@ -332,8 +356,29 @@ module.exports = {
       }
 
       // A qué cuerpo pertenece cada persona en esta actividad (no se toma del
-      // cliente: se resuelve aquí, con los cuerpos realmente convocados)
-      const convocados = integrantesConvocados(actividad, db);
+      // cliente: se resuelve aquí, con los cuerpos que le tocan a quien marca)
+      const convocados = integrantesConvocados(actividad, db, req.user);
+
+      // Y no se le acepta una marca de alguien que no le toca pasar: la
+      // pantalla ya no se los muestra, pero la regla se hace valer acá.
+      const suyos = require('../alcance').cuerposDe(req.user);
+      if (suyos.length) {
+        const yaMarcados = new Map(
+          db.prepare('SELECT miembro_id, cuerpo_id FROM asistencia_detalle WHERE asistencia_id = ?')
+            .all(actividad.id)
+            .map((m) => [Number(m.miembro_id), Number(m.cuerpo_id)])
+        );
+        const ajeno = marcas.find((m) => {
+          const id = Number(m.miembro_id);
+          if (convocados.has(id)) return false;
+          return !suyos.includes(yaMarcados.get(id));
+        });
+        if (ajeno) {
+          return res.status(403).json({
+            error: 'Hay marcas de personas que no son de los cuerpos que tiene asignados. Solo puede pasar lista a los suyos.',
+          });
+        }
+      }
       const anteriores = new Map(
         db.prepare('SELECT miembro_id, cuerpo_id FROM asistencia_detalle WHERE asistencia_id = ?')
           .all(actividad.id)
@@ -366,7 +411,7 @@ module.exports = {
       });
 
       const guardadas = guardar();
-      res.json({ ok: true, guardadas, ...conteo(actividad.id, db) });
+      res.json({ ok: true, guardadas, ...conteo(actividad.id, db, suyos) });
     });
 
     // ---- Informes y promedios ----

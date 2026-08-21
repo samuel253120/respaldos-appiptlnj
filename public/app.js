@@ -5284,6 +5284,11 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
         <div class="pl-que">
           <b>🖐️ ${esc(datos.actividad.tipo || 'Actividad')} <span class="mut">${esc(diaSemanaYMes(datos.actividad.fecha).toLowerCase())}</span></b>
           <span>${(datos.actividad.cuerpos || []).map((c) => `<span class="badge">${esc(c.nombre)}</span>`).join(' ') || 'sin cuerpos'}</span>
+          ${datos.actividad.solo_los_suyos
+            ? `<span class="pl-solo-suyos" title="A esta actividad la convocan ${datos.actividad.cuerpos_convocados} cuerpos">
+                 Le toca pasar lista solo a ${(datos.actividad.cuerpos || []).length === 1 ? 'su cuerpo' : 'sus cuerpos'}
+               </span>`
+            : ''}
         </div>
         ${puedeEditar && datos.personas.length
           ? '<button class="btn secondary sm" id="plTodos">✓ Todos presentes</button>'
@@ -5313,7 +5318,9 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
           ${puedeEditar ? '<button class="btn" id="plGuardar">💾 Guardar lista</button>' : ''}
         </div>`
       : `<div class="empty-state" style="padding:26px">
-           Los cuerpos convocados todavía no tienen integrantes. Agréguelos en Cuerpos / Grupos y vuelva a pasar lista.
+           ${(datos.actividad.cuerpos || []).length
+             ? 'Los cuerpos que le toca pasar todavía no tienen integrantes. Agréguelos en Cuerpos / Grupos y vuelva a pasar lista.'
+             : 'De los cuerpos convocados a esta actividad, ninguno es de los que tiene asignados.'}
          </div>`}
     </div>`;
 

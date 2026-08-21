@@ -937,6 +937,14 @@ Tres escalones deciden lo que puede hacer cada persona. Gana el primero que diga
 
 En la ficha del usuario el editor lo dice en la cabecera: *«Acá van solo las excepciones de esta persona. Lo que no se ajuste sigue su perfil.»*
 
+### Pasar lista cuando la actividad convoca a varios cuerpos
+
+A una actividad puede asistir más de un cuerpo. Quien tiene **cuerpos asignados** pasa lista **solo a los suyos**: aunque la actividad convoque a siete, ve y marca únicamente a los de su cuerpo, y la pantalla se lo dice —*«Le toca pasar lista solo a su cuerpo»*—.
+
+No es solo lo que se muestra: si llegara una marca de alguien de otro cuerpo, el servidor la rechaza. Y el progreso de marcado que se ve es el de su parte, no el de toda la actividad.
+
+Sin cuerpos asignados —el caso del administrador— le tocan todos los convocados.
+
 ### Los permisos y el alcance trabajan juntos
 
 Los permisos dicen **qué acciones** puede hacer; las **iglesias** y los **cuerpos** asignados dicen **sobre qué datos**. Un tesorero de cuerpo se arma con las dos cosas: el perfil, más su cuerpo asignado.
