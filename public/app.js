@@ -28,6 +28,39 @@ const IGLESIA = {
   logo: '/img/logo.png',
 };
 
+/**
+ * El nombre oficial de la institución va donde importa —la pantalla de
+ * ingreso y todo lo que se imprime—; en el resto del sistema basta con saber
+ * con qué iglesia se está trabajando.
+ *
+ * Las iglesias locales suelen llamarse repitiendo el de la institución
+ * («Iglesia Pentecostal Triunfante "La Nueva Jerusalén" / Iglesia Central
+ * Concepción»). Acá se le quita esa parte, sin tocar el dato guardado. Si el
+ * nombre no empieza por el de la institución, se deja tal cual.
+ */
+function iglesiaDeTrabajo(nombre) {
+  const completo = String(nombre || '').trim();
+  if (!completo) return '';
+  const parejo = (t) => String(t || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // sin tildes
+    .replace(/["'«»“”]/g, '')             // sin comillas de ningún tipo
+    .replace(/\s+/g, ' ')
+    .trim();
+  const institucion = parejo(IGLESIA.nombre);
+  if (!institucion) return completo;
+  const partes = completo.split(/\s*[/|—–]\s*/);        // «Institución / Local»
+  if (partes.length > 1 && parejo(partes[0]) === institucion) {
+    return partes.slice(1).join(' / ').trim() || completo;
+  }
+  return completo;
+}
+
+/** Cómo se muestra el destino de una referencia: la iglesia, acortada. */
+function etiquetaDeRef(f, texto) {
+  return f && f.name === 'iglesia_id' ? iglesiaDeTrabajo(texto) : String(texto || '');
+}
+
 /* ---------------- utilidades ---------------- */
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -198,7 +231,12 @@ function valoresDelFormulario() {
 async function getOptions(clave, force) {
   if (!force && optionsCache[clave]) return optionsCache[clave];
   const ruta = clave.startsWith('/') ? clave : `/${clave}/options`;
-  const rows = await api('GET', ruta);
+  let rows = await api('GET', ruta);
+  // Para elegir una iglesia basta con su nombre: el de la institución ya está
+  // en el menú y en todo lo que se imprime.
+  if (ruta === '/iglesias/options') {
+    rows = rows.map((o) => ({ ...o, label: iglesiaDeTrabajo(o.label) || o.label }));
+  }
   optionsCache[clave] = rows;
   return rows;
 }
@@ -830,12 +868,14 @@ function renderShell() {
     .join('');
 
   const initials = (USER.nombre || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  const dondeTrabaja = iglesiaDeTrabajo(USER.iglesia_nombre) || 'Todas las iglesias';
+  const conCuerpos = (USER.cuerpos_asignados || []).length > 0;
   $app.innerHTML = `
     <div class="layout">
       <nav class="sidebar" id="sidebar">
-        <div class="brand">
+        <div class="brand" title="${esc(IGLESIA.nombre)}">
           <img class="logo" src="${IGLESIA.logo}" alt="" />
-          <span class="txt"><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}</span>
+          <span class="txt"><b>${esc(dondeTrabaja)}</b><i>Sistema de Gestión</i></span>
         </div>
         <div class="side-group">
           <a class="side-link" data-mod="_dash" href="#/"><span class="ic">📊</span> Panel de control</a>
@@ -858,13 +898,14 @@ function renderShell() {
       <div class="main">
         <header class="topbar">
           <button class="menu-toggle" id="menuToggle">☰</button>
-          <div class="iglesia-local" title="Lo que tiene asignado para ver y administrar">
+          <div class="iglesia-local${conCuerpos ? '' : ' ya-esta-en-el-menu'}" title="Lo que tiene asignado para ver y administrar">
             <span class="ic">⛪</span>
-            <span class="nm">${esc(USER.iglesia_nombre || 'Todas las iglesias')}</span>
-            ${(USER.cuerpos_asignados || []).length
+            <span class="nm">${esc(dondeTrabaja)}</span>
+            ${conCuerpos
               ? `<span class="cuerpos-chip" title="Solo ve lo de estos cuerpos">👥 ${esc(USER.cuerpos_asignados.join(' · '))}</span>`
               : ''}
           </div>
+          <div class="tb-espacio"></div>
           <a class="who" href="#/perfil" title="Mi perfil"><span class="avatar">${esc(initials)}</span> <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></a>
           <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
         </header>
@@ -1299,7 +1340,7 @@ function cellValue(f, row, col) {
   }
   switch (f.type) {
     case 'ref':
-      return esc(row[f.name + '_label'] || '');
+      return esc(etiquetaDeRef(f, row[f.name + '_label']));
     case 'multiref':
       return esc((row[f.name + '_labels'] || []).slice(0, 3).join(', ')) + ((row[f.name + '_labels'] || []).length > 3 ? '…' : '');
     case 'money':
@@ -1403,7 +1444,7 @@ function valorFicha(f, row) {
   }
   switch (f.type) {
     case 'ref':
-      return v ? esc(row[f.name + '_label'] || `#${v}`) : '';
+      return v ? esc(etiquetaDeRef(f, row[f.name + '_label']) || `#${v}`) : '';
     case 'multiref': {
       const nombres = row[f.name + '_labels'] || [];
       return nombres.length ? nombres.map((n) => `<span class="chip">${esc(n)}</span>`).join(' ') : '';
@@ -1503,7 +1544,7 @@ async function viewFicha(name, id) {
     if (v == null || v === '') continue;
     if (f.type === 'select') insignias.push(`<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`);
     else if (f.computed && typeof v !== 'object') insignias.push(`<span class="badge">${esc(v)}</span>`);
-    else if (f.type === 'ref') subtitulo.push(row[f.name + '_label'] || '');
+    else if (f.type === 'ref') subtitulo.push(etiquetaDeRef(f, row[f.name + '_label']));
   }
 
   const titulo = nombreDelRegistro(m, row);
@@ -2974,7 +3015,7 @@ async function viewPrint(name, id) {
 
 function certTextoEstandar(row) {
   const tipo = row.tipo || '';
-  const iglesia = row.iglesia_id_label || 'la iglesia';
+  const iglesia = iglesiaDeTrabajo(row.iglesia_id_label) || 'la iglesia';
   const map = {
     'Bautismo': `Certifica que fue bautizado(a) en las aguas, en obediencia al mandato de nuestro Señor Jesucristo, el día ${fechaLarga(row.fecha_evento)}, en ${iglesia}.`,
     'Presentación de niños': `Certifica que fue presentado(a) al Señor el día ${fechaLarga(row.fecha_evento)}, en ${iglesia}, conforme a la enseñanza de las Sagradas Escrituras.`,
@@ -2991,7 +3032,7 @@ function printCertificado(row) {
       <div class="cert-inner">
         <img class="cert-logo" src="${IGLESIA.logo}" alt="" />
         <div class="church">${esc(IGLESIA.nombre)}${IGLESIA.lema ? `<br><span class="lema">${esc(IGLESIA.lema)}</span>` : ''}</div>
-        <div class="local">${esc(row.iglesia_id_label || '')}</div>
+        <div class="local">${esc(iglesiaDeTrabajo(row.iglesia_id_label))}</div>
         <h1>Certificado de ${esc(row.tipo || '')}</h1>
         <div class="cert-no">N.º ${esc(row.numero || '')}</div>
         <div class="otorgado">Otorgado a:</div>
@@ -3016,7 +3057,7 @@ function printCredencial(row) {
         <div class="cred-head">
           <div>
             <div class="t">${esc(IGLESIA.nombre)}</div>
-            <div class="n">${esc(row.iglesia_id_label || '')} · Credencial de ${esc(row.tipo || '')}</div>
+            <div class="n">${esc(iglesiaDeTrabajo(row.iglesia_id_label))} · Credencial de ${esc(row.tipo || '')}</div>
           </div>
           <img class="cred-logo" src="${IGLESIA.logo}" alt="" />
         </div>
@@ -3050,7 +3091,7 @@ function printActa(m, row, esAsamblea) {
         </div>
       </div>
       <h1>${esAsamblea ? 'Acta de Asamblea' : 'Acta de Reunión'} N.º ${esc(row.numero_acta || '')}</h1>
-      <div class="sub">${esc(row.iglesia_id_label || '')}${row.cuerpo_id_label ? ' — ' + esc(row.cuerpo_id_label) : ''}</div>
+      <div class="sub">${esc(iglesiaDeTrabajo(row.iglesia_id_label))}${row.cuerpo_id_label ? ' — ' + esc(row.cuerpo_id_label) : ''}</div>
       <table class="meta-tbl">
         <tr><td class="k">Fecha</td><td>${fechaLarga(row.fecha)}</td></tr>
         ${esAsamblea ? `<tr><td class="k">Tipo de asamblea</td><td>${esc(row.tipo || '')}</td></tr>` : ''}
@@ -3081,7 +3122,7 @@ function printServicio(m, row) {
         <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}</div>
       </div>
       <h1>Registro de Servicio</h1>
-      <div class="sub">${esc(row.iglesia_id_label || '')} — ${fechaLarga(row.fecha)}</div>
+      <div class="sub">${esc(iglesiaDeTrabajo(row.iglesia_id_label))} — ${fechaLarga(row.fecha)}</div>
       <table class="meta-tbl">
         ${fila('Tipo de servicio', row.tipo)}
         ${fila('Horario', [row.hora_inicio, row.hora_termino].filter(Boolean).join(' a '))}

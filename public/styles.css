@@ -100,9 +100,18 @@ a:hover { text-decoration: underline; }
   font-size: 13.5px; font-weight: 700; color: var(--marca-azul);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Con qué iglesia se trabaja se dice una sola vez. Cuando el menú de la
+   izquierda está a la vista, ya lo dice él; acá arriba solo queda lo que el
+   menú no muestra —los cuerpos asignados—, y si no hay, no queda nada. */
+@media (min-width: 901px) {
+  .iglesia-local.ya-esta-en-el-menu { display: none; }
+  .iglesia-local .ic, .iglesia-local .nm { display: none; }
+}
 .page-head .sub-iglesia {
   font-size: 12.5px; color: var(--muted); font-weight: 500; margin-top: 1px;
 }
+/* Empuja al usuario y la salida hacia la derecha, esté o no la iglesia */
+.topbar .tb-espacio { flex: 1; }
 .topbar .who { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .topbar .who b { color: var(--text); }
 .avatar {
@@ -575,10 +584,13 @@ table.grid th.col-mini { font-size: 15px; }
   .sidebar.open { left: 0; }
   .side-link { padding: 12px 16px; font-size: 15px; }        /* objetivos táctiles más grandes */
   .content { padding: 14px; }
-  .topbar { padding: 10px 14px; }
+  .topbar { padding: 10px 12px; gap: 8px; }
   .topbar .who span:last-child { display: none; }             /* ocultar datos del usuario en pantallas chicas */
-  .iglesia-local { padding: 5px 10px 5px 8px; }
-  .iglesia-local .nm { max-width: 42vw; font-size: 12.5px; }
+  .iglesia-local { padding: 5px 10px; }
+  /* Acá el nombre de la iglesia es lo único que dice dónde se está parado:
+     el adorno cede el espacio para que quepa entero. */
+  .iglesia-local .ic { display: none; }
+  .iglesia-local .nm { max-width: none; font-size: 12.5px; }
   .page-head h2 { font-size: 18px; }
   .stats { grid-template-columns: 1fr 1fr; gap: 8px; }
   .stat { padding: 10px 12px; }
