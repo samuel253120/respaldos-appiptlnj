@@ -3,3 +3,8 @@ data/
 *.log
 .env
 .DS_Store
+
+# Los datos del sistema anterior no viven en el repositorio: se suben desde
+# la propia aplicación y quedan junto a la base de datos.
+importacion/*.json
+importacion/informe-*.txt

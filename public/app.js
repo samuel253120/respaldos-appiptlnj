@@ -3393,6 +3393,48 @@ async function viewConfiguracion() {
  *   4. el informe, que compara las dos bases y revisa las relaciones.
  * ===================================================================== */
 
+/** La salida del traspaso, tal como se vería en la consola del servidor. */
+function pintarConsola(titulo, lineas, clase) {
+  const salida = document.getElementById('tpSalida');
+  if (!salida) return null;
+  salida.innerHTML = `
+    <div class="consola ${clase || ''}">
+      <div class="consola-cab">
+        <b>${esc(titulo)}</b>
+        <button class="btn secondary sm" id="tpCerrar">Cerrar</button>
+      </div>
+      <pre>${esc(lineas.join('\n'))}</pre>
+    </div>`;
+  document.getElementById('tpCerrar').addEventListener('click', () => { salida.innerHTML = ''; });
+  salida.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  return salida;
+}
+
+/** El informe del traspaso en pantalla, con su botón para guardarlo. */
+function mostrarInforme(contenedor, r) {
+  const salida = pintarConsola(
+    r.guardado ? '📋 Informe del traspaso (el que quedó guardado)' : '📋 Informe de la importación',
+    r.texto.split('\n'),
+    r.todo_cuadra === false ? 'mal' : 'bien'
+  );
+  if (!salida) return;
+
+  const guardar = document.createElement('button');
+  guardar.className = 'btn secondary sm';
+  guardar.textContent = '⬇️ Guardarlo';
+  guardar.addEventListener('click', () => {
+    const url = URL.createObjectURL(new Blob([r.texto], { type: 'text/plain;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `informe-importacion-${HOY()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  });
+  salida.querySelector('.consola-cab').appendChild(guardar);
+}
+
 async function renderTraspaso(contenedor, mostrarDespues) {
   let estado;
   try {
@@ -3421,10 +3463,28 @@ async function renderTraspaso(contenedor, mostrarDespues) {
 
       ${sinOrigen ? `
         <div class="card-body">
-          <p style="color:var(--muted);margin:0">
-            No encuentro el archivo con los datos del sistema anterior
-            (<code>importacion/origen-v10.json</code>). Sin él no hay nada que traspasar.
-          </p>
+          ${yaImportado ? `
+            <p style="margin:0 0 10px">
+              <b>El traspaso ya está hecho.</b> Hay ${estado.hoy.miembros} miembros, ${estado.hoy.cuerpos} cuerpos
+              y ${estado.hoy.marcas} marcas de asistencia traídas del sistema anterior.
+            </p>
+            <p style="color:var(--muted);font-size:13.5px;margin:0 0 14px">
+              El archivo con los datos ya no está en el servidor, y así corresponde: los datos de la iglesia
+              están en el sistema, no dando vueltas en un archivo. El informe de aquel día quedó guardado.
+            </p>
+            ${estado.hay_informe_guardado
+              ? `<button class="btn secondary sm" id="tpInformeSolo">📋 Ver el informe del traspaso</button>`
+              : ''}` : `
+            <p style="margin:0 0 10px"><b>No hay ningún archivo con los datos del sistema anterior.</b></p>
+            <p style="color:var(--muted);font-size:13.5px;margin:0 0 14px">
+              Para traspasarlos, suba acá el volcado que entrega el sistema antiguo. Queda guardado junto a
+              la base de datos, no dentro del programa.
+            </p>`}
+          <div class="fld full" style="margin-top:10px">
+            <label>${yaImportado ? 'Si necesita volver a traspasar, suba el archivo de nuevo' : 'Archivo del volcado (.json)'}</label>
+            <input type="file" id="tpArchivo" accept="application/json,.json" />
+            <div class="help">Se acepta el volcado completo del sistema anterior, en formato JSON.</div>
+          </div>
         </div>` : `
         <div class="card-body" style="padding-bottom:6px">
           <p style="margin:0 0 12px;color:var(--muted);font-size:13.5px">
@@ -3478,24 +3538,51 @@ async function renderTraspaso(contenedor, mostrarDespues) {
           </div>
         </div>
 
-        <div id="tpSalida"></div>`}
+        `}
+      <div id="tpSalida"></div>
     </div>`;
 
-  if (sinOrigen) return;
+  // Subir el volcado del sistema anterior: es lo único que hace falta cuando
+  // el archivo no está en el servidor
+  const archivo = document.getElementById('tpArchivo');
+  if (archivo) {
+    archivo.addEventListener('change', async () => {
+      const elegido = archivo.files && archivo.files[0];
+      if (!elegido) return;
+      archivo.disabled = true;
+      const cuerpo = new FormData();
+      cuerpo.append('archivo', elegido);
+      try {
+        const r = await api('POST', '/importacion/origen', cuerpo, true);
+        toast(`Archivo recibido: ${r.miembros} miembros`);
+        renderTraspaso(contenedor);
+      } catch (e) {
+        toast(e.message, true);
+        archivo.disabled = false;
+      }
+    });
+  }
+
+  if (sinOrigen) {
+    const soloInforme = document.getElementById('tpInformeSolo');
+    if (soloInforme) {
+      soloInforme.addEventListener('click', async () => {
+        soloInforme.disabled = true;
+        try {
+          const r = await api('GET', '/importacion/informe');
+          mostrarInforme(contenedor, r);
+        } catch (e) {
+          toast(e.message, true);
+        } finally {
+          soloInforme.disabled = false;
+        }
+      });
+    }
+    return;
+  }
 
   const salida = document.getElementById('tpSalida');
-  const pintar = (titulo, lineas, clase) => {
-    salida.innerHTML = `
-      <div class="consola ${clase || ''}">
-        <div class="consola-cab">
-          <b>${esc(titulo)}</b>
-          <button class="btn secondary sm" id="tpCerrar">Cerrar</button>
-        </div>
-        <pre>${esc(lineas.join('\n'))}</pre>
-      </div>`;
-    document.getElementById('tpCerrar').addEventListener('click', () => { salida.innerHTML = ''; });
-    salida.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  };
+  const pintar = (titulo, lineas, clase) => pintarConsola(titulo, lineas, clase);
 
   const correr = async (boton, prueba) => {
     const texto = boton.textContent;
@@ -3511,11 +3598,12 @@ async function renderTraspaso(contenedor, mostrarDespues) {
       );
       if (!r.error) toast(prueba ? 'El ensayo terminó bien' : 'Importación terminada');
       else toast('La importación se detuvo: revise el detalle', true);
-      if (!prueba && !r.error) {
-        // Los conteos de arriba cambiaron, pero lo que acaba de pasar se queda
-        // en pantalla: es lo que hay que leer antes de seguir.
+      if (!r.error) {
+        // El panel se pinta de nuevo —tras el ensayo, para habilitar el botón
+        // de importar; tras la importación, porque los conteos cambiaron—, y
+        // lo que acaba de pasar se queda en pantalla: es lo que hay que leer.
         renderTraspaso(contenedor, {
-          titulo: `📥 Importación · ${r.segundos} segundos`,
+          titulo: `${prueba ? '🧪 Ensayo' : '📥 Importación'} · ${r.segundos} segundos`,
           lineas: r.lineas,
           clase: 'bien',
         });
@@ -3547,24 +3635,7 @@ async function renderTraspaso(contenedor, mostrarDespues) {
     const boton = e.currentTarget;
     boton.disabled = true;
     try {
-      const r = await api('GET', '/importacion/informe');
-      pintar('📋 Informe de la importación', r.texto.split('\n'), r.todo_cuadra ? 'bien' : 'mal');
-
-      // Para guardarlo: el texto ya está acá, no hace falta pedirlo de nuevo
-      const guardar = document.createElement('button');
-      guardar.className = 'btn secondary sm';
-      guardar.textContent = '⬇️ Guardarlo';
-      guardar.addEventListener('click', () => {
-        const url = URL.createObjectURL(new Blob([r.texto], { type: 'text/plain;charset=utf-8' }));
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `informe-importacion-${HOY()}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 4000);
-      });
-      salida.querySelector('.consola-cab').appendChild(guardar);
+      mostrarInforme(contenedor, await api('GET', '/importacion/informe'));
     } catch (err) {
       toast(err.message, true);
     } finally {

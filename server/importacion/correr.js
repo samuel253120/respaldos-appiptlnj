@@ -38,16 +38,32 @@ const MODULOS = [
   ['pastores', require('./m08-pastor')],
 ];
 
-/** El archivo de origen que viene con el sistema. */
+/**
+ * Dónde está el volcado del sistema anterior.
+ *
+ * Los datos de la iglesia no viajan dentro del programa: se suben cuando hay
+ * que traspasarlos y quedan junto a la base, en la carpeta de datos. Si
+ * además hay una copia en el repositorio —así se trabaja en desarrollo—, se
+ * usa esa cuando no se ha subido ninguna.
+ */
+const ORIGEN_SUBIDO = path.join(require('../db').DATA_DIR, 'importacion', 'origen.json');
 const ORIGEN_POR_DEFECTO = path.join(__dirname, '..', '..', 'importacion', 'origen-v10.json');
+
+/** El archivo de origen que se va a usar, o null si no hay ninguno. */
+function rutaDelOrigen() {
+  for (const candidato of [ORIGEN_SUBIDO, ORIGEN_POR_DEFECTO]) {
+    if (fs.existsSync(candidato)) return candidato;
+  }
+  return null;
+}
 
 /** Lee el volcado del sistema anterior. */
 function leerOrigen(ruta) {
   const archivo = ruta
     ? (path.isAbsolute(ruta) ? ruta : path.join(process.cwd(), ruta))
-    : ORIGEN_POR_DEFECTO;
-  if (!fs.existsSync(archivo)) {
-    const e = new Error(`No encuentro el archivo de origen: ${archivo}`);
+    : rutaDelOrigen();
+  if (!archivo || !fs.existsSync(archivo)) {
+    const e = new Error('No hay ningún archivo de datos del sistema anterior. Suba el volcado para poder traspasarlo.');
     e.codigo = 'sin-origen';
     throw e;
   }
@@ -200,4 +216,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { main, correr, leerOrigen, MODULOS, ORIGEN_POR_DEFECTO };
+module.exports = { main, correr, leerOrigen, rutaDelOrigen, MODULOS, ORIGEN_SUBIDO, ORIGEN_POR_DEFECTO };

@@ -91,15 +91,23 @@ Límite: 5.000 filas por archivo (divida el archivo si tiene más). La importaci
 
 Para el traspaso desde el sistema que la iglesia usaba antes hay una importación aparte, en `server/importacion/`, que no pasa por CSV: lee la exportación completa y la traduce módulo por módulo, en el orden en que se pueden escribir sin romper vínculos.
 
-Cómo se corre —el ensayo hace todo el trabajo y lo deshace al final, así se ven los conteos sin tocar nada—:
+Se maneja desde la propia aplicación, sin consola: **Configuración → 🚚 Traspaso desde el sistema anterior**, al pie de la pantalla y solo para el administrador. Ahí se **sube el volcado** del sistema antiguo —que queda junto a la base de datos, no dentro del programa: una versión publicada no lleva adentro los datos de nadie—, se ve qué trae el archivo comparado con lo que hay hoy, y se hacen los cinco pasos en orden:
+
+1. **Descargar respaldo** de la base completa.
+2. **Ver qué hay hoy** y, si es todo de prueba, dejar la base como nueva.
+3. **Ensayo**: hace todo el trabajo y lo deshace al final.
+4. **Importar**.
+5. **Ver el informe** y guardarlo.
+
+Tres resguardos van puestos ahí: importar de verdad exige el **modo mantenimiento activo** y haber corrido antes el **ensayo**, y vaciar la base pide escribir la palabra completa. Terminado el traspaso, el informe queda guardado en el servidor y el archivo de origen se puede sacar: la pantalla sigue mostrando lo que se trajo y el informe de aquel día.
+
+También se puede correr desde la consola, con el volcado a mano:
 
 ```bash
-node server/importacion/correr.js --prueba     # ensayo
-node server/importacion/correr.js              # de verdad
-node server/importacion/informe.js             # la verificación final
+node server/importacion/correr.js --datos <archivo.json> --prueba   # ensayo
+node server/importacion/correr.js --datos <archivo.json>            # de verdad
+node server/importacion/informe.js --datos <archivo.json>           # la verificación
 ```
-
-Y desde la propia aplicación, sin consola: **Configuración → Traspaso desde el sistema anterior**, al pie de la pantalla y solo para el administrador. Muestra qué trae el archivo y qué hay hoy, y ofrece los cuatro pasos en orden: **guardar un respaldo** de la base completa, correr el **ensayo**, **importar** de verdad y ver el **informe**. Dos resguardos van puestos ahí: importar de verdad exige el **modo mantenimiento activo** y haber corrido antes el **ensayo**.
 
 Reglas que valen para todos los módulos:
 

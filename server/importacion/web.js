@@ -19,15 +19,28 @@
  *    deshace: si algo no cuadra, se ve ahí y no en la base.
  */
 const express = require('express');
+const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
-const { db, DB_PATH } = require('./../db');
+const { db, DB_PATH, DATA_DIR } = require('./../db');
 const { authRequired } = require('../auth');
 const ajustes = require('../ajustes');
-const { correr, leerOrigen } = require('./correr');
+const { correr, leerOrigen, rutaDelOrigen, ORIGEN_SUBIDO } = require('./correr');
 const { informe } = require('./informe');
 
 const router = express.Router();
+
+/** El informe final se guarda junto a la base: es el acta del traspaso. */
+const INFORME_GUARDADO = path.join(DATA_DIR, 'informe-importacion.txt');
+
+/** Deja el informe guardado, para poder mostrarlo cuando ya no esté el origen. */
+function guardarInforme(texto) {
+  try {
+    fs.writeFileSync(INFORME_GUARDADO, texto + '\n');
+  } catch (e) {
+    console.error(`⚠️  No se pudo guardar el informe del traspaso: ${e.message}`);
+  }
+}
 
 /** Cuántas filas tiene una tabla, sin caerse si todavía no existe. */
 function cuantas(tabla) {
@@ -86,6 +99,8 @@ router.get('/estado', (req, res) => {
     mantenimiento: ajustes.activo('mantenimiento_activo'),
     ultimo_ensayo: ultimoEnsayo,
     ya_importado: yaImportado,
+    hay_informe_guardado: fs.existsSync(INFORME_GUARDADO),
+    origen_subido: rutaDelOrigen() === ORIGEN_SUBIDO,
     hoy: {
       miembros: cuantas('miembros'),
       cuerpos: cuantas('cuerpos'),
@@ -132,6 +147,18 @@ router.post('/correr', (req, res) => {
 
   if (prueba && !salida.error) ultimoEnsayo = new Date().toISOString();
 
+  // Terminada la importación, el informe queda guardado en el servidor: es el
+  // acta de lo que se trajo, y tiene que sobrevivir aunque después se saque el
+  // archivo de origen.
+  if (!prueba && !salida.error) {
+    try {
+      const leido = leerOrigen(null);
+      guardarInforme(informe({ ...leido.datos, __archivo: leido.nombre }, leido.descartadas).texto);
+    } catch (e) {
+      /* si no se pudo, el informe se puede pedir aparte */
+    }
+  }
+
   res.json({
     prueba,
     lineas: salida.lineas,
@@ -141,22 +168,92 @@ router.post('/correr', (req, res) => {
   });
 });
 
-/** El informe final: la verificación obligatoria, en texto. */
+/**
+ * El informe final: la verificación obligatoria, en texto.
+ *
+ * Con el archivo de origen a mano se calcula de nuevo, comparando las dos
+ * bases; si ya no está —porque el traspaso terminó y se sacó—, se entrega el
+ * que quedó guardado el día que se importó.
+ */
 router.get('/informe', (req, res) => {
-  let leido;
+  let texto = null;
+  let todoCuadra = null;
+  let guardado = false;
+
   try {
-    leido = leerOrigen(null);
+    const leido = leerOrigen(null);
+    const hecho = informe({ ...leido.datos, __archivo: leido.nombre }, leido.descartadas);
+    texto = hecho.texto;
+    todoCuadra = hecho.todoCuadra;
+    guardarInforme(texto);
   } catch (e) {
-    return res.status(400).json({ error: e.message });
+    if (fs.existsSync(INFORME_GUARDADO)) {
+      texto = fs.readFileSync(INFORME_GUARDADO, 'utf8');
+      guardado = true;
+    } else {
+      return res.status(400).json({ error: e.message });
+    }
   }
-  const { texto, todoCuadra } = informe({ ...leido.datos, __archivo: leido.nombre }, leido.descartadas);
 
   if (req.query.descargar) {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="informe-importacion-${new Date().toISOString().slice(0, 10)}.txt"`);
     return res.send(texto);
   }
-  res.json({ texto, todo_cuadra: todoCuadra });
+  res.json({ texto, todo_cuadra: todoCuadra, guardado });
+});
+
+/**
+ * Recibe el volcado del sistema anterior. Queda junto a la base, no dentro
+ * del programa: los datos de la iglesia son de la iglesia, y no tienen por
+ * qué viajar en cada versión que se publica.
+ */
+const subida = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 60 * 1024 * 1024 },
+});
+
+router.post('/origen', subida.single('archivo'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No llegó ningún archivo.' });
+
+  let crudo;
+  try {
+    crudo = JSON.parse(req.file.buffer.toString('utf8'));
+  } catch (e) {
+    return res.status(400).json({ error: 'Ese archivo no es un volcado en formato JSON.' });
+  }
+  const datos = crudo.data || crudo;
+  if (!datos || !Array.isArray(datos.members)) {
+    return res.status(400).json({
+      error: 'El archivo no trae la lista de miembros del sistema anterior: revise que sea el volcado correcto.',
+    });
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(ORIGEN_SUBIDO), { recursive: true });
+    fs.writeFileSync(ORIGEN_SUBIDO, JSON.stringify(crudo));
+  } catch (e) {
+    return res.status(500).json({ error: `No se pudo guardar el archivo: ${e.message}` });
+  }
+
+  ultimoEnsayo = null; // el origen cambió: hay que ensayar de nuevo
+  res.json({
+    ok: true,
+    nombre: req.file.originalname,
+    miembros: datos.members.length,
+  });
+});
+
+/** Saca el volcado subido: terminado el traspaso, no tiene para qué quedarse. */
+router.delete('/origen', (req, res) => {
+  if (!fs.existsSync(ORIGEN_SUBIDO)) return res.json({ ok: true, ya_no_estaba: true });
+  try {
+    fs.unlinkSync(ORIGEN_SUBIDO);
+  } catch (e) {
+    return res.status(500).json({ error: `No se pudo sacar el archivo: ${e.message}` });
+  }
+  ultimoEnsayo = null;
+  res.json({ ok: true });
 });
 
 /* ---------------------------------------------------------------------

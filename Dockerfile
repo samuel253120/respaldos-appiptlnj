@@ -22,10 +22,9 @@ COPY package.json ./
 COPY server ./server
 COPY public ./public
 
-# Los datos del sistema anterior, para el traspaso que se hace desde
-# Configuración → Traspaso. Una vez importados y verificados, esta carpeta se
-# puede sacar del repositorio y volver a desplegar: deja de hacer falta.
-COPY importacion ./importacion
+# Los datos del sistema anterior NO viajan en la imagen: se suben desde
+# Configuración → Traspaso y quedan en /data, junto a la base. Así una versión
+# publicada no lleva adentro los datos de nadie.
 
 # /data guarda la base de datos y los archivos subidos. NO se declara aquí
 # con VOLUME: Railway rechaza esa instrucción y exige que el volumen se
