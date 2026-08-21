@@ -11,17 +11,18 @@
  * predicador invitado). Cuando la persona sí es miembro, queda enlazada a
  * su ficha.
  *
- * Ofrenda: del total recibido se aparta solo el porcentaje definido en
- * Configuración → Organización (10% por defecto) y el resto queda para la
- * iglesia local. Si la opción «Registrar la ofrenda en tesorería» está
- * activa, el servicio anota solo esos dos ingresos: el porcentaje apartado
- * en el «Fondo para la corporación» de esa iglesia y el resto en su
- * tesorería general. Los dos movimientos se mantienen al día con el
- * servicio: si se corrige la ofrenda se corrigen, y si se elimina el
- * servicio se van con él.
+ * Ofrenda: entra completa a la tesorería de la iglesia y de ahí sale el
+ * aporte para la corporación —el porcentaje definido en Configuración →
+ * Organización, 10% por defecto—. Si la opción «Registrar la ofrenda en
+ * tesorería» está activa, el servicio deja tres movimientos: el ingreso de
+ * la ofrenda completa en la cuenta general de la iglesia, el egreso del
+ * aporte de esa misma cuenta y el ingreso del aporte en su «Fondo para la
+ * corporación». Se explica en server/ofrenda-tesoreria.js. Los tres se
+ * mantienen al día con el servicio: si se corrige la ofrenda se corrigen, y
+ * si se elimina el servicio se van con él.
  */
 const { LIBROS, cita } = require('../biblia');
-const { fechaLarga } = require('../formato');
+const { sincronizarOfrenda } = require('../ofrenda-tesoreria');
 
 /** Los servicios que celebra la iglesia. */
 const TIPOS_DE_SERVICIO = [
@@ -113,24 +114,30 @@ module.exports = {
     },
 
     // ---- Ofrenda ----
-    { name: 'ofrenda_total', label: 'Ofrenda recibida (total)', type: 'money', seccion: 'Ofrenda' },
     {
-      name: 'ofrenda_fondo', label: 'Aparte para el fondo', type: 'money', readonly: true,
+      name: 'ofrenda_total', label: 'Ofrenda recibida (total)', type: 'money', seccion: 'Ofrenda',
+      help: 'Todo lo que se recibió. Entra completo a la tesorería de la iglesia.',
+    },
+    {
+      name: 'ofrenda_fondo', label: 'Aporte a la corporación', type: 'money', readonly: true,
       calcula: { tipo: 'porcentaje', campo: 'ofrenda_total', opcion: 'ofrenda_porcentaje_fondo' },
-      help: 'Se calcula solo, con el porcentaje definido en Configuración → Organización. Va al otro fondo de tesorería.',
+      help:
+        'Se calcula solo, con el porcentaje definido en Configuración → Organización. En Tesorería sale como ' +
+        'egreso de la cuenta de la iglesia y entra al «Fondo para la corporación».',
     },
     {
       name: 'ofrenda_iglesia', label: 'Queda para la iglesia', type: 'money', readonly: true,
       calcula: { tipo: 'resta', campos: ['ofrenda_total', 'ofrenda_fondo'] },
-      help: 'Total de la ofrenda menos lo que se aparta para el fondo.',
+      help: 'Total de la ofrenda menos el aporte a la corporación. Es lo que le queda a la cuenta de la iglesia.',
     },
 
     // ---- Cierre ----
     { name: 'hora_termino', label: 'Hora de término', type: 'time', seccion: 'Cierre' },
     { name: 'observaciones', label: 'Observaciones generales', type: 'textarea' },
 
-    // Los dos ingresos que la ofrenda de este servicio dejó en Tesorería
+    // Los tres movimientos que la ofrenda de este servicio dejó en Tesorería
     { name: 'movimiento_iglesia_id', type: 'number', oculto: true, readonly: true },
+    { name: 'movimiento_aporte_id', type: 'number', oculto: true, readonly: true },
     { name: 'movimiento_fondo_id', type: 'number', oculto: true, readonly: true },
   ],
 
@@ -153,70 +160,11 @@ module.exports = {
     },
 
     /**
-     * Deja en Tesorería los dos ingresos de la ofrenda: lo apartado para la
-     * corporación en el fondo de esa iglesia, y el resto en su tesorería
-     * general. Se crean, se corrigen o se borran según lo que diga el
-     * servicio, para que la tesorería siempre calce con lo registrado.
+     * Deja la tesorería calzando con la ofrenda de este servicio. Cómo se
+     * anota —y por qué en tres movimientos— está en ofrenda-tesoreria.js.
      */
     afterSave(fila, { db }) {
-      const ajustes = require('../ajustes');
-      const registrar = ajustes.activo('ofrenda_registra_tesoreria');
-
-      const descripcion = `Ofrenda de ${(fila.tipo || 'servicio').toLowerCase()} del ${fechaLarga(fila.fecha)}`;
-      const cuentaDe = (tipo) =>
-        db.prepare('SELECT * FROM cuentas_tesoreria WHERE iglesia_id = ? AND tipo = ?').get(fila.iglesia_id, tipo);
-
-      const lados = [
-        {
-          columna: 'movimiento_iglesia_id',
-          monto: Number(fila.ofrenda_iglesia) || 0,
-          cuenta: cuentaDe('General'),
-          concepto: descripcion,
-        },
-        {
-          columna: 'movimiento_fondo_id',
-          monto: Number(fila.ofrenda_fondo) || 0,
-          cuenta: cuentaDe('Fondo para la corporación'),
-          concepto: `Aparte para la corporación — ${descripcion.toLowerCase()}`,
-        },
-      ];
-
-      for (const lado of lados) {
-        const guardado = fila[lado.columna]
-          ? db.prepare('SELECT id FROM tesoreria WHERE id = ?').get(fila[lado.columna])
-          : null;
-
-        // Sin ofrenda, sin cuenta donde anotarla o con el registro apagado:
-        // no queda movimiento (y se retira el que hubiera).
-        if (!registrar || !lado.cuenta || lado.monto <= 0) {
-          if (guardado) {
-            db.prepare('DELETE FROM tesoreria WHERE id = ?').run(guardado.id);
-            db.prepare(`UPDATE servicios SET "${lado.columna}" = NULL WHERE id = ?`).run(fila.id);
-          }
-          continue;
-        }
-
-        if (guardado) {
-          db.prepare(
-            `UPDATE tesoreria
-                SET fecha = ?, tipo = 'Ingreso', categoria = 'Ofrendas', concepto = ?, monto = ?,
-                    cuenta_id = ?, iglesia_id = ?, updated_at = datetime('now','localtime')
-              WHERE id = ?`
-          ).run(fila.fecha, lado.concepto, lado.monto, lado.cuenta.id, fila.iglesia_id, guardado.id);
-        } else {
-          const info = db
-            .prepare(
-              `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto, metodo, cuenta_id,
-                                      iglesia_id, notas, servicio_id)
-               VALUES (?, 'Ingreso', 'Ofrendas', ?, ?, 'Efectivo', ?, ?, ?, ?)`
-            )
-            .run(
-              fila.fecha, lado.concepto, lado.monto, lado.cuenta.id, fila.iglesia_id,
-              'Movimiento generado por el Registro de Servicios.', fila.id
-            );
-          db.prepare(`UPDATE servicios SET "${lado.columna}" = ? WHERE id = ?`).run(info.lastInsertRowid, fila.id);
-        }
-      }
+      sincronizarOfrenda(fila, db);
     },
 
     beforeDelete(fila, { db }) {

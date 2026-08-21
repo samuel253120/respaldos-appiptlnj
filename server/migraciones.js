@@ -454,6 +454,49 @@ function conyugeUnicoDePastores() {
 
 
 /**
+ * La ofrenda de un servicio entraba a la tesorería de la iglesia ya
+ * descontado el aporte para la corporación: de una ofrenda de cien mil se
+ * anotaban noventa mil, y los diez mil aparecían en el fondo sin que se
+ * viera de dónde habían salido.
+ *
+ * Ahora entra completa y el aporte sale como egreso de esa misma cuenta, con
+ * su ingreso al otro lado. El saldo queda igual; lo que cambia es que se ve
+ * lo que entró y lo que salió, cada cosa por su nombre.
+ *
+ * Los servicios ya registrados se rehacen con la misma regla. Si el registro
+ * en tesorería está apagado no se toca nada: se deja para cuando se
+ * encienda, porque rehacerlos ahí significaría borrar movimientos.
+ */
+function ofrendaEntraCompleta() {
+  if (yaAplicada('ofrenda_entra_completa')) return;
+  const ajustes = require('./ajustes');
+  if (!ajustes.activo('ofrenda_registra_tesoreria')) return;
+
+  const columnas = db.prepare('PRAGMA table_info("servicios")').all().map((c) => c.name);
+  if (!columnas.includes('movimiento_aporte_id')) return;
+  marcarAplicada('ofrenda_entra_completa');
+
+  // Solo los que apartaron algo: los servicios traídos del sistema anterior
+  // no apartaban nada, y su movimiento se deja tal como se importó.
+  const { sincronizarOfrenda } = require('./ofrenda-tesoreria');
+  const servicios = db
+    .prepare(
+      `SELECT * FROM servicios
+        WHERE ofrenda_fondo > 0 AND (movimiento_iglesia_id IS NOT NULL OR movimiento_fondo_id IS NOT NULL)`
+    )
+    .all();
+  for (const servicio of servicios) sincronizarOfrenda(servicio, db);
+
+  if (servicios.length) {
+    console.log(
+      `🔁 ofrendas: ${servicios.length} servicio(s) quedaron con la ofrenda completa en la cuenta de la ` +
+        'iglesia y el aporte a la corporación anotado como egreso.'
+    );
+  }
+}
+
+
+/**
  * Un cargo se escribe como se escribe un cargo: con mayúscula en cada
  * palabra. Antes se guardaban a media asta —«Pastor presidente»—; acá quedan
  * como corresponde, tanto en las fichas de Pastores / Guías como en los
@@ -861,6 +904,7 @@ function ejecutarMigraciones() {
     ['asistencias nominales', asistenciasNominales],
     ['actividades con varios cuerpos', actividadesConVariosCuerpos],
     ['cónyuge de los pastores', conyugeUnicoDePastores],
+    ['la ofrenda entra completa', ofrendaEntraCompleta],
     ['mayúsculas de los cargos', cargosConMayuscula],
     ['cargos de los pastores', cargosDePastores],
     ['tratos permitidos', tratamientosPermitidos],

@@ -3289,15 +3289,15 @@ function printServicio(m, row) {
 
       <h3>Asistencia</h3>
       <table class="meta-tbl">
-        ${fila('Adultos', row.asistencia_adultos)}
-        ${fila('Niños', row.asistencia_ninos)}
-        ${fila('Total general', row.asistencia_total)}
+        ${fila('Adultos', fmtNumero(row.asistencia_adultos))}
+        ${fila('Niños', fmtNumero(row.asistencia_ninos))}
+        ${fila('Total general', fmtNumero(row.asistencia_total))}
       </table>
 
       <h3>Ofrenda</h3>
       <table class="meta-tbl">
         ${fila('Recibida (total)', fmtMoney(row.ofrenda_total))}
-        ${fila('Aparte para el fondo', fmtMoney(row.ofrenda_fondo))}
+        ${fila('Aporte a la corporación', fmtMoney(row.ofrenda_fondo))}
         ${fila('Queda para la iglesia', fmtMoney(row.ofrenda_iglesia))}
       </table>
 

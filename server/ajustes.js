@@ -65,17 +65,19 @@ const OPCIONES = [
           'cuerpos. Mientras ese cuerpo no exista o no tenga integrantes, se puede elegir a cualquier miembro.',
       },
       {
-        clave: 'ofrenda_porcentaje_fondo', label: 'Porcentaje de la ofrenda que se aparta', tipo: 'number', defecto: '10',
+        clave: 'ofrenda_porcentaje_fondo', label: 'Porcentaje de la ofrenda que aporta a la corporación',
+        tipo: 'number', defecto: '10',
         ayuda:
-          'En el Registro de Servicios, de cada ofrenda se aparta este porcentaje para el fondo de la ' +
-          'corporación y el resto queda para la iglesia local.',
+          'En el Registro de Servicios, la ofrenda entra completa a la tesorería de la iglesia y de ahí sale ' +
+          'este porcentaje como aporte para la corporación, que entra a su «Fondo para la corporación».',
       },
       {
         clave: 'ofrenda_registra_tesoreria', label: 'Registrar la ofrenda en tesorería', tipo: 'boolean', defecto: '1',
         ayuda:
-          'Al guardar un servicio con ofrenda, el sistema anota solo dos ingresos: el porcentaje apartado en el ' +
-          '«Fondo para la corporación» de esa iglesia y el resto en su tesorería general. Apáguelo si prefiere ' +
-          'ingresar las ofrendas a mano en Tesorería.',
+          'Al guardar un servicio con ofrenda, el sistema anota tres movimientos: el ingreso de la ofrenda ' +
+          'completa en la tesorería de la iglesia, el egreso del aporte a la corporación de esa misma cuenta ' +
+          'y el ingreso de ese aporte en su «Fondo para la corporación». Apáguelo si prefiere ingresar las ' +
+          'ofrendas a mano en Tesorería.',
       },
     ],
   },

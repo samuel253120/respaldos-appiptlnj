@@ -442,7 +442,7 @@ Corporación            Tesorería general de la corporación
                        + una cuenta por cada proyecto o trabajo de la corporación
 
 Cada iglesia local     Tesorería general de la iglesia
-                       + Fondo para la corporación  ← lo que aparta de las ofrendas
+                       + Fondo para la corporación  ← lo que aporta de las ofrendas
                        + una cuenta por cada proyecto o trabajo de esa iglesia
 ```
 
@@ -461,7 +461,7 @@ Cada movimiento de Tesorería se registra **en una cuenta**, y el saldo de cada 
 Reglas que el sistema hace cumplir:
 
 - **Una sola cuenta General por nivel**: una para la corporación y una para cada iglesia. Las demás son de proyecto o trabajo.
-- **Un solo Fondo para la corporación por iglesia**, y solo en iglesias locales: es la cuenta donde cada congregación aparta lo que le corresponde a la corporación (el 10% de las ofrendas) hasta traspasarlo. Se crea solo para cada iglesia.
+- **Un solo Fondo para la corporación por iglesia**, y solo en iglesias locales: es la cuenta donde cada congregación reúne lo que le aporta a la corporación (el 10% de las ofrendas) hasta traspasarlo. Se crea solo para cada iglesia.
 - Una cuenta de la corporación **no pertenece a ninguna iglesia**; una cuenta local exige indicar cuál.
 - La **iglesia de cada movimiento se toma de su cuenta** — no se escribe a mano —, así el alcance por iglesia siempre calza con el nivel de la cuenta.
 - Una **cuenta cerrada** no recibe movimientos nuevos, pero los que ya tiene se pueden corregir.
@@ -479,7 +479,7 @@ Un usuario asignado a una iglesia solo ve —y solo puede mover— las cuentas d
 
 ### Traspasos entre cuentas 🔄
 
-El dinero se mueve de una cuenta a otra **dejando constancia**. El caso corriente: cada iglesia aparta el 10% de las ofrendas en su *Fondo para la corporación* y, cuando llega el momento, lo traspasa a la tesorería general de la corporación.
+El dinero se mueve de una cuenta a otra **dejando constancia**. El caso corriente: cada iglesia va reuniendo en su *Fondo para la corporación* el 10% de las ofrendas y, cuando llega el momento, lo traspasa a la tesorería general de la corporación.
 
 Cada traspaso registra **fecha, cuenta de origen, cuenta de destino, monto, forma** (efectivo, transferencia, depósito, cheque, vale vista u otra), **n.º de operación**, concepto, comprobante adjunto y notas. Al elegir la cuenta de origen se muestra **cuánto hay en ella** en ese momento.
 
@@ -489,7 +489,7 @@ Cada traspaso genera **sus dos movimientos en Tesorería** —un egreso en el or
 - Si se elimina el traspaso, se van los dos movimientos y los saldos vuelven a como estaban.
 - Esos dos movimientos **no se editan ni se borran por separado** desde Tesorería: el sistema remite al traspaso, para que nunca quede un lado sin el otro.
 
-**De dónde sale el dinero del fondo**: cada servicio con ofrenda deja el porcentaje apartado en el *Fondo para la corporación* de su iglesia (ver *Registro de Servicios*). El traspaso es el paso siguiente: vaciar ese fondo hacia la corporación cuando corresponda.
+**De dónde sale el dinero del fondo**: cada servicio con ofrenda anota su aporte como egreso de la tesorería de la iglesia y como ingreso en su *Fondo para la corporación* (ver *Registro de Servicios*). El traspaso es el paso siguiente: vaciar ese fondo hacia la corporación cuando corresponda.
 
 **Quién puede traspasar qué**: el dinero sale siempre de una cuenta propia (el servidor rechaza sacarlo de una ajena, aunque se intente por fuera de la pantalla) y puede entrar en una cuenta de la corporación o en otra de la misma iglesia. A un tesorero local no se le ofrecen —ni se le muestran— las cuentas de otras congregaciones.
 
@@ -697,23 +697,24 @@ El libro también es un **desplegable con buscador**: en vez de recorrer los 66,
 | Asistencia de adultos / de niños | Se escriben |
 | **Total general de asistencia** | Se suma solo |
 | Ofrenda recibida (total) | Se escribe |
-| **Aparte para el fondo** | El porcentaje configurado (10% por defecto), calculado solo — es lo que va al otro fondo de tesorería |
-| **Queda para la iglesia** | El total menos lo apartado |
+| **Aporte a la corporación** | El porcentaje configurado (10% por defecto), calculado solo |
+| **Queda para la iglesia** | El total menos el aporte |
 
-Los tres campos calculados se actualizan **mientras se escribe** y no se pueden editar a mano: el servidor los vuelve a calcular al guardar, así que nunca quedan descuadrados. El porcentaje se cambia en **Configuración → Organización → Porcentaje de la ofrenda que se aparta**.
+Los tres campos calculados se actualizan **mientras se escribe** y no se pueden editar a mano: el servidor los vuelve a calcular al guardar, así que nunca quedan descuadrados. El porcentaje se cambia en **Configuración → Organización → Porcentaje de la ofrenda que aporta a la corporación**.
 
 ### La ofrenda queda registrada sola en tesorería
 
-Al guardar un servicio con ofrenda, el sistema anota **dos ingresos en Tesorería**, en las cuentas de **esa misma iglesia**:
+**La ofrenda entra completa a la tesorería de la iglesia**, que es lo que efectivamente pasó por la mesa, y de ahí **sale el aporte** para la corporación. Al guardar un servicio con ofrenda de $100.000, el sistema anota **tres movimientos**:
 
-| Ingreso | En qué cuenta | Concepto |
+| Movimiento | En qué cuenta | Concepto |
 |---|---|---|
-| El porcentaje apartado (10%) | **Fondo para la corporación** de la iglesia | *Aparte para la corporación — ofrenda de culto general del 5 de agosto de 2026* |
-| El resto | **Tesorería general** de la iglesia | *Ofrenda de culto general del 5 de agosto de 2026* |
+| **Ingreso** de $100.000 | **Tesorería general** de la iglesia | *Ofrenda de servicio general del 5 de agosto de 2026* |
+| **Egreso** de $10.000 | **Tesorería general** de la iglesia | *Aporte a la corporación (10%) — ofrenda de servicio general del 5 de agosto de 2026* |
+| **Ingreso** de $10.000 | **Fondo para la corporación** de la iglesia | *Aporte a la corporación (10%) — ofrenda de servicio general del 5 de agosto de 2026* |
 
-El concepto se arma solo con el tipo de servicio y su fecha, así se reconoce sin abrir nada. Ese porcentaje queda guardado en la iglesia hasta que se **traspasa a la corporación** (ver *Traspasos entre cuentas*).
+El saldo de la iglesia queda igual que si se hubiera anotado solo la diferencia —$90.000—, pero ahora **se ve lo que entró y se ve lo que salió**, cada cosa por su nombre: nadie tiene que adivinar de dónde salió el descuento. El concepto se arma solo con el tipo de servicio y su fecha, así se reconoce sin abrir nada. Ese aporte queda en el fondo de la iglesia hasta que se **traspasa a la corporación** (ver *Traspasos entre cuentas*).
 
-Los dos movimientos se mantienen al día con el servicio: si se corrige la ofrenda, la fecha o el tipo, se corrigen; si la ofrenda queda en cero, desaparecen; y si se elimina el servicio, se van con él. Tampoco se editan ni se borran por separado desde Tesorería —el sistema remite al servicio—, y en esas filas ni siquiera se ofrece el botón de eliminar.
+Los tres movimientos se mantienen al día con el servicio: si se corrige la ofrenda, la fecha o el tipo, se corrigen; si la ofrenda queda en cero, desaparecen; y si se elimina el servicio, se van con él. Tampoco se editan ni se borran por separado desde Tesorería —el sistema remite al servicio—, y en esas filas ni siquiera se ofrece el botón de eliminar.
 
 > Se puede apagar en **Configuración → Organización → Registrar la ofrenda en tesorería**, si prefieren seguir ingresando las ofrendas a mano.
 
