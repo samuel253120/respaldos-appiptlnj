@@ -6,6 +6,7 @@
  */
 const { db } = require('./db');
 const rut = require('./rut');
+const { CARGOS_MINISTERIO, CARGO_GUIA } = require('./tratamiento');
 
 /**
  * Algunas migraciones no se pueden repetir sin dañar los datos (por ejemplo,
@@ -453,28 +454,72 @@ function conyugeUnicoDePastores() {
 
 
 /**
- * Los cargos del ministerio pasaron a la escala de la organización: guía de
- * obra, pastor probando, pastor diácono, pastor presbítero y pastor
- * presidente. "Guía" calza con "Guía de obra"; los demás cargos antiguos se
+ * Un cargo se escribe como se escribe un cargo: con mayúscula en cada
+ * palabra. Antes se guardaban a media asta —«Pastor presidente»—; acá quedan
+ * como corresponde, tanto en las fichas de Pastores / Guías como en los
+ * tratos que alguien haya fijado a mano.
+ */
+function cargosConMayuscula() {
+  const comoSeEscribe = new Map(CARGOS_MINISTERIO.map((c) => [c.toLowerCase(), c]));
+
+  let fichas = 0;
+  const enPastores = db.prepare('UPDATE pastores SET cargo = ? WHERE id = ?');
+  for (const fila of db.prepare('SELECT id, cargo FROM pastores').all()) {
+    const debido = comoSeEscribe.get(String(fila.cargo || '').toLowerCase());
+    if (!debido || debido === fila.cargo) continue;
+    enPastores.run(debido, fila.id);
+    fichas++;
+  }
+
+  let tratos = 0;
+  const columnas = db.prepare('PRAGMA table_info("miembros")').all().map((c) => c.name);
+  if (columnas.includes('tratamiento_personalizado')) {
+    const enMiembros = db.prepare('UPDATE miembros SET tratamiento_personalizado = ? WHERE id = ?');
+    const filas = db
+      .prepare(
+        `SELECT id, tratamiento_personalizado AS trato FROM miembros
+          WHERE tratamiento_personalizado IS NOT NULL AND tratamiento_personalizado != ''`
+      )
+      .all();
+    for (const fila of filas) {
+      if (fila.trato === CARGO_GUIA) continue;
+      if (String(fila.trato).toLowerCase() !== CARGO_GUIA.toLowerCase()) continue;
+      enMiembros.run(CARGO_GUIA, fila.id);
+      tratos++;
+    }
+  }
+
+  if (fichas || tratos) {
+    console.log(
+      `🔁 cargos: ${fichas} ficha(s) de Pastores / Guías y ${tratos} trato(s) fijados a mano ` +
+        'quedaron escritos con la mayúscula que corresponde.'
+    );
+  }
+}
+
+
+/**
+ * Los cargos del ministerio pasaron a la escala de la organización: Guía de
+ * Obra, Pastor Probando, Pastor Diácono, Pastor Presbítero y Pastor
+ * Presidente. "Guía" calza con "Guía de Obra"; los demás cargos antiguos se
  * conservan tal cual y se informan, para que se les ponga el que corresponde.
  */
 function cargosDePastores() {
-  const nuevos = ['Guía de obra', 'Pastor probando', 'Pastor diácono', 'Pastor presbítero', 'Pastor presidente'];
   const filas = db.prepare('SELECT id, nombres, apellidos, cargo FROM pastores').all();
   const porRevisar = [];
   let renombrados = 0;
 
   for (const fila of filas) {
-    if (!fila.cargo || nuevos.includes(fila.cargo)) continue;
+    if (!fila.cargo || CARGOS_MINISTERIO.includes(fila.cargo)) continue;
     if (fila.cargo === 'Guía') {
-      db.prepare(`UPDATE pastores SET cargo = 'Guía de obra' WHERE id = ?`).run(fila.id);
+      db.prepare('UPDATE pastores SET cargo = ? WHERE id = ?').run(CARGO_GUIA, fila.id);
       renombrados++;
       continue;
     }
     porRevisar.push(`${fila.nombres} ${fila.apellidos} (${fila.cargo})`);
   }
 
-  if (renombrados) console.log(`🔁 pastores: ${renombrados} "Guía" pasaron a "Guía de obra".`);
+  if (renombrados) console.log(`🔁 pastores: ${renombrados} "Guía" pasaron a "${CARGO_GUIA}".`);
   if (porRevisar.length) {
     console.log(
       `ℹ️  pastores: ${porRevisar.length} ficha(s) tienen un cargo de la lista anterior y se conservan como estaban ` +
@@ -816,6 +861,7 @@ function ejecutarMigraciones() {
     ['asistencias nominales', asistenciasNominales],
     ['actividades con varios cuerpos', actividadesConVariosCuerpos],
     ['cónyuge de los pastores', conyugeUnicoDePastores],
+    ['mayúsculas de los cargos', cargosConMayuscula],
     ['cargos de los pastores', cargosDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],

@@ -9,15 +9,14 @@
 const { db } = require('../db');
 const { importarModulo, guardar, fecha, marcaDeTiempo, texto } = require('./motor');
 const rut = require('../rut');
+const { CARGOS_MINISTERIO, CARGO_UNICO } = require('../tratamiento');
 
-/** El cargo, dicho como lo dice este sistema. */
-const CARGO = {
-  'Pastor Presidente': 'Pastor presidente',
-  'Pastor Presbítero': 'Pastor presbítero',
-  'Pastor Diácono': 'Pastor diácono',
-  'Pastor Probando': 'Pastor probando',
-  'Guía de Obra': 'Guía de obra',
-};
+/**
+ * El cargo, dicho como lo dice este sistema. El origen los escribe igual,
+ * así que basta con reconocerlos sin reparar en mayúsculas ni en espacios.
+ */
+const CARGO = new Map(CARGOS_MINISTERIO.map((c) => [c.toLowerCase(), c]));
+const comoLoDecimosAca = (cargo) => CARGO.get(String(cargo || '').trim().toLowerCase()) || null;
 
 module.exports = function importarPastores(origen, { lote, prueba, iglesiaId }) {
   const filas = origen.pastorGuias || [];
@@ -29,7 +28,7 @@ module.exports = function importarPastores(origen, { lote, prueba, iglesiaId }) 
       if (!ayuda.exigir(p.nombres, 'ficha sin nombres', i, p)) return;
       if (!ayuda.exigir(p.apellidos, 'ficha sin apellidos', i, p)) return;
 
-      const cargo = CARGO[p.cargo] || (p.cargo && CARGO[String(p.cargo).trim()]) || null;
+      const cargo = comoLoDecimosAca(p.cargo);
       if (p.cargo && !cargo) {
         ayuda.problema(i, `no sé traducir el cargo "${p.cargo}"`, p);
         return;
@@ -55,7 +54,7 @@ module.exports = function importarPastores(origen, { lote, prueba, iglesiaId }) 
       const datos = {
         nombres: texto(p.nombres),
         apellidos: texto(p.apellidos),
-        cargo: cargo || 'Pastor presidente',
+        cargo: cargo || CARGO_UNICO,
         iglesia_id: iglesiaId,
         rut: suRut,
         estado: p.estado === 'no vigente' ? 'Inactivo' : 'Activo',

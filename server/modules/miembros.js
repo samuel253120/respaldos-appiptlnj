@@ -13,7 +13,7 @@
  * que hagan falta a una misma persona.
  *
  * Trato: cada miembro muestra cómo se le dice —Hermano, Hermana, Oficial,
- * Guía de obra, Pastor o Pastora—, calculado según su género, si pertenece al
+ * Guía de Obra, Pastor o Pastora—, calculado según su género, si pertenece al
  * cuerpo de oficiales y qué cargo tiene en Pastores / Guías (ver
  * server/tratamiento.js).
  * Se puede fijar a mano cuando corresponda otro trato.
@@ -422,16 +422,16 @@ module.exports = {
         }
       }
 
-      // A quien el ministerio le impone un trato —Guía de obra por su cargo,
+      // A quien el ministerio le impone un trato —Guía de Obra por su cargo,
       // Pastor o Pastora por el suyo o por su cónyuge— no se le puede fijar a
       // mano el de Hermano, Hermana u Oficial.
       const manual = data.tratamiento_personalizado;
       if (manual && ['Hermano', 'Hermana', 'Oficial'].includes(manual) && id) {
-        const { tratoMinisterial } = require('../tratamiento');
+        const { tratoMinisterial, CARGO_GUIA } = require('../tratamiento');
         const fila = { ...(existing || {}), ...data, id };
         const impuesto = tratoMinisterial(fila, db);
         if (impuesto) {
-          const porque = impuesto === 'Guía de obra'
+          const porque = impuesto === CARGO_GUIA
             ? 'por su cargo en Pastores / Guías'
             : 'por su ficha en Pastores / Guías o por su cónyuge';
           return `A esta persona le corresponde el trato de ${impuesto} —${porque}—, así que no puede quedar como "${manual}".`;

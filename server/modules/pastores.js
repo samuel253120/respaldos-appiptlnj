@@ -18,18 +18,13 @@
  * Cada ficha lleva además su historial ministerial (historial_pastores) y sus
  * documentos (documentos_pastores), que se ven al pie de su ficha.
  */
-const { CARGO_GUIA } = require('../tratamiento');
 
 /**
- * Los cargos del ministerio, de menor a mayor. El de Pastor presidente lo
- * ocupa una sola persona en toda la organización; de los demás puede haber
- * varios a la vez.
- *
- * El guía de obra es el primer cargo y todavía no es pastoral: se le dice
- * guía de obra, y su cónyuge no pasa a ser Pastor ni Pastora.
+ * Los cargos salen de server/tratamiento.js, que es donde vive la escala del
+ * ministerio. El guía de obra es el primer cargo y todavía no es pastoral: se
+ * le dice guía de obra, y su cónyuge no pasa a ser Pastor ni Pastora.
  */
-const CARGOS = [CARGO_GUIA, 'Pastor probando', 'Pastor diácono', 'Pastor presbítero', 'Pastor presidente'];
-const CARGO_UNICO = 'Pastor presidente';
+const { CARGO_GUIA, CARGOS_MINISTERIO: CARGOS, CARGO_UNICO } = require('../tratamiento');
 
 /** ¿Este cargo es pastoral? El de guía de obra todavía no lo es. */
 const esCargoPastoral = (cargo) => !!cargo && cargo !== CARGO_GUIA;
@@ -85,9 +80,9 @@ module.exports = {
     { name: 'nombres', label: 'Nombres', type: 'text', required: true },
     { name: 'apellidos', label: 'Apellidos', type: 'text', required: true },
     {
-      name: 'cargo', label: 'Cargo', type: 'select', required: true, default: 'Guía de obra',
+      name: 'cargo', label: 'Cargo', type: 'select', required: true, default: CARGO_GUIA,
       options: CARGOS,
-      help: 'De menor a mayor. El de Pastor presidente lo ocupa una sola persona en toda la organización.',
+      help: 'De menor a mayor. El de Pastor Presidente lo ocupa una sola persona en toda la organización.',
     },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias' },
     {
@@ -250,7 +245,7 @@ module.exports = {
 
   hooks: {
     beforeSave(data, { id, existing, db }) {
-      // Un solo Pastor presidente en toda la organización
+      // Un solo Pastor Presidente en toda la organización
       const cargo = data.cargo !== undefined ? data.cargo : existing ? existing.cargo : null;
       if (cargo === CARGO_UNICO) {
         const otro = db

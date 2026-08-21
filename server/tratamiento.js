@@ -5,7 +5,7 @@
  *
  *   Hermano / Hermana   a los miembros en general, según su género.
  *   Oficial             a los varones que pertenecen al cuerpo de oficiales.
- *   Guía de obra        a quien tiene ese cargo en Pastores / Guías: al guía
+ *   Guía de Obra        a quien tiene ese cargo en Pastores / Guías: al guía
  *                       de obra se le dice guía de obra, no hermano ni pastor.
  *   Pastor / Pastora    a quienes tienen un cargo pastoral —de pastor
  *                       probando hacia arriba— y a su cónyuge: el marido de
@@ -23,7 +23,19 @@ const { esOficial } = require('./oficiales');
  * El primer cargo del ministerio. No es un cargo pastoral: su trato es el
  * nombre mismo del cargo y su cónyuge no pasa a ser Pastor ni Pastora.
  */
-const CARGO_GUIA = 'Guía de obra';
+const CARGO_GUIA = 'Guía de Obra';
+
+/**
+ * Los cargos del ministerio, de menor a mayor. Se escriben como se escriben
+ * los cargos: con mayúscula en cada palabra. El de Pastor Presidente lo ocupa
+ * una sola persona en toda la organización; de los demás puede haber varios a
+ * la vez.
+ *
+ * Esta es la lista de verdad: el módulo de Pastores / Guías y las migraciones
+ * la toman de acá, para que no haya dos versiones de lo mismo.
+ */
+const CARGOS_MINISTERIO = [CARGO_GUIA, 'Pastor Probando', 'Pastor Diácono', 'Pastor Presbítero', 'Pastor Presidente'];
+const CARGO_UNICO = 'Pastor Presidente';
 
 /** Los únicos tratos que se usan en la iglesia. */
 const TRATAMIENTOS = ['Hermano', 'Hermana', 'Oficial', CARGO_GUIA, 'Pastor', 'Pastora'];
@@ -53,7 +65,7 @@ function estaEnPastores(miembro, db) {
 }
 
 /**
- * El trato que le da su propia ficha ministerial: 'Guía de obra' según el
+ * El trato que le da su propia ficha ministerial: 'Guía de Obra' según el
  * cargo, 'Pastor' o 'Pastora' según el género, o '' si no tiene ficha.
  */
 function tratoDeLaFicha(miembro, db) {
@@ -138,7 +150,8 @@ function conTratamiento(miembro, db) {
 }
 
 module.exports = {
-  CARGO_GUIA, TRATAMIENTOS, tratamientoDe, conTratamiento, estaEnPastores, leCorrespondePastor,
+  CARGO_GUIA, CARGOS_MINISTERIO, CARGO_UNICO,
+  TRATAMIENTOS, tratamientoDe, conTratamiento, estaEnPastores, leCorrespondePastor,
   tratamientoPropio, esPastorPorSiMismo, fichaPastoral, tratoDeLaFicha, esGuiaDeObra,
   esPastorRegistrado, tratoMinisterial,
 };

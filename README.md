@@ -281,8 +281,8 @@ Un registro fechado de lo que va ocurriendo, con anotaciones escritas a mano y o
 |---|---|
 | *«Se registra la iglesia … en el sistema»* | Al crearla |
 | *«Ciudad: (vacío) → Puerto Montt · Teléfono: …»* | Al cambiar sus datos |
-| *«Se registra a Samuel Rodríguez en Pastores / Guías como Pastor probando»* | Al crear su ficha |
-| *«Pasa de Pastor probando a Pastor diácono»* | Al cambiarle el cargo |
+| *«Se registra a Samuel Rodríguez en Pastores / Guías como Pastor Probando»* | Al crear su ficha |
+| *«Pasa de Pastor Probando a Pastor Diácono»* | Al cambiarle el cargo |
 | *«De Iglesia Central a Iglesia Alerce»* | Al trasladarlo |
 | *«Se adjuntó "Credencial 2026"»* | Al subir un documento |
 
@@ -333,16 +333,16 @@ En la iglesia a cada miembro se le dice de una manera, y el sistema la calcula s
 |---|---|
 | **Hermano** / **Hermana** | A los miembros en general, según su género |
 | **Oficial** | A los **varones** que pertenecen al cuerpo de oficiales |
-| **Guía de obra** | A quien tiene ese **cargo** en *Pastores / Guías*: al guía de obra se le dice guía de obra, no hermano ni pastor |
+| **Guía de Obra** | A quien tiene ese **cargo** en *Pastores / Guías*: al guía de obra se le dice guía de obra, no hermano ni pastor |
 | **Pastor** / **Pastora** | A quienes tienen un **cargo pastoral** —de *pastor probando* hacia arriba— **y a su cónyuge** |
 
-El trato aparece como columna en el listado y junto al nombre al abrir la ficha. **No se guarda**: se calcula al leer, así que cuando alguien entra al cuerpo de oficiales, queda registrado en Pastores / Guías o **cambia de cargo**, cambia solo. El día que un guía de obra pasa a pastor probando, deja de ser *Guía de obra* y es *Pastor* en todo el sistema, sin tocar nada más.
+El trato aparece como columna en el listado y junto al nombre al abrir la ficha. **No se guarda**: se calcula al leer, así que cuando alguien entra al cuerpo de oficiales, queda registrado en Pastores / Guías o **cambia de cargo**, cambia solo. El día que un guía de obra pasa a pastor probando, deja de ser *Guía de Obra* y es *Pastor* en todo el sistema, sin tocar nada más.
 
-Los tratos son esos seis: **Hermano, Hermana, Oficial, Guía de obra, Pastor y Pastora**. Cuando a alguien le corresponda uno distinto del que calcula el sistema, se fija a mano en su ficha, en **Trato (fijado a mano)**, y ese manda sobre el cálculo.
+Los tratos son esos seis: **Hermano, Hermana, Oficial, Guía de Obra, Pastor y Pastora**. Cuando a alguien le corresponda uno distinto del que calcula el sistema, se fija a mano en su ficha, en **Trato (fijado a mano)**, y ese manda sobre el cálculo.
 
 Hay dos que el ministerio impone y no se pueden cambiar a mano por uno de hermano:
 
-- al **guía de obra**, el de su cargo: *«A esta persona le corresponde el trato de Guía de obra —por su cargo en Pastores / Guías—, así que no puede quedar como "Hermano".»*
+- al **guía de obra**, el de su cargo: *«A esta persona le corresponde el trato de Guía de Obra —por su cargo en Pastores / Guías—, así que no puede quedar como "Hermano".»*
 - al cónyuge de un pastor o de una pastora, el de *Pastor* o *Pastora*.
 
 > El **guía de obra todavía no tiene cargo pastoral**, así que su cónyuge **no** pasa a ser Pastor ni Pastora: sigue siendo *Hermano* o *Hermana*, como cualquier miembro.
@@ -605,13 +605,13 @@ Cada fila lleva una barra de tres colores (presentes, justificados, ausentes) pa
 
 | Cargo | Cuántos puede haber |
 |---|---|
-| Guía de obra | Varios — **no es cargo pastoral**: se le dice *Guía de obra* |
-| Pastor probando | Varios |
-| Pastor diácono | Varios |
-| Pastor presbítero | Varios |
-| **Pastor presidente** | **Uno solo en toda la organización** |
+| Guía de Obra | Varios — **no es cargo pastoral**: se le dice *Guía de Obra* |
+| Pastor Probando | Varios |
+| Pastor Diácono | Varios |
+| Pastor Presbítero | Varios |
+| **Pastor Presidente** | **Uno solo en toda la organización** |
 
-El sistema hace cumplir lo último: al designar a un segundo presidente avisa quién ocupa el cargo —*«Ya hay un Pastor presidente: Samuel Rodríguez. Cámbiele el cargo o su estado antes de designar a otro.»*— y no lo guarda. De los demás cargos puede haber tantos como haga falta.
+El sistema hace cumplir lo último: al designar a un segundo presidente avisa quién ocupa el cargo —*«Ya hay un Pastor Presidente: Samuel Rodríguez. Cámbiele el cargo o su estado antes de designar a otro.»*— y no lo guarda. De los demás cargos puede haber tantos como haga falta.
 
 > Las fichas que traían un cargo de la lista anterior (Pastor, Pastora, Anciano…) **se conservan tal cual** y quedan anotadas en el arranque; al abrir cada una, el cargo antiguo aparece marcado como *(valor anterior)* hasta que se elija el de la escala nueva. Así ninguno se cambia sin querer.
 
@@ -648,7 +648,7 @@ El sistema lo cuida solo:
 
 - Cada ficha de pastor se **enlaza con su ficha de miembro**. Si ya existe una con el mismo RUT, la reconoce y la enlaza sin que haya que hacer nada.
 - Si todavía no existe, el listado de Pastores / Guías lo muestra en una columna —**Registrado** o **Falta registrarlo**— y al pie de su ficha aparece el botón **➕ Crear su ficha de miembro**, que la crea con sus mismos datos (nombres, RUT, iglesia, fecha de nacimiento, contacto y foto) y las deja enlazadas.
-- De ese enlace depende el **trato**: quien tiene cargo pastoral es *Pastor* o *Pastora* en todo el sistema, y su cónyuge también; al **guía de obra** se le dice *Guía de obra*.
+- De ese enlace depende el **trato**: quien tiene cargo pastoral es *Pastor* o *Pastora* en todo el sistema, y su cónyuge también; al **guía de obra** se le dice *Guía de Obra*.
 
 ### El RUT tiene que coincidir en las dos fichas
 
