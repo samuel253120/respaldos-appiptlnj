@@ -331,7 +331,7 @@ Todos los que hagan falta, cada uno con **su archivo y su nombre**, más su tipo
 
 | De la iglesia | Del pastor / guía |
 |---|---|
-| Personería jurídica · Estatutos · Acta de fundación · Escritura / Propiedad · Contrato de arriendo · Permiso municipal · Plano del templo · Certificado · Reglamento interno · Otro | Credencial ministerial · Certificado de ordenación · Nombramiento · Carnet de identidad · Certificado de matrimonio civil · Certificado de matrimonio por la iglesia · Certificado de antecedentes · Certificado de estudios · Carta de traslado · Currículum · Otros documentos |
+| Personería jurídica · Estatutos · Acta de fundación · Escritura / Propiedad · Contrato de arriendo · Permiso municipal · Plano del templo · Certificado · Reglamento interno · Otro | Carnet de Identidad · Certificado de Antecedentes · Certificado de Inhabilidades · Certificado de Matrimonio Civil · Certificado de Matrimonio Iglesia · Certificado de Nombramiento (Ordenacion) · Carta de Renuncia · Otro Documento |
 
 Al agregar uno desde la ficha, la iglesia o el pastor vienen puestos. Los documentos del pastor heredan **su** iglesia, que es lo que decide quién puede verlos.
 

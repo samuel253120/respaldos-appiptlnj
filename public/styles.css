@@ -190,7 +190,10 @@ table.grid th.col-mini { font-size: 15px; }
 
 .badge {
   display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
-  background: #e2e8f0; color: #334155; white-space: nowrap;
+  background: #e2e8f0; color: #334155;
+  /* Se lee en una línea mientras quepa; si la etiqueta es larga y la pantalla
+     angosta, corta adentro de la píldora en vez de empujar la página de lado */
+  max-width: 100%; overflow-wrap: anywhere;
 }
 .badge.green { background: #dcfce7; color: #166534; }
 .badge.red { background: #fee2e2; color: #991b1b; }

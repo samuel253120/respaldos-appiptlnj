@@ -1,34 +1,30 @@
 /**
- * Los tipos de documento que se guardan de un pastor o guía. Van agrupados
- * por lo que acreditan: primero el ministerio, después la identidad y el
- * estado civil, y al final los que respaldan su trayectoria. «Otros
- * documentos» es el cajón para lo que no calce en ninguno.
+ * Los tipos de documento que se guardan de un pastor o guía, en el orden en
+ * que los pide la iglesia: primero los que acreditan quién es y que está en
+ * condiciones de servir, después su matrimonio, y al final su nombramiento y
+ * su renuncia. «Otro Documento» es el cajón para lo que no calce en ninguno.
  *
  * Esta es la lista de verdad: la migración que ordena los tipos guardados la
  * toma de acá, para que no haya dos versiones de lo mismo.
  */
 const TIPOS_DE_DOCUMENTO = [
-  'Credencial ministerial',
-  'Certificado de ordenación',
-  'Nombramiento',
-  'Carnet de identidad',
-  'Certificado de matrimonio civil',
-  'Certificado de matrimonio por la iglesia',
-  'Certificado de antecedentes',
-  'Certificado de estudios',
-  'Carta de traslado',
-  'Currículum',
-  'Otros documentos',
+  'Carnet de Identidad',
+  'Certificado de Antecedentes',
+  'Certificado de Inhabilidades',
+  'Certificado de Matrimonio Civil',
+  'Certificado de Matrimonio Iglesia',
+  'Certificado de Nombramiento (Ordenacion)',
+  'Carta de Renuncia',
+  'Otro Documento',
 ];
 
 
 /**
  * Módulo: Documentos del Pastor / Guía.
  *
- * Todo lo que respalda su ministerio y su identificación: la credencial
- * ministerial, el certificado de ordenación, sus estudios, nombramientos.
- * Cada documento guarda el archivo y su nombre, para distinguirlos sin
- * abrirlos.
+ * Todo lo que respalda su ministerio y su identificación: su carnet, sus
+ * certificados, su nombramiento. Cada documento guarda el archivo y su
+ * nombre, para distinguirlos sin abrirlos.
  *
  * Se ven y se agregan desde la ficha del pastor, al pie. La iglesia se hereda
  * de su ficha, que es lo que acota quién puede verlos.
@@ -49,7 +45,7 @@ module.exports = {
   fields: [
     { name: 'pastor_id', label: 'Pastor / Guía', type: 'ref', ref: 'pastores', required: true },
     {
-      name: 'tipo', label: 'Tipo de documento', type: 'select', required: true, default: 'Otros documentos',
+      name: 'tipo', label: 'Tipo de documento', type: 'select', required: true, default: 'Otro Documento',
       options: TIPOS_DE_DOCUMENTO,
     },
     {

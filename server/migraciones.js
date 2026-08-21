@@ -767,14 +767,17 @@ function cargosDePastores() {
 
 
 /**
- * Los tipos de documento de un pastor o guía se afinaron: el certificado de
- * matrimonio se separó en el civil y el de la iglesia, se sumó el de
- * antecedentes, y "Otro" pasó a llamarse "Otros documentos".
+ * Los tipos de documento de un pastor o guía pasaron a los ocho que pide la
+ * iglesia: carnet, antecedentes, inhabilidades, los dos certificados de
+ * matrimonio, el nombramiento, la carta de renuncia y "Otro Documento".
  *
- * Los que significan lo mismo se renombran solos. De los demás no queda
- * ningún nombre antiguo dando vueltas: pasan a "Otros documentos", que es el
- * cajón de la lista. Ningún documento se borra ni pierde su archivo: lo único
- * que cambia es el tipo con que está clasificado.
+ * Los que significan lo mismo se renombran solos —incluidos los que solo
+ * cambiaban de mayúsculas—, y de los demás no queda ningún nombre antiguo
+ * dando vueltas: pasan a "Otro Documento", que es el cajón de la lista, y
+ * quedan anotados en el arranque para que se les ponga el que corresponde.
+ *
+ * Ningún documento se borra ni pierde su archivo: lo único que cambia es el
+ * tipo con que está clasificado.
  */
 function tiposDeDocumentoDePastores() {
   const columnas = db.prepare('PRAGMA table_info("documentos_pastores")').all().map((c) => c.name);
@@ -782,10 +785,17 @@ function tiposDeDocumentoDePastores() {
 
   const modulo = require('./modules/documentos_pastores');
   const nuevos = modulo.fields.find((f) => f.name === 'tipo').options;
-  const cajon = 'Otros documentos';
+  const cajon = 'Otro Documento';
   const equivalencias = {
-    'Certificado de matrimonio': 'Certificado de matrimonio civil',
+    'Carnet de identidad': 'Carnet de Identidad',
+    'Certificado de antecedentes': 'Certificado de Antecedentes',
+    'Certificado de matrimonio': 'Certificado de Matrimonio Civil',
+    'Certificado de matrimonio civil': 'Certificado de Matrimonio Civil',
+    'Certificado de matrimonio por la iglesia': 'Certificado de Matrimonio Iglesia',
+    'Certificado de ordenación': 'Certificado de Nombramiento (Ordenacion)',
+    'Nombramiento': 'Certificado de Nombramiento (Ordenacion)',
     'Otro': cajon,
+    'Otros documentos': cajon,
   };
 
   let renombrados = 0;
@@ -812,7 +822,8 @@ function tiposDeDocumentoDePastores() {
     db.prepare(`UPDATE documentos_pastores SET tipo = ? WHERE tipo NOT IN (${marcas})`).run(cajon, ...nuevos);
     console.log(
       `🔁 documentos de pastores: ${sobran.reduce((t, f) => t + f.n, 0)} documento(s) tenían un tipo que ya no ` +
-        `está en la lista y quedaron como "${cajon}" (${sobran.map((f) => `${f.tipo}: ${f.n}`).join(', ')}).`
+        `está en la lista y quedaron como "${cajon}" (${sobran.map((f) => `${f.tipo}: ${f.n}`).join(', ')}).\n` +
+      '   Ábralos y elija el que corresponde.'
     );
   }
 }
