@@ -21,6 +21,7 @@
  * como vigente, las demás de ese cuerpo pasan a "Finalizada" automáticamente.
  */
 const { cuerpoDeOficiales } = require('../oficiales');
+const { idsDeIntegrantes: idsDelCuerpo } = require('../integrantes');
 
 /**
  * Miembros que pueden ser oficial supervisor(a): los del cuerpo de oficiales.
@@ -39,14 +40,7 @@ function oficialesDisponibles(db, usuario) {
   const cuerpo = cuerpoDeOficiales(db);
   let permitidos = null;
   if (cuerpo) {
-    let ids = [];
-    try {
-      ids = JSON.parse(cuerpo.integrantes || '[]');
-    } catch (e) {
-      ids = [];
-    }
-    if (cuerpo.lider_id) ids.push(cuerpo.lider_id);
-    ids = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter(Boolean))];
+    const ids = idsDelCuerpo(db, cuerpo.id);
     if (ids.length) permitidos = new Set(ids);
   }
 
@@ -55,23 +49,13 @@ function oficialesDisponibles(db, usuario) {
     .map((f) => ({ id: f.id, label: displayOf(miembros, f) }));
 }
 
-/** Integrantes de un cuerpo (los de su lista más su líder), como opciones. */
+/** Integrantes de un cuerpo (los que pertenecen hoy, más su líder), como opciones. */
 function integrantesDeCuerpo(db, cuerpoId) {
   const { getModule, displayOf } = require('../registry'); // tardío: evita ciclo con el registro
   const miembros = getModule('miembros');
-  const cuerpo = cuerpoId ? db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId) : null;
-  if (!cuerpo) return [];
+  if (!cuerpoId) return [];
 
-  let ids = [];
-  try {
-    ids = JSON.parse(cuerpo.integrantes || '[]');
-  } catch (e) {
-    ids = [];
-  }
-  if (cuerpo.lider_id) ids.push(cuerpo.lider_id);
-  ids = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter(Boolean))];
-
-  return ids
+  return idsDelCuerpo(db, cuerpoId)
     .map((id) => db.prepare('SELECT * FROM miembros WHERE id = ?').get(id))
     .filter(Boolean)
     .map((f) => ({

@@ -14,7 +14,7 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 
 | Grupo | Módulos |
 |---|---|
-| **Organización** | Iglesias (matriz, sedes, locales y anexos, con su foto, su historial y sus documentos) · Pastores / Guías (con su historial ministerial y sus documentos) · Cuerpos / Grupos (con su foto) · Directivas de Cuerpos |
+| **Organización** | Iglesias (matriz, sedes, locales y anexos, con su foto, su historial y sus documentos) · Pastores / Guías (con su historial ministerial y sus documentos) · Cuerpos / Grupos (con su foto, sus integrantes por estado, sus cuotas, su tesorería y sus actas) · Directivas de Cuerpos |
 | **Servicios** | Registro de Servicios (cultos: salmo, mensaje, asistencia y ofrenda) |
 | **Personas** | Miembros · Bitácora de Miembros · Documentos de Miembros |
 | **Asistencia** | Asistencia: calendario, actividades, toma de lista e informes en una sola pantalla, pensada para el teléfono |
@@ -254,6 +254,61 @@ El sistema hace cumplir lo primero: al designar una segunda matriz avisa cuál l
 El tipo aparece como columna y como filtro en el listado de iglesias. Las iglesias registradas antes de esta distinción quedan **sin tipo**, a la espera de que se les asigne: el sistema no lo adivina. Una iglesia nueva se crea como *Iglesia Local*, que es lo más habitual.
 
 > **Para más adelante: de cuál depende cada una.** Los tipos forman una jerarquía —el anexo depende de una local o de una sede, la local depende de una sede, y todas dependen de la matriz—, pero **todavía no se registra ese vínculo**: por ahora el tipo se guarda solo, sin decir de quién depende cada iglesia. Se implementará cuando haya más iglesias que ordenar; entonces la organización podrá verse como árbol y sumar, por ejemplo, la membresía de una sede con todos sus anexos.
+
+## El cuerpo por dentro: su gente, su plata y sus actas 👥
+
+La ficha de cada cuerpo o grupo reúne todo lo suyo en una sola pantalla: su cumplimiento, sus integrantes, sus cuotas, su tesorería, sus directivas y sus actas.
+
+### Los integrantes, uno por uno
+
+La pertenencia a un cuerpo dejó de ser una lista de nombres: cada persona tiene su **ficha de integrante**, con tres estados posibles:
+
+| Estado | Qué significa |
+|---|---|
+| **En prueba** | Recién ingresado. Al cumplirse su plazo se evalúa su informe |
+| **Activo** | Integrante oficial del cuerpo, con todos sus deberes |
+| **Retirado** | Ya no pertenece. Queda su ficha, con la fecha y el motivo |
+
+El panel los muestra agrupados —*En el cuerpo*, *En prueba*, *Retirados*, *Todos*— y avisa arriba, en amarillo, **a quiénes se les venció el período de prueba** y falta evaluarlos.
+
+Para el resto del sistema —pasar lista, elegir una directiva, saber quién es oficial, qué ve cada usuario— cuentan los que están hoy: los activos y los que están en prueba. Esa regla vive en un solo archivo, así que todo el sistema responde lo mismo.
+
+### El período de prueba y su evaluación
+
+Quien entra a un cuerpo lo hace en período de prueba. Los meses los define **cada cuerpo en su ficha**; si no dice nada, se usan los de *Configuración → Organización* (3 por defecto). La fecha de término se calcula sola.
+
+Antes de que se cumpla el plazo se evalúa su informe, y la evaluación es la que **mueve el estado sola**:
+
+| Resultado | Qué pasa |
+|---|---|
+| **Aprobado** | Pasa a integrante oficial, con la fecha en que se aprobó |
+| **No aprobado** | Sigue en prueba, con un plazo nuevo contado desde la evaluación |
+| **Retirado del cuerpo** | Sale, con el motivo anotado |
+
+Cada evaluación queda con su fecha, quién decidió y **el informe** —adjunto como documento o escrito ahí mismo con formato—, así que el recorrido de cada integrante se puede leer completo años después. Todo queda además en la bitácora de la persona.
+
+### La tesorería de cada cuerpo
+
+Cada cuerpo tiene **su propia tesorería general**, que se crea sola, y puede abrir **las cuentas que necesite** para trabajos específicos. Se ven en su ficha con el saldo de cada una y los últimos movimientos.
+
+Las cuentas de tesorería tienen ahora tres niveles: **Corporación**, **Iglesia local** y **Cuerpo / Grupo**.
+
+### Las cuotas mensuales
+
+Cada cuerpo define **su cuota mensual** en su ficha. El panel muestra una planilla del año: una fila por integrante y una columna por mes. **Un toque en la casilla marca el mes como pagado**, y ese pago entra como ingreso a la tesorería del propio cuerpo.
+
+Hay dos maneras de no deber cuota, y las dos se respetan solas:
+
+- **El cuerpo entero no cobra** — se apaga en su ficha (los grupos vienen así por defecto, los cuerpos formales sí cobran).
+- **Un integrante está exento** — se marca en su ficha, con el motivo. Sale marcado en la planilla y el sistema no deja cobrarle.
+
+> El paso a tesorería se puede apagar en **Configuración → Organización → Registrar las cuotas en tesorería**. Una pertenencia con cuotas pagadas **no se puede eliminar**: se marca como *Retirado*, y su historial queda intacto.
+
+### Las actas de las reuniones
+
+Las actas administrativas del cuerpo se ven y se crean **desde su ficha**, y se pueden registrar de dos maneras, las dos válidas: **adjuntando el documento** firmado, o **escribiéndola en el sistema** con un campo de texto con formato —negrita, cursiva, listas y títulos—.
+
+Lo que se escribe se guarda dejando **solo el formato**: la lista de etiquetas permitidas es corta y no se guarda ningún atributo, así que nadie puede colar código en un acta que después leen los demás. Al pegar desde Word entra solo el texto.
 
 ## Cada iglesia y cada cuerpo con su fotografía 📸
 

@@ -45,17 +45,10 @@ function iglesiaPrincipal(usuario) {
   return suyas.length === 1 ? suyas[0] : null;
 }
 
-/** Ids de los integrantes de unos cuerpos (su lista más su líder). */
+/** Ids de quienes pertenecen a unos cuerpos (más sus líderes). */
 function miembrosDeCuerpos(cuerpoIds) {
   if (!cuerpoIds.length) return [];
-  const marcas = cuerpoIds.map(() => '?').join(',');
-  const filas = db.prepare(`SELECT integrantes, lider_id FROM cuerpos WHERE id IN (${marcas})`).all(...cuerpoIds);
-  const ids = new Set();
-  for (const f of filas) {
-    for (const id of lista(f.integrantes)) ids.add(id);
-    if (f.lider_id) ids.add(Number(f.lider_id));
-  }
-  return [...ids];
+  return require('./integrantes').idsDeVariosCuerpos(db, cuerpoIds);
 }
 
 /** `columna IN (1,2,3)` con sus parámetros, o null si la lista está vacía. */

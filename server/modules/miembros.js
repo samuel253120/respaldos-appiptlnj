@@ -303,20 +303,22 @@ module.exports = {
      */
     router.get('/miembros/:id(\\d+)/cuerpos', requirePerm('miembros', 'view'), (req, res) => {
       const id = Number(req.params.id);
-      const suyos = db
-        .prepare('SELECT id, nombre, tipo, estado, lider_id, integrantes FROM cuerpos ORDER BY nombre')
-        .all()
-        .filter((c) => {
-          if (Number(c.lider_id) === id) return true;
-          let ids = [];
-          try { ids = JSON.parse(c.integrantes || '[]'); } catch (e) { ids = []; }
-          return ids.map(Number).includes(id);
-        })
-        .map((c) => ({
-          id: c.id, nombre: c.nombre, tipo: c.tipo, estado: c.estado,
-          lidera: Number(c.lider_id) === id,
-        }));
-      res.json({ cuerpos: suyos });
+      const { cuerposDe } = require('../integrantes');
+
+      // Los que lidera cuentan aunque no tengan ficha de integrante
+      const suyos = new Map();
+      for (const c of db.prepare('SELECT id, nombre, tipo, estado FROM cuerpos WHERE lider_id = ? ORDER BY nombre').all(id)) {
+        suyos.set(c.id, { id: c.id, nombre: c.nombre, tipo: c.tipo, estado: c.estado, lidera: true, en: 'Activo' });
+      }
+      for (const f of cuerposDe(db, id, { conRetirados: true })) {
+        const ya = suyos.get(f.cuerpo_id);
+        if (ya) { ya.en = f.estado; ya.desde = f.fecha_ingreso; continue; }
+        suyos.set(f.cuerpo_id, {
+          id: f.cuerpo_id, nombre: f.nombre, tipo: f.tipo, estado: f.estado_cuerpo,
+          lidera: false, en: f.estado, desde: f.fecha_ingreso,
+        });
+      }
+      res.json({ cuerpos: [...suyos.values()].sort((a, b) => a.nombre.localeCompare(b.nombre)) });
     });
 
     /** Cómo está el acceso al sistema de este miembro. */

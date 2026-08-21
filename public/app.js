@@ -1386,6 +1386,8 @@ function cellValue(f, row, col) {
       return esc(etiquetaDeRef(f, row[f.name + '_label']));
     case 'multiref':
       return esc((row[f.name + '_labels'] || []).slice(0, 3).join(', ')) + ((row[f.name + '_labels'] || []).length > 3 ? '…' : '');
+    case 'richtext':
+      return esc(textoPlano(v).slice(0, 90)) + (textoPlano(v).length > 90 ? '…' : '');
     case 'money':
       return fmtMoney(v);
     case 'number':
@@ -1528,6 +1530,9 @@ function valorFicha(f, row) {
     }
     case 'textarea':
       return vacio ? '' : `<div class="dato-texto">${esc(v)}</div>`;
+    case 'richtext':
+      // Ya viene limpio del servidor (server/textorico.js): solo formato
+      return vacio ? '' : `<div class="dato-rico">${v}</div>`;
     case 'select':
       return vacio ? '' : `<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`;
     case 'persona':
@@ -1806,6 +1811,7 @@ async function viewForm(name, id, precarga) {
   m.fields.filter((f) => !f.computed).forEach((f) => {
     if (f.type === 'multiref') initMultiref(f, row);
     if (f.type === 'money' || f.type === 'number') initNumero(f);
+    if (f.type === 'richtext') initTextoRico(f);
     if (f.type === 'file') initFileField(f);
     if (f.type === 'rut') {
       const el = document.querySelector(`#recForm [name="${f.name}"]`);
@@ -2058,11 +2064,33 @@ function fieldHtml(f, row, isNew) {
   const help = f.help ? `<div class="help">${esc(f.help)}</div>` : '';
   // Ancho completo: lo que de suyo ocupa toda la fila, y lo que el módulo pida
   // (un buscador de libros al lado de tres casillas de números queda apretado)
-  const wide = f.ancho === 'completo' || ['textarea', 'multiref', 'permisos'].includes(f.type) ? ' full' : '';
+  const wide = f.ancho === 'completo' || ['textarea', 'richtext', 'multiref', 'permisos'].includes(f.type) ? ' full' : '';
   let input = '';
   switch (f.type) {
     case 'textarea':
       input = `<textarea name="${f.name}">${esc(val)}</textarea>`;
+      break;
+    case 'richtext':
+      // Se escribe con formato en una caja de verdad, y lo escrito viaja en un
+      // campo oculto. El servidor vuelve a limpiarlo: acá no se confía nada.
+      input = `
+        <div class="rico" id="rico_${f.name}">
+          <div class="rico-barra">
+            <button type="button" data-cmd="bold" title="Negrita"><b>N</b></button>
+            <button type="button" data-cmd="italic" title="Cursiva"><i>C</i></button>
+            <button type="button" data-cmd="underline" title="Subrayado"><u>S</u></button>
+            <span class="sep"></span>
+            <button type="button" data-cmd="insertUnorderedList" title="Lista con viñetas">• Lista</button>
+            <button type="button" data-cmd="insertOrderedList" title="Lista numerada">1. Lista</button>
+            <span class="sep"></span>
+            <button type="button" data-bloque="h3" title="Título">Título</button>
+            <button type="button" data-bloque="p" title="Párrafo normal">Normal</button>
+            <span class="sep"></span>
+            <button type="button" data-cmd="removeFormat" title="Quitar el formato">Limpiar</button>
+          </div>
+          <div class="rico-hoja" contenteditable="true" id="ricoh_${f.name}"></div>
+          <input type="hidden" name="${f.name}" value="${esc(val)}" />
+        </div>`;
       break;
     case 'select': {
       const valores = (f.options || []).map((o) => String(typeof o === 'object' ? o.value : o));
@@ -2224,6 +2252,55 @@ function fieldHtml(f, row, isNew) {
   if (f.readonly) input = marcarSoloLectura(input);
   const clases = `fld${wide}${f.readonly ? ' calculado' : ''}${f.destacado ? ' destacado' : ''}`;
   return `<div class="${clases}"${condicionAttrs(f)}><label>${esc(f.label)} ${req}</label>${input}${help}</div>`;
+}
+
+/** El texto de un campo con formato, sin las etiquetas. */
+function textoPlano(html) {
+  const caja = document.createElement('div');
+  caja.innerHTML = String(html == null ? '' : html);
+  return (caja.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Campo de texto con formato: negrita, cursiva, listas y títulos.
+ *
+ * Se escribe en una caja de verdad y lo escrito se copia a un campo oculto,
+ * que es lo que viaja al guardar. El servidor lo vuelve a limpiar antes de
+ * guardarlo (server/textorico.js): acá no se confía en nada de lo que llegue.
+ */
+function initTextoRico(f) {
+  const caja = document.getElementById('rico_' + f.name);
+  if (!caja) return;
+  const hoja = caja.querySelector('.rico-hoja');
+  const oculto = caja.querySelector('input[type=hidden]');
+
+  hoja.innerHTML = oculto.value || '';
+  if (!hoja.innerHTML.trim()) hoja.innerHTML = '<p><br></p>';
+
+  const guardar = () => {
+    const vacio = !hoja.textContent.trim() && !hoja.querySelector('img');
+    oculto.value = vacio ? '' : hoja.innerHTML;
+  };
+  hoja.addEventListener('input', guardar);
+  hoja.addEventListener('blur', guardar);
+
+  // Al pegar desde Word o desde una página, entra solo el texto: el formato
+  // ajeno trae estilos y etiquetas que no queremos guardar.
+  hoja.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const texto = (e.clipboardData || window.clipboardData).getData('text/plain');
+    document.execCommand('insertText', false, texto);
+  });
+
+  caja.querySelectorAll('.rico-barra button').forEach((boton) => {
+    boton.addEventListener('mousedown', (e) => e.preventDefault());  // no perder el cursor
+    boton.addEventListener('click', () => {
+      hoja.focus();
+      if (boton.dataset.bloque) document.execCommand('formatBlock', false, boton.dataset.bloque);
+      else document.execCommand(boton.dataset.cmd, false, null);
+      guardar();
+    });
+  });
 }
 
 /**
@@ -5576,69 +5653,354 @@ function abrirAnotacion(panel, id, alGuardar, registro) {
 /* =====================================================================
  * Ficha del cuerpo: estado de cumplimiento e histórico de directivas
  * ===================================================================== */
+/**
+ * Todo lo que cuelga de la ficha de un cuerpo: su cumplimiento, su gente, sus
+ * cuotas, su tesorería, sus directivas y sus actas. Cada panel se dibuja por
+ * su cuenta y se refresca solo cuando cambia algo suyo.
+ */
 async function renderPanelesCuerpo(cuerpoId, contenedor) {
-  const [cumplimiento, directivas] = await Promise.all([
-    api('GET', `/cuerpos/${cuerpoId}/cumplimiento`).catch(() => null),
-    MOD['directivas']
-      ? api('GET', `/directivas?f_cuerpo_id=${cuerpoId}&sort=fecha_inicio&dir=desc&limit=50`).catch(() => null)
+  contenedor.innerHTML = `
+    <div id="cpCumplimiento"></div>
+    <div id="cpIntegrantes"></div>
+    <div id="cpCuotas"></div>
+    <div id="cpTesoreria"></div>
+    <div id="cpDirectivas"></div>
+    <div id="cpActas"></div>`;
+
+  renderCumplimientoCuerpo(cuerpoId, contenedor.querySelector('#cpCumplimiento'));
+  renderIntegrantesCuerpo(cuerpoId, contenedor.querySelector('#cpIntegrantes'));
+  renderCuotasCuerpo(cuerpoId, contenedor.querySelector('#cpCuotas'));
+  renderTesoreriaCuerpo(cuerpoId, contenedor.querySelector('#cpTesoreria'));
+  renderDirectivasCuerpo(cuerpoId, contenedor.querySelector('#cpDirectivas'));
+  renderActasCuerpo(cuerpoId, contenedor.querySelector('#cpActas'));
+}
+
+/** Los requisitos formales del cuerpo: reglamento, directiva y estado. */
+async function renderCumplimientoCuerpo(cuerpoId, caja) {
+  const c = await api('GET', `/cuerpos/${cuerpoId}/cumplimiento`).catch(() => null);
+  if (!c || !c.items.length) return;
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>✅ Estado de cumplimiento</b>
+        <span class="badge ${nivelClase(c.nivel)}">${esc(c.texto)}</span>
+      </div>
+      <ul class="cumplimiento">
+        ${c.items.map((i) => `
+          <li class="${i.ok ? 'ok' : 'falta'}">
+            <span class="mk">${i.ok ? '✓' : '✗'}</span>
+            <div><b>${esc(i.texto)}</b><span>${esc(i.detalle)}</span></div>
+          </li>`).join('')}
+      </ul>
+    </div>`;
+}
+
+/** Cómo se ve el estado de cada integrante. */
+const ESTADO_INTEGRANTE = {
+  Activo: { clase: 'green', texto: 'Activo' },
+  'En prueba': { clase: 'yellow', texto: 'En prueba' },
+  Retirado: { clase: '', texto: 'Retirado' },
+};
+
+/**
+ * La gente del cuerpo: quién está activo, quién en prueba y quién se retiró,
+ * con el aviso de a quién se le venció el período de prueba.
+ */
+async function renderIntegrantesCuerpo(cuerpoId, caja, filtro) {
+  const d = await api('GET', `/cuerpos/${cuerpoId}/integrantes`).catch(() => null);
+  if (!d) return;
+  const ver = filtro || (caja.dataset.filtro || 'vigentes');
+  caja.dataset.filtro = ver;
+
+  const visibles = d.integrantes.filter((g) => {
+    if (ver === 'todos') return true;
+    if (ver === 'vigentes') return g.estado !== 'Retirado';
+    if (ver === 'prueba') return g.estado === 'En prueba';
+    if (ver === 'retirados') return g.estado === 'Retirado';
+    return true;
+  });
+
+  const chip = (clave, texto, n) =>
+    `<button class="chip ${ver === clave ? 'on' : ''}" data-ver="${clave}">${texto} (${fmtNumero(n)})</button>`;
+
+  const aviso = d.resumen.prueba_vencida
+    ? `<div class="aviso importante" style="margin:0 14px 12px">
+         <b>⏰ Períodos de prueba vencidos</b>
+         <span>A ${fmtNumero(d.resumen.prueba_vencida)} integrante(s) ya se les cumplió el plazo y falta evaluar su informe.</span>
+       </div>`
+    : '';
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🧑‍🤝‍🧑 Integrantes</b>
+        <span style="color:var(--muted);font-size:13px">${fmtNumero(d.resumen.activos)} activo(s) · ${fmtNumero(d.resumen.en_prueba)} en prueba</span>
+        <span class="spacer"></span>
+        ${d.puede_agregar
+          ? `<a class="btn sm" href="#/m/integrantes_cuerpo/new?cuerpo_id=${cuerpoId}">➕ Sumar integrante</a>`
+          : ''}
+      </div>
+      ${aviso}
+      <div class="pl-chips" style="padding:0 14px 10px">
+        ${chip('vigentes', 'En el cuerpo', d.resumen.activos + d.resumen.en_prueba)}
+        ${chip('prueba', 'En prueba', d.resumen.en_prueba)}
+        ${chip('retirados', 'Retirados', d.resumen.retirados)}
+        ${chip('todos', 'Todos', d.integrantes.length)}
+      </div>
+      ${visibles.length ? `<ul class="integrantes">
+        ${visibles.map((g) => {
+          const e = ESTADO_INTEGRANTE[g.estado] || { clase: '', texto: g.estado };
+          const detalle = g.estado === 'En prueba'
+            ? (g.fecha_fin_prueba
+                ? `${g.prueba_vencida ? '⏰ Se le venció el' : 'Hasta el'} ${fechaCorta(g.fecha_fin_prueba)}`
+                : 'Sin plazo definido')
+            : g.estado === 'Retirado'
+              ? `Se retiró el ${fechaCorta(g.fecha_retiro)}${g.motivo_retiro ? ` · ${esc(g.motivo_retiro)}` : ''}`
+              : g.fecha_ingreso ? `Desde el ${fechaCorta(g.fecha_ingreso)}` : '';
+          return `
+            <li class="${g.prueba_vencida ? 'vencida' : ''}">
+              <span class="av">${g.foto
+                ? `<img src="/uploads/${esc(g.foto)}" alt="" />`
+                : esc((g.nombre || '?').trim().charAt(0).toUpperCase())}</span>
+              <div class="dt">
+                <b>${esc(g.nombre)}</b>
+                <span class="mut">${detalle}</span>
+              </div>
+              <div class="marcas">
+                ${g.lidera ? '<span class="badge blue">Lidera</span>' : ''}
+                ${g.exento_cuota ? `<span class="badge" title="${esc(g.exento_motivo || '')}">Exento de cuota</span>` : ''}
+                <span class="badge ${e.clase}">${esc(e.texto)}</span>
+              </div>
+              <div class="acciones">
+                ${g.estado === 'En prueba' && d.puede_editar
+                  ? `<a class="btn secondary sm" href="#/m/evaluaciones_integrantes/new?integrante_id=${g.id}">📋 Evaluar</a>`
+                  : ''}
+                <a class="btn secondary sm" href="#/m/miembros/ficha/${g.miembro_id}" title="Ver su ficha">👤</a>
+                ${d.puede_editar ? `<a class="btn secondary sm" href="#/m/integrantes_cuerpo/edit/${g.id}" title="Editar su pertenencia">✏️</a>` : ''}
+              </div>
+            </li>`;
+        }).join('')}
+      </ul>` : '<div class="empty-state" style="padding:26px">No hay integrantes que mostrar acá.</div>'}
+    </div>`;
+
+  caja.querySelectorAll('.pl-chips .chip').forEach((b) =>
+    b.addEventListener('click', () => renderIntegrantesCuerpo(cuerpoId, caja, b.dataset.ver)));
+}
+
+/** La planilla de cuotas del año: quién pagó cada mes. */
+async function renderCuotasCuerpo(cuerpoId, caja, anio) {
+  const cual = anio || Number(caja.dataset.anio) || new Date().getFullYear();
+  caja.dataset.anio = cual;
+  const d = await api('GET', `/cuerpos/${cuerpoId}/cuotas?anio=${cual}`).catch(() => null);
+  if (!d) return;
+
+  if (!d.cobra_cuota) {
+    caja.innerHTML = `
+      <div class="card" style="margin-top:18px">
+        <div class="toolbar"><b>🎟️ Cuotas mensuales</b></div>
+        <div class="empty-state" style="padding:26px">
+          Este cuerpo no cobra cuota mensual.<br>
+          <span class="mut">Se activa en su ficha, en «Cuota mensual».</span>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const mesesDelAnio = MESES_CORTOS.map((n, i) => ({ n, valor: String(i + 1).padStart(2, '0') }));
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🎟️ Cuotas mensuales</b>
+        <span style="color:var(--muted);font-size:13px">
+          ${d.cuota_mensual ? `${fmtMoney(d.cuota_mensual)} al mes` : 'sin monto definido'} ·
+          recaudado ${fmtMoney(d.total_recaudado)}
+        </span>
+        <span class="spacer"></span>
+        <button class="btn secondary sm" id="cuAntes">← ${cual - 1}</button>
+        <b style="font-size:14px">${cual}</b>
+        <button class="btn secondary sm" id="cuDespues">${cual + 1} →</button>
+      </div>
+      ${d.cuota_mensual ? '' : `
+        <div class="aviso" style="margin:0 14px 12px">
+          <b>Falta el monto</b>
+          <span>Escriba cuánto es la cuota en la ficha del cuerpo y podrá marcar los pagos con un toque.</span>
+        </div>`}
+      <div class="table-scroll">
+        <table class="grid cuotas">
+          <thead><tr>
+            <th>Integrante</th>
+            ${mesesDelAnio.map((m) => `<th class="mes">${m.n}</th>`).join('')}
+            <th class="num">Pagado</th>
+          </tr></thead>
+          <tbody>
+            ${d.filas.map((f) => `
+              <tr>
+                <td class="quien">${esc(f.nombre)}${f.exento
+                  ? `<span class="badge" title="${esc(f.exento_motivo || '')}">Exento</span>` : ''}</td>
+                ${mesesDelAnio.map((m) => {
+                  const pago = f.meses[m.valor];
+                  if (f.exento) return '<td class="mes exento">—</td>';
+                  if (pago) {
+                    return `<td class="mes pagado" title="${esc(fmtMoney(pago.monto))} · ${esc(fechaCorta(pago.fecha))}"
+                                data-integrante="${f.id}" data-mes="${m.valor}">✓</td>`;
+                  }
+                  return `<td class="mes debe${d.puede_cobrar && d.cuota_mensual ? ' se-puede' : ''}"
+                              data-integrante="${f.id}" data-mes="${m.valor}"
+                              title="${d.puede_cobrar && d.cuota_mensual ? 'Marcar como pagada' : 'Sin pagar'}"></td>`;
+                }).join('')}
+                <td class="num cifra">${f.exento ? '—' : fmtMoney(f.total)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  caja.querySelector('#cuAntes').addEventListener('click', () => renderCuotasCuerpo(cuerpoId, caja, cual - 1));
+  caja.querySelector('#cuDespues').addEventListener('click', () => renderCuotasCuerpo(cuerpoId, caja, cual + 1));
+
+  if (!d.puede_cobrar || !d.cuota_mensual) return;
+  caja.querySelectorAll('td.mes.se-puede').forEach((celda) =>
+    celda.addEventListener('click', async () => {
+      celda.textContent = '…';
+      try {
+        await api('POST', `/cuerpos/${cuerpoId}/cuotas`, {
+          integrante_id: Number(celda.dataset.integrante),
+          anio: cual,
+          mes: celda.dataset.mes,
+        });
+        toast('Cuota registrada');
+        renderCuotasCuerpo(cuerpoId, caja, cual);
+        const tes = document.getElementById('cpTesoreria');
+        if (tes) renderTesoreriaCuerpo(cuerpoId, tes);
+      } catch (e) {
+        celda.textContent = '';
+        toast(e.message, true);
+      }
+    }));
+}
+
+/** Las cuentas del cuerpo con su saldo, y sus últimos movimientos. */
+async function renderTesoreriaCuerpo(cuerpoId, caja) {
+  if (!MOD['cuentas_tesoreria']) return;
+  const [cuentas, movimientos] = await Promise.all([
+    api('GET', `/cuentas_tesoreria?f_cuerpo_id=${cuerpoId}&limit=50`).catch(() => null),
+    MOD['tesoreria']
+      ? api('GET', `/tesoreria?f_cuerpo_id=${cuerpoId}&sort=fecha&dir=desc&limit=8`).catch(() => null)
       : Promise.resolve(null),
   ]);
+  if (!cuentas) return;
 
-  let html = '';
-
-  if (cumplimiento && cumplimiento.items.length) {
-    html += `
-      <div class="card" style="margin-top:18px">
-        <div class="toolbar">
-          <b>✅ Estado de cumplimiento</b>
-          <span class="badge ${nivelClase(cumplimiento.nivel)}">${esc(cumplimiento.texto)}</span>
-        </div>
-        <ul class="cumplimiento">
-          ${cumplimiento.items.map((i) => `
-            <li class="${i.ok ? 'ok' : 'falta'}">
-              <span class="mk">${i.ok ? '✓' : '✗'}</span>
-              <div><b>${esc(i.texto)}</b><span>${esc(i.detalle)}</span></div>
-            </li>`).join('')}
-        </ul>
-      </div>`;
-  }
-
-  if (directivas) {
-    const cargo = (d, campo, etiqueta) =>
-      d[campo + '_label'] ? `<span class="cargo"><i>${etiqueta}:</i> ${esc(d[campo + '_label'])}</span>` : '';
-    html += `
-      <div class="card" style="margin-top:18px">
-        <div class="toolbar">
-          <b>🏅 Directivas</b>
-          <span style="color:var(--muted);font-size:13px">${directivas.total} período(s)</span>
+  const saldo = cuentas.rows.reduce((t, c) => t + (Number(c.saldo) || 0), 0);
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>💰 Tesorería del cuerpo</b>
+        <span style="color:var(--muted);font-size:13px">saldo total ${fmtMoney(saldo)}</span>
+        <span class="spacer"></span>
+        ${MOD['cuentas_tesoreria'].perms.create
+          ? `<a class="btn sm" href="#/m/cuentas_tesoreria/new?cuerpo_id=${cuerpoId}">➕ Nueva cuenta</a>`
+          : ''}
+      </div>
+      ${cuentas.rows.length ? `<ul class="mini-list">
+        ${cuentas.rows.map((c) => `
+          <li onclick="location.hash='#/m/cuentas_tesoreria/edit/${c.id}'">
+            <span>${esc(c.nombre)}
+              <span class="badge ${c.tipo === 'General' ? 'blue' : ''}">${esc(c.tipo)}</span>
+              ${c.estado === 'Cerrada' ? '<span class="badge">Cerrada</span>' : ''}</span>
+            <span class="mut cifra">${fmtMoney(c.saldo)}</span>
+          </li>`).join('')}
+      </ul>` : '<div class="empty-state" style="padding:22px">Este cuerpo todavía no tiene cuentas.</div>'}
+      ${movimientos && movimientos.rows.length ? `
+        <div class="toolbar" style="border-top:1px solid var(--border)">
+          <b style="font-size:13.5px">Últimos movimientos</b>
           <span class="spacer"></span>
-          ${MOD['directivas'].perms.create
-            ? `<a class="btn sm" href="#/m/directivas/new?cuerpo_id=${cuerpoId}">➕ Nueva directiva</a>`
-            : ''}
+          <a class="btn secondary sm" href="#/m/tesoreria?f_cuerpo_id=${cuerpoId}">Ver todos</a>
         </div>
-        ${directivas.rows.length ? `<ul class="directivas">
-          ${directivas.rows.map((d) => `
-            <li class="${d.estado === 'Vigente' ? 'vigente' : ''}" onclick="location.hash='#/m/directivas/edit/${d.id}'">
-              <div class="dp">
-                <b>${esc(d.periodo)}</b>
-                <span class="badge ${d.estado === 'Vigente' ? 'green' : ''}">${esc(d.estado)}</span>
-              </div>
-              <div class="df">${fechaCorta(d.fecha_inicio)}${d.fecha_termino ? ' — ' + fechaCorta(d.fecha_termino) : ''}</div>
-              <div class="dc">
-                ${cargo(d, 'oficial_supervisor_id', 'Oficial supervisor(a)')}
-                ${cargo(d, 'primer_jefe_id', 'Primer jefe/a')}
-                ${cargo(d, 'segundo_jefe_id', 'Segundo jefe/a')}
-                ${cargo(d, 'secretario_id', 'Secretario(a)')}
-                ${cargo(d, 'tesorero_id', 'Tesorero(a)')}
-                ${cargo(d, 'consejero_id', 'Consejero(a)')}
-                ${d.otros_cargos ? `<span class="cargo">${esc(d.otros_cargos)}</span>` : ''}
-              </div>
+        <ul class="mov-list">
+          ${movimientos.rows.map((m) => `
+            <li onclick="location.hash='#/m/tesoreria/edit/${m.id}'">
+              <span>${esc(fechaCorta(m.fecha))} · ${esc(m.concepto)}</span>
+              <span class="${m.tipo === 'Ingreso' ? 'monto-ingreso' : 'monto-egreso'}">
+                ${m.tipo === 'Ingreso' ? '+' : '−'} ${fmtMoney(m.monto)}</span>
             </li>`).join('')}
-        </ul>` : '<div class="empty-state" style="padding:26px">Todavía no hay directivas registradas.</div>'}
-      </div>`;
-  }
+        </ul>` : ''}
+    </div>`;
+}
 
-  contenedor.innerHTML = html;
+/** Las directivas del cuerpo, período por período. */
+async function renderDirectivasCuerpo(cuerpoId, caja) {
+  if (!MOD['directivas']) return;
+  const directivas = await api('GET', `/directivas?f_cuerpo_id=${cuerpoId}&sort=fecha_inicio&dir=desc&limit=50`)
+    .catch(() => null);
+  if (!directivas) return;
+  const cargo = (d, campo, etiqueta) =>
+    d[campo + '_label'] ? `<span class="cargo"><i>${etiqueta}:</i> ${esc(d[campo + '_label'])}</span>` : '';
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🏅 Directivas</b>
+        <span style="color:var(--muted);font-size:13px">${fmtNumero(directivas.total)} período(s)</span>
+        <span class="spacer"></span>
+        ${MOD['directivas'].perms.create
+          ? `<a class="btn sm" href="#/m/directivas/new?cuerpo_id=${cuerpoId}">➕ Nueva directiva</a>`
+          : ''}
+      </div>
+      ${directivas.rows.length ? `<ul class="directivas">
+        ${directivas.rows.map((d) => `
+          <li class="${d.estado === 'Vigente' ? 'vigente' : ''}" onclick="location.hash='#/m/directivas/edit/${d.id}'">
+            <div class="dp">
+              <b>${esc(d.periodo)}</b>
+              <span class="badge ${d.estado === 'Vigente' ? 'green' : ''}">${esc(d.estado)}</span>
+            </div>
+            <div class="df">${fechaCorta(d.fecha_inicio)}${d.fecha_termino ? ' — ' + fechaCorta(d.fecha_termino) : ''}</div>
+            <div class="dc">
+              ${cargo(d, 'oficial_supervisor_id', 'Oficial supervisor(a)')}
+              ${cargo(d, 'primer_jefe_id', 'Primer jefe/a')}
+              ${cargo(d, 'segundo_jefe_id', 'Segundo jefe/a')}
+              ${cargo(d, 'secretario_id', 'Secretario(a)')}
+              ${cargo(d, 'tesorero_id', 'Tesorero(a)')}
+              ${cargo(d, 'consejero_id', 'Consejero(a)')}
+              ${d.otros_cargos ? `<span class="cargo">${esc(d.otros_cargos)}</span>` : ''}
+            </div>
+          </li>`).join('')}
+      </ul>` : '<div class="empty-state" style="padding:26px">Todavía no hay directivas registradas.</div>'}
+    </div>`;
+}
+
+/** Las actas de las reuniones administrativas del cuerpo. */
+async function renderActasCuerpo(cuerpoId, caja) {
+  if (!MOD['actas_reuniones']) return;
+  const actas = await api('GET', `/actas_reuniones?f_cuerpo_id=${cuerpoId}&sort=fecha&dir=desc&limit=30`)
+    .catch(() => null);
+  if (!actas) return;
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>📝 Actas de reuniones</b>
+        <span style="color:var(--muted);font-size:13px">${fmtNumero(actas.total)} acta(s)</span>
+        <span class="spacer"></span>
+        ${MOD['actas_reuniones'].perms.create
+          ? `<a class="btn sm" href="#/m/actas_reuniones/new?cuerpo_id=${cuerpoId}">➕ Nueva acta</a>`
+          : ''}
+      </div>
+      ${actas.rows.length ? `<ul class="mini-list">
+        ${actas.rows.map((a) => `
+          <li onclick="location.hash='#/m/actas_reuniones/edit/${a.id}'">
+            <span><b>Acta ${esc(a.numero_acta)}</b>
+              <span class="mut">${esc(fechaCorta(a.fecha))}${a.presidida_por ? ` · ${esc(a.presidida_por)}` : ''}</span></span>
+            <span class="mut">
+              ${a.documento ? '📎 ' : ''}<span class="badge ${a.estado === 'Firmada' ? 'green' : a.estado === 'Aprobada' ? 'blue' : ''}">${esc(a.estado || 'Borrador')}</span>
+            </span>
+          </li>`).join('')}
+      </ul>` : `<div class="empty-state" style="padding:26px">
+          Todavía no hay actas de este cuerpo.<br>
+          <span class="mut">Se pueden adjuntar como documento o escribir acá mismo.</span>
+        </div>`}
+    </div>`;
 }
 
 /* ---------------- inicio ---------------- */

@@ -20,7 +20,7 @@ function cuerpoDeOficiales(db) {
   const ajustes = require('./ajustes'); // tardío: ajustes usa la base
   const nombre = normalizar(ajustes.obtener('cuerpo_oficiales'));
   if (!nombre) return null;
-  const filas = db.prepare('SELECT id, nombre, lider_id, integrantes FROM cuerpos').all();
+  const filas = db.prepare('SELECT id, nombre, lider_id FROM cuerpos').all();
   return filas.find((c) => normalizar(c.nombre) === nombre) || null;
 }
 
@@ -28,14 +28,8 @@ function cuerpoDeOficiales(db) {
 function idsDeOficiales(db) {
   const cuerpo = cuerpoDeOficiales(db);
   if (!cuerpo) return [];
-  let ids = [];
-  try {
-    ids = JSON.parse(cuerpo.integrantes || '[]');
-  } catch (e) {
-    ids = [];
-  }
-  if (cuerpo.lider_id && !ids.includes(cuerpo.lider_id)) ids.push(cuerpo.lider_id);
-  return ids.map(Number).filter(Boolean);
+  // Tardío: integrantes.js consulta ajustes, que consulta la base
+  return require('./integrantes').idsDeIntegrantes(db, cuerpo.id);
 }
 
 /** ¿Este miembro pertenece al cuerpo de oficiales? */

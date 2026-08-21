@@ -33,6 +33,8 @@ const MATRIX = {
     '*': RO,
     miembros: RW,
     cuerpos: RW,
+    integrantes_cuerpo: RW,
+    evaluaciones_integrantes: RW,
     asistencias: RW,
     asistencia_detalle: RW,
     servicios: RW,
@@ -52,6 +54,7 @@ const MATRIX = {
     tesoreria: [],
     cuentas_tesoreria: [],
     traspasos: [],
+    cuotas_cuerpo: [],
     usuarios: [],
   },
   tesorero: {
@@ -59,6 +62,7 @@ const MATRIX = {
     tesoreria: ALL,
     cuentas_tesoreria: ALL,
     traspasos: ALL,
+    cuotas_cuerpo: ALL,
     ayudas_sociales: ALL,
     inventarios: RW,
     usuarios: [],
@@ -68,6 +72,7 @@ const MATRIX = {
     tesoreria: [],
     cuentas_tesoreria: [],
     traspasos: [],
+    cuotas_cuerpo: [],
     usuarios: [],
   },
 };

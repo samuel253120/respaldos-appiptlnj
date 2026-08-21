@@ -41,8 +41,8 @@ module.exports = {
   order: 29,
   display: '{nombre}',
   searchFields: ['nombre', 'descripcion', 'responsable'],
-  listFields: ['nombre', 'ambito', 'iglesia_id', 'tipo', 'saldo', 'estado'],
-  filterFields: ['ambito', 'tipo', 'estado'],
+  listFields: ['nombre', 'ambito', 'iglesia_id', 'cuerpo_id', 'tipo', 'saldo', 'estado'],
+  filterFields: ['ambito', 'iglesia_id', 'cuerpo_id', 'tipo', 'estado'],
   defaultSort: { field: 'nombre', dir: 'asc' },
 
   computed: [
@@ -62,19 +62,24 @@ module.exports = {
     },
     {
       name: 'ambito', label: 'Nivel', type: 'select', required: true, default: 'Iglesia local',
-      options: ['Corporación', 'Iglesia local'],
-      help: 'De la corporación (toda la organización) o de una iglesia local.',
+      options: ['Corporación', 'Iglesia local', 'Cuerpo / Grupo'],
+      help: 'De la corporación (toda la organización), de una iglesia local o de un cuerpo o grupo, que lleva su propia tesorería.',
     },
     {
       name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias',
-      showIf: { field: 'ambito', equals: 'Iglesia local' },
+      showIf: { field: 'ambito', in: ['Iglesia local', 'Cuerpo / Grupo'] },
       help: 'A qué iglesia local pertenece esta cuenta.',
+    },
+    {
+      name: 'cuerpo_id', label: 'Cuerpo / Grupo', type: 'ref', ref: 'cuerpos',
+      showIf: { field: 'ambito', equals: 'Cuerpo / Grupo' },
+      help: 'De qué cuerpo o grupo es esta cuenta. Su tesorería general se crea sola; acá se abren las demás.',
     },
     {
       name: 'tipo', label: 'Tipo de cuenta', type: 'select', required: true, default: 'Proyecto / Trabajo',
       options: ['General', 'Fondo para la corporación', 'Proyecto / Trabajo'],
       help:
-        'La cuenta «General» es la tesorería del nivel (una por corporación y una por iglesia). ' +
+        'La cuenta «General» es la tesorería del nivel: una por corporación, una por iglesia y una por cuerpo. ' +
         'El «Fondo para la corporación» es donde cada iglesia aparta lo que después le traspasa a la corporación.',
     },
     { name: 'responsable', label: 'Responsable', type: 'persona', ref: 'miembros' },
@@ -102,8 +107,19 @@ module.exports = {
       // La cuenta de la corporación no pertenece a ninguna iglesia
       if (ambito === 'Corporación') {
         data.iglesia_id = null;
+        data.cuerpo_id = null;
       } else if (!dato('iglesia_id')) {
         return 'Indique a qué iglesia local pertenece la cuenta';
+      }
+
+      // La de un cuerpo necesita saber de qué cuerpo es, y toma su iglesia
+      if (ambito === 'Cuerpo / Grupo') {
+        const cuerpoId = dato('cuerpo_id');
+        if (!cuerpoId) return 'Indique de qué cuerpo o grupo es la cuenta';
+        const cuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
+        if (cuerpo) data.iglesia_id = cuerpo.iglesia_id;
+      } else {
+        data.cuerpo_id = null;
       }
 
       // El fondo para la corporación es una cuenta de la iglesia local
@@ -115,10 +131,13 @@ module.exports = {
       const unicas = { General: 'la cuenta general', 'Fondo para la corporación': 'el fondo para la corporación' };
       const tipo = dato('tipo');
       if (unicas[tipo]) {
+        const cuerpoId = ambito === 'Cuerpo / Grupo' ? dato('cuerpo_id') : null;
         const iglesiaId = ambito === 'Corporación' ? null : dato('iglesia_id');
-        const otra = iglesiaId
-          ? db.prepare(`SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND iglesia_id = ? AND id != ?`).get(tipo, iglesiaId, id || 0)
-          : db.prepare(`SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND iglesia_id IS NULL AND id != ?`).get(tipo, id || 0);
+        const otra = cuerpoId
+          ? db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND cuerpo_id = ? AND id != ?').get(tipo, cuerpoId, id || 0)
+          : iglesiaId
+            ? db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND iglesia_id = ? AND cuerpo_id IS NULL AND id != ?').get(tipo, iglesiaId, id || 0)
+            : db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND iglesia_id IS NULL AND id != ?').get(tipo, id || 0);
         if (otra) {
           return `Ya existe ${unicas[tipo]} de ese nivel ("${otra.nombre}"). Las demás cuentas deben ser de tipo «Proyecto / Trabajo».`;
         }

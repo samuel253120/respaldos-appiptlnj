@@ -61,6 +61,9 @@ function coerce(field, value) {
       const arr = Array.isArray(value) ? value : [];
       return JSON.stringify(arr.map(Number).filter((n) => Number.isFinite(n) && n > 0));
     }
+    case 'richtext':
+      // Se guarda solo el formato: lo demás se bota (ver server/textorico.js)
+      return require('./textorico').limpiar(value);
     case 'rut':
       return rut.canonico(value);
     case 'persona':

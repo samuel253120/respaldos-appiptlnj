@@ -91,17 +91,6 @@ function cambios(def, antes, despues) {
   return lista;
 }
 
-/** Ids de un campo multiref, tolerante a formatos. */
-function idsDe(valor) {
-  if (Array.isArray(valor)) return valor.map(Number).filter(Boolean);
-  try {
-    const p = JSON.parse(valor || '[]');
-    return Array.isArray(p) ? p.map(Number).filter(Boolean) : [];
-  } catch (e) {
-    return [];
-  }
-}
-
 /**
  * Se llama desde el motor CRUD después de guardar un registro de cualquier
  * módulo. Traduce el hecho a una anotación en la bitácora del miembro.
@@ -189,23 +178,39 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
     return;
   }
 
-  // 5. Cuerpos: ingresos y salidas de integrantes
+  // 5. Cuerpos: quién queda a cargo
   if (def.name === 'cuerpos') {
-    const previos = isNew ? [] : idsDe(antes.integrantes);
-    const actuales = idsDe(despues.integrantes);
     const nombre = despues.nombre || 'un cuerpo';
-    for (const id of actuales.filter((i) => !previos.includes(i))) {
-      anotar({ miembroId: id, tipo: 'Ingreso a cuerpo', iglesiaId: iglesia, usuario: user,
-        descripcion: `Ingresa a "${nombre}".` });
-    }
-    for (const id of previos.filter((i) => !actuales.includes(i))) {
-      anotar({ miembroId: id, tipo: 'Salida de cuerpo', iglesiaId: iglesia, usuario: user,
-        descripcion: `Sale de "${nombre}".` });
-    }
-    // Cambio de líder
     if (despues.lider_id && (isNew || antes.lider_id !== despues.lider_id)) {
       anotar({ miembroId: despues.lider_id, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
         descripcion: `Queda como líder / encargado de "${nombre}".` });
+    }
+    return;
+  }
+
+  // 5b. Integrantes de cuerpos: ingreso, paso a oficial, retiro
+  if (def.name === 'integrantes_cuerpo') {
+    const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(despues.cuerpo_id);
+    const nombre = cuerpo ? cuerpo.nombre : 'un cuerpo';
+    const quien = Number(despues.miembro_id);
+    const estado = despues.estado;
+    if (isNew) {
+      anotar({ miembroId: quien, tipo: 'Ingreso a cuerpo', iglesiaId: iglesia, usuario: user,
+        descripcion: estado === 'En prueba'
+          ? `Ingresa a "${nombre}" en período de prueba.`
+          : `Ingresa a "${nombre}".` });
+      return;
+    }
+    if (antes.estado === estado) return;    // solo interesa el cambio de estado
+    if (estado === 'Activo') {
+      anotar({ miembroId: quien, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
+        descripcion: `Queda como integrante oficial de "${nombre}".` });
+    } else if (estado === 'Retirado') {
+      anotar({ miembroId: quien, tipo: 'Salida de cuerpo', iglesiaId: iglesia, usuario: user,
+        descripcion: `Sale de "${nombre}"${despues.motivo_retiro ? ` (${despues.motivo_retiro})` : ''}.` });
+    } else if (estado === 'En prueba') {
+      anotar({ miembroId: quien, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
+        descripcion: `Vuelve a período de prueba en "${nombre}".` });
     }
     return;
   }

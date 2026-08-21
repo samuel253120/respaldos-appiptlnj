@@ -55,18 +55,12 @@ function idsDeCuerpos(valor) {
  * en el primero.
  */
 function integrantesConvocados(actividad, db) {
+  const { idsDeIntegrantes } = require('../integrantes');
   const mapa = new Map();
   for (const cuerpoId of idsDeCuerpos(actividad.cuerpos)) {
     const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
     if (!cuerpo) continue;
-    let ids = [];
-    try {
-      ids = JSON.parse(cuerpo.integrantes || '[]').map(Number).filter(Boolean);
-    } catch (e) {
-      ids = [];
-    }
-    if (cuerpo.lider_id && !ids.includes(cuerpo.lider_id)) ids.unshift(cuerpo.lider_id);
-    for (const id of ids) {
+    for (const id of idsDeIntegrantes(db, cuerpo.id)) {
       if (!mapa.has(id)) mapa.set(id, { cuerpo_id: cuerpo.id, cuerpo: cuerpo.nombre });
     }
   }

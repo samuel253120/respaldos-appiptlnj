@@ -65,6 +65,18 @@ const OPCIONES = [
           'cuerpos. Mientras ese cuerpo no exista o no tenga integrantes, se puede elegir a cualquier miembro.',
       },
       {
+        clave: 'cuerpos_meses_prueba', label: 'Meses de prueba al entrar a un cuerpo', tipo: 'number', defecto: '3',
+        ayuda:
+          'Cuánto dura el período de prueba de quien entra a un cuerpo, antes de evaluar su informe para pasar ' +
+          'a integrante oficial. Cada cuerpo puede fijar los suyos en su ficha.',
+      },
+      {
+        clave: 'cuota_registra_tesoreria', label: 'Registrar las cuotas en tesorería', tipo: 'boolean', defecto: '1',
+        ayuda:
+          'Cada cuota que se marca como pagada entra como ingreso a la tesorería del propio cuerpo. Apáguelo si ' +
+          'prefiere que el tesorero del cuerpo las ingrese a mano.',
+      },
+      {
         clave: 'ofrenda_porcentaje_fondo', label: 'Porcentaje de la ofrenda que aporta a la corporación',
         tipo: 'number', defecto: '10',
         ayuda:

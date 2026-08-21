@@ -52,11 +52,8 @@ function informe(origen, descartadas) {
   fila('Cuerpos y grupos', (origen.groups || []).length, cuantos('cuerpos'));
 
   const integrantes = db
-    .prepare('SELECT integrantes FROM cuerpos')
-    .all()
-    .reduce((n, c) => {
-      try { return n + JSON.parse(c.integrantes || '[]').length; } catch (e) { return n; }
-    }, 0);
+    .prepare("SELECT COUNT(*) n FROM integrantes_cuerpo WHERE estado != 'Retirado'")
+    .get().n;
   const membresiasActivas = (origen.memberships || [])
     .filter((m) => m.status === 'active' && m.id !== 'diag-verify-membership')
     .filter((m, i, todas) => todas.findIndex((x) => x.groupId === m.groupId && x.memberId === m.memberId) === i)
@@ -107,9 +104,16 @@ function informe(origen, descartadas) {
   // ---------------------------------------------------- relaciones intactas
   titulo('3 · Las relaciones, revisadas una por una');
 
-  const cuerpo = uno(`SELECT * FROM cuerpos ORDER BY LENGTH(integrantes) DESC LIMIT 1`);
+  const cuerpo = uno(
+    `SELECT c.* FROM cuerpos c
+       JOIN integrantes_cuerpo i ON i.cuerpo_id = c.id AND i.estado != 'Retirado'
+      GROUP BY c.id ORDER BY COUNT(i.id) DESC LIMIT 1`
+  );
   if (cuerpo) {
-    const ids = JSON.parse(cuerpo.integrantes || '[]');
+    const ids = db
+      .prepare("SELECT miembro_id FROM integrantes_cuerpo WHERE cuerpo_id = ? AND estado != 'Retirado'")
+      .all(cuerpo.id)
+      .map((f) => f.miembro_id);
     const existen = ids.filter((id) => uno('SELECT id FROM miembros WHERE id = ?', id)).length;
     const dir = uno("SELECT * FROM directivas WHERE cuerpo_id = ? AND estado = 'Vigente'", cuerpo.id);
     const jefe = dir && dir.primer_jefe_id ? uno('SELECT nombres, apellidos FROM miembros WHERE id = ?', dir.primer_jefe_id) : null;

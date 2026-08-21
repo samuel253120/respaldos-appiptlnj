@@ -16,6 +16,10 @@
  * "directivas" (histórico). Aquí se calcula el ESTADO DE CUMPLIMIENTO a
  * partir de esos datos: reglamento adjunto, directiva vigente y no vencida,
  * y cuerpo activo.
+ *
+ * De la ficha del cuerpo cuelgan además sus integrantes —cada uno con su
+ * estado y su período de prueba, en el módulo "integrantes_cuerpo"—, su
+ * tesorería, sus cuotas mensuales y sus actas de reunión.
  */
 
 /** Revisa los requisitos formales de un cuerpo y devuelve su estado. */
@@ -94,8 +98,24 @@ module.exports = {
     },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
     { name: 'lider_id', label: 'Líder / Encargado', type: 'ref', ref: 'miembros' },
-    { name: 'integrantes', label: 'Integrantes', type: 'multiref', ref: 'miembros' },
     { name: 'fecha_creacion', label: 'Fecha de creación', type: 'date' },
+
+    // --- Cómo entra y cómo aporta cada integrante ---
+    {
+      name: 'meses_prueba', label: 'Meses de período de prueba', type: 'number',
+      seccion: 'Ingreso de integrantes',
+      help: 'Cuánto dura la prueba de quien entra a este cuerpo, antes de evaluar su informe. En blanco, se usan los meses de Configuración → Organización.',
+    },
+    {
+      name: 'cobra_cuota', label: 'Este cuerpo cobra cuota mensual', type: 'boolean', default: 1,
+      seccion: 'Cuota mensual',
+      help: 'Apáguelo en los cuerpos y grupos que no cobran cuota. Un integrante suelto se exime desde su propia ficha.',
+    },
+    {
+      name: 'cuota_mensual', label: 'Monto de la cuota', type: 'money',
+      showIf: { field: 'cobra_cuota', equals: '1' },
+      help: 'Lo que le corresponde pagar cada mes a cada integrante de este cuerpo.',
+    },
 
     // --- Propios de los cuerpos formales ---
     {
@@ -117,12 +137,144 @@ module.exports = {
     },
     { name: 'descripcion', label: 'Descripción', type: 'textarea' },
   ],
-  extraRoutes(router, { db, requirePerm }) {
+  hooks: {
+    /** Cada cuerpo estrena su propia tesorería general, como las iglesias. */
+    afterSave(fila, { isNew, db }) {
+      if (!isNew) return;
+      const ya = db.prepare("SELECT id FROM cuentas_tesoreria WHERE cuerpo_id = ? AND tipo = 'General'").get(fila.id);
+      if (ya) return;
+      db.prepare(
+        `INSERT INTO cuentas_tesoreria (nombre, ambito, iglesia_id, cuerpo_id, tipo, estado, saldo_inicial, descripcion)
+         VALUES (?, 'Cuerpo / Grupo', ?, ?, 'General', 'Activa', 0, ?)`
+      ).run(
+        `Tesorería — ${fila.nombre}`, fila.iglesia_id, fila.id,
+        'Tesorería general del cuerpo. Acá entran sus cuotas y sus ingresos propios.'
+      );
+    },
+  },
+
+  extraRoutes(router, { db, requirePerm, can }) {
     // Detalle del cumplimiento de un cuerpo, para mostrarlo en su ficha
     router.get('/cuerpos/:id(\\d+)/cumplimiento', requirePerm('cuerpos', 'view'), (req, res) => {
       const fila = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(req.params.id);
       if (!fila) return res.status(404).json({ error: 'Cuerpo no encontrado' });
       res.json(evaluarCumplimiento(fila, db));
+    });
+
+    /**
+     * La gente del cuerpo, para el panel de su ficha: cada uno con su estado,
+     * su período de prueba y si le corresponde pagar cuota. Vienen todos,
+     * retirados incluidos, y la pantalla decide a quién muestra.
+     */
+    router.get('/cuerpos/:id(\\d+)/integrantes', requirePerm('cuerpos', 'view'), (req, res) => {
+      const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(req.params.id);
+      if (!cuerpo) return res.status(404).json({ error: 'Cuerpo no encontrado' });
+      const { integrantesDe } = require('../integrantes');
+      const hoy = new Date().toISOString().slice(0, 10);
+
+      const gente = integrantesDe(db, cuerpo.id, { conRetirados: true }).map((f) => ({
+        id: f.id,
+        miembro_id: f.miembro_id,
+        nombre: `${f.nombres || ''} ${f.apellidos || ''}`.trim(),
+        rut: f.rut || null,
+        foto: f.foto || null,
+        estado: f.estado,
+        fecha_ingreso: f.fecha_ingreso,
+        fecha_fin_prueba: f.fecha_fin_prueba,
+        fecha_oficial: f.fecha_oficial,
+        fecha_retiro: f.fecha_retiro,
+        motivo_retiro: f.motivo_retiro,
+        exento_cuota: !!f.exento_cuota,
+        exento_motivo: f.exento_motivo,
+        lidera: Number(cuerpo.lider_id) === Number(f.miembro_id),
+        prueba_vencida: f.estado === 'En prueba' && !!f.fecha_fin_prueba && f.fecha_fin_prueba < hoy,
+        evaluaciones: db
+          .prepare('SELECT COUNT(*) n FROM evaluaciones_integrantes WHERE integrante_id = ?')
+          .get(f.id).n,
+      }));
+
+      res.json({
+        cuerpo: {
+          id: cuerpo.id, nombre: cuerpo.nombre, tipo: cuerpo.tipo,
+          cobra_cuota: !!cuerpo.cobra_cuota, cuota_mensual: cuerpo.cuota_mensual,
+          meses_prueba: cuerpo.meses_prueba,
+        },
+        integrantes: gente,
+        resumen: {
+          activos: gente.filter((g) => g.estado === 'Activo').length,
+          en_prueba: gente.filter((g) => g.estado === 'En prueba').length,
+          retirados: gente.filter((g) => g.estado === 'Retirado').length,
+          prueba_vencida: gente.filter((g) => g.prueba_vencida).length,
+        },
+        puede_editar: can(req.user, 'integrantes_cuerpo', 'edit'),
+        puede_agregar: can(req.user, 'integrantes_cuerpo', 'create'),
+      });
+    });
+
+    /**
+     * La planilla de cuotas de un año: una fila por integrante y una columna
+     * por mes, con lo que ya está pagado. Los retirados no salen, y quien está
+     * exento —o pertenece a un cuerpo que no cobra— sale marcado como tal.
+     */
+    router.get('/cuerpos/:id(\\d+)/cuotas', requirePerm('cuerpos', 'view'), (req, res) => {
+      const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(req.params.id);
+      if (!cuerpo) return res.status(404).json({ error: 'Cuerpo no encontrado' });
+      const anio = Number(req.query.anio) || new Date().getFullYear();
+      const { integrantesDe } = require('../integrantes');
+
+      const pagos = db
+        .prepare('SELECT integrante_id, mes, monto, fecha_pago FROM cuotas_cuerpo WHERE cuerpo_id = ? AND anio = ?')
+        .all(cuerpo.id, anio);
+
+      const filas = integrantesDe(db, cuerpo.id).map((f) => {
+        const suyos = pagos.filter((p) => Number(p.integrante_id) === Number(f.id));
+        const meses = {};
+        for (const p of suyos) meses[p.mes] = { monto: p.monto, fecha: p.fecha_pago };
+        return {
+          id: f.id,
+          miembro_id: f.miembro_id,
+          nombre: `${f.nombres || ''} ${f.apellidos || ''}`.trim(),
+          estado: f.estado,
+          exento: !!f.exento_cuota,
+          exento_motivo: f.exento_motivo,
+          meses,
+          pagados: suyos.length,
+          total: suyos.reduce((t, p) => t + (Number(p.monto) || 0), 0),
+        };
+      });
+
+      res.json({
+        anio,
+        cobra_cuota: !!cuerpo.cobra_cuota,
+        cuota_mensual: cuerpo.cuota_mensual,
+        filas,
+        total_recaudado: filas.reduce((t, f) => t + f.total, 0),
+        puede_cobrar: can(req.user, 'cuotas_cuerpo', 'create'),
+      });
+    });
+
+    /** Marcar que alguien pagó su cuota de un mes, desde la propia planilla. */
+    router.post('/cuerpos/:id(\\d+)/cuotas', requirePerm('cuotas_cuerpo', 'create'), (req, res) => {
+      const { registrarPago } = require('../cuotas');
+      const r = registrarPago(db, {
+        integranteId: req.body && req.body.integrante_id,
+        anio: req.body && req.body.anio,
+        mes: req.body && req.body.mes,
+        usuarioId: req.user && req.user.id,
+      });
+      if (r.error) return res.status(400).json({ error: r.error });
+      res.json(r.cuota);
+    });
+
+    /** Y deshacerlo, cuando se marcó por equivocación. */
+    router.delete('/cuerpos/:id(\\d+)/cuotas/:cuota(\\d+)', requirePerm('cuotas_cuerpo', 'delete'), (req, res) => {
+      const { borrarPago } = require('../cuotas');
+      const cuota = db.prepare('SELECT * FROM cuotas_cuerpo WHERE id = ? AND cuerpo_id = ?')
+        .get(req.params.cuota, req.params.id);
+      if (!cuota) return res.status(404).json({ error: 'Esa cuota no es de este cuerpo.' });
+      const r = borrarPago(db, cuota.id);
+      if (r.error) return res.status(400).json({ error: r.error });
+      res.json({ ok: true });
     });
   },
 };

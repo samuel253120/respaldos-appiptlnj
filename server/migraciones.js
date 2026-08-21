@@ -454,6 +454,134 @@ function conyugeUnicoDePastores() {
 
 
 /**
+ * Quién cobra cuota mensual. Los cuerpos formales sí —tienen deberes y
+ * derechos—; los grupos, que son agrupaciones de servicio sin obligaciones
+ * formales, no. Cada uno lo cambia después en su ficha.
+ *
+ * Solo toca a los que todavía no lo tienen decidido, así que se puede repetir
+ * sin pisar lo que alguien haya cambiado.
+ */
+function cuerposQueCobranCuota() {
+  const columnas = db.prepare('PRAGMA table_info("cuerpos")').all().map((c) => c.name);
+  if (!columnas.includes('cobra_cuota')) return;
+  const r = db
+    .prepare("UPDATE cuerpos SET cobra_cuota = CASE WHEN tipo = 'Cuerpo' THEN 1 ELSE 0 END WHERE cobra_cuota IS NULL")
+    .run();
+  if (r.changes) {
+    console.log(`🔁 cuerpos: ${r.changes} cuerpo(s) quedaron con la cuota mensual según su tipo (los grupos no cobran).`);
+  }
+}
+
+
+/**
+ * Cada cuerpo lleva su propia tesorería, igual que las iglesias. A los que ya
+ * estaban se les crea su cuenta general; las demás cuentas —las de trabajos
+ * específicos— las abre cada cuerpo cuando las necesita.
+ *
+ * No lleva marca de aplicada a propósito: revisa cuerpo por cuerpo si le
+ * falta la cuenta, así que también le sirve a los que se creen después de
+ * una restauración o de un traspaso.
+ */
+function tesoreriaDeCadaCuerpo() {
+  const columnas = db.prepare('PRAGMA table_info("cuentas_tesoreria")').all().map((c) => c.name);
+  if (!columnas.includes('cuerpo_id')) return;
+
+  const crear = db.prepare(
+    `INSERT INTO cuentas_tesoreria (nombre, ambito, iglesia_id, cuerpo_id, tipo, estado, saldo_inicial, descripcion)
+     VALUES (?, 'Cuerpo / Grupo', ?, ?, 'General', 'Activa', 0, ?)`
+  );
+  const yaTiene = db.prepare("SELECT id FROM cuentas_tesoreria WHERE cuerpo_id = ? AND tipo = 'General'");
+  let cuentas = 0;
+  for (const c of db.prepare('SELECT id, nombre, iglesia_id FROM cuerpos').all()) {
+    if (yaTiene.get(c.id)) continue;
+    crear.run(
+      `Tesorería — ${c.nombre}`, c.iglesia_id, c.id,
+      'Tesorería general del cuerpo. Acá entran sus cuotas y sus ingresos propios.'
+    );
+    cuentas++;
+  }
+  if (cuentas) console.log(`🔁 cuerpos: ${cuentas} cuerpo(s) estrenaron su tesorería general.`);
+}
+
+
+/**
+ * El desarrollo y los acuerdos de un acta pasaron a ser texto con formato. Lo
+ * que ya estaba escrito era texto pelado: se envuelve en párrafos para que se
+ * siga leyendo igual —con sus saltos de línea— y no aparezca todo corrido.
+ */
+function actasConTextoConFormato() {
+  if (yaAplicada('actas_texto_con_formato')) return;
+  marcarAplicada('actas_texto_con_formato');
+
+  const escapar = (t) => String(t)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const enParrafos = (texto) => String(texto)
+    .split(/\n{2,}/)
+    .map((bloque) => `<p>${escapar(bloque.trim()).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+
+  const guardar = db.prepare('UPDATE actas_reuniones SET desarrollo = ?, acuerdos = ? WHERE id = ?');
+  let convertidas = 0;
+  for (const acta of db.prepare('SELECT id, desarrollo, acuerdos FROM actas_reuniones').all()) {
+    const yaTieneFormato = (t) => /<(p|ul|ol|h3|h4|br|b|i|u)\b/i.test(String(t || ''));
+    const arreglar = (t) => (!t || !String(t).trim() || yaTieneFormato(t) ? t : enParrafos(t));
+    const desarrollo = arreglar(acta.desarrollo);
+    const acuerdos = arreglar(acta.acuerdos);
+    if (desarrollo === acta.desarrollo && acuerdos === acta.acuerdos) continue;
+    guardar.run(desarrollo, acuerdos, acta.id);
+    convertidas++;
+  }
+  if (convertidas) console.log(`🔁 actas: ${convertidas} acta(s) quedaron con su texto en párrafos.`);
+}
+
+
+/**
+ * La pertenencia a un cuerpo era una lista de números guardada dentro del
+ * propio cuerpo: se sabía quién estaba, y nada más. Ahora cada pertenencia es
+ * una ficha con su estado, su fecha de ingreso y su período de prueba.
+ *
+ * Los que ya estaban pasan a "Activo": llevan tiempo en su cuerpo y no
+ * corresponde mandarlos a un período de prueba que ya cumplieron. Sin fecha
+ * de ingreso, porque no la tenemos y no se inventa.
+ */
+function integrantesConSuPropiaFicha() {
+  if (yaAplicada('integrantes_con_ficha')) return;
+  const columnas = db.prepare('PRAGMA table_info("cuerpos")').all().map((c) => c.name);
+  if (!columnas.includes('integrantes')) return;   // nada que traspasar
+  marcarAplicada('integrantes_con_ficha');
+
+  const nueva = db.prepare(
+    `INSERT INTO integrantes_cuerpo (cuerpo_id, miembro_id, estado, iglesia_id, observaciones)
+     VALUES (?, ?, 'Activo', ?, ?)`
+  );
+  const yaEsta = db.prepare('SELECT id FROM integrantes_cuerpo WHERE cuerpo_id = ? AND miembro_id = ?');
+  const existe = db.prepare('SELECT id FROM miembros WHERE id = ?');
+
+  let fichas = 0;
+  let perdidos = 0;
+  for (const cuerpo of db.prepare('SELECT id, iglesia_id, integrantes FROM cuerpos').all()) {
+    let ids = [];
+    try { ids = JSON.parse(cuerpo.integrantes || '[]'); } catch (e) { ids = []; }
+    for (const suelto of ids) {
+      const miembroId = Number(suelto);
+      if (!miembroId) continue;
+      if (!existe.get(miembroId)) { perdidos++; continue; }   // el miembro ya no está
+      if (yaEsta.get(cuerpo.id, miembroId)) continue;
+      nueva.run(cuerpo.id, miembroId, cuerpo.iglesia_id, 'Venía de la lista anterior del cuerpo.');
+      fichas++;
+    }
+  }
+
+  if (fichas) {
+    console.log(`🔁 cuerpos: ${fichas} pertenencia(s) pasaron a tener su propia ficha, como integrantes activos.`);
+  }
+  if (perdidos) {
+    console.log(`ℹ️  cuerpos: ${perdidos} pertenencia(s) apuntaban a miembros que ya no existen y se descartaron.`);
+  }
+}
+
+
+/**
  * La ofrenda de un servicio entraba a la tesorería de la iglesia ya
  * descontado el aporte para la corporación: de una ofrenda de cien mil se
  * anotaban noventa mil, y los diez mil aparecían en el fondo sin que se
@@ -904,6 +1032,10 @@ function ejecutarMigraciones() {
     ['asistencias nominales', asistenciasNominales],
     ['actividades con varios cuerpos', actividadesConVariosCuerpos],
     ['cónyuge de los pastores', conyugeUnicoDePastores],
+    ['integrantes con su ficha', integrantesConSuPropiaFicha],
+    ['quién cobra cuota', cuerposQueCobranCuota],
+    ['tesorería de cada cuerpo', tesoreriaDeCadaCuerpo],
+    ['actas con texto con formato', actasConTextoConFormato],
     ['la ofrenda entra completa', ofrendaEntraCompleta],
     ['mayúsculas de los cargos', cargosConMayuscula],
     ['cargos de los pastores', cargosDePastores],
