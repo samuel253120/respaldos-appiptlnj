@@ -36,6 +36,7 @@ const MODULOS = [
   ['miembros', require('./m02-miembros')],
   ['cuerpos', require('./m03-cuerpos')],
   ['tesoreria', require('./m04-tesoreria')],
+  ['asistencia', require('./m05-asistencia')],
 ];
 
 function main() {

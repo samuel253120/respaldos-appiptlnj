@@ -3626,6 +3626,21 @@ async function viewAsistencia(precarga) {
   if (!ASIS.mes) ASIS.mes = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   if (!ASIS.dia) ASIS.dia = HOY();
 
+  // Si se llega apuntando a una actividad de otro mes —desde su ficha o desde
+  // un enlace guardado—, la pantalla se ubica en el día de esa actividad, en
+  // vez de abrir el mes de hoy y perderla.
+  if (p.actividad && !p.dia) {
+    try {
+      const suya = await api('GET', `/asistencias/${Number(p.actividad)}`);
+      if (suya && suya.fecha) {
+        ASIS.dia = String(suya.fecha).slice(0, 10);
+        ASIS.mes = new Date(ASIS.dia + 'T00:00:00');
+      }
+    } catch (e) {
+      /* si no se puede leer, se sigue con el mes de hoy */
+    }
+  }
+
   content().innerHTML = `
     <div class="page-head">
       <div>
@@ -3833,7 +3848,8 @@ function pintarListaDeActividades() {
             <span>${esc(cuandoFue(a.fecha))}${a.hora_inicio ? ' · ' + esc(a.hora_inicio) : ''}</span>
           </div>
           <div class="pa-que">
-            <b>${esc(a.tipo_reunion || 'Actividad')}</b>
+            <b>${esc(a.nombre || a.tipo_reunion || 'Actividad')}</b>
+            ${a.nombre ? `<span class="mut">${esc(a.tipo_reunion || '')}</span>` : ''}
             <span>${esc(a.cuerpos.map((c) => c.nombre).join(', ') || 'sin cuerpos')}${a.lugar ? ' · ' + esc(a.lugar) : ''}</span>
             <div class="pa-barra"><span style="width:${a.convocados ? Math.round((a.marcados / a.convocados) * 100) : 0}%"></span></div>
           </div>
@@ -3902,6 +3918,7 @@ function pintarDelDia() {
           <div class="aa-datos">
             <div class="aa-tit">
               <span class="badge ${badgeClass(a.tipo_reunion)}">${esc(a.tipo_reunion || 'Actividad')}</span>
+              ${a.nombre ? `<b>${esc(a.nombre)}</b>` : ''}
               ${a.hora_inicio ? `<span class="mut">${esc(a.hora_inicio)}</span>` : ''}
               ${a.lugar ? `<span class="mut">· ${esc(a.lugar)}</span>` : ''}
             </div>
@@ -4001,6 +4018,9 @@ function abrirActividad(actividad) {
           </div>
           <div class="help">Se le pasará lista a los integrantes de todos los que elija.</div>
         </div>
+        <div class="fld" style="margin-top:12px"><label>Nombre de la actividad</label>
+          <input type="text" id="acNombre" value="${esc(editando ? actividad.nombre || '' : '')}"
+                 placeholder="Opcional: «Jornada de jóvenes», «Encuentro de varones»…" /></div>
         <div class="fld" style="margin-top:12px"><label>Lugar</label>
           <input type="text" id="acLugar" value="${esc(editando ? actividad.lugar || '' : '')}" /></div>
         <div class="fld" style="margin-top:12px"><label>Observaciones</label>
@@ -4026,6 +4046,7 @@ function abrirActividad(actividad) {
       fecha: fondo.querySelector('#acFecha').value,
       hora_inicio: fondo.querySelector('#acHora').value || null,
       tipo_reunion: fondo.querySelector('#acTipo').value,
+      nombre: fondo.querySelector('#acNombre').value || null,
       cuerpos: [...fondo.querySelectorAll('#acCuerpos .chip.on')].map((c) => Number(c.dataset.id)),
       lugar: fondo.querySelector('#acLugar').value || null,
       observaciones: fondo.querySelector('#acObs').value || null,

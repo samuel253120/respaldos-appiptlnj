@@ -99,8 +99,8 @@ module.exports = {
   display: '{tipo_reunion} — {fecha}',
   dateField: 'fecha',
   printable: true,
-  searchFields: ['tipo_reunion', 'lugar', 'observaciones'],
-  listFields: ['fecha', 'cuerpos', 'tipo_reunion', 'presentes', 'ausentes', 'justificados', 'porcentaje'],
+  searchFields: ['tipo_reunion', 'nombre', 'lugar', 'observaciones'],
+  listFields: ['fecha', 'cuerpos', 'tipo_reunion', 'nombre', 'presentes', 'ausentes', 'justificados', 'porcentaje'],
   filterFields: ['tipo_reunion'],
   defaultSort: { field: 'fecha', dir: 'desc' },
 
@@ -128,6 +128,11 @@ module.exports = {
     {
       name: 'tipo_reunion', label: 'Actividad', type: 'select', required: true, default: TIPOS_DE_ACTIVIDAD[0],
       options: TIPOS_DE_ACTIVIDAD,
+    },
+    {
+      name: 'nombre', label: 'Nombre de la actividad', type: 'text',
+      help: 'Opcional: cómo se llamó esta actividad («Jornada de jóvenes», «Encuentro de varones»). '
+        + 'En blanco, se reconoce por su tipo y su cuerpo.',
     },
     {
       name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true,
@@ -218,6 +223,7 @@ module.exports = {
           fecha: a.fecha,
           hora_inicio: a.hora_inicio || null,
           tipo_reunion: a.tipo_reunion,
+          nombre: a.nombre || null,
           lugar: a.lugar || null,
           observaciones: a.observaciones || null,
           iglesia_id: a.iglesia_id || null,
