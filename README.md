@@ -331,7 +331,7 @@ Todos los que hagan falta, cada uno con **su archivo y su nombre**, más su tipo
 
 | De la iglesia | Del pastor / guía |
 |---|---|
-| Personería jurídica · Estatutos · Acta de fundación · Escritura / Propiedad · Contrato de arriendo · Permiso municipal · Plano del templo · Certificado · Reglamento interno · Otro | Credencial ministerial · Certificado de ordenación · Nombramiento · Carnet de identidad · Certificado de estudios · Certificado de matrimonio · Carta de traslado · Currículum · Otro |
+| Personería jurídica · Estatutos · Acta de fundación · Escritura / Propiedad · Contrato de arriendo · Permiso municipal · Plano del templo · Certificado · Reglamento interno · Otro | Credencial ministerial · Certificado de ordenación · Nombramiento · Carnet de identidad · Certificado de matrimonio civil · Certificado de matrimonio por la iglesia · Certificado de antecedentes · Certificado de estudios · Carta de traslado · Currículum · Otros documentos |
 
 Al agregar uno desde la ficha, la iglesia o el pastor vienen puestos. Los documentos del pastor heredan **su** iglesia, que es lo que decide quién puede verlos.
 
@@ -396,7 +396,7 @@ En la iglesia a cada miembro se le dice de una manera, y el sistema la calcula s
 | **Hermano** / **Hermana** | A los miembros en general, según su género |
 | **Oficial** | A los **varones** que pertenecen al cuerpo de oficiales |
 | **Guía de Obra** | A quien tiene ese **cargo** en *Pastores / Guías*: al guía de obra se le dice guía de obra, no hermano ni pastor |
-| **Pastor** / **Pastora** | A quienes tienen un **cargo pastoral** —de *pastor probando* hacia arriba— **y a su cónyuge** |
+| **Pastor** / **Pastora** | A quienes tienen un **cargo pastoral** —el de *pastora* y los de *pastor probando* hacia arriba— **y a su cónyuge** |
 
 El trato aparece como columna en el listado y junto al nombre al abrir la ficha. **No se guarda**: se calcula al leer, así que cuando alguien entra al cuerpo de oficiales, queda registrado en Pastores / Guías o **cambia de cargo**, cambia solo. El día que un guía de obra pasa a pastor probando, deja de ser *Guía de Obra* y es *Pastor* en todo el sistema, sin tocar nada más.
 
@@ -685,6 +685,7 @@ Cada fila lleva una barra de tres colores (presentes, justificados, ausentes) pa
 | Cargo | Cuántos puede haber |
 |---|---|
 | Guía de Obra | Varios — **no es cargo pastoral**: se le dice *Guía de Obra* |
+| Pastora | Varias — **sí es cargo pastoral**, pero no una grada de la escala: va enseguida del primero |
 | Pastor Probando | Varios |
 | Pastor Diácono | Varios |
 | Pastor Presbítero | Varios |
@@ -692,7 +693,7 @@ Cada fila lleva una barra de tres colores (presentes, justificados, ausentes) pa
 
 El sistema hace cumplir lo último: al designar a un segundo presidente avisa quién ocupa el cargo —*«Ya hay un Pastor Presidente: Samuel Rodríguez. Cámbiele el cargo o su estado antes de designar a otro.»*— y no lo guarda. De los demás cargos puede haber tantos como haga falta.
 
-> Las fichas que traían un cargo de la lista anterior (Pastor, Pastora, Anciano…) **se conservan tal cual** y quedan anotadas en el arranque; al abrir cada una, el cargo antiguo aparece marcado como *(valor anterior)* hasta que se elija el de la escala nueva. Así ninguno se cambia sin querer.
+> Las fichas que traían un cargo de la lista anterior (Pastor, Anciano…) **se conservan tal cual** y quedan anotadas en el arranque; al abrir cada una, el cargo antiguo aparece marcado como *(valor anterior)* hasta que se elija el de la escala nueva. Así ninguno se cambia sin querer.
 
 ### Un solo cónyuge, y con sus reglas
 

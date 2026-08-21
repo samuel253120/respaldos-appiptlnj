@@ -7,10 +7,10 @@
  *   Oficial             a los varones que pertenecen al cuerpo de oficiales.
  *   Guía de Obra        a quien tiene ese cargo en Pastores / Guías: al guía
  *                       de obra se le dice guía de obra, no hermano ni pastor.
- *   Pastor / Pastora    a quienes tienen un cargo pastoral —de pastor
- *                       probando hacia arriba— y a su cónyuge: el marido de
- *                       la pastora es Pastor y la esposa del pastor es
- *                       Pastora, nunca Hermano ni Hermana.
+ *   Pastor / Pastora    a quienes tienen un cargo pastoral —el de pastora y
+ *                       los de pastor probando hacia arriba— y a su cónyuge:
+ *                       el marido de la pastora es Pastor y la esposa del
+ *                       pastor es Pastora, nunca Hermano ni Hermana.
  *
  * Se calcula al leer la ficha —no se guarda—, así que se mantiene al día solo
  * cuando alguien entra al cuerpo de oficiales, queda registrado en Pastores /
@@ -25,20 +25,28 @@ const { esOficial } = require('./oficiales');
  */
 const CARGO_GUIA = 'Guía de Obra';
 
+/** El cargo pastoral que ya dice en su nombre cómo se trata a quien lo tiene. */
+const CARGO_PASTORA = 'Pastora';
+
 /**
- * Los cargos del ministerio, de menor a mayor. Se escriben como se escriben
- * los cargos: con mayúscula en cada palabra. El de Pastor Presidente lo ocupa
- * una sola persona en toda la organización; de los demás puede haber varios a
- * la vez.
+ * Los cargos del ministerio. Se escriben como se escriben los cargos: con
+ * mayúscula en cada palabra. El de Pastor Presidente lo ocupa una sola
+ * persona en toda la organización; de los demás puede haber varios a la vez.
+ *
+ * Del guía de obra hacia arriba van en escala, de menor a mayor. El de
+ * Pastora queda enseguida del primero: es un cargo pastoral, pero no una
+ * grada de esa escala.
  *
  * Esta es la lista de verdad: el módulo de Pastores / Guías y las migraciones
  * la toman de acá, para que no haya dos versiones de lo mismo.
  */
-const CARGOS_MINISTERIO = [CARGO_GUIA, 'Pastor Probando', 'Pastor Diácono', 'Pastor Presbítero', 'Pastor Presidente'];
+const CARGOS_MINISTERIO = [
+  CARGO_GUIA, CARGO_PASTORA, 'Pastor Probando', 'Pastor Diácono', 'Pastor Presbítero', 'Pastor Presidente',
+];
 const CARGO_UNICO = 'Pastor Presidente';
 
 /** Los únicos tratos que se usan en la iglesia. */
-const TRATAMIENTOS = ['Hermano', 'Hermana', 'Oficial', CARGO_GUIA, 'Pastor', 'Pastora'];
+const TRATAMIENTOS = ['Hermano', 'Hermana', 'Oficial', CARGO_GUIA, 'Pastor', CARGO_PASTORA];
 
 const esMujer = (genero) => genero === 'Femenino';
 
@@ -65,14 +73,16 @@ function estaEnPastores(miembro, db) {
 }
 
 /**
- * El trato que le da su propia ficha ministerial: 'Guía de Obra' según el
- * cargo, 'Pastor' o 'Pastora' según el género, o '' si no tiene ficha.
+ * El trato que le da su propia ficha ministerial: 'Guía de Obra' o 'Pastora'
+ * cuando el cargo mismo lo dice, y si no 'Pastor' o 'Pastora' según el
+ * género. Devuelve '' si no tiene ficha.
  */
 function tratoDeLaFicha(miembro, db) {
   const ficha = fichaPastoral(miembro, db);
   if (!ficha) return '';
   if (ficha.cargo === CARGO_GUIA) return CARGO_GUIA;
-  return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
+  if (ficha.cargo === CARGO_PASTORA) return CARGO_PASTORA; // el cargo ya lo dice, no hace falta el género
+  return esMujer(miembro.genero) ? CARGO_PASTORA : 'Pastor';
 }
 
 /** ¿Es guía de obra? */
@@ -82,7 +92,7 @@ function esGuiaDeObra(miembro, db) {
 
 /** ¿Tiene un cargo pastoral? El guía de obra todavía no lo tiene. */
 function esPastorRegistrado(miembro, db) {
-  return ['Pastor', 'Pastora'].includes(tratoDeLaFicha(miembro, db));
+  return ['Pastor', CARGO_PASTORA].includes(tratoDeLaFicha(miembro, db));
 }
 
 /**
@@ -96,7 +106,7 @@ function tratoMinisterial(miembro, db) {
   if (propio) return propio;
   if (miembro.conyuge_id) {
     const conyuge = db.prepare('SELECT id, rut, genero FROM miembros WHERE id = ?').get(miembro.conyuge_id);
-    if (conyuge && esPastorRegistrado(conyuge, db)) return esMujer(miembro.genero) ? 'Pastora' : 'Pastor';
+    if (conyuge && esPastorRegistrado(conyuge, db)) return esMujer(miembro.genero) ? CARGO_PASTORA : 'Pastor';
   }
   return '';
 }
@@ -131,7 +141,7 @@ function tratamientoPropio(miembro, db) {
 
 /** ¿Es pastor o pastora por su propio registro? */
 function esPastorPorSiMismo(miembro, db) {
-  return ['Pastor', 'Pastora'].includes(tratamientoPropio(miembro, db));
+  return ['Pastor', CARGO_PASTORA].includes(tratamientoPropio(miembro, db));
 }
 
 /**
@@ -139,7 +149,7 @@ function esPastorPorSiMismo(miembro, db) {
  * tiene un cargo pastoral y también su cónyuge.
  */
 function leCorrespondePastor(miembro, db) {
-  return ['Pastor', 'Pastora'].includes(tratoMinisterial(miembro, db));
+  return ['Pastor', CARGO_PASTORA].includes(tratoMinisterial(miembro, db));
 }
 
 /** "Hermano Juan Pérez" */
@@ -150,7 +160,7 @@ function conTratamiento(miembro, db) {
 }
 
 module.exports = {
-  CARGO_GUIA, CARGOS_MINISTERIO, CARGO_UNICO,
+  CARGO_GUIA, CARGO_PASTORA, CARGOS_MINISTERIO, CARGO_UNICO,
   TRATAMIENTOS, tratamientoDe, conTratamiento, estaEnPastores, leCorrespondePastor,
   tratamientoPropio, esPastorPorSiMismo, fichaPastoral, tratoDeLaFicha, esGuiaDeObra,
   esPastorRegistrado, tratoMinisterial,

@@ -767,6 +767,58 @@ function cargosDePastores() {
 
 
 /**
+ * Los tipos de documento de un pastor o guía se afinaron: el certificado de
+ * matrimonio se separó en el civil y el de la iglesia, se sumó el de
+ * antecedentes, y "Otro" pasó a llamarse "Otros documentos".
+ *
+ * Los que significan lo mismo se renombran solos. De los demás no queda
+ * ningún nombre antiguo dando vueltas: pasan a "Otros documentos", que es el
+ * cajón de la lista. Ningún documento se borra ni pierde su archivo: lo único
+ * que cambia es el tipo con que está clasificado.
+ */
+function tiposDeDocumentoDePastores() {
+  const columnas = db.prepare('PRAGMA table_info("documentos_pastores")').all().map((c) => c.name);
+  if (!columnas.includes('tipo')) return;
+
+  const modulo = require('./modules/documentos_pastores');
+  const nuevos = modulo.fields.find((f) => f.name === 'tipo').options;
+  const cajon = 'Otros documentos';
+  const equivalencias = {
+    'Certificado de matrimonio': 'Certificado de matrimonio civil',
+    'Otro': cajon,
+  };
+
+  let renombrados = 0;
+  const renombrar = db.prepare('UPDATE documentos_pastores SET tipo = ? WHERE tipo = ?');
+  for (const [antes, despues] of Object.entries(equivalencias)) {
+    const cuantos = db.prepare('SELECT COUNT(*) AS n FROM documentos_pastores WHERE tipo = ?').get(antes).n;
+    if (!cuantos) continue;
+    renombrar.run(despues, antes);
+    renombrados += cuantos;
+  }
+  if (renombrados) {
+    console.log(`🔁 documentos de pastores: ${renombrados} documento(s) pasaron a los tipos nuevos.`);
+  }
+
+  const marcas = nuevos.map(() => '?').join(',');
+  const sobran = db
+    .prepare(
+      `SELECT tipo, COUNT(*) AS n FROM documentos_pastores
+        WHERE tipo IS NOT NULL AND tipo != '' AND tipo NOT IN (${marcas})
+        GROUP BY tipo`
+    )
+    .all(...nuevos);
+  if (sobran.length) {
+    db.prepare(`UPDATE documentos_pastores SET tipo = ? WHERE tipo NOT IN (${marcas})`).run(cajon, ...nuevos);
+    console.log(
+      `🔁 documentos de pastores: ${sobran.reduce((t, f) => t + f.n, 0)} documento(s) tenían un tipo que ya no ` +
+        `está en la lista y quedaron como "${cajon}" (${sobran.map((f) => `${f.tipo}: ${f.n}`).join(', ')}).`
+    );
+  }
+}
+
+
+/**
  * Los tratos son los que usa la iglesia: hermano, hermana, oficial, guía de
  * obra, pastor y pastora. Si alguna ficha quedó con otro fijado a mano, se
  * deja en blanco para que el sistema vuelva a calcularlo, y se informa de
@@ -1106,6 +1158,7 @@ function ejecutarMigraciones() {
     ['la ofrenda entra completa', ofrendaEntraCompleta],
     ['mayúsculas de los cargos', cargosConMayuscula],
     ['cargos de los pastores', cargosDePastores],
+    ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],
     ['aviso de "otro documento"', avisoOtroDocumentoDeMiembros],

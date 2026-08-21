@@ -1,4 +1,28 @@
 /**
+ * Los tipos de documento que se guardan de un pastor o guía. Van agrupados
+ * por lo que acreditan: primero el ministerio, después la identidad y el
+ * estado civil, y al final los que respaldan su trayectoria. «Otros
+ * documentos» es el cajón para lo que no calce en ninguno.
+ *
+ * Esta es la lista de verdad: la migración que ordena los tipos guardados la
+ * toma de acá, para que no haya dos versiones de lo mismo.
+ */
+const TIPOS_DE_DOCUMENTO = [
+  'Credencial ministerial',
+  'Certificado de ordenación',
+  'Nombramiento',
+  'Carnet de identidad',
+  'Certificado de matrimonio civil',
+  'Certificado de matrimonio por la iglesia',
+  'Certificado de antecedentes',
+  'Certificado de estudios',
+  'Carta de traslado',
+  'Currículum',
+  'Otros documentos',
+];
+
+
+/**
  * Módulo: Documentos del Pastor / Guía.
  *
  * Todo lo que respalda su ministerio y su identificación: la credencial
@@ -25,18 +49,8 @@ module.exports = {
   fields: [
     { name: 'pastor_id', label: 'Pastor / Guía', type: 'ref', ref: 'pastores', required: true },
     {
-      name: 'tipo', label: 'Tipo de documento', type: 'select', required: true, default: 'Otro',
-      options: [
-        'Credencial ministerial',
-        'Certificado de ordenación',
-        'Nombramiento',
-        'Carnet de identidad',
-        'Certificado de estudios',
-        'Certificado de matrimonio',
-        'Carta de traslado',
-        'Currículum',
-        'Otro',
-      ],
+      name: 'tipo', label: 'Tipo de documento', type: 'select', required: true, default: 'Otros documentos',
+      options: TIPOS_DE_DOCUMENTO,
     },
     {
       name: 'nombre', label: 'Nombre del documento', type: 'text', required: true,
