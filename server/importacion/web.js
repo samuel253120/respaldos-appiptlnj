@@ -159,6 +159,116 @@ router.get('/informe', (req, res) => {
   res.json({ texto, todo_cuadra: todoCuadra });
 });
 
+/* ---------------------------------------------------------------------
+ * Dejar la base como nueva
+ *
+ * Antes de traer los datos de verdad hay que sacar lo que se haya cargado
+ * probando el sistema. Se muestra primero qué hay —con nombres, no solo con
+ * números— para poder mirarlo y reconocerlo, y recién después se vacía.
+ * ------------------------------------------------------------------- */
+
+/** Las tablas que se vacían: todos los módulos, salvo los que sostienen el sistema. */
+function tablasAVaciar() {
+  const { allModules } = require('../registry');
+  const intocables = ['usuarios', 'iglesias'];
+  return allModules()
+    .map((m) => m.name)
+    .filter((n) => !intocables.includes(n))
+    .concat(['importacion_equivalencias', 'importacion_archivos']);
+}
+
+/** Qué hay hoy en la base, para mirarlo antes de vaciarla. */
+router.get('/limpieza', (req, res) => {
+  const { getModule } = require('../registry');
+  const tablas = tablasAVaciar()
+    .map((tabla) => {
+      const def = getModule(tabla);
+      return { tabla, etiqueta: def ? def.label : tabla, filas: cuantas(tabla) };
+    })
+    .filter((t) => t.filas > 0)
+    .sort((a, b) => b.filas - a.filas);
+
+  let miembros = [];
+  try {
+    miembros = db
+      .prepare('SELECT id, nombres, apellidos, rut, created_at FROM miembros ORDER BY id LIMIT 60')
+      .all();
+  } catch (e) {
+    miembros = [];
+  }
+
+  let usuarios = [];
+  try {
+    usuarios = db
+      .prepare('SELECT id, rut, nombre, rol FROM usuarios ORDER BY id')
+      .all()
+      .map((u) => ({ ...u, es_usted: u.id === req.user.id }));
+  } catch (e) {
+    usuarios = [];
+  }
+
+  res.json({
+    tablas,
+    total: tablas.reduce((n, t) => n + t.filas, 0),
+    miembros,
+    miembros_total: cuantas('miembros'),
+    usuarios,
+    mantenimiento: ajustes.activo('mantenimiento_activo'),
+  });
+});
+
+/**
+ * Vacía la base y la deja como recién instalada: queda la iglesia, sus cuentas
+ * de tesorería y la cuenta de quien está haciendo esto. Nada más.
+ *
+ * Pide el modo mantenimiento y que se escriba la palabra completa: es lo único
+ * de todo el sistema que no se puede deshacer. Por eso, arriba está el
+ * respaldo: sacarlo antes es parte del procedimiento, no un consejo.
+ */
+router.post('/limpieza', (req, res) => {
+  if (!ajustes.activo('mantenimiento_activo')) {
+    return res.status(400).json({ error: 'Active primero el modo mantenimiento.' });
+  }
+  if (String(req.body.confirmacion || '').trim().toUpperCase() !== 'BORRAR') {
+    return res.status(400).json({ error: 'Para confirmar, escriba la palabra BORRAR.' });
+  }
+
+  const vaciadas = {};
+  try {
+    db.transaction(() => {
+      for (const tabla of tablasAVaciar()) {
+        const antes = cuantas(tabla);
+        if (!antes) continue;
+        try {
+          db.prepare(`DELETE FROM "${tabla}"`).run();
+          vaciadas[tabla] = antes;
+        } catch (e) {
+          /* una tabla que todavía no existe no estorba */
+        }
+      }
+      // Las demás cuentas de acceso también salen; la de quien está haciendo
+      // esto se queda, porque si no, nadie podría seguir.
+      const otras = db.prepare('SELECT COUNT(*) n FROM usuarios WHERE id != ?').get(req.user.id).n;
+      if (otras) {
+        db.prepare('DELETE FROM usuarios WHERE id != ?').run(req.user.id);
+        vaciadas.usuarios = otras;
+      }
+    })();
+  } catch (e) {
+    return res.status(500).json({ error: `No se pudo vaciar: ${e.message}` });
+  }
+
+  // Y se deja lo mínimo para que el sistema funcione: la iglesia y sus cuentas
+  require('../seed').ensureSeed();
+
+  ultimoEnsayo = null; // lo ensayado antes ya no vale: la base es otra
+  res.json({
+    ok: true,
+    vaciadas,
+    total: Object.values(vaciadas).reduce((n, v) => n + v, 0),
+  });
+});
+
 /**
  * La base completa, para guardarla antes de importar. Se copia con el propio
  * motor de la base (no se lee el archivo en caliente), así el respaldo queda

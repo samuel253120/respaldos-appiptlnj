@@ -3453,12 +3453,17 @@ async function renderTraspaso(contenedor, mostrarDespues) {
             <button class="btn secondary sm" id="tpRespaldo">💾 Descargar respaldo</button>
           </div>
           <div class="tp">
-            <b>2 · Ensayo</b>
+            <b>2 · Dejar la base como nueva</b>
+            <span>Saca lo que se haya cargado probando. Muestra primero qué hay, para reconocerlo.</span>
+            <button class="btn secondary sm" id="tpLimpiar">🧹 Ver qué hay hoy</button>
+          </div>
+          <div class="tp">
+            <b>3 · Ensayo</b>
             <span>Hace todo el trabajo y lo deshace al final. Sirve para ver los conteos sin tocar nada.</span>
             <button class="btn secondary sm" id="tpEnsayo">🧪 Correr el ensayo</button>
           </div>
           <div class="tp">
-            <b>3 · Importar de verdad</b>
+            <b>4 · Importar de verdad</b>
             <span>
               ${estado.mantenimiento
                 ? 'El sistema está en mantenimiento: se puede importar.'
@@ -3467,7 +3472,7 @@ async function renderTraspaso(contenedor, mostrarDespues) {
             <button class="btn sm" id="tpImportar" ${estado.mantenimiento && estado.ultimo_ensayo ? '' : 'disabled'}>📥 Importar</button>
           </div>
           <div class="tp">
-            <b>4 · Verificar</b>
+            <b>5 · Verificar</b>
             <span>Compara las dos bases módulo por módulo y revisa que las relaciones quedaran intactas.</span>
             <button class="btn secondary sm" id="tpInforme">📋 Ver el informe</button>
           </div>
@@ -3527,6 +3532,8 @@ async function renderTraspaso(contenedor, mostrarDespues) {
   if (mostrarDespues) pintar(mostrarDespues.titulo, mostrarDespues.lineas, mostrarDespues.clase);
 
   document.getElementById('tpEnsayo').addEventListener('click', (e) => correr(e.currentTarget, true));
+
+  document.getElementById('tpLimpiar').addEventListener('click', () => abrirLimpieza(contenedor));
 
   document.getElementById('tpImportar').addEventListener('click', (e) => {
     if (!confirm(
@@ -3588,6 +3595,128 @@ async function renderTraspaso(contenedor, mostrarDespues) {
     } finally {
       boton.disabled = false;
       boton.textContent = '💾 Descargar respaldo';
+    }
+  });
+}
+
+/**
+ * Dejar la base como nueva, antes de traer los datos de verdad.
+ *
+ * Primero se muestra qué hay —los módulos con datos, y los miembros con
+ * nombre y apellido— para poder mirarlo y reconocer si es todo de prueba.
+ * Recién entonces aparece el botón, y hay que escribir la palabra completa:
+ * es lo único del sistema que no se puede deshacer.
+ */
+async function abrirLimpieza(contenedor) {
+  let d;
+  try {
+    d = await api('GET', '/importacion/limpieza');
+  } catch (e) {
+    return toast(e.message, true);
+  }
+
+  const fondo = document.createElement('div');
+  fondo.className = 'modal-fondo';
+  fondo.innerHTML = `
+    <div class="modal" style="max-width:620px">
+      <div class="modal-head"><h3>🧹 Dejar la base como nueva</h3><button class="cerrar">&times;</button></div>
+      <div class="modal-body">
+        ${d.total === 0 ? `
+          <p class="modal-nota" style="margin-top:0">
+            No hay nada que sacar: la base está limpia y lista para importar.
+          </p>` : `
+          <p class="modal-nota" style="margin-top:0">
+            Esto es lo que hay hoy en el sistema. Mírelo antes: lo que se saque
+            <b>no se puede recuperar</b> si no tiene el respaldo guardado.
+          </p>
+
+          <table class="grid" style="margin-bottom:14px">
+            <thead><tr><th>Módulo</th><th style="text-align:right">Registros</th></tr></thead>
+            <tbody>
+              ${d.tablas.map((t) => `
+                <tr><td>${esc(t.etiqueta)}</td>
+                    <td style="text-align:right;font-variant-numeric:tabular-nums">${t.filas}</td></tr>`).join('')}
+            </tbody>
+          </table>
+
+          ${d.miembros.length ? `
+            <div class="fld full" style="margin-bottom:12px">
+              <label>Las personas registradas${d.miembros_total > d.miembros.length ? ` (las primeras ${d.miembros.length} de ${d.miembros_total})` : ''}</label>
+              <ul class="mini-list" style="border:1px solid var(--border);border-radius:8px;max-height:190px;overflow:auto">
+                ${d.miembros.map((m) => `
+                  <li><span>${esc(`${m.nombres || ''} ${m.apellidos || ''}`.trim())}</span>
+                      <span class="mut">${esc(m.rut ? rutFormatear(m.rut) : 'sin RUT')}</span></li>`).join('')}
+              </ul>
+            </div>` : ''}
+
+          ${d.usuarios.length > 1 ? `
+            <div class="fld full" style="margin-bottom:12px">
+              <label>Cuentas de acceso</label>
+              <ul class="mini-list" style="border:1px solid var(--border);border-radius:8px">
+                ${d.usuarios.map((u) => `
+                  <li><span>${esc(u.nombre)} ${u.es_usted ? '<span class="badge green">la suya, se queda</span>' : ''}</span>
+                      <span class="mut">${esc(u.rut ? rutFormatear(u.rut) : '—')}</span></li>`).join('')}
+              </ul>
+            </div>` : ''}
+
+          <p style="font-size:13.5px;color:var(--muted);margin:0 0 12px">
+            Quedan la iglesia, sus cuentas de tesorería, la configuración y la cuenta con la que
+            usted está entrando. Todo lo demás se va.
+          </p>
+
+          ${d.mantenimiento ? '' : `
+            <div class="resultado warn" style="margin-bottom:12px">
+              Antes hay que activar el <b>modo mantenimiento</b>, arriba en esta misma pantalla.
+            </div>`}
+
+          <div class="fld full">
+            <label>Para confirmar, escriba <b>BORRAR</b></label>
+            <input type="text" id="limpConfirma" autocomplete="off" placeholder="BORRAR" ${d.mantenimiento ? '' : 'disabled'} />
+          </div>
+          <div class="form-error" id="limpError" style="padding:0"></div>`}
+      </div>
+      <div class="modal-foot">
+        <button class="btn secondary" id="limpCancelar">${d.total === 0 ? 'Cerrar' : 'Mejor no'}</button>
+        ${d.total === 0 ? '' : `<button class="btn danger" id="limpBorrar" disabled>🧹 Vaciar la base</button>`}
+      </div>
+    </div>`;
+  document.body.appendChild(fondo);
+
+  const cerrar = () => fondo.remove();
+  fondo.querySelector('.cerrar').addEventListener('click', cerrar);
+  fondo.querySelector('#limpCancelar').addEventListener('click', cerrar);
+  fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(); });
+  if (d.total === 0) return;
+
+  const boton = fondo.querySelector('#limpBorrar');
+  const escrito = fondo.querySelector('#limpConfirma');
+  escrito.addEventListener('input', () => {
+    boton.disabled = escrito.value.trim().toUpperCase() !== 'BORRAR';
+  });
+
+  boton.addEventListener('click', async () => {
+    boton.disabled = true;
+    boton.textContent = 'Vaciando…';
+    try {
+      const r = await api('POST', '/importacion/limpieza', { confirmacion: escrito.value });
+      cerrar();
+      toast(`La base quedó como nueva: salieron ${r.total} registros`);
+      renderTraspaso(contenedor, {
+        titulo: '🧹 La base quedó como nueva',
+        clase: 'bien',
+        lineas: [
+          'Salieron estos registros:',
+          '',
+          ...Object.entries(r.vaciadas).map(([t, n]) => `   ${String(n).padStart(6)}  ${t}`),
+          '',
+          'Quedaron la iglesia, sus cuentas de tesorería, la configuración y su cuenta.',
+          'El ensayo hay que correrlo de nuevo: la base es otra.',
+        ],
+      });
+    } catch (e) {
+      fondo.querySelector('#limpError').textContent = e.message;
+      boton.disabled = false;
+      boton.textContent = '🧹 Vaciar la base';
     }
   });
 }
