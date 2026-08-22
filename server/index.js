@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
+const compression = require('compression');
 const multer = require('multer');
 
 const { db, DATA_DIR, UPLOADS_DIR } = require('./db');
@@ -24,6 +25,11 @@ const alcance = require('./alcance');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
+// Todo viaja comprimido. La pantalla del sistema son unos 300 KB de programa y
+// los listados vienen en texto: comprimidos pesan como la cuarta parte, que en
+// un teléfono con datos móviles es la diferencia entre entrar y quedarse
+// esperando. Al servidor le cuesta poco y lo hace una sola vez por respuesta.
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 
 // Verificación de salud para plataformas de despliegue.
@@ -381,11 +387,40 @@ app.use('/api/importacion', require('./importacion/web').router);
 app.use('/api', buildRouter());
 
 // ---------- Frontend ----------
+/**
+ * Los archivos del programa (el guion, los estilos, los iconos) no cambian
+ * hasta que se publica una versión nueva, así que el navegador los guarda por
+ * una semana y deja de pedirlos en cada visita: quien entra dos veces al día
+ * solo descarga los datos. Se llaman con el número de versión detrás
+ * (app.js?v=1.43.1), que es lo que hace que al publicar una versión nueva
+ * todos reciban la nueva y no la guardada.
+ *
+ * La página que los llama —index.html— no se guarda nunca, para que ese
+ * número de versión siempre llegue fresco.
+ */
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
-app.use(express.static(PUBLIC_DIR));
+const UNA_SEMANA = 7 * 24 * 60 * 60 * 1000;
+const PAGINA = fs
+  .readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8')
+  .replace(/__VERSION__/g, encodeURIComponent(VERSION));
+/** La página del sistema, con el número de versión ya puesto. */
+const paginaPrincipal = (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('html').send(PAGINA);
+};
+app.get('/index.html', paginaPrincipal);
+app.use(
+  express.static(PUBLIC_DIR, {
+    index: false, // la página la arma paginaPrincipal, con la versión puesta
+    maxAge: UNA_SEMANA,
+    setHeaders: (res, ruta) => {
+      if (ruta.endsWith('.html') || ruta.endsWith('.webmanifest')) res.setHeader('Cache-Control', 'no-cache');
+    },
+  })
+);
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Ruta no encontrada' });
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  paginaPrincipal(req, res);
 });
 
 // Manejo de errores no capturados en rutas

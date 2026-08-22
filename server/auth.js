@@ -93,7 +93,23 @@ function requirePerm(moduleName, action) {
 
 const router = express.Router();
 
-router.post('/login', (req, res) => {
+/**
+ * Envuelve un manejador asíncrono para que un tropiezo no deje la petición
+ * colgada esperando: el error va al manejador de errores como cualquier otro.
+ */
+const atender = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+/**
+ * Entrar al sistema.
+ *
+ * La comprobación de la contraseña se hace de forma asíncrona a propósito.
+ * Verificar una clave cifrada cuesta cerca de una décima de segundo de puro
+ * cálculo, y el servidor atiende de a una cosa: si se hiciera de corrido, un
+ * domingo con veinte personas entrando a la vez, el sistema quedaría trabado
+ * casi dos segundos para todos, incluidos los que ya estaban trabajando
+ * adentro. Así, ese cálculo se hace por partes y los demás siguen atendidos.
+ */
+router.post('/login', atender(async (req, res) => {
   const body = req.body || {};
   // El identificador de acceso es el RUT. Se acepta también `usuario` o
   // `email` por compatibilidad con clientes anteriores.
@@ -112,7 +128,7 @@ router.post('/login', (req, res) => {
     user = db.prepare('SELECT * FROM usuarios WHERE lower(email) = lower(?)').get(identificador);
   }
 
-  if (!user || !user.password || !bcrypt.compareSync(String(password), user.password)) {
+  if (!user || !user.password || !(await bcrypt.compare(String(password), user.password))) {
     return res.status(401).json({ error: 'Credenciales incorrectas' });
   }
   if (user.activo === 0) return res.status(403).json({ error: 'El usuario está inactivo' });
@@ -122,7 +138,7 @@ router.post('/login', (req, res) => {
 
   const token = jwt.sign({ id: user.id, rol: user.rol }, JWT_SECRET, { expiresIn: duracionSesion() });
   res.json({ token, user: publicUser(user) });
-});
+}));
 
 router.get('/me', authRequired, (req, res) => {
   res.json({ user: req.user });
@@ -133,26 +149,26 @@ router.get('/me', authRequired, (req, res) => {
  * que entregó el administrador y por eso está obligado a cambiarla—, y la
  * nueva tiene que ser distinta: si no, no habría cambiado nada.
  */
-router.post('/cambiar-password', authRequired, (req, res) => {
+router.post('/cambiar-password', authRequired, atender(async (req, res) => {
   const claves = require('./claves');
   const user = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.user.id);
   const { actual, nueva } = req.body || {};
 
   if (!user.debe_cambiar_password) {
-    if (!actual || !bcrypt.compareSync(String(actual), user.password)) {
+    if (!actual || !(await bcrypt.compare(String(actual), user.password))) {
       return res.status(400).json({ error: 'La contraseña actual no es correcta' });
     }
   }
   const problema = claves.revisarLargo(nueva);
   if (problema) return res.status(400).json({ error: problema });
-  if (bcrypt.compareSync(String(nueva), user.password)) {
+  if (await bcrypt.compare(String(nueva), user.password)) {
     return res.status(400).json({ error: 'La contraseña nueva tiene que ser distinta de la actual' });
   }
 
   claves.establecer(user.id, nueva, 'usuario');
   const actualizado = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(user.id);
   res.json({ ok: true, user: publicUser(actualizado) });
-});
+}));
 
 /** Los datos propios que cada persona puede mantener al día. */
 router.get('/perfil', authRequired, (req, res) => {

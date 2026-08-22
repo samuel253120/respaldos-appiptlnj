@@ -241,7 +241,10 @@ async function api(method, path, body, isForm) {
       err.cambiarPassword = true;
       throw err;
     }
-    throw new Error(data.error || 'Error del servidor');
+    const err = new Error(data.error || 'Error del servidor');
+    err.estado = res.status;
+    err.datos = data; // el detalle que mande el servidor (p. ej. una edición simultánea)
+    throw err;
   }
   return data;
 }
@@ -1919,6 +1922,9 @@ async function viewForm(name, id, precarga) {
     const errEl = document.getElementById('formError');
     errEl.textContent = '';
     const data = collectForm(m);
+    // La versión que se tenía a la vista: si otro la guardó mientras tanto, el
+    // servidor avisa en vez de dejar que uno le borre el trabajo al otro.
+    if (!isNew && row.updated_at) data.updated_at = row.updated_at;
     try {
       if (isNew) await api('POST', `/${name}`, data);
       else await api('PUT', `/${name}/${id}`, data);
@@ -1926,9 +1932,47 @@ async function viewForm(name, id, precarga) {
       toast('Guardado correctamente');
       location.hash = !isNew && CON_FICHA.includes(name) ? `#/m/${name}/ficha/${id}` : `#/m/${name}`;
     } catch (err) {
+      if (err.datos && err.datos.conflicto) return avisarEdicionSimultanea(err, row, name, id);
       errEl.textContent = err.message;
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // El aviso va al pie del formulario, junto al botón: se lleva la vista
+      // hasta ahí. Antes se subía al encabezado y el motivo quedaba abajo, sin
+      // que se viera por qué no se había guardado.
+      errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
+  });
+}
+
+/**
+ * Dos personas guardaron la misma ficha.
+ *
+ * Lo que uno escribió sigue en pantalla, sin perderse. Se le cuenta qué pasó
+ * y se le dan las dos salidas honestas: mirar cómo quedó la ficha con lo que
+ * guardó el otro —y volver a hacer lo suyo sobre eso— o insistir, dejando su
+ * versión, que es lo que corresponde cuando el otro cambió otra cosa.
+ */
+function avisarEdicionSimultanea(err, row, name, id) {
+  const errEl = document.getElementById('formError');
+  errEl.innerHTML = `
+    <div class="aviso choque">
+      <b>✋ Alguien más guardó esta ficha</b>
+      <span>${esc(err.message)} Lo que usted escribió sigue acá, no se ha perdido.</span>
+      <div class="acciones">
+        <button type="button" class="btn secondary" id="choqueRecargar">Ver cómo quedó</button>
+        <button type="button" class="btn" id="choqueInsistir">Guardar lo mío de todas formas</button>
+      </div>
+    </div>`;
+  errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  document.getElementById('choqueRecargar').addEventListener('click', () => {
+    // Se vuelve a abrir la ficha tal como quedó: lo escrito acá se descarta
+    viewForm(name, id);
+  });
+  document.getElementById('choqueInsistir').addEventListener('click', () => {
+    // Se toma como propia la versión nueva y se vuelve a intentar: ahora el
+    // servidor ya no ve un choque y guarda lo que esta persona escribió.
+    row.updated_at = (err.datos.actual && err.datos.actual.updated_at) || null;
+    errEl.textContent = '';
+    document.getElementById('recForm').requestSubmit();
   });
 }
 

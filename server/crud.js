@@ -31,6 +31,24 @@ const { can } = require('./permissions');
 const bitacora = require('./bitacora');
 const alcance = require('./alcance');
 
+/**
+ * Un dato que no cuadra, no una avería: lo que un módulo devuelve desde su
+ * hook para negarse a guardar. Se lanza para que la transacción se deshaga
+ * entera, y afuera se convierte en el aviso que ve la persona.
+ */
+class ErrorDeDatos extends Error {}
+
+/** El nombre de quien guardó por última vez, para poder decírselo al otro. */
+function nombreDeUsuario(id) {
+  if (!id) return null;
+  try {
+    const u = db.prepare('SELECT nombre FROM usuarios WHERE id = ?').get(id);
+    return (u && u.nombre) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function fieldMap(def) {
   const m = {};
   for (const f of def.fields) m[f.name] = f;
@@ -173,61 +191,141 @@ function aplicarCalculos(def, data, existing) {
   }
 }
 
-/** Expande refs/multirefs de una fila con sus etiquetas de presentación. */
+/**
+ * Las columnas que necesita la plantilla de presentación de un módulo.
+ *
+ * Sirve para traer de la base solo lo que hace falta para armar la etiqueta
+ * («Juan Pérez») en vez de la fila entera. Si la plantilla menciona algo que
+ * no es una columna, se trae todo y no se arriesga nada.
+ */
+const columnasEnCache = new Map();
+function columnasPara(def, extras = []) {
+  const llave = `${def.name}|${extras.join(',')}`;
+  if (columnasEnCache.has(llave)) return columnasEnCache.get(llave);
+  const claves = [...[...def.display.matchAll(/\{(\w+)\}/g)].map((m) => m[1]), ...extras];
+  const propias = new Set(def.fields.map((f) => f.name));
+  const sql = claves.every((k) => propias.has(k))
+    ? ['id', ...new Set(claves)].map((c) => `"${c}"`).join(', ')
+    : '*';
+  columnasEnCache.set(llave, sql);
+  return sql;
+}
+
+/** Las columnas que hacen falta para armar la etiqueta de presentación. */
+const columnasDeDisplay = (def) => columnasPara(def);
+
+/**
+ * Las etiquetas de presentación de varios registros de un módulo, de una vez.
+ *
+ * Antes se consultaba una por una: un listado de 25 fichas con ocho campos de
+ * referencia disparaba doscientas consultas, y mientras tanto nadie más era
+ * atendido. Ahora es una consulta por módulo referenciado, sea cual sea el
+ * largo del listado.
+ */
+function etiquetasDe(refDef, ids) {
+  const mapa = new Map();
+  const unicos = [...new Set(ids.map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+  const columnas = columnasDeDisplay(refDef);
+  // SQLite admite un número acotado de parámetros: se pide por tandas
+  for (let i = 0; i < unicos.length; i += 400) {
+    const tanda = unicos.slice(i, i + 400);
+    const filas = db
+      .prepare(`SELECT ${columnas} FROM "${refDef.name}" WHERE id IN (${tanda.map(() => '?').join(',')})`)
+      .all(...tanda);
+    for (const f of filas) mapa.set(f.id, displayOf(refDef, f));
+  }
+  return mapa;
+}
+
+/** Los ids que guarda un campo multiref, sin reventar si viene mal escrito. */
+function idsDe(valor) {
+  try {
+    const arr = JSON.parse(valor || '[]');
+    return Array.isArray(arr) ? arr.map(Number).filter(Boolean) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * Expande varias filas de una vez: refs y multirefs con su etiqueta, campos
+ * de contraseña fuera, permisos como objeto y campos calculados resueltos.
+ */
+function expandRows(def, filas) {
+  if (!filas.length) return [];
+
+  // 1) Se junta todo lo que hay que resolver, agrupado por módulo referenciado
+  const pedidos = new Map(); // nombre del módulo → { def, ids: Set }
+  const anotar = (refDef, id) => {
+    if (!refDef || !id) return;
+    let p = pedidos.get(refDef.name);
+    if (!p) pedidos.set(refDef.name, (p = { def: refDef, ids: new Set() }));
+    p.ids.add(Number(id));
+  };
+  for (const fila of filas) {
+    for (const f of def.fields) {
+      if (f.type === 'multiref') idsDe(fila[f.name]).forEach((id) => anotar(getModule(f.ref), id));
+      else if (f.type === 'ref' && fila[f.name] != null) anotar(getModule(f.ref), fila[f.name]);
+    }
+  }
+
+  // 2) Una sola consulta por módulo referenciado
+  const etiquetas = new Map();
+  for (const { def: refDef, ids } of pedidos.values()) {
+    etiquetas.set(refDef.name, etiquetasDe(refDef, [...ids]));
+  }
+  const etiqueta = (refName, id) => {
+    const mapa = etiquetas.get(refName);
+    const texto = mapa && mapa.get(Number(id));
+    return texto === undefined ? `#${id}` : texto;
+  };
+
+  // 3) Se arman las filas ya resueltas
+  return filas.map((row) => {
+    const out = { ...row };
+    for (const f of def.fields) {
+      if (f.type === 'multiref') {
+        const ids = idsDe(row[f.name]);
+        const refDef = getModule(f.ref);
+        out[f.name] = ids;
+        out[f.name + '_labels'] = refDef ? ids.map((id) => etiqueta(refDef.name, id)) : [];
+      } else if (f.type === 'ref' && row[f.name] != null) {
+        const refDef = getModule(f.ref);
+        if (refDef) out[f.name + '_label'] = etiqueta(refDef.name, row[f.name]);
+      }
+      if (f.type === 'password') delete out[f.name];
+      if (f.type === 'permisos') {
+        try {
+          out[f.name] = row[f.name] ? JSON.parse(row[f.name]) : null;
+        } catch (e) {
+          out[f.name] = null;
+        }
+      }
+    }
+
+    // Campos de persona: si están enlazados a una ficha, se muestra el nombre
+    // que esa ficha tiene hoy (la etiqueta ya se resolvió con el campo de enlace).
+    for (const f of def.fields) {
+      if (f.type !== 'persona') continue;
+      const texto = out[`${f.name}_id_label`];
+      if (texto && !String(texto).startsWith('#')) out[f.name] = texto;
+    }
+
+    // Campos calculados: no se guardan, se resuelven al leer
+    for (const c of def.computed || []) {
+      try {
+        out[c.name] = c.calc(row, { db });
+      } catch (e) {
+        out[c.name] = null;
+      }
+    }
+    return out;
+  });
+}
+
+/** Expande una fila suelta. */
 function expandRow(def, row) {
-  const out = { ...row };
-  for (const f of def.fields) {
-    if (f.type === 'multiref') {
-      let ids = [];
-      try {
-        ids = JSON.parse(row[f.name] || '[]');
-      } catch (e) {
-        ids = [];
-      }
-      out[f.name] = ids;
-      const refDef = getModule(f.ref);
-      if (refDef && ids.length) {
-        const placeholders = ids.map(() => '?').join(',');
-        const rows = db.prepare(`SELECT * FROM "${refDef.name}" WHERE id IN (${placeholders})`).all(...ids);
-        const byId = new Map(rows.map((r) => [r.id, displayOf(refDef, r)]));
-        out[f.name + '_labels'] = ids.map((id) => byId.get(id) || `#${id}`);
-      } else {
-        out[f.name + '_labels'] = [];
-      }
-    } else if (f.type === 'ref' && row[f.name] != null) {
-      const refDef = getModule(f.ref);
-      if (refDef) {
-        const r = db.prepare(`SELECT * FROM "${refDef.name}" WHERE id = ?`).get(row[f.name]);
-        out[f.name + '_label'] = r ? displayOf(refDef, r) : `#${row[f.name]}`;
-      }
-    }
-    if (f.type === 'password') delete out[f.name];
-    if (f.type === 'permisos') {
-      try {
-        out[f.name] = row[f.name] ? JSON.parse(row[f.name]) : null;
-      } catch (e) {
-        out[f.name] = null;
-      }
-    }
-  }
-
-  // Campos de persona: si están enlazados a una ficha, se muestra el nombre
-  // que esa ficha tiene hoy (la etiqueta ya se resolvió con el campo de enlace).
-  for (const f of def.fields) {
-    if (f.type !== 'persona') continue;
-    const etiqueta = out[`${f.name}_id_label`];
-    if (etiqueta && !String(etiqueta).startsWith('#')) out[f.name] = etiqueta;
-  }
-
-  // Campos calculados: no se guardan, se resuelven al leer
-  for (const c of def.computed || []) {
-    try {
-      out[c.name] = c.calc(row, { db });
-    } catch (e) {
-      out[c.name] = null;
-    }
-  }
-  return out;
+  return expandRows(def, [row])[0];
 }
 
 /** WHERE de alcance por iglesia para el usuario actual. */
@@ -254,12 +352,16 @@ function buildRouter() {
       // necesario para llenar selectores de referencia en formularios.
       const params = [];
       let where = scopeClause(def, req.user, params);
-      const sql = `SELECT * FROM "${def.name}" ${where ? 'WHERE ' + where : ''} ORDER BY id DESC LIMIT 1000`;
+      // Solo se traen las columnas que se usan acá —el texto que se muestra y
+      // aquello por lo que se puede buscar—: un selector de miembros pedía la
+      // ficha entera de cada uno, y esto se abre en cada formulario.
+      const buscables = (def.searchFields || []).filter((n) => n !== 'password');
+      const columnas = columnasPara(def, buscables);
+      const sql = `SELECT ${columnas} FROM "${def.name}" ${where ? 'WHERE ' + where : ''} ORDER BY id DESC LIMIT 1000`;
       const rows = db.prepare(sql).all(...params);
       // Además del texto que se muestra, se envía con qué más se puede buscar
       // (RUT, teléfono, correo…) para que el buscador del selector encuentre
       // por cualquiera de esos datos sin volver a consultar al servidor.
-      const buscables = (def.searchFields || []).filter((n) => n !== 'password');
       res.json(
         rows.map((r) => {
           const label = displayOf(def, r);
@@ -326,7 +428,7 @@ function buildRouter() {
         )
         .all(...params, limit, offset);
 
-      res.json({ rows: rows.map((r) => expandRow(def, r)), total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+      res.json({ rows: expandRows(def, rows), total, page, pages: Math.max(1, Math.ceil(total / limit)) });
     });
 
     // ---- detalle ----
@@ -349,6 +451,21 @@ function buildRouter() {
           if (!existing) return res.status(404).json({ error: 'Registro no encontrado' });
           if (!alcance.alcanza(def, existing, req.user)) {
             return res.status(403).json({ error: 'Ese registro está fuera de lo que tiene asignado' });
+          }
+          // ¿Alguien más guardó esta ficha mientras esta persona la tenía
+          // abierta? Se avisa en vez de pisarle el trabajo al otro. Quien no
+          // manda la marca de versión (la importación, un programa externo)
+          // sigue guardando como antes.
+          const versionQueTraia = req.body.updated_at;
+          if (versionQueTraia && existing.updated_at && String(versionQueTraia) !== String(existing.updated_at)) {
+            const quien = nombreDeUsuario(existing.updated_by);
+            return res.status(409).json({
+              error:
+                `Otra persona guardó cambios en este ${def.labelSingular.toLowerCase()} mientras usted lo tenía abierto` +
+                `${quien ? ` (${quien})` : ''}. Para no borrar su trabajo, revise cómo quedó y vuelva a hacer los suyos.`,
+              conflicto: true,
+              actual: expandRow(def, existing),
+            });
           }
         }
 
@@ -416,38 +533,46 @@ function buildRouter() {
 
         aplicarCalculos(def, data, existing);
 
-        if (def.hooks && def.hooks.beforeSave) {
-          const err = def.hooks.beforeSave(data, { user: req.user, isNew, id, existing, db });
-          if (err) return res.status(400).json({ error: err });
-        }
+        // Todo el guardado ocurre de una sola vez: la ficha, lo que su módulo
+        // haga después (los movimientos de una ofrenda, las cuotas de un
+        // integrante) y el historial. Si algo falla a mitad de camino, no
+        // queda nada a medias: se deshace entero y los datos siguen como
+        // estaban. También es lo que mantiene coherente la base cuando dos
+        // personas guardan en el mismo momento.
+        const escribir = db.transaction(() => {
+          if (def.hooks && def.hooks.beforeSave) {
+            const err = def.hooks.beforeSave(data, { user: req.user, isNew, id, existing, db });
+            if (err) throw new ErrorDeDatos(err);
+          }
 
-        if (isNew) {
           const keys = Object.keys(data);
-          const sql = `INSERT INTO "${def.name}" (${keys.map((k) => `"${k}"`).join(',')}${keys.length ? ',' : ''} created_by)
-                       VALUES (${keys.map(() => '?').join(',')}${keys.length ? ',' : ''} ?)`;
-          const info = db.prepare(sql).run(...keys.map((k) => data[k]), req.user.id);
-          let row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(info.lastInsertRowid);
-          if (def.hooks && def.hooks.afterSave) {
-            def.hooks.afterSave(row, { user: req.user, isNew: true, db });
-            row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(row.id);
-          }
-          bitacora.registrarGuardado(def, { isNew: true, antes: {}, despues: row, datos: data, user: req.user });
-          return res.status(201).json(expandRow(def, row));
-        } else {
-          const keys = Object.keys(data);
-          if (keys.length) {
-            const sql = `UPDATE "${def.name}" SET ${keys.map((k) => `"${k}" = ?`).join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`;
-            db.prepare(sql).run(...keys.map((k) => data[k]), id);
-          }
-          let row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
-          if (def.hooks && def.hooks.afterSave) {
-            def.hooks.afterSave(row, { user: req.user, isNew: false, db });
+          let row;
+          if (isNew) {
+            const sql = `INSERT INTO "${def.name}" (${keys.map((k) => `"${k}"`).join(',')}${keys.length ? ',' : ''} created_by)
+                         VALUES (${keys.map(() => '?').join(',')}${keys.length ? ',' : ''} ?)`;
+            const info = db.prepare(sql).run(...keys.map((k) => data[k]), req.user.id);
+            row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(info.lastInsertRowid);
+          } else {
+            if (keys.length) {
+              const sql = `UPDATE "${def.name}" SET ${keys.map((k) => `"${k}" = ?`).join(', ')},
+                             updated_at = datetime('now','localtime'), updated_by = ? WHERE id = ?`;
+              db.prepare(sql).run(...keys.map((k) => data[k]), req.user.id, id);
+            }
             row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
           }
-          bitacora.registrarGuardado(def, { isNew: false, antes: existing, despues: row, datos: data, user: req.user });
-          return res.json(expandRow(def, row));
-        }
+
+          if (def.hooks && def.hooks.afterSave) {
+            def.hooks.afterSave(row, { user: req.user, isNew, db });
+            row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(row.id);
+          }
+          bitacora.registrarGuardado(def, { isNew, antes: isNew ? {} : existing, despues: row, datos: data, user: req.user });
+          return row;
+        });
+
+        const row = escribir();
+        return res.status(isNew ? 201 : 200).json(expandRow(def, row));
       } catch (e) {
+        if (e instanceof ErrorDeDatos) return res.status(400).json({ error: e.message });
         console.error(`Error guardando en ${def.name}:`, e);
         return res.status(500).json({ error: 'Error interno al guardar: ' + e.message });
       }
@@ -463,11 +588,19 @@ function buildRouter() {
       if (!alcance.alcanza(def, row, req.user)) {
         return res.status(403).json({ error: 'Ese registro está fuera de lo que tiene asignado' });
       }
-      if (def.hooks && def.hooks.beforeDelete) {
-        const err = def.hooks.beforeDelete(row, { user: req.user, db });
-        if (err) return res.status(400).json({ error: err });
+      try {
+        db.transaction(() => {
+          if (def.hooks && def.hooks.beforeDelete) {
+            const err = def.hooks.beforeDelete(row, { user: req.user, db });
+            if (err) throw new ErrorDeDatos(err);
+          }
+          db.prepare(`DELETE FROM "${def.name}" WHERE id = ?`).run(req.params.id);
+        })();
+      } catch (e) {
+        if (e instanceof ErrorDeDatos) return res.status(400).json({ error: e.message });
+        console.error(`Error eliminando en ${def.name}:`, e);
+        return res.status(500).json({ error: 'Error interno al eliminar: ' + e.message });
       }
-      db.prepare(`DELETE FROM "${def.name}" WHERE id = ?`).run(req.params.id);
       res.json({ ok: true });
     });
 

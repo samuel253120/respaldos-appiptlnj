@@ -470,6 +470,10 @@ table.grid th.col-mini { font-size: 15px; }
 .aviso span { flex: 1 1 260px; }
 .aviso.importante { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
 .aviso.salud { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
+/* Dos personas guardaron la misma ficha: el aviso trae sus dos salidas */
+.aviso.choque { background: #fff7ed; border-color: #fdba74; color: #9a3412; }
+.aviso.choque .acciones { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.aviso.choque .acciones .btn { margin: 0; }
 
 .fld.check { display: flex; align-items: center; gap: 8px; padding-top: 22px; }
 .fld.check input { width: auto; }

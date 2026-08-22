@@ -993,7 +993,7 @@ El módulo **Bitácora de Miembros** también aparece en el menú, con búsqueda
 server/
   index.js         Servidor Express, metadatos, panel, carga de archivos
   registry.js      Carga los módulos declarados en server/modules/
-  db.js            SQLite + AUTO-MIGRACIÓN (crea tablas y columnas nuevas)
+  db.js            SQLite + AUTO-MIGRACIÓN (crea tablas, columnas e índices)
   crud.js          Motor CRUD genérico (API REST para todos los módulos)
   auth.js          Login con JWT y middleware de autorización
   permissions.js   Roles y matriz de permisos (editable)
@@ -1076,6 +1076,8 @@ URL=http://localhost:3000 RUT=11.111.111-1 CLAVE=... npm run humo
 
 Cualquier módulo nuevo queda cubierto solo: la lista de pantallas sale del propio sistema, no de un listado escrito a mano. Playwright es dependencia de desarrollo y **no viaja en la imagen de producción**.
 
+Las otras dos pruebas miran lo que la de humo no ve —cómo se porta el sistema con varias personas adentro— y están descritas en **[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)**: `npm run concurrencia` (que nadie pierda su trabajo) y `npm run carga` (que responda rápido). Ninguna necesita navegador.
+
 ## API REST
 
 Todas las rutas bajo `/api`, autenticadas con `Authorization: Bearer <token>`:
@@ -1107,6 +1109,54 @@ POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importa
 - Permisos verificados **en el servidor** en cada petición (la interfaz solo refleja lo permitido).
 - Alcance por iglesia aplicado en el servidor (lectura y escritura).
 - Protecciones: no eliminar el propio usuario ni el último administrador; correo de usuario único.
+
+## Varias personas trabajando a la vez 👥
+
+El sistema está hecho para que la iglesia entera esté adentro al mismo tiempo —el secretario en Miembros, el tesorero en Tesorería, tres cuerpos pasando lista— sin que nadie quede esperando ni pierda lo que hizo.
+
+### Que nadie pierda su trabajo
+
+Cuando dos personas abren la **misma ficha** y las dos guardan, el segundo guardado ya no pisa al primero en silencio. Se le avisa a quien llegó después, diciéndole **quién** guardó antes, y se le dan sus dos salidas —lo que escribió sigue en pantalla, no se pierde:
+
+| | |
+|---|---|
+| **Ver cómo quedó** | Vuelve a abrir la ficha con lo que guardó el otro, para rehacer lo suyo sobre eso |
+| **Guardar lo mío de todas formas** | Deja su versión, que es lo que corresponde cuando cada uno cambió una cosa distinta |
+
+Cada guardado, además, entra **entero o no entra**: la ficha, lo que su módulo haga después (los movimientos de tesorería de una ofrenda, las cuotas de un integrante) y el historial quedan en un solo acto. Si algo falla a mitad de camino, no queda nada a medias.
+
+Al pasar lista, cada persona marca **solo a los integrantes de los cuerpos que tiene asignados**, aunque la actividad convoque a varios: dos secretarios pueden pasar lista de la misma actividad al mismo tiempo sin tocar lo del otro.
+
+### Que el sistema responda
+
+Medido con `npm run carga`: personas trabajando **sin parar y a la vez** —abriendo el panel, recorriendo listados, buscando, abriendo fichas y guardando—, sobre una base del tamaño de una iglesia grande (600 miembros, 30.000 marcas de asistencia, 3.000 movimientos de tesorería). Con **12 personas**, que es lo que se medía antes:
+
+| | Antes | Ahora |
+|---|---|---|
+| Peticiones atendidas por segundo | 54 | **226** |
+| Lo que demora casi todo (p95) | 235–665 ms | **68–108 ms** |
+| La respuesta más lenta que se vio | 1.060 ms | **140 ms** |
+
+Y con **40 personas a la vez**, que es más de lo que la iglesia va a tener adentro al mismo tiempo: **229 peticiones por segundo**, casi todo entre **224 y 326 ms**, ninguna petición fallida. Lo único que sube es el primer `meta` de cada uno (585 ms) porque los cuarenta entran en el mismo segundo; ya adentro, todo vuelve a esos tiempos.
+
+Lo que lo hace posible:
+
+- **Índices que se crean solos** desde el esquema de cada módulo (las referencias, la iglesia, el cuerpo, el miembro, la fecha, los campos únicos). Un módulo nuevo o un campo nuevo quedan cubiertos sin que nadie se acuerde de agregarlos.
+- **Las etiquetas de un listado, en una sola consulta.** Antes, un listado de 25 fichas con ocho referencias disparaba doscientas consultas, y mientras tanto nadie más era atendido.
+- **Los selectores traen solo lo que muestran**, no la ficha entera de cada persona.
+- **La comprobación de la contraseña no bloquea al resto**: un domingo con veinte personas entrando a la vez, los que ya están adentro siguen atendidos.
+- **Todo viaja comprimido** (el programa pasa de 280 KB a 73 KB) y el navegador guarda los archivos que no cambian, con el número de versión detrás para que al publicar una versión nueva todos reciban la nueva.
+
+### Comprobarlo
+
+```bash
+npm run humo            # las 30 pantallas abren bien, en computador y en teléfono
+npm run concurrencia    # dos personas sobre la misma ficha: ninguna pierde lo suyo
+npm run carga           # cuánto demora cada cosa con varios usuarios a la vez
+
+USUARIOS=40 SEGUNDOS=20 npm run carga
+PREPARAR=solo npm run carga   # llena una base de pruebas para medir con datos de verdad
+```
 
 ## Uso en teléfonos móviles 📱
 

@@ -16,11 +16,43 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 
 let db;
+
+/**
+ * Cómo se comporta la base cuando hay varias personas trabajando a la vez.
+ *
+ * WAL es lo que permite que unos lean mientras otro escribe: sin él, cada
+ * guardado dejaría esperando a todos los demás. Lo otro son medidas para que
+ * nadie quede esperando de más:
+ *
+ *   busy_timeout   si justo dos guardados coinciden, el segundo espera su
+ *                  turno hasta 8 segundos en vez de fallar al instante.
+ *   synchronous    con WAL, NORMAL es lo recomendado: la base nunca se daña,
+ *                  y a cambio de esperar menos en cada guardado, un corte de
+ *                  luz en el peor momento podría llevarse los últimos
+ *                  segundos de trabajo.
+ *   cache_size     20 MB de páginas en memoria: los listados que se abren una
+ *                  y otra vez ya no vuelven al disco.
+ *   mmap_size      leer la base como si fuera memoria, que es más rápido.
+ *   temp_store     los ordenamientos temporales se hacen en memoria.
+ */
+function afinar() {
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  db.pragma('busy_timeout = 8000');
+  db.pragma('synchronous = NORMAL');
+  db.pragma('cache_size = -20000');
+  db.pragma('temp_store = MEMORY');
+  try {
+    db.pragma('mmap_size = 268435456');
+  } catch (e) {
+    /* algunos sistemas de archivos no lo permiten; se sigue igual */
+  }
+}
+
 try {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   db = new Database(path.join(DATA_DIR, 'iglesias.db'));
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  afinar();
   console.log(`💾 Datos en: ${DATA_DIR}${espacioLibre()}`);
 } catch (e) {
   const sitio = espacioLibre().trim();
@@ -115,7 +147,8 @@ function migrate() {
         ${cols}${cols ? ',' : ''}
         created_at TEXT DEFAULT (datetime('now','localtime')),
         updated_at TEXT DEFAULT (datetime('now','localtime')),
-        created_by INTEGER
+        created_by INTEGER,
+        updated_by INTEGER
       )`
     );
     // Agregar columnas nuevas declaradas después de creada la tabla.
@@ -125,10 +158,72 @@ function migrate() {
         db.exec(`ALTER TABLE "${def.name}" ADD COLUMN "${f.name}" ${sqlType(f)}`);
       }
     }
-    for (const extra of ['created_at', 'updated_at', 'created_by']) {
+    for (const extra of ['created_at', 'updated_at', 'created_by', 'updated_by']) {
       if (!existing.has(extra) && existing.size) {
-        db.exec(`ALTER TABLE "${def.name}" ADD COLUMN "${extra}" ${extra === 'created_by' ? 'INTEGER' : 'TEXT'}`);
+        const tipo = extra === 'created_by' || extra === 'updated_by' ? 'INTEGER' : 'TEXT';
+        db.exec(`ALTER TABLE "${def.name}" ADD COLUMN "${extra}" ${tipo}`);
       }
+    }
+  }
+}
+
+/**
+ * Índices: lo que hace que un listado no tenga que revisar la tabla entera.
+ *
+ * Sin ellos, buscar las asistencias de una iglesia obliga a la base a mirar
+ * las treinta mil marcas una por una, y como el servidor atiende de a una
+ * petición, ese rato lo esperan todos los que están conectados. Con ellos, va
+ * derecho a las que corresponden.
+ *
+ * Se deducen del propio esquema, así que un módulo nuevo o un campo nuevo
+ * quedan cubiertos sin que nadie se acuerde de agregarlos:
+ *
+ *   · cada campo de referencia (la iglesia, el cuerpo, el miembro, la
+ *     cuenta…), que es por donde se acota y se enlaza todo;
+ *   · el campo de fecha del módulo y el campo por el que ordena su listado;
+ *   · la pareja iglesia + fecha, que es como se pide casi siempre;
+ *   · los campos únicos (el RUT, el correo), para que comprobar que no se
+ *     repiten sea instantáneo.
+ *
+ * Los campos únicos llevan índice, no restricción: si en los datos ya
+ * traídos de antes hay un repetido, el sistema lo señala al guardar en vez de
+ * negarse a arrancar.
+ */
+function indexar() {
+  let creados = 0;
+  const crear = (tabla, nombre, expresion) => {
+    try {
+      const antes = db.prepare('SELECT COUNT(*) AS c FROM sqlite_master WHERE type = ? AND name = ?').get('index', nombre).c;
+      db.exec(`CREATE INDEX IF NOT EXISTS "${nombre}" ON "${tabla}" (${expresion})`);
+      if (!antes) creados++;
+    } catch (e) {
+      console.error(`⚠️  No se pudo crear el índice ${nombre}: ${e.message}`);
+    }
+  };
+
+  for (const def of allModules()) {
+    const columnas = new Set(db.prepare(`PRAGMA table_info("${def.name}")`).all().map((c) => c.name));
+    const hay = (n) => n && columnas.has(n);
+
+    for (const f of def.fields) {
+      if (f.type === 'ref' && hay(f.name)) crear(def.name, `ix_${def.name}_${f.name}`, `"${f.name}"`);
+      if ((f.unique || f.type === 'rut') && hay(f.name)) crear(def.name, `ix_${def.name}_${f.name}_unico`, `lower("${f.name}")`);
+    }
+
+    const fecha = def.dateField && hay(def.dateField) ? def.dateField : null;
+    if (fecha) crear(def.name, `ix_${def.name}_${fecha}`, `"${fecha}"`);
+    if (fecha && hay('iglesia_id')) crear(def.name, `ix_${def.name}_iglesia_${fecha}`, `"iglesia_id", "${fecha}"`);
+
+    const orden = def.defaultSort && def.defaultSort.field;
+    if (orden && orden !== 'id' && orden !== fecha && hay(orden)) crear(def.name, `ix_${def.name}_${orden}`, `"${orden}"`);
+  }
+
+  if (creados) {
+    console.log(`⚡ ${creados} índice(s) nuevos: los listados y las búsquedas van directo a lo que buscan.`);
+    try {
+      db.exec('ANALYZE'); // para que la base sepa cuál índice le conviene
+    } catch (e) {
+      /* si no se puede, funciona igual, solo elige peor */
     }
   }
 }
@@ -138,12 +233,28 @@ function migrate() {
 // igual, aunque sea para poder entrar a ver qué pasa.
 try {
   migrate();
+  indexar();
 } catch (e) {
   console.error(
     `⚠️  No se pudieron crear o actualizar las tablas: ${e.message}\n` +
       '   Suele ser falta de espacio en el volumen. El sistema arranca igual, pero no podrá guardar\n' +
       '   hasta que se libere sitio. Revise /health para verlo.'
   );
+}
+
+// Cada seis horas la base repasa sus propias estadísticas y se queda con el
+// mejor camino para cada consulta, según cómo hayan crecido los datos. Es
+// barato y no molesta a nadie: si el sistema se apaga antes, tampoco importa.
+try {
+  setInterval(() => {
+    try {
+      db.pragma('optimize');
+    } catch (e) {
+      /* no es indispensable */
+    }
+  }, 6 * 60 * 60 * 1000).unref();
+} catch (e) {
+  /* en un script suelto puede no haber temporizadores; da igual */
 }
 
 module.exports = { db, DATA_DIR, UPLOADS_DIR, DB_PATH: path.join(DATA_DIR, 'iglesias.db') };
