@@ -170,7 +170,7 @@ module.exports = {
       const gente = integrantesDe(db, cuerpo.id, { conRetirados: true }).map((f) => ({
         id: f.id,
         miembro_id: f.miembro_id,
-        nombre: `${f.nombres || ''} ${f.apellidos || ''}`.trim(),
+        nombre: require('../nombres').paraMostrar(f.nombres, f.apellidos),
         rut: f.rut || null,
         foto: f.foto || null,
         estado: f.estado,
@@ -228,7 +228,7 @@ module.exports = {
         return {
           id: f.id,
           miembro_id: f.miembro_id,
-          nombre: `${f.nombres || ''} ${f.apellidos || ''}`.trim(),
+          nombre: require('../nombres').paraMostrar(f.nombres, f.apellidos),
           estado: f.estado,
           exento: !!f.exento_cuota,
           exento_motivo: f.exento_motivo,

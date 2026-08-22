@@ -89,6 +89,7 @@ app.get('/api/meta', authRequired, (req, res) => {
       name: m.name,
       label: m.label,
       labelSingular: m.labelSingular,
+      genero: m.genero || null,
       icon: m.icon,
       group: m.group,
       order: m.order,
@@ -103,12 +104,13 @@ app.get('/api/meta', authRequired, (req, res) => {
       fields: [
         ...m.fields
           .filter((f) => !f.oculto)
-          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte }) => ({
+          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta }) => ({
             name, label, type, required: !!required, options: options || null,
             sugerencias: sugerencias || null, ref: ref || null,
             help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
             optionsRoute: optionsRoute || null, readonly: !!readonly, mostrarEdad: !!mostrarEdad,
             seccion: seccion || null, destacado: !!destacado, ancho: ancho || null, recorte: recorte || null,
+            recorta: recorta || null,
             buscador: buscador === undefined ? null : !!buscador,
             calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
             computed: false,
@@ -347,7 +349,7 @@ function proximosCumpleanos(iglesias, cuerpos, cuantos) {
 
     conFecha.push({
       id: m.id,
-      nombre: `${m.nombres || ''} ${m.apellidos || ''}`.trim(),
+      nombre: require('./nombres').paraMostrar(m.nombres, m.apellidos),
       foto: m.foto || null,
       telefono: m.telefono || null,
       fecha: `${proximo.getFullYear()}-${String(proximo.getMonth() + 1).padStart(2, '0')}-${String(proximo.getDate()).padStart(2, '0')}`,

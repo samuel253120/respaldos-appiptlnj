@@ -3,6 +3,7 @@ module.exports = {
   name: 'credenciales',
   label: 'Credenciales',
   labelSingular: 'Credencial',
+  genero: 'f', // «una credencial»: la regla por la terminación no lo acierta
   icon: '🪪',
   group: 'Documentación',
   order: 44,

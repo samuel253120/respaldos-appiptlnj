@@ -30,11 +30,10 @@ module.exports = {
     },
     {
       name: 'categoria', label: 'Categoría', type: 'select', required: true, default: 'Ofrendas',
-      options: [
-        'Diezmos', 'Ofrendas', 'Primicias', 'Aportes', 'Pro-Templo', 'Donaciones', 'Actividades',
-        'Servicios públicos', 'Calefacción', 'Mantenimiento', 'Compras', 'Útiles de aseo',
-        'Ayuda social', 'Honorarios', 'Viáticos', 'Traspaso', 'Otro',
-      ],
+      // La lista la mantiene la iglesia en Categorías de Tesorería, y se acota
+      // sola: al registrar un gasto no aparecen las categorías de ingreso.
+      optionsRoute: '/categorias_tesoreria/opciones?tipo={tipo}',
+      help: 'Se mantienen en «Categorías de Tesorería». Se ofrecen solo las que corresponden al tipo de movimiento.',
     },
     { name: 'concepto', label: 'Concepto / Descripción', type: 'text', required: true, seccion: 'Monto y forma de pago' },
     { name: 'monto', label: 'Monto', type: 'money', required: true },

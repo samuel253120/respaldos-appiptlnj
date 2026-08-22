@@ -276,6 +276,19 @@ function rutaOpciones(f, valores) {
   });
 }
 
+/**
+ * Las opciones de un desplegable.
+ *
+ * Normalmente son las que declara el módulo. Pero un campo puede sacarlas de
+ * una ruta (`optionsRoute`) y entonces las mantiene la iglesia como datos: es
+ * el caso de las categorías de tesorería, que además se acotan según el
+ * movimiento sea un ingreso o un gasto.
+ */
+function opcionesDe(f, valores) {
+  if (!f.optionsRoute) return f.options || [];
+  return (optionsCache[rutaOpciones(f, valores)] || []).map((o) => o.label);
+}
+
 /** Campos de los que depende el selector de otro campo. */
 function camposDeLaRuta(f) {
   const ruta = f.optionsRoute || '';
@@ -1125,7 +1138,7 @@ async function viewList(name, filtrosIniciales) {
       <h2>${m.icon} ${esc(m.label)}</h2>
       <div class="actions">
         ${m.perms.create ? `<button class="btn secondary" id="btnImportar">⬆️ Importar</button>` : ''}
-        ${m.perms.create ? `<button class="btn" id="btnNew">➕ Nuevo ${esc(m.labelSingular.toLowerCase())}</button>` : ''}
+        ${m.perms.create ? `<button class="btn" id="btnNew">➕ ${nuevoDe(m)} ${esc(m.labelSingular.toLowerCase())}</button>` : ''}
       </div>
     </div>
     ${name === 'tesoreria' ? '<div class="treasury-summary" id="treasurySummary"></div>' : ''}
@@ -1403,7 +1416,9 @@ function generadoPorOtroModulo(row) {
 
 function cellValue(f, row, col) {
   if (col === 'id') return row.id;
-  const v = row[f.name];
+  // En el listado, a las personas se las nombra como se las nombra: el primer
+  // nombre y los dos apellidos. El nombre completo está en su ficha.
+  const v = f.recorta ? recortar(f.recorta, row[f.name]) : row[f.name];
   if (f.computed) {
     if (v == null || v === '') return '';
     if (f.type === 'texto') return esc(v);
@@ -1495,10 +1510,57 @@ function telefonoInternacional(v) {
   return d.startsWith('56') ? d : '56' + d;
 }
 
+/**
+ * Cómo se nombra a una persona en pantalla.
+ *
+ * En la ficha se guarda todo lo que tiene —«Juan Carlos Alberto Pérez Soto»—,
+ * pero en un listado o en un selector ese nombre entero ocupa una línea y no
+ * ayuda a reconocer a nadie más rápido. Acá se arma la forma corta con la que
+ * se la nombra: el primer nombre y los dos apellidos.
+ *
+ *   primero   se queda con el primer nombre de pila
+ *   persona   para un nombre que viene todo junto en un solo campo: el
+ *             primero y los dos últimos, que en Chile son los apellidos
+ *
+ * El nombre completo no se pierde: se ve entero al abrir la ficha para
+ * editarla, que es donde importa.
+ */
+const RECORTES = {
+  primero: (v) => String(v || '').trim().split(/\s+/).filter(Boolean)[0] || '',
+  persona: (v) => {
+    const partes = String(v || '').trim().split(/\s+/).filter(Boolean);
+    if (partes.length <= 3) return partes.join(' ');
+    return [partes[0], partes[partes.length - 2], partes[partes.length - 1]].join(' ');
+  },
+};
+const recortar = (recorte, valor) => (RECORTES[recorte] ? RECORTES[recorte](valor) : valor);
+
+/** «Juan Carlos Alberto» + «Pérez Soto» → «Juan Pérez Soto». */
+const nombreCorto = (fila) => `${RECORTES.primero(fila.nombres)} ${String(fila.apellidos || '').trim()}`.trim();
+
+/**
+ * ¿«Nuevo miembro» o «Nueva iglesia»?
+ *
+ * El género lo manda el sustantivo que encabeza el nombre del módulo, no la
+ * última palabra: un «documento de la iglesia» es nuevo, y un «acta de
+ * reunión» es nueva. Por eso se mira solo la primera palabra.
+ *
+ * La terminación acierta en casi todos; el módulo que no —«credencial»— lo
+ * dice él mismo con `genero`.
+ */
+function nuevoDe(m) {
+  if (m.genero) return m.genero === 'f' ? 'Nueva' : 'Nuevo';
+  const cabeza = String(m.labelSingular || '').toLowerCase().split(/[\s/]+/)[0];
+  return /(a|ción|sión|dad|tad|ud|umbre|triz)$/.test(cabeza) ? 'Nueva' : 'Nuevo';
+}
+
 /** El nombre con el que se presenta un registro, según la plantilla del módulo. */
 function nombreDelRegistro(m, row) {
   const texto = String(m.display || '')
-    .replace(/\{(\w+)\}/g, (_, campo) => (row[campo] == null ? '' : row[campo]))
+    .replace(/\{(\w+)(?::(\w+))?\}/g, (_, campo, recorte) => {
+      const valor = row[campo] == null ? '' : String(row[campo]);
+      return recorte ? recortar(recorte, valor) : valor;
+    })
     .replace(/\s+/g, ' ')
     .trim();
   return texto || `${m.labelSingular} N.º ${row.id}`;
@@ -1788,7 +1850,7 @@ async function viewForm(name, id, precarga) {
 
   content().innerHTML = `
     <div class="page-head">
-      <h2>${m.icon} ${isNew ? 'Nuevo' : canEdit ? 'Editar' : 'Ver'} ${esc(m.labelSingular.toLowerCase())}</h2>
+      <h2>${m.icon} ${isNew ? nuevoDe(m) : canEdit ? 'Editar' : 'Ver'} ${esc(m.labelSingular.toLowerCase())}</h2>
       <div class="actions">
         ${!isNew && CON_FICHA.includes(name) ? `<button class="btn secondary" id="btnFicha">👁️ Ver la ficha</button>` : ''}
         <button class="btn secondary" id="btnBack">← Volver</button>
@@ -1813,8 +1875,16 @@ async function viewForm(name, id, precarga) {
   }
 
   // precargar opciones de todos los ref/multiref del módulo
+  // Al crear, los valores por omisión ya cuentan para resolver de dónde salen
+  // las opciones: si el movimiento nace como "Ingreso", su categoría tiene que
+  // ofrecer las de ingreso desde el primer momento, no todas.
+  if (isNew) {
+    row = { ...Object.fromEntries(m.fields.filter((f) => f.default != null).map((f) => [f.name, f.default])), ...row };
+  }
   const listas = [...new Set(
-    m.fields.filter((f) => f.ref || f.type === 'persona').map((f) => rutaOpciones(f, row))
+    m.fields
+      .filter((f) => f.ref || f.type === 'persona' || (f.type === 'select' && f.optionsRoute))
+      .map((f) => rutaOpciones(f, row))
   )];
   await Promise.all(listas.map((r) => getOptions(r).catch(() => [])));
 
@@ -1824,7 +1894,7 @@ async function viewForm(name, id, precarga) {
     if (titulo) {
       titulo.insertAdjacentHTML(
         'beforeend',
-        ` <span class="trato-chip">${esc(row.tratamiento)} ${esc(`${row.nombres || ''} ${row.apellidos || ''}`.trim())}</span>`
+        ` <span class="trato-chip">${esc(row.tratamiento)} ${esc(nombreCorto(row))}</span>`
       );
     }
   }
@@ -2198,11 +2268,12 @@ function fieldHtml(f, row, isNew) {
         </div>`;
       break;
     case 'select': {
-      const valores = (f.options || []).map((o) => String(typeof o === 'object' ? o.value : o));
+      const opciones = opcionesDe(f, row);
+      const valores = opciones.map((o) => String(typeof o === 'object' ? o.value : o));
 
       // Con muchas opciones —los 66 libros de la Biblia— se ofrece un
       // desplegable con buscador en vez de una lista larguísima.
-      if (usaBuscador(f, f.options || [])) {
+      if (usaBuscador(f, opciones)) {
         const etiqueta = val ? selectLabel(f, val) : '';
         input = `
           <div class="refbuscar selbuscar" id="sb_${f.name}">
@@ -2215,7 +2286,7 @@ function fieldHtml(f, row, isNew) {
         break;
       }
 
-      const opts = (f.options || []).map((o) => {
+      const opts = opciones.map((o) => {
         const v = typeof o === 'object' ? o.value : o;
         const l = typeof o === 'object' ? o.label : o;
         return `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
@@ -2737,6 +2808,7 @@ function initSelectoresDependientes(m, row, isNew) {
       nuevo.innerHTML = fieldHtml(f, fila, isNew);
       contenedor.replaceWith(nuevo.firstElementChild);
       if (f.type === 'ref') initRefBuscador(f, fila);
+      if (f.type === 'select') initSelectBuscable(f);
     }
     aplicarCondiciones();
   };
@@ -4449,7 +4521,7 @@ async function abrirLimpieza(contenedor) {
               <label>Las personas registradas${d.miembros_total > d.miembros.length ? ` (las primeras ${d.miembros.length} de ${d.miembros_total})` : ''}</label>
               <ul class="mini-list" style="border:1px solid var(--border);border-radius:8px;max-height:190px;overflow:auto">
                 ${d.miembros.map((m) => `
-                  <li><span>${esc(`${m.nombres || ''} ${m.apellidos || ''}`.trim())}</span>
+                  <li><span>${esc(nombreCorto(m))}</span>
                       <span class="mut">${esc(m.rut ? rutFormatear(m.rut) : 'sin RUT')}</span></li>`).join('')}
               </ul>
             </div>` : ''}
@@ -5406,8 +5478,26 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     if (!recuperadas) borrarBorrador(CLAVE);
   }
 
+  /**
+   * Los cuerpos que aparecen en esta lista, con cuánta gente trae cada uno.
+   *
+   * A una actividad la pueden convocar varios cuerpos y la lista viene toda
+   * junta. Cuando hay más de uno, se ofrece elegir: al pasar lista uno va
+   * cuerpo por cuerpo, no persona por persona salteando entre grupos.
+   */
+  const cuerposDeLaLista = (() => {
+    const porId = new Map();
+    for (const p of datos.personas) {
+      if (!p.cuerpo_id) continue;
+      const ya = porId.get(p.cuerpo_id);
+      if (ya) ya.cuantos++;
+      else porId.set(p.cuerpo_id, { id: p.cuerpo_id, nombre: p.cuerpo || 'Sin cuerpo', cuantos: 1 });
+    }
+    return [...porId.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  })();
+
   const fila = (p) => `
-    <li data-id="${p.miembro_id}" data-buscar="${esc(textoBuscable(`${p.nombre} ${p.rut || ''}`))}"
+    <li data-id="${p.miembro_id}" data-cuerpo="${esc(String(p.cuerpo_id || ''))}" data-buscar="${esc(textoBuscable(`${p.nombre} ${p.rut || ''}`))}"
         class="${p.estado ? 'marcado' : ''}">
       <div class="pl-quien">
         <b>${esc(p.nombre)}</b>
@@ -5448,6 +5538,11 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
         ${recuperadas ? `<div class="pl-recuperado">📵 Se recuperaron ${recuperadas} marca(s) que habían quedado sin guardar en este teléfono. Revíselas y guarde.</div>` : ''}
         <div class="pl-filtros">
           <input type="search" id="plBuscar" placeholder="🔎 Buscar miembro por nombre o RUT…" autocomplete="off" />
+          ${cuerposDeLaLista.length > 1 ? `
+            <select id="plCuerpo" title="Ver solo los integrantes de un cuerpo">
+              <option value="">Todos los cuerpos (${fmtNumero(datos.personas.length)})</option>
+              ${cuerposDeLaLista.map((c) => `<option value="${esc(String(c.id))}">${esc(c.nombre)} (${fmtNumero(c.cuantos)})</option>`).join('')}
+            </select>` : ''}
           <div class="pl-chips">
             <button type="button" class="chip on" data-filtro="todos">Todos</button>
             <button type="button" class="chip verde" data-filtro="Presente">Presentes</button>
@@ -5516,14 +5611,25 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     if (el) el.innerHTML = texto ? `<span class="${clase || ''}">${esc(texto)}</span>` : '';
   };
 
+  /**
+   * Las filas que cuentan para el avance: las del cuerpo elegido, si se eligió
+   * uno. Quien está pasando lista de su cuerpo quiere saber cuánto le falta a
+   * él, no a la actividad entera.
+   */
+  const filasQueCuentan = () => {
+    const cuerpo = (document.getElementById('plCuerpo') || {}).value || '';
+    return cuerpo ? filas().filter((li) => li.dataset.cuerpo === cuerpo) : filas();
+  };
+
   const resumen = () => {
     const cuenta = { Presente: 0, Ausente: 0, Justificado: 0, sin: 0 };
-    filas().forEach((li) => {
+    const cuentan = filasQueCuentan();
+    cuentan.forEach((li) => {
       const on = li.querySelector('.pl-b.on');
       if (on) cuenta[on.dataset.estado]++;
       else cuenta.sin++;
     });
-    const total = filas().length;
+    const total = cuentan.length;
     const marcados = total - cuenta.sin;
     const pct = total ? Math.round((marcados / total) * 100) : 0;
     document.getElementById('plPct').textContent = `${marcados}/${total} (${pct}%)`;
@@ -5683,13 +5789,15 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     const texto = textoBuscable((document.getElementById('plBuscar') || {}).value || '');
     const activo = contenedor.querySelector('.pl-chips .chip.on');
     const filtro = activo ? activo.dataset.filtro : 'todos';
+    const cuerpo = (document.getElementById('plCuerpo') || {}).value || '';
     let visibles = 0;
     filas().forEach((li) => {
       const calza = !texto || texto.split(/\s+/).every((t) => li.dataset.buscar.includes(t));
       const marcado = li.querySelector('.pl-b.on');
       const estado = marcado ? marcado.dataset.estado : '';
       const porEstado = filtro === 'todos' || (filtro === 'sin' ? !estado : estado === filtro);
-      const mostrar = calza && porEstado;
+      const delCuerpo = !cuerpo || li.dataset.cuerpo === cuerpo;
+      const mostrar = calza && porEstado && delCuerpo;
       li.hidden = !mostrar;
       if (mostrar) visibles++;
     });
@@ -5698,6 +5806,13 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   }
   const buscador = document.getElementById('plBuscar');
   if (buscador) buscador.addEventListener('input', filtrar);
+  const selCuerpo = document.getElementById('plCuerpo');
+  if (selCuerpo) {
+    selCuerpo.addEventListener('change', () => {
+      filtrar();
+      resumen(); // el avance pasa a ser el de ese cuerpo, no el de toda la actividad
+    });
+  }
   contenedor.querySelectorAll('.pl-chips .chip').forEach((chip) => {
     chip.addEventListener('click', () => {
       contenedor.querySelectorAll('.pl-chips .chip').forEach((c) => c.classList.remove('on'));

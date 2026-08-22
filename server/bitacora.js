@@ -22,7 +22,7 @@ const ajustes = require('./ajustes');
 /** Nombre de presentación de un miembro. */
 function nombreMiembro(id) {
   const m = db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(id);
-  return m ? `${m.nombres} ${m.apellidos}`.trim() : null;
+  return m ? require('./nombres').paraMostrar(m.nombres, m.apellidos) : null;
 }
 
 /**
@@ -229,7 +229,7 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
 
   // 3. El pastor: su alta, su cargo, su traslado y los demás cambios
   if (def.name === 'pastores') {
-    const quien = `${despues.nombres || ''} ${despues.apellidos || ''}`.trim();
+    const quien = require('./nombres').paraMostrar(despues.nombres, despues.apellidos);
     if (isNew) {
       anotarPastor(despues.id, { tipo: 'Anotación', usuario: user,
         descripcion: `Se registra a ${quien} en Pastores / Guías${despues.cargo ? ` como ${despues.cargo}` : ''}.` });

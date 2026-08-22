@@ -35,7 +35,7 @@ module.exports = {
   icon: '🔐',
   group: 'Administración',
   order: 90,
-  display: '{nombre}',
+  display: '{nombre:persona}',
   searchFields: ['nombre', 'rut', 'email'],
   listFields: ['foto', 'rut', 'nombre', 'rol', 'miembro_id', 'iglesias', 'cuerpos', 'activo'],
   defaultSort: { field: 'nombre', dir: 'asc' },
@@ -52,7 +52,7 @@ module.exports = {
       help: 'Con o sin puntos, con guion y dígito verificador. Ej: 12.345.678-5',
     },
     {
-      name: 'nombre', label: 'Nombre completo', type: 'text', required: true,
+      name: 'nombre', label: 'Nombre completo', type: 'text', required: true, recorta: 'persona',
       help: 'Si está enlazado a una ficha de miembro, el nombre se toma de allá (donde va separado en nombres y apellidos).',
     },
     {

@@ -365,6 +365,16 @@ Una tarjeta lista **los miembros que cumplen años más pronto**, con su foto, l
 - Quien nació un **29 de febrero** aparece el 28 en los años que no son bisiestos.
 - Cuántos se muestran se cambia en **Configuración → Preferencias → Cumpleaños que muestra el panel** (4 por defecto, hasta 20).
 
+## Cómo se nombra a cada persona 🧍
+
+En la ficha se guarda **todo** lo que la persona tiene: «Juan Carlos Alberto» y «Pérez Soto». Pero en un listado, en un selector o al pasar lista, ese nombre entero ocupa una línea completa y no ayuda a reconocer a nadie más rápido. Por eso, en pantalla se la nombra como se la nombra en el día a día:
+
+> **el primer nombre y los dos apellidos** → *Juan Pérez Soto*
+
+Vale para **miembros, pastores y usuarios**, y se aplica en todas partes: los listados, los selectores, las referencias de otras fichas, la toma de asistencia, los informes, el panel y el encabezado de cada ficha. En la cuenta de usuario, donde el nombre viene en un solo campo, se toma el primero y los dos últimos.
+
+**El nombre completo no se pierde ni se toca.** Sigue guardado tal cual y se ve entero al abrir la ficha: tanto en sus datos —*Nombres: Juan Carlos Alberto*— como en el formulario al editarla, que es donde importa.
+
 ## Ficha del miembro 🧍
 
 ### La ficha completa, en una sola pantalla 👁️
@@ -533,6 +543,16 @@ Cada iglesia local     Tesorería general de la iglesia
 
 Cada movimiento de Tesorería se registra **en una cuenta**, y el saldo de cada una se calcula solo: *saldo inicial + ingresos − egresos*.
 
+### Las categorías las mantiene la iglesia 🏷️
+
+En qué se clasifica cada movimiento —diezmos, ofrendas, servicios públicos, mantenimiento— ya no viene escrito dentro del programa: es un módulo más, **Categorías de Tesorería**, donde se **crean, editan y desactivan** sin tocar el sistema.
+
+Cada categoría dice si se usa en **ingresos**, en **egresos** o en **ambos**, y al registrar un movimiento **solo se ofrecen las que corresponden**: al anotar un gasto no aparece «Diezmos», y al cambiar el tipo de un movimiento la lista se acomoda sola.
+
+Una categoría que ya se usó **no se borra: se desactiva**. Si se borrara, esos movimientos quedarían clasificados con un nombre que ya no existe y los informes de años anteriores dejarían de cuadrar. El sistema lo impide y lo dice con todas sus letras: *«Ofrendas está en 3.000 movimientos, así que no se puede borrar sin dejarlos sin clasificación. Desmárquela en "En uso" y dejará de ofrecerse para los nuevos, sin tocar los que ya están.»* Las que nunca se usaron sí se borran.
+
+Al publicar esta versión, las que venían de fábrica quedan guardadas solas —repartidas entre ingreso y egreso—, junto con cualquier otra que ya estuviera en uso, deduciendo de qué tipo es por cómo se ha usado. Ningún movimiento se toca.
+
 ### Cómo se ordena
 
 | Campo de la cuenta | Para qué |
@@ -605,6 +625,7 @@ Arriba, dos filtros: por **cuerpo** y por **tipo de actividad**.
 - Cada persona en su fila, con **el cuerpo por el que va** y tres botones grandes —**Presente**, **Ausente**, **Justificado**— de 46 píxeles de alto, cómodos para el pulgar. Volver a pulsar el mismo botón la desmarca.
 - **Buscador**: se escribe parte del nombre o del RUT y la lista se reduce a esa persona, sin desplazarse por sesenta nombres. No importan tildes ni mayúsculas.
 - **Filtros**: *Todos · Presentes · Ausentes · Justificados · Sin marcar (N)*, para revisar al final quiénes faltan.
+- **Elegir el cuerpo**: cuando a la actividad la convocan varios, un desplegable con cada cuerpo y cuánta gente trae —*Coro (28)*, *Dorcas (34)*— deja ver **solo a los integrantes de ese cuerpo**. Uno pasa lista cuerpo por cuerpo, no saltando entre grupos, y el progreso pasa a contar el de ese cuerpo: *«12/28»* de los suyos, no de la actividad entera. Con un solo cuerpo convocado no aparece, porque no haría falta.
 - **Progreso de marcado**: *«12/28 (43%)»* con su barra, siempre a la vista.
 - **✓ Todos presentes**: marca a los que están a la vista y **sin marcar**, sin pisar lo ya decidido. Con un filtro puesto, solo a esos.
 - **Barra pegada abajo**: el recuento en vivo y el botón **Guardar lista**, sin tener que volver arriba.

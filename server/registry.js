@@ -108,10 +108,28 @@ function normalize(def) {
   }
 }
 
-/** Texto de presentación de una fila según la plantilla display del módulo. */
+/**
+ * Texto de presentación de una fila según la plantilla display del módulo.
+ *
+ * La plantilla admite un recorte detrás de dos puntos, para nombrar a una
+ * persona como se la nombra en el día a día y no con todo lo que tiene escrito
+ * en su ficha (ver server/nombres.js):
+ *
+ *   {nombres}          Juan Carlos Alberto
+ *   {nombres:primero}  Juan
+ *   {nombre:persona}   de «Juan Carlos Pérez Soto», «Juan Pérez Soto»
+ */
 function displayOf(def, row) {
   if (!row) return '';
-  return def.display.replace(/\{(\w+)\}/g, (_, k) => (row[k] == null ? '' : String(row[k]))).trim() || `#${row.id}`;
+  const nombres = require('./nombres');
+  const recortes = { primero: nombres.primerNombre, persona: nombres.acortar };
+  return def.display
+    .replace(/\{(\w+)(?::(\w+))?\}/g, (_, campo, recorte) => {
+      const valor = row[campo] == null ? '' : String(row[campo]);
+      const corta = recorte && recortes[recorte];
+      return corta ? corta(valor) : valor;
+    })
+    .trim() || `#${row.id}`;
 }
 
 function getModule(name) {

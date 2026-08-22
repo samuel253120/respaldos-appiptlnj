@@ -1195,6 +1195,11 @@ ul.pl-actividades li:hover { background: #f8fafc; }
   flex: 1 1 100%; min-width: 0; padding: 11px 14px; border: 1px solid var(--border);
   border-radius: 999px; font-size: 14px; font-family: inherit;
 }
+/* Elegir un cuerpo: en el teléfono ocupa la línea entera, para poder tocarlo */
+#plCuerpo {
+  flex: 1 1 220px; min-width: 0; padding: 10px 14px; border: 1px solid var(--border);
+  border-radius: 999px; font-size: 14px; font-family: inherit; background: #fff; color: inherit;
+}
 .pl-chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .pl-chips .chip {
   border: 1px solid var(--border); background: #fff; color: #475569; cursor: pointer;

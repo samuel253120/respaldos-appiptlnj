@@ -767,6 +767,67 @@ function cargosDePastores() {
 
 
 /**
+ * Las categorías de tesorería salieron del programa y pasaron a ser datos que
+ * la iglesia mantiene: se pueden crear, editar y desactivar desde el sistema.
+ *
+ * Se siembra la tabla con las que venían escritas —repartidas entre las que se
+ * usan al recibir y las que se usan al gastar— y, además, con cualquier otra
+ * que ya estuviera en uso en algún movimiento, deduciendo de qué tipo es por
+ * cómo se ha usado. Ningún movimiento se toca: siguen guardando el nombre de
+ * su categoría, igual que antes.
+ *
+ * Se puede repetir sin daño: solo agrega las que falten.
+ */
+function categoriasDeTesoreria() {
+  const columnas = db.prepare('PRAGMA table_info("categorias_tesoreria")').all().map((c) => c.name);
+  if (!columnas.includes('nombre')) return;
+
+  const deFabrica = [
+    ['Diezmos', 'Ingreso'], ['Ofrendas', 'Ingreso'], ['Primicias', 'Ingreso'],
+    ['Pro-Templo', 'Ingreso'], ['Donaciones', 'Ingreso'],
+    ['Servicios públicos', 'Egreso'], ['Calefacción', 'Egreso'], ['Mantenimiento', 'Egreso'],
+    ['Compras', 'Egreso'], ['Útiles de aseo', 'Egreso'], ['Ayuda social', 'Egreso'],
+    ['Honorarios', 'Egreso'], ['Viáticos', 'Egreso'],
+    // «Aportes» va en los dos: la iglesia local recibe aportes y también los
+    // entrega —el diez por ciento de cada ofrenda sale con esa categoría—.
+    ['Aportes', 'Ambos'], ['Actividades', 'Ambos'], ['Traspaso', 'Ambos'], ['Otro', 'Ambos'],
+  ];
+
+  // Las que ya estaban en uso y no figuran arriba: el tipo se deduce de cómo
+  // se han usado, que es más fiable que suponerlo.
+  const enUso = db
+    .prepare(
+      `SELECT categoria AS nombre,
+              SUM(CASE WHEN tipo = 'Ingreso' THEN 1 ELSE 0 END) AS ingresos,
+              SUM(CASE WHEN tipo = 'Egreso' THEN 1 ELSE 0 END) AS egresos
+         FROM tesoreria WHERE categoria IS NOT NULL AND categoria != ''
+        GROUP BY categoria`
+    )
+    .all();
+  const conocidas = new Set(deFabrica.map(([n]) => n.toLowerCase()));
+  for (const c of enUso) {
+    if (conocidas.has(String(c.nombre).toLowerCase())) continue;
+    deFabrica.push([c.nombre, c.ingresos && c.egresos ? 'Ambos' : c.egresos ? 'Egreso' : 'Ingreso']);
+  }
+
+  const existe = db.prepare('SELECT id FROM categorias_tesoreria WHERE lower(nombre) = lower(?)');
+  const agregar = db.prepare('INSERT INTO categorias_tesoreria (nombre, tipo, activo) VALUES (?, ?, 1)');
+  let nuevas = 0;
+  for (const [nombre, tipo] of deFabrica) {
+    if (existe.get(nombre)) continue;
+    agregar.run(nombre, tipo);
+    nuevas++;
+  }
+  if (nuevas) {
+    console.log(
+      `🏷️  tesorería: ${nuevas} categoría(s) quedaron guardadas como datos y ya se pueden crear, ` +
+        'editar y desactivar desde el sistema.'
+    );
+  }
+}
+
+
+/**
  * Los tipos de documento de un pastor o guía pasaron a los ocho que pide la
  * iglesia: carnet, antecedentes, inhabilidades, los dos certificados de
  * matrimonio, el nombramiento, la carta de renuncia y "Otro Documento".
@@ -1169,6 +1230,7 @@ function ejecutarMigraciones() {
     ['la ofrenda entra completa', ofrendaEntraCompleta],
     ['mayúsculas de los cargos', cargosConMayuscula],
     ['cargos de los pastores', cargosDePastores],
+    ['categorías de tesorería', categoriasDeTesoreria],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],

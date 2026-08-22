@@ -155,7 +155,7 @@ function leCorrespondePastor(miembro, db) {
 /** "Hermano Juan Pérez" */
 function conTratamiento(miembro, db) {
   const trato = tratamientoDe(miembro, db);
-  const nombre = `${miembro.nombres || ''} ${miembro.apellidos || ''}`.trim();
+  const nombre = require('./nombres').paraMostrar(miembro.nombres, miembro.apellidos);
   return trato ? `${trato} ${nombre}` : nombre;
 }
 

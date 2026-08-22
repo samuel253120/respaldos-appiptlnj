@@ -63,7 +63,7 @@ module.exports = {
   icon: '🧑‍💼',
   group: 'Organización',
   order: 11,
-  display: '{nombres} {apellidos}',
+  display: '{nombres:primero} {apellidos}',
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono'],
   listFields: ['foto', 'rut', 'nombres', 'apellidos', 'cargo', 'iglesia_id', 'ficha_miembro', 'estado'],
   computed: [
@@ -77,7 +77,7 @@ module.exports = {
   ],
   defaultSort: { field: 'apellidos', dir: 'asc' },
   fields: [
-    { name: 'nombres', label: 'Nombres', type: 'text', required: true },
+    { name: 'nombres', label: 'Nombres', recorta: 'primero', type: 'text', required: true },
     { name: 'apellidos', label: 'Apellidos', type: 'text', required: true },
     {
       name: 'cargo', label: 'Cargo', type: 'select', required: true, default: CARGO_GUIA,

@@ -21,6 +21,8 @@
  *   GET  /asistencias/informe     informes y promedios (general, por cuerpo,
  *                                 por persona)
  */
+const nombres = require('../nombres');
+
 const MOTIVOS_CON_DETALLE = ['Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
 
 /** Las actividades a las que la iglesia toma asistencia. */
@@ -308,7 +310,7 @@ module.exports = {
           const marca = porMiembro.get(id) || {};
           return {
             miembro_id: p.id,
-            nombre: `${p.nombres || ''} ${p.apellidos || ''}`.trim(),
+            nombre: nombres.paraMostrar(p.nombres, p.apellidos),
             rut: p.rut || null,
             foto: p.foto || null,
             cuerpo_id: donde.cuerpo_id,
@@ -519,11 +521,11 @@ module.exports = {
         .map(porcentajes);
 
       const porMiembro = db
-        .prepare(`SELECT d.miembro_id, (m.nombres || ' ' || m.apellidos) AS miembro, m.rut, ${SUMAS}
+        .prepare(`SELECT d.miembro_id, m.nombres, m.apellidos, m.rut, ${SUMAS}
                     FROM asistencia_detalle d LEFT JOIN miembros m ON m.id = d.miembro_id
                    ${where} GROUP BY d.miembro_id ORDER BY m.apellidos, m.nombres`)
         .all(...params)
-        .map(porcentajes);
+        .map((f) => porcentajes({ ...f, miembro: nombres.paraMostrar(f.nombres, f.apellidos) }));
 
       const porMotivo = db
         .prepare(`SELECT COALESCE(d.motivo, 'Sin motivo') AS motivo, COUNT(*) AS n

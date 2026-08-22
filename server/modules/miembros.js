@@ -118,7 +118,7 @@ module.exports = {
   icon: '🧍',
   group: 'Personas',
   order: 20,
-  display: '{nombres} {apellidos}',
+  display: '{nombres:primero} {apellidos}',
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono', 'email'],
   listFields: ['foto', 'tratamiento', 'nombres', 'apellidos', 'rut', 'edad', 'tipo_miembro', 'iglesia_id', 'estado'],
   filterFields: ['tipo_miembro', 'estado', 'iglesia_id'],
@@ -157,7 +157,7 @@ module.exports = {
       options: TRATAMIENTOS,
       help: 'Solo si le corresponde un trato distinto del que calcula el sistema. En blanco, se calcula solo.',
     },
-    { name: 'nombres', label: 'Nombres', type: 'text', required: true },
+    { name: 'nombres', label: 'Nombres', recorta: 'primero', type: 'text', required: true },
     { name: 'apellidos', label: 'Apellidos', type: 'text', required: true },
     {
       name: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date',
