@@ -25,12 +25,33 @@ function lista(valor) {
   }
 }
 
-/** Iglesias que el usuario puede ver. Vacío = todas. */
-function iglesiasDe(usuario) {
+/** Las iglesias que se le asignaron. Vacío = todas las del sistema. */
+function iglesiasAsignadas(usuario) {
   if (!usuario) return [];
   const ids = new Set(lista(usuario.iglesias));
   if (usuario.iglesia_id) ids.add(Number(usuario.iglesia_id));
   return [...ids];
+}
+
+/**
+ * Iglesias que el usuario ve **ahora**. Vacío = todas.
+ *
+ * Quien tiene varias no siempre quiere verlas todas juntas: el domingo está en
+ * una y el lunes revisa otra, y una lista con los miembros de las cinco
+ * mezclados no le sirve. Por eso puede elegir con cuál o cuáles trabajar, y
+ * eso acota todo el sistema —lo que ve y lo que guarda—, no solo la pantalla.
+ *
+ * En blanco significa «todas las que tengo», que es como se entra la primera
+ * vez. La elección nunca amplía lo asignado: si eligió una que ya no le
+ * corresponde, se ignora y vuelve a ver las suyas.
+ */
+function iglesiasDe(usuario) {
+  const asignadas = iglesiasAsignadas(usuario);
+  const trabajando = usuario ? lista(usuario.iglesias_trabajando) : [];
+  if (!trabajando.length) return asignadas;
+  if (!asignadas.length) return trabajando; // sin asignación: manda su elección
+  const comunes = asignadas.filter((id) => trabajando.includes(id));
+  return comunes.length ? comunes : asignadas;
 }
 
 /** Cuerpos que el usuario puede ver. Vacío = todos los de sus iglesias. */
@@ -141,6 +162,6 @@ function alcanzaCuerpo(usuario, cuerpoId) {
 }
 
 module.exports = {
-  lista, iglesiasDe, cuerposDe, iglesiaPrincipal, miembrosDeCuerpos,
+  lista, iglesiasDe, iglesiasAsignadas, cuerposDe, iglesiaPrincipal, miembrosDeCuerpos,
   condiciones, alcanza, alcanzaIglesia, alcanzaCuerpo,
 };

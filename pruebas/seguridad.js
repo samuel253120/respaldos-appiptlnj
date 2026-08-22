@@ -12,6 +12,8 @@
  *      no deja afuera a los demás de la misma iglesia.
  *   3. El respaldo se baja completo y la base que trae adentro está sana.
  *   4. El registro de cambios anota el dinero y no se puede maquillar.
+ *   5. El alcance por cuerpo se respeta aunque se escriba la dirección a mano:
+ *      quien tiene un cuerpo asignado no alcanza lo de otro.
  *
  * Cómo se corre, con el sistema andando:
  *
@@ -191,6 +193,36 @@ async function entrar(rut = RUT, clave = CLAVE) {
     revisar('no se puede escribir a mano', aMano.estado === 400, `respondió ${aMano.estado}`);
     const borrar = await api('DELETE', `/api/registro_cambios/${de('Creación') ? de('Creación').id : 0}`);
     revisar('ni borrar, ni siquiera el administrador', borrar.estado === 400, `respondió ${borrar.estado}`);
+  }
+
+  /* 5 · El alcance por cuerpo no se salta escribiendo la dirección ---------- */
+  console.log('\n5 · Los paneles de un cuerpo ajeno');
+  const cuerpos = (await api('GET', '/api/cuerpos?page=1&limit=2')).datos.rows || [];
+  if (cuerpos.length < 2) {
+    console.log('   ⚠️  hace falta más de un cuerpo para probar esta parte');
+  } else {
+    // Un usuario acotado al primero, creado para la prueba y borrado al final
+    const n = '19222334';
+    const rutSuyo = `${n}-${require('../server/rut').digitoVerificador(n)}`;
+    const creado = await api('POST', '/api/usuarios', {
+      rut: rutSuyo, nombre: 'Prueba De Alcance', rol: 'secretario',
+      password: 'prueba1234', cuerpos: [cuerpos[0].id],
+    });
+    const suyoId = creado.datos && creado.datos.id;
+    if (!suyoId) {
+      revisar('se pudo crear el usuario de prueba', false, JSON.stringify(creado.datos).slice(0, 160));
+    } else {
+      // Se le quita la obligación de cambiar la clave, que es de su primer ingreso
+      await api('PUT', `/api/usuarios/${suyoId}`, { ...creado.datos, debe_cambiar_password: 0 });
+      const suyo = await entrar(rutSuyo, 'prueba1234');
+      const propio = await suyo('GET', `/api/cuerpos/${cuerpos[0].id}/integrantes`);
+      const ajeno = await suyo('GET', `/api/cuerpos/${cuerpos[1].id}/integrantes`);
+      revisar('alcanza los integrantes de su cuerpo', propio.estado === 200, `respondió ${propio.estado}`);
+      revisar('y no los de otro', ajeno.estado === 403, `respondió ${ajeno.estado}`);
+      const cuotasAjenas = await suyo('GET', `/api/cuerpos/${cuerpos[1].id}/cuotas`);
+      revisar('ni sus cuotas', cuotasAjenas.estado === 403, `respondió ${cuotasAjenas.estado}`);
+      await api('DELETE', `/api/usuarios/${suyoId}`);
+    }
   }
 
   console.log(fallas ? `\n❌ ${fallas} comprobación(es) fallaron.` : '\n✅ Lo que tiene que estar cerrado, está cerrado.');

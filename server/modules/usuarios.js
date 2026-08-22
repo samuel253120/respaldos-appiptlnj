@@ -86,6 +86,13 @@ module.exports = {
       help: 'Con cuál trabaja por omisión (la que se propone al crear registros). Tiene que estar entre las de arriba.',
     },
     {
+      // Con cuáles de las suyas está trabajando ahora. Lo elige cada persona
+      // desde la barra de arriba, no la oficina: por eso no está en el
+      // formulario. En blanco significa «todas las que tengo».
+      name: 'iglesias_trabajando', label: 'Iglesias con las que está trabajando', type: 'multiref',
+      ref: 'iglesias', oculto: true,
+    },
+    {
       name: 'cuerpos', label: 'Cuerpos que administra', type: 'multiref', ref: 'cuerpos',
       help: 'Opcional. Marcando alguno, dentro de sus iglesias solo verá lo de esos cuerpos: sus integrantes, actividades, actas, inventario y directivas. Sin ninguno, ve todos los de sus iglesias.',
     },

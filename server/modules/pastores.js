@@ -113,6 +113,30 @@ module.exports = {
   ],
 
   extraRoutes(router, { db, requirePerm }) {
+
+    /**
+     * Los pastores, cada uno junto a su cónyuge: «Pastor Juan Pérez Soto y
+     * Pastora Ana Díaz Soto». Lo usa la ficha de la iglesia para elegir al
+     * pastor principal, porque de una iglesia responden los dos y al elegirlo
+     * conviene ver a la pareja completa.
+     */
+    router.get('/pastores/con-conyuge', (req, res) => {
+      const trato = require('../tratamiento');
+      const nombres = require('../nombres');
+      const params = [];
+      const donde = require('../alcance').condiciones(module.exports, req.user, params);
+      const filas = db
+        .prepare(`SELECT * FROM pastores ${donde ? 'WHERE ' + donde : ''} ORDER BY apellidos, nombres`)
+        .all(...params);
+      res.json(
+        filas.map((p) => {
+          const suyo = p.miembro_id ? db.prepare('SELECT * FROM miembros WHERE id = ?').get(p.miembro_id) : null;
+          const el = suyo ? trato.conTratamiento(suyo, db) : nombres.paraMostrar(p.nombres, p.apellidos);
+          const ella = p.conyuge_id ? db.prepare('SELECT * FROM miembros WHERE id = ?').get(p.conyuge_id) : null;
+          return { id: p.id, label: ella ? `${el} y ${trato.conTratamiento(ella, db)}` : el };
+        })
+      );
+    });
     /**
      * Crea la ficha de miembro de un pastor con sus mismos datos y las deja
      * enlazadas. Si ya existe una con su RUT, solo se enlaza.

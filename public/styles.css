@@ -103,9 +103,37 @@ a:hover { text-decoration: underline; }
 /* Con qué iglesia se trabaja se dice una sola vez. Cuando el menú de la
    izquierda está a la vista, ya lo dice él; acá arriba solo queda lo que el
    menú no muestra —los cuerpos asignados—, y si no hay, no queda nada. */
+/* Cuando además sirve para elegir con qué iglesia trabajar, se queda: es la
+   única manera de cambiarla, y esconderla dejaría a la persona encerrada. */
+.iglesia-local.elegible {
+  cursor: pointer; font-family: inherit; color: inherit;
+  /* Un botón no se estira como lo hacía el recuadro: se le da su sitio para
+     que quepa el nombre de la iglesia y no quede reducido a la flechita. */
+  flex: 0 1 auto; min-width: 160px; max-width: 42vw;
+}
+.iglesia-local.elegible:hover { background: #e2e9f8; border-color: #c7d4ee; }
+.iglesia-local .cambiar { font-size: 11px; color: var(--marca-azul); opacity: 0.75; }
+
+/* Elegir con qué iglesia trabajar */
+.ig-todas, .ig-una {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; font-family: inherit;
+  border: 1px solid var(--border); background: #fff; border-radius: 10px; padding: 11px 14px;
+  cursor: pointer; font-size: 14px; color: inherit; min-height: 44px;
+}
+.ig-todas { justify-content: space-between; margin-bottom: 10px; }
+.ig-todas .mut, .ig-una .mut { font-size: 12.5px; color: var(--muted); }
+.ig-todas.on, .ig-una.on { border-color: var(--marca-azul); background: #eef2fb; }
+.ig-todas.on b, .ig-una.on .nm { color: var(--marca-azul); }
+.ig-lista { display: flex; flex-direction: column; gap: 8px; }
+.ig-una .tic { width: 16px; color: var(--marca-azul); font-weight: 700; flex: none; }
+.ig-una .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
 @media (min-width: 901px) {
-  .iglesia-local.ya-esta-en-el-menu { display: none; }
-  .iglesia-local .ic, .iglesia-local .nm { display: none; }
+  .iglesia-local.ya-esta-en-el-menu:not(.elegible) { display: none; }
+  /* En el computador el menú de la izquierda ya dice con qué iglesia se
+     trabaja, así que acá arriba el nombre sobra… salvo cuando este recuadro
+     es además el botón para cambiarla: ahí tiene que decir cuál está puesta. */
+  .iglesia-local:not(.elegible) .ic, .iglesia-local:not(.elegible) .nm { display: none; }
 }
 .page-head .sub-iglesia {
   font-size: 12.5px; color: var(--muted); font-weight: 500; margin-top: 1px;

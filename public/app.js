@@ -417,6 +417,89 @@ function route() {
   return viewDashboard();
 }
 
+/**
+ * Elegir con qué iglesia o iglesias trabajar.
+ *
+ * Quien alcanza varias no siempre las quiere ver todas juntas: el domingo está
+ * en una y el lunes revisa otra, y una lista con los miembros de las cinco
+ * mezclados no le sirve de nada. Acá elige, y lo que elija acota **todo** el
+ * sistema —lo que ve y lo que guarda—, no solo la pantalla que tiene delante.
+ *
+ * Se puede cambiar cuando quiera, y «Todas las que tengo» siempre está a un
+ * toque: nadie queda encerrado en una iglesia sin darse cuenta.
+ */
+async function elegirIglesiaDeTrabajo() {
+  const disponibles = USER.iglesias_disponibles || [];
+  if (disponibles.length < 2) return;
+  const elegidas = new Set(USER.iglesias_trabajando || []);
+
+  const fondo = document.createElement('div');
+  fondo.className = 'modal-fondo';
+  fondo.innerHTML = `
+    <div class="modal" style="max-width:460px">
+      <div class="modal-head"><h3>⛪ ¿Con qué iglesia trabaja?</h3><button class="cerrar">&times;</button></div>
+      <div class="modal-body">
+        <p class="mut" style="margin:0 0 12px;font-size:13.5px;line-height:1.5">
+          Lo que elija acota todo el sistema: los listados, los informes y lo que registre.
+          Puede cambiarlo cuando quiera.
+        </p>
+        <button type="button" class="ig-todas ${elegidas.size ? '' : 'on'}" id="igTodas">
+          <b>Todas las que tengo</b>
+          <span class="mut">${fmtNumero(disponibles.length)} iglesias</span>
+        </button>
+        <div class="ig-lista">
+          ${disponibles.map((i) => `
+            <button type="button" class="ig-una ${elegidas.has(i.id) ? 'on' : ''}" data-id="${i.id}">
+              <span class="tic">${elegidas.has(i.id) ? '✓' : ''}</span>
+              <span class="nm">${esc(iglesiaDeTrabajo(i.nombre))}</span>
+            </button>`).join('')}
+        </div>
+        <div class="form-error" id="igError" style="padding:8px 0 0"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn secondary" id="igCancelar">Cancelar</button>
+        <button class="btn" id="igGuardar">Trabajar con esto</button>
+      </div>
+    </div>`;
+  document.body.appendChild(fondo);
+
+  const cerrar = () => fondo.remove();
+  fondo.querySelector('.cerrar').addEventListener('click', cerrar);
+  fondo.querySelector('#igCancelar').addEventListener('click', cerrar);
+  fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(); });
+
+  const pintar = () => {
+    fondo.querySelector('#igTodas').classList.toggle('on', elegidas.size === 0);
+    fondo.querySelectorAll('.ig-una').forEach((b) => {
+      const puesta = elegidas.has(Number(b.dataset.id));
+      b.classList.toggle('on', puesta);
+      b.querySelector('.tic').textContent = puesta ? '✓' : '';
+    });
+  };
+
+  fondo.querySelector('#igTodas').addEventListener('click', () => { elegidas.clear(); pintar(); });
+  fondo.querySelectorAll('.ig-una').forEach((b) => {
+    b.addEventListener('click', () => {
+      const id = Number(b.dataset.id);
+      if (elegidas.has(id)) elegidas.delete(id);
+      else elegidas.add(id);
+      pintar();
+    });
+  });
+
+  fondo.querySelector('#igGuardar').addEventListener('click', async () => {
+    try {
+      await api('PUT', '/auth/iglesias-de-trabajo', { iglesias: [...elegidas] });
+      cerrar();
+      // Todo lo que está en pantalla se pidió con el alcance anterior: se
+      // vuelve a armar entero, que es más honesto que refrescar a medias.
+      location.reload();
+    } catch (e) {
+      fondo.querySelector('#igError').textContent = e.message;
+    }
+  });
+}
+
 /* ---------------- login ---------------- */
 function renderLogin() {
   $app.innerHTML = `
@@ -957,6 +1040,8 @@ function renderShell() {
   const initials = (USER.nombre || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
   const dondeTrabaja = iglesiaDeTrabajo(USER.iglesia_nombre) || 'Todas las iglesias';
   const conCuerpos = (USER.cuerpos_asignados || []).length > 0;
+  // Quien alcanza más de una iglesia puede elegir con cuál trabajar
+  const puedeElegirIglesia = (USER.iglesias_disponibles || []).length > 1;
   $app.innerHTML = `
     <div class="layout">
       <nav class="sidebar" id="sidebar">
@@ -985,13 +1070,15 @@ function renderShell() {
       <div class="main">
         <header class="topbar">
           <button class="menu-toggle" id="menuToggle">☰</button>
-          <div class="iglesia-local${conCuerpos ? '' : ' ya-esta-en-el-menu'}" title="Lo que tiene asignado para ver y administrar">
+          <${puedeElegirIglesia ? 'button type="button" id="btnIglesia"' : 'div'} class="iglesia-local${conCuerpos ? '' : ' ya-esta-en-el-menu'}${puedeElegirIglesia ? ' elegible' : ''}"
+               title="${puedeElegirIglesia ? 'Elegir con qué iglesia o iglesias trabajar' : 'Lo que tiene asignado para ver y administrar'}">
             <span class="ic">⛪</span>
             <span class="nm">${esc(dondeTrabaja)}</span>
             ${conCuerpos
               ? `<span class="cuerpos-chip" title="Solo ve lo de estos cuerpos">👥 ${esc(USER.cuerpos_asignados.join(' · '))}</span>`
               : ''}
-          </div>
+            ${puedeElegirIglesia ? '<span class="cambiar">▾</span>' : ''}
+          </${puedeElegirIglesia ? 'button' : 'div'}>
           <div class="tb-espacio"></div>
           <a class="who" href="#/perfil" title="Mi perfil">${retratoDe(USER, initials)} <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></a>
           <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
@@ -1001,6 +1088,8 @@ function renderShell() {
       <div class="backdrop" id="backdrop"></div>
     </div>`;
   document.getElementById('logoutBtn').addEventListener('click', logout);
+  const btnIglesia = document.getElementById('btnIglesia');
+  if (btnIglesia) btnIglesia.addEventListener('click', elegirIglesiaDeTrabajo);
   const sidebar = document.getElementById('sidebar');
   const backdrop = document.getElementById('backdrop');
   document.getElementById('menuToggle').addEventListener('click', () => {
@@ -5079,7 +5168,7 @@ function pintarFiltros() {
   const tipos = (MOD['asistencias'].fields.find((f) => f.name === 'tipo_reunion') || {}).options || [];
   const zona = document.getElementById('asisFiltros');
   zona.innerHTML = `
-    <select id="asisCuerpo">
+    <select id="asisCuerpo" title="Con qué cuerpo se está trabajando: filtra las actividades del calendario y abre sus listas mostrando a sus integrantes">
       <option value="">Todos los cuerpos</option>
       ${cuerpos.map((c) => `<option value="${c.id}" ${String(ASIS.cuerpo_id) === String(c.id) ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
     </select>
@@ -5496,6 +5585,20 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     return [...porId.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
   })();
 
+  /**
+   * Con qué cuerpo se abre la lista.
+   *
+   * Arriba, en el calendario, ya se eligió uno para ver sus actividades. Quien
+   * hizo eso está trabajando con ese cuerpo, así que la lista se abre mostrando
+   * a los suyos y no a los de los siete cuerpos convocados: era desconcertante
+   * elegir «Oficiales» arriba y encontrarse abajo con los ciclistas.
+   *
+   * Si ese cuerpo no está entre los de esta actividad, se abre con todos.
+   */
+  const cuerpoElegido = cuerposDeLaLista.some((c) => String(c.id) === String(ASIS.cuerpo_id))
+    ? String(ASIS.cuerpo_id)
+    : '';
+
   const fila = (p) => `
     <li data-id="${p.miembro_id}" data-cuerpo="${esc(String(p.cuerpo_id || ''))}" data-buscar="${esc(textoBuscable(`${p.nombre} ${p.rut || ''}`))}"
         class="${p.estado ? 'marcado' : ''}">
@@ -5541,7 +5644,10 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
           ${cuerposDeLaLista.length > 1 ? `
             <select id="plCuerpo" title="Ver solo los integrantes de un cuerpo">
               <option value="">Todos los cuerpos (${fmtNumero(datos.personas.length)})</option>
-              ${cuerposDeLaLista.map((c) => `<option value="${esc(String(c.id))}">${esc(c.nombre)} (${fmtNumero(c.cuantos)})</option>`).join('')}
+              ${cuerposDeLaLista.map((c) => `
+                <option value="${esc(String(c.id))}" ${String(c.id) === String(cuerpoElegido) ? 'selected' : ''}>
+                  ${esc(c.nombre)} (${fmtNumero(c.cuantos)})
+                </option>`).join('')}
             </select>` : ''}
           <div class="pl-chips">
             <button type="button" class="chip on" data-filtro="todos">Todos</button>
@@ -5822,6 +5928,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   });
 
   filas().forEach(pintarFila);
+  if (cuerpoElegido) filtrar(); // se abre mostrando solo el cuerpo con el que se venía trabajando
   resumen();
   if (recuperadas) pintarEstado('Sin guardar', 'aviso-texto');
 }

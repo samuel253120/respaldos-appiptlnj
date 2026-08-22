@@ -132,6 +132,12 @@ app.get('/api/meta', authRequired, (req, res) => {
   // el sistema administra una sola, se muestra esa; con varias, "Todas".
   let iglesiaNombre = null;
   const suyas = alcance.iglesiasDe(req.user);
+  // Entre cuáles puede elegir para trabajar, y con cuáles está trabajando
+  const asignadas = alcance.iglesiasAsignadas(req.user);
+  const puedeElegir = asignadas.length
+    ? db.prepare(`SELECT id, nombre FROM iglesias WHERE id IN (${asignadas.map(() => '?').join(',')}) ORDER BY nombre`).all(...asignadas)
+    : db.prepare('SELECT id, nombre FROM iglesias ORDER BY nombre').all();
+  const trabajando = alcance.lista(req.user.iglesias_trabajando).filter((id) => puedeElegir.some((i) => i.id === id));
   const nombreDe = (id) => (db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(id) || {}).nombre;
   if (suyas.length === 1) {
     iglesiaNombre = nombreDe(suyas[0]) || null;
@@ -194,6 +200,8 @@ app.get('/api/meta', authRequired, (req, res) => {
       ...req.user,
       iglesia_nombre: iglesiaNombre,
       iglesias_asignadas: suyas.length,
+      iglesias_disponibles: puedeElegir,
+      iglesias_trabajando: trabajando,
       cuerpos_asignados: susCuerpos,
     },
   });

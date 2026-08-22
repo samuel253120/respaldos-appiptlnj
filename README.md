@@ -335,6 +335,10 @@ Todos los que hagan falta, cada uno con **su archivo y su nombre**, más su tipo
 
 Al agregar uno desde la ficha, la iglesia o el pastor vienen puestos. Los documentos del pastor heredan **su** iglesia, que es lo que decide quién puede verlos.
 
+### El pastor principal, con su cónyuge
+
+De una iglesia responden los dos, así que se nombran los dos. Al elegir al **pastor principal** en la ficha de la iglesia, el buscador ofrece a cada uno junto a su cónyuge —*«Pastor Juan Pérez Soto y Pastora Ana Díaz Soto»*—, y la ficha muestra **A cargo de la iglesia** con la pareja completa. El cónyuge sale de la ficha del pastor, así que basta con tenerlo registrado ahí una vez.
+
 ### Historial
 
 Un registro fechado de lo que va ocurriendo, con anotaciones escritas a mano y otras que el sistema hace solo:
@@ -364,6 +368,14 @@ Una tarjeta lista **los miembros que cumplen años más pronto**, con su foto, l
 - No aparecen los miembros **fallecidos ni trasladados**, ni los que aún no tienen fecha de nacimiento registrada.
 - Quien nació un **29 de febrero** aparece el 28 en los años que no son bisiestos.
 - Cuántos se muestran se cambia en **Configuración → Preferencias → Cumpleaños que muestra el panel** (4 por defecto, hasta 20).
+
+## Con qué iglesia se trabaja ⛪
+
+Quien alcanza más de una iglesia no siempre las quiere ver todas juntas: el domingo está en una y el lunes revisa otra, y un listado con los miembros de las cinco mezclados no le sirve. Arriba a la izquierda, junto al nombre de la iglesia, hay un botón para **elegir con cuál o cuáles trabajar**, y se cambia cuando se quiera.
+
+Lo que elija **acota todo el sistema** —los listados, los informes, el panel y lo que registre—, no solo la pantalla que tiene delante. **«Todas las que tengo»** está siempre a un toque, así que nadie queda encerrado en una iglesia sin darse cuenta.
+
+La elección nunca amplía lo asignado: si eligiera una que no le corresponde, se descarta y vuelve a ver las suyas. Y queda guardada en su cuenta, no en el navegador, así que la encuentra igual desde el teléfono.
 
 ## Cómo se nombra a cada persona 🧍
 
@@ -1107,7 +1119,7 @@ Las otras tres pruebas miran lo que la de humo no ve, y ninguna necesita navegad
 
 - `npm run concurrencia` — que nadie pierda su trabajo cuando dos trabajan sobre lo mismo, incluida la lista de asistencia que pasan dos (ver *[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)*).
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro.
-- `npm run seguridad` — que los archivos no se entreguen sin sesión, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, y que el registro de cambios no se pueda maquillar. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
+- `npm run seguridad` — que los archivos no se entreguen sin sesión, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, que el registro de cambios no se pueda maquillar y que el alcance por cuerpo se respete aunque se escriba la dirección a mano. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
 
 ## API REST
 

@@ -254,6 +254,27 @@ router.post('/cambiar-password', authRequired, atender(async (req, res) => {
   res.json({ ok: true, user: publicUser(actualizado) });
 }));
 
+/**
+ * Con qué iglesia o iglesias está trabajando ahora.
+ *
+ * Lo elige cada persona desde la barra de arriba y lo puede cambiar cuando
+ * quiera. Nunca amplía lo que tiene asignado: si manda una que no le
+ * corresponde, se descarta sin decir que sí. En blanco vuelve a ver todas las
+ * suyas.
+ */
+router.put('/iglesias-de-trabajo', authRequired, (req, res) => {
+  const alcance = require('./alcance');
+  const pedidas = alcance.lista(req.body && req.body.iglesias);
+  const asignadas = alcance.iglesiasAsignadas(req.user);
+  const validas = asignadas.length ? pedidas.filter((id) => asignadas.includes(id)) : pedidas;
+
+  db.prepare("UPDATE usuarios SET iglesias_trabajando = ?, updated_at = datetime('now','localtime') WHERE id = ?")
+    .run(JSON.stringify(validas), req.user.id);
+
+  const actualizado = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.user.id);
+  res.json({ ok: true, iglesias: validas, user: publicUser(actualizado) });
+});
+
 /** Los datos propios que cada persona puede mantener al día. */
 router.get('/perfil', authRequired, (req, res) => {
   const perfil = require('./perfil').leer(req.user.id);

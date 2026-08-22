@@ -149,10 +149,33 @@ module.exports = {
   },
 
   extraRoutes(router, { db, requirePerm, can }) {
+    /**
+     * El cuerpo del que se está pidiendo el panel, comprobando que sea uno de
+     * los suyos.
+     *
+     * Estas rutas se pidieron siempre desde la ficha de un cuerpo que la
+     * persona ya estaba viendo, así que parecía que bastaba con el permiso del
+     * módulo. No basta: escribiendo la dirección a mano, quien tiene asignado
+     * un cuerpo alcanzaba la gente, las cuotas y la plata de otro. El alcance
+     * se comprueba acá, como en cualquier otra consulta.
+     */
+    const cuerpoDelUsuario = (req, res) => {
+      const fila = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(req.params.id);
+      if (!fila) {
+        res.status(404).json({ error: 'Cuerpo no encontrado' });
+        return null;
+      }
+      if (!require('../alcance').alcanza(module.exports, fila, req.user)) {
+        res.status(403).json({ error: 'Ese cuerpo está fuera de lo que tiene asignado' });
+        return null;
+      }
+      return fila;
+    };
+
     // Detalle del cumplimiento de un cuerpo, para mostrarlo en su ficha
     router.get('/cuerpos/:id(\\d+)/cumplimiento', requirePerm('cuerpos', 'view'), (req, res) => {
-      const fila = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(req.params.id);
-      if (!fila) return res.status(404).json({ error: 'Cuerpo no encontrado' });
+      const fila = cuerpoDelUsuario(req, res);
+      if (!fila) return;
       res.json(evaluarCumplimiento(fila, db));
     });
 
@@ -162,8 +185,8 @@ module.exports = {
      * retirados incluidos, y la pantalla decide a quién muestra.
      */
     router.get('/cuerpos/:id(\\d+)/integrantes', requirePerm('cuerpos', 'view'), (req, res) => {
-      const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(req.params.id);
-      if (!cuerpo) return res.status(404).json({ error: 'Cuerpo no encontrado' });
+      const cuerpo = cuerpoDelUsuario(req, res);
+      if (!cuerpo) return;
       const { integrantesDe } = require('../integrantes');
       const hoy = new Date().toISOString().slice(0, 10);
 
@@ -212,8 +235,8 @@ module.exports = {
      * exento —o pertenece a un cuerpo que no cobra— sale marcado como tal.
      */
     router.get('/cuerpos/:id(\\d+)/cuotas', requirePerm('cuerpos', 'view'), (req, res) => {
-      const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(req.params.id);
-      if (!cuerpo) return res.status(404).json({ error: 'Cuerpo no encontrado' });
+      const cuerpo = cuerpoDelUsuario(req, res);
+      if (!cuerpo) return;
       const anio = Number(req.query.anio) || new Date().getFullYear();
       const { integrantesDe } = require('../integrantes');
 

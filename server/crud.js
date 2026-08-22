@@ -202,7 +202,9 @@ const columnasEnCache = new Map();
 function columnasPara(def, extras = []) {
   const llave = `${def.name}|${extras.join(',')}`;
   if (columnasEnCache.has(llave)) return columnasEnCache.get(llave);
-  const claves = [...[...def.display.matchAll(/\{(\w+)\}/g)].map((m) => m[1]), ...extras];
+  // La plantilla puede pedir un recorte detrás de dos puntos —{nombres:primero}—:
+  // la columna que hace falta traer es igual «nombres».
+  const claves = [...[...def.display.matchAll(/\{(\w+)(?::\w+)?\}/g)].map((m) => m[1]), ...extras];
   const propias = new Set(def.fields.map((f) => f.name));
   const sql = claves.every((k) => propias.has(k))
     ? ['id', ...new Set(claves)].map((c) => `"${c}"`).join(', ')

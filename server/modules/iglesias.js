@@ -12,6 +12,8 @@
  * ANEXOS. El sistema hace cumplir que la matriz sea única.
  */
 
+const { REGIONES } = require('../regiones');
+
 /** Los tipos de iglesia, de mayor a menor. */
 const TIPOS_DE_IGLESIA = ['Iglesia Matriz', 'Iglesia Sede', 'Iglesia Local', 'Iglesia Anexo'];
 
@@ -44,18 +46,48 @@ module.exports = {
     },
     { name: 'codigo', label: 'Código', type: 'text', help: 'Identificador corto, ej. IG-001' },
     { name: 'direccion', label: 'Dirección', type: 'text' },
-    { name: 'ciudad', label: 'Ciudad / Municipio', type: 'text' },
-    { name: 'departamento', label: 'Departamento / Estado', type: 'text' },
+    { name: 'ciudad', label: 'Ciudad', type: 'text' },
+    {
+      name: 'departamento', label: 'Región', type: 'select', options: REGIONES, buscador: true,
+      help: 'Las dieciséis regiones del país, de norte a sur.',
+    },
     { name: 'pais', label: 'País', type: 'text' },
     { name: 'telefono', label: 'Teléfono', type: 'tel' },
     { name: 'email', label: 'Correo electrónico', type: 'email' },
     { name: 'fecha_fundacion', label: 'Fecha de fundación', type: 'date' },
-    { name: 'pastor_id', label: 'Pastor principal', type: 'ref', ref: 'pastores' },
+    {
+      name: 'pastor_id', label: 'Pastor principal', type: 'ref', ref: 'pastores',
+      // Al elegirlo se ve también a su cónyuge: de una iglesia responden los dos
+      optionsRoute: '/pastores/con-conyuge',
+      help: 'Al buscarlo aparece junto a su cónyuge, que es con quien está a cargo de la iglesia.',
+    },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Activa',
       options: ['Activa', 'Inactiva', 'En formación'],
     },
     { name: 'notas', label: 'Notas', type: 'textarea' },
+  ],
+  computed: [
+    {
+      name: 'responsables', label: 'A cargo de la iglesia', type: 'texto',
+      help: 'El pastor principal y su cónyuge: de la iglesia responden los dos.',
+      calc: (fila, { db }) => {
+        if (!fila.pastor_id) return '';
+        const pastor = db.prepare('SELECT * FROM pastores WHERE id = ?').get(fila.pastor_id);
+        if (!pastor) return '';
+        const trato = require('../tratamiento');
+        const nombres = require('../nombres');
+        const suyo = pastor.miembro_id
+          ? db.prepare('SELECT * FROM miembros WHERE id = ?').get(pastor.miembro_id)
+          : null;
+        const el = suyo
+          ? trato.conTratamiento(suyo, db)
+          : nombres.paraMostrar(pastor.nombres, pastor.apellidos);
+        if (!pastor.conyuge_id) return el;
+        const ella = db.prepare('SELECT * FROM miembros WHERE id = ?').get(pastor.conyuge_id);
+        return ella ? `${el} y ${trato.conTratamiento(ella, db)}` : el;
+      },
+    },
   ],
   hooks: {
     beforeSave(data, { id, existing, db }) {
