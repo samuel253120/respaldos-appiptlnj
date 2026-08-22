@@ -62,6 +62,7 @@ const MATRIX = {
     cuotas_cuerpo: [],
     usuarios: [],
     perfiles_permisos: [],
+    registro_cambios: [],
   },
   tesorero: {
     '*': RO,
@@ -73,6 +74,7 @@ const MATRIX = {
     inventarios: RW,
     usuarios: [],
     perfiles_permisos: [],
+    registro_cambios: RO, // puede revisarlo, no escribirlo
   },
   consulta: {
     '*': RO,
@@ -82,6 +84,7 @@ const MATRIX = {
     cuotas_cuerpo: [],
     usuarios: [],
     perfiles_permisos: [],
+    registro_cambios: [],
   },
 };
 

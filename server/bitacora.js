@@ -9,6 +9,10 @@
  *   iglesias  → historial_iglesias    (la historia de cada congregación)
  *   pastores  → historial_pastores    (el recorrido ministerial)
  *
+ * Y aparte de esos tres hay un cuarto libro, que no cuenta una historia sino
+ * que responde una pregunta: el **Registro de Cambios**, donde queda anotado
+ * quién tocó el dinero y los permisos —altas, cambios y eliminaciones—.
+ *
  * Puede desactivarse desde la configuración del sistema
  * (bitacora_automatica), y en ese caso ninguno de los tres se escribe solo.
  */
@@ -68,6 +72,87 @@ function anotarPastor(pastorId, datos) {
 }
 
 /**
+ * Los módulos que quedan anotados en el Registro de Cambios: el dinero y las
+ * llaves. Son aquellos en los que, si algo aparece distinto, hay que poder
+ * responder quién lo hizo sin depender de la memoria de nadie.
+ *
+ * No están todos a propósito. Anotar cada marca de asistencia llenaría el
+ * registro de ruido y taparía justo lo que se quiere encontrar.
+ */
+const MODULOS_VIGILADOS = [
+  'tesoreria', 'cuentas_tesoreria', 'traspasos', 'cuotas_cuerpo', 'ayudas_sociales',
+  'usuarios', 'perfiles_permisos',
+];
+
+/** Escribe una línea en el Registro de Cambios. */
+function anotarCambio({ def, accion, fila, detalle, usuario }) {
+  try {
+    const { displayOf } = require('./registry');
+    db.prepare(
+      `INSERT INTO registro_cambios (fecha, hora, modulo, accion, registro, registro_id, detalle, usuario, iglesia_id, created_by)
+       VALUES (date('now','localtime'), strftime('%H:%M','now','localtime'), ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      def.label,
+      accion,
+      displayOf(def, fila).slice(0, 120),
+      fila.id || null,
+      detalle || null,
+      usuario ? usuario.nombre : 'Sistema',
+      fila.iglesia_id || null,
+      usuario ? usuario.id : null
+    );
+  } catch (e) {
+    console.error('No se pudo anotar en el registro de cambios:', e.message);
+  }
+}
+
+/**
+ * Un valor escrito como lo lee una persona: la plata con su signo y sus miles,
+ * y una referencia con el nombre de aquello a lo que apunta, no con su número.
+ * «Cuenta: 5» no le dice nada a nadie; «Cuenta: Tesorería general», sí.
+ */
+function legible(campo, valor) {
+  if (valor === null || valor === undefined || valor === '') return '(vacío)';
+  if (campo.type === 'money') {
+    const n = Number(valor);
+    return Number.isFinite(n) ? `$\u00a0${n.toLocaleString('es-CL')}` : String(valor);
+  }
+  if (campo.type === 'number') {
+    const n = Number(valor);
+    return Number.isFinite(n) ? n.toLocaleString('es-CL') : String(valor);
+  }
+  if (campo.type === 'ref' && campo.ref) {
+    try {
+      const { getModule, displayOf } = require('./registry');
+      const refDef = getModule(campo.ref);
+      const fila = refDef && db.prepare(`SELECT * FROM "${refDef.name}" WHERE id = ?`).get(valor);
+      if (fila) return displayOf(refDef, fila);
+    } catch (e) {
+      /* si no se puede resolver, queda el número */
+    }
+  }
+  if (campo.type === 'boolean') return String(valor) === '1' ? 'Sí' : 'No';
+  return String(valor);
+}
+
+/**
+ * Un resumen de lo que traía un registro, para que su eliminación no quede
+ * como una línea muda: el que revisa después necesita saber qué se borró.
+ */
+function resumenDe(def, fila) {
+  return (def.listFields || [])
+    .map((nombre) => {
+      const campo = def.fields.find((f) => f.name === nombre);
+      if (!campo || campo.type === 'password' || campo.type === 'file') return null;
+      const valor = fila[nombre];
+      if (valor === null || valor === undefined || valor === '') return null;
+      return `${campo.label}: ${legible(campo, valor)}`;
+    })
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
  * Lista legible de los campos que cambiaron entre dos versiones de un
  * registro. De los campos marcados como `sensible` —los datos de salud, la
  * nota importante— solo se deja constancia de que cambiaron: su contenido no
@@ -85,8 +170,7 @@ function cambios(def, antes, despues) {
       lista.push(`${f.label}: ${nuevo ? 'actualizada' : 'borrada'}`);
       continue;
     }
-    const texto = (v) => (v === null || v === undefined || v === '' ? '(vacío)' : String(v));
-    lista.push(`${f.label}: ${texto(previo)} → ${texto(nuevo)}`);
+    lista.push(`${f.label}: ${legible(f, previo)} → ${legible(f, nuevo)}`);
   }
   return lista;
 }
@@ -97,6 +181,18 @@ function cambios(def, antes, despues) {
  */
 function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
   const iglesia = despues.iglesia_id || null;
+
+  // 0. El dinero y las llaves, en el Registro de Cambios
+  if (MODULOS_VIGILADOS.includes(def.name)) {
+    if (isNew) {
+      anotarCambio({ def, accion: 'Creación', fila: despues, usuario: user, detalle: resumenDe(def, despues) });
+    } else {
+      const lista = cambios(def, antes, datos);
+      if (lista.length) {
+        anotarCambio({ def, accion: 'Cambio', fila: despues, usuario: user, detalle: lista.join(' · ') });
+      }
+    }
+  }
 
   // 1. El propio miembro: alta y cambios de sus datos
   if (def.name === 'miembros') {
@@ -262,4 +358,14 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
   }
 }
 
-module.exports = { anotar, anotarIglesia, anotarPastor, registrarGuardado };
+/**
+ * Se llama desde el motor CRUD antes de eliminar un registro. Solo deja
+ * constancia de lo que se vigila, con un resumen de lo que traía: después de
+ * borrado ya no hay dónde ir a mirarlo.
+ */
+function registrarEliminado(def, fila, user) {
+  if (!MODULOS_VIGILADOS.includes(def.name)) return;
+  anotarCambio({ def, accion: 'Eliminación', fila, usuario: user, detalle: resumenDe(def, fila) });
+}
+
+module.exports = { anotar, anotarIglesia, anotarPastor, registrarGuardado, registrarEliminado };

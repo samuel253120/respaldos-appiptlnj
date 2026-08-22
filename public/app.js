@@ -341,6 +341,10 @@ async function boot() {
   }
 }
 function logout() {
+  // La galleta de sesión —la que deja que el navegador pida las fotos— vive
+  // en el servidor: se le avisa que la retire. Si no se alcanza a avisar, la
+  // sesión caduca sola igual.
+  fetch('/api/auth/salir', { method: 'POST' }).catch(() => {});
   TOKEN = null;
   USER = null;
   localStorage.removeItem('token');
@@ -3993,6 +3997,54 @@ function abrirImportador(m, alTerminar) {
 /* =====================================================================
  * Configuración del sistema (solo administradores)
  * ===================================================================== */
+/**
+ * Bajarse todo el sistema en un archivo.
+ *
+ * Los datos viven en un solo disco, y los discos se pierden. Acá el
+ * administrador se lleva una copia cuando quiera —la base entera y los
+ * archivos subidos— y la guarda donde le parezca.
+ */
+async function renderRespaldo(zona) {
+  if (!zona || USER.rol !== 'admin') return;
+  let info;
+  try {
+    info = await api('GET', '/respaldo/info');
+  } catch (e) {
+    return; // sin permiso o sin la ruta: no se ofrece
+  }
+
+  zona.innerHTML = `
+    <div class="card" style="margin-bottom:18px">
+      <div class="toolbar"><b>💾 Respaldo del sistema</b></div>
+      <div class="respaldo">
+        <p>
+          Se baja <b>todo</b> en un solo archivo: los registros y los documentos y fotos que se han subido.
+          Guárdelo donde quiera —su computador, un pendrive, su nube—: si algún día se pierde el servidor,
+          con esto se vuelve a levantar el sistema tal como estaba.
+        </p>
+        <div class="respaldo-datos">
+          <div><span class="mut">Registros</span><b>${tamanoLegible(info.base)}</b></div>
+          <div><span class="mut">Documentos y fotos</span><b>${fmtNumero(info.cuantos)} archivo(s) · ${tamanoLegible(info.archivos)}</b></div>
+          <div><span class="mut">Se baja como</span><b>${esc(info.nombre)}</b></div>
+        </div>
+        <div class="respaldo-acciones">
+          <a class="btn" id="btnRespaldo" href="/api/respaldo?token=${encodeURIComponent(TOKEN)}" download>⬇️ Descargar el respaldo</a>
+          <span class="mut" id="respaldoEstado"></span>
+        </div>
+        <p class="mut" style="font-size:12.5px">
+          Se comprime al vuelo, así que el archivo pesa bastante menos que eso y la descarga puede demorar
+          un poco en empezar. Hágalo cada cierto tiempo: un respaldo de hace un mes solo devuelve lo de hace un mes.
+        </p>
+      </div>
+    </div>`;
+
+  document.getElementById('btnRespaldo').addEventListener('click', () => {
+    const estado = document.getElementById('respaldoEstado');
+    estado.textContent = 'Preparando el respaldo… la descarga parte en unos segundos.';
+    setTimeout(() => { estado.textContent = ''; }, 20000);
+  });
+}
+
 async function viewConfiguracion() {
   content().innerHTML = `<div class="page-head"><h2>⚙️ Configuración del sistema</h2></div><p>Cargando…</p>`;
   let datos;
@@ -4032,9 +4084,11 @@ async function viewConfiguracion() {
         <div class="form-grid">${g.items.map(campo).join('')}</div>
       </div>`).join('')}
     <div id="cfgEstado"></div>
+    <div id="cfgRespaldo"></div>
     <div id="cfgTraspaso"></div>`;
 
-  // El traspaso desde el sistema anterior, al pie de la configuración
+  // El respaldo y el traspaso, al pie de la configuración
+  renderRespaldo(document.getElementById('cfgRespaldo'));
   renderTraspaso(document.getElementById('cfgTraspaso'));
 
   document.getElementById('cfgGuardar').addEventListener('click', async () => {

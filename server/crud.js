@@ -594,6 +594,8 @@ function buildRouter() {
             const err = def.hooks.beforeDelete(row, { user: req.user, db });
             if (err) throw new ErrorDeDatos(err);
           }
+          // Se anota antes de borrar: después ya no hay de dónde sacar qué era
+          bitacora.registrarEliminado(def, row, req.user);
           db.prepare(`DELETE FROM "${def.name}" WHERE id = ?`).run(req.params.id);
         })();
       } catch (e) {

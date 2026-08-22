@@ -14,6 +14,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const intentos = require('./intentos');
 const { db } = require('./db');
 const { can } = require('./permissions');
 const rutUtil = require('./rut');
@@ -52,9 +53,49 @@ function rutaDeCambio(req) {
   return ['/api/auth/me', '/api/auth/cambiar-password', '/api/auth/pregunta-secreta'].includes(camino);
 }
 
-function authRequired(req, res, next) {
+/**
+ * La sesión, en una galleta, para lo que el navegador pide solo.
+ *
+ * El sistema se identifica con un pase que viaja en la cabecera de cada
+ * petición, y eso sirve mientras las pide el programa. Pero una foto la pide
+ * el navegador por su cuenta —`<img src="/uploads/…">`— y ahí no hay manera de
+ * poner esa cabecera. Así que al entrar se deja el mismo pase en una galleta,
+ * que el navegador sí adjunta solo, y con ella se atienden los archivos.
+ *
+ * Va marcada para que no la pueda leer ningún programa de la página, para que
+ * no se mande a otros sitios, y —cuando se sirve por HTTPS— para que no viaje
+ * nunca en claro.
+ */
+function ponerGalleta(req, res, token) {
+  res.cookie('sesion', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: !!req.secure,
+    path: '/',
+    maxAge: 12 * 60 * 60 * 1000,
+  });
+}
+
+/** El pase que traiga la petición: por cabecera, por la dirección o en la galleta. */
+function paseDe(req) {
   const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : req.query.token;
+  if (header.startsWith('Bearer ')) return { token: header.slice(7), deGalleta: false };
+  if (req.query.token) return { token: req.query.token, deGalleta: false };
+  const galletas = String(req.headers.cookie || '')
+    .split(';')
+    .map((c) => c.trim())
+    .filter(Boolean);
+  for (const g of galletas) {
+    const corte = g.indexOf('=');
+    if (corte > 0 && g.slice(0, corte) === 'sesion') {
+      return { token: decodeURIComponent(g.slice(corte + 1)), deGalleta: true };
+    }
+  }
+  return { token: null, deGalleta: false };
+}
+
+function authRequired(req, res, next) {
+  const { token, deGalleta } = paseDe(req);
   if (!token) return res.status(401).json({ error: 'No autenticado' });
   try {
     const payload = jwt.verify(token, JWT_SECRET);
@@ -75,6 +116,9 @@ function authRequired(req, res, next) {
     }
 
     req.user = publicUser(user);
+    // Quien ya estaba trabajando cuando esto se publicó no tiene la galleta:
+    // se le deja acá, sin que tenga que volver a entrar.
+    if (!deGalleta) ponerGalleta(req, res, token);
     next();
   } catch (e) {
     return res.status(401).json({ error: 'Sesión inválida o expirada' });
@@ -108,6 +152,10 @@ const atender = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).
  * domingo con veinte personas entrando a la vez, el sistema quedaría trabado
  * casi dos segundos para todos, incluidos los que ya estaban trabajando
  * adentro. Así, ese cálculo se hace por partes y los demás siguen atendidos.
+ *
+ * Y antes de mirar nada se consulta al portero (server/intentos.js): a los
+ * pocos errores seguidos la puerta se cierra un rato, para que no se puedan
+ * probar contraseñas a máquina.
  */
 router.post('/login', atender(async (req, res) => {
   const body = req.body || {};
@@ -117,6 +165,17 @@ router.post('/login', atender(async (req, res) => {
   const password = body.password;
   if (!identificador || !password) {
     return res.status(400).json({ error: 'RUT y contraseña son requeridos' });
+  }
+
+  // Antes de mirar la clave: ¿viene errando demasiado seguido?
+  const desde = req.ip;
+  const espera = intentos.esperaQueLeFalta(identificador, desde);
+  if (espera) {
+    return res.status(429).json({
+      error:
+        `Demasiados intentos fallidos. Espere ${espera} minuto${espera === 1 ? '' : 's'} antes de volver a ` +
+        'intentarlo. Si no recuerda su contraseña, use «¿Olvidó su contraseña?».',
+    });
   }
 
   // Búsqueda por RUT normalizado (acepta con o sin puntos y guion).
@@ -129,16 +188,41 @@ router.post('/login', atender(async (req, res) => {
   }
 
   if (!user || !user.password || !(await bcrypt.compare(String(password), user.password))) {
-    return res.status(401).json({ error: 'Credenciales incorrectas' });
+    intentos.fallo(identificador, desde);
+    // No se dice si el RUT existe o no: se responde igual en los dos casos.
+    // Lo que sí se dice es cómo va con los intentos, para que quien de verdad
+    // se equivocó no se encuentre con la puerta cerrada sin haber sido avisado.
+    const cerrada = intentos.esperaQueLeFalta(identificador, desde);
+    if (cerrada) {
+      return res.status(429).json({
+        error:
+          `Credenciales incorrectas. Por los intentos seguidos, la entrada queda cerrada ${cerrada} ` +
+          `minuto${cerrada === 1 ? '' : 's'}. Si no recuerda su contraseña, use «¿Olvidó su contraseña?».`,
+      });
+    }
+    const quedan = intentos.intentosQueLeQuedan(identificador, desde);
+    return res.status(401).json({
+      error:
+        'Credenciales incorrectas' +
+        (quedan && quedan <= 2 ? `. Le queda${quedan === 1 ? '' : 'n'} ${quedan} intento${quedan === 1 ? '' : 's'} antes de que la entrada se cierre un rato` : ''),
+    });
   }
+  intentos.acierto(identificador, desde);
   if (user.activo === 0) return res.status(403).json({ error: 'El usuario está inactivo' });
 
   const aviso = bloqueoPorMantenimiento(user);
   if (aviso) return res.status(503).json({ error: aviso, mantenimiento: true });
 
   const token = jwt.sign({ id: user.id, rol: user.rol }, JWT_SECRET, { expiresIn: duracionSesion() });
+  ponerGalleta(req, res, token);
   res.json({ token, user: publicUser(user) });
 }));
+
+/** Cerrar sesión: se retira la galleta, para que el navegador deje de mandarla. */
+router.post('/salir', (req, res) => {
+  res.clearCookie('sesion', { path: '/' });
+  res.json({ ok: true });
+});
 
 router.get('/me', authRequired, (req, res) => {
   res.json({ user: req.user });

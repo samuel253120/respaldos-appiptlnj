@@ -1362,3 +1362,17 @@ a.who:hover { opacity: 0.85; }
 }
 #toast.show { opacity: 1; transform: translateY(0); }
 #toast.err { background: var(--danger); }
+
+/* Respaldo del sistema, al pie de la configuración */
+.respaldo { padding: 16px 20px 20px; }
+.respaldo p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.55; }
+.respaldo-datos {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;
+  margin-bottom: 14px;
+}
+.respaldo-datos > div {
+  background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; min-width: 0;
+}
+.respaldo-datos .mut { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.respaldo-datos b { font-size: 14px; word-break: break-word; }
+.respaldo-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }

@@ -1082,7 +1082,11 @@ URL=http://localhost:3000 RUT=11.111.111-1 CLAVE=... npm run humo
 
 Cualquier módulo nuevo queda cubierto solo: la lista de pantallas sale del propio sistema, no de un listado escrito a mano. Playwright es dependencia de desarrollo y **no viaja en la imagen de producción**.
 
-Las otras dos pruebas miran lo que la de humo no ve —cómo se porta el sistema con varias personas adentro— y están descritas en **[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)**: `npm run concurrencia` (que nadie pierda su trabajo, incluida la lista de asistencia que pasan dos) y `npm run carga` (que responda rápido). Ninguna necesita navegador.
+Las otras tres pruebas miran lo que la de humo no ve, y ninguna necesita navegador:
+
+- `npm run concurrencia` — que nadie pierda su trabajo cuando dos trabajan sobre lo mismo, incluida la lista de asistencia que pasan dos (ver *[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)*).
+- `npm run carga` — que el sistema responda rápido con mucha gente adentro.
+- `npm run seguridad` — que los archivos no se entreguen sin sesión, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, y que el registro de cambios no se pueda maquillar. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
 
 ## API REST
 
@@ -1111,10 +1115,37 @@ POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importa
 
 - Contraseñas cifradas con bcrypt: **el sistema no puede leerlas**, ni siquiera para el administrador (ver *Contraseñas*). Sesiones JWT de 12 h.
 - La contraseña que entrega el administrador **obliga a cambiarla** en el primer ingreso, y hasta entonces el servidor no deja hacer nada más.
+- **Los archivos subidos piden sesión.** Los carnets, los certificados y las fotos ya no se entregan a quien tenga el enlace: hay que estar dentro del sistema y que ese archivo pertenezca a una ficha que esa persona pueda ver. El secretario de un cuerpo no abre el carnet de un miembro de otra iglesia, aunque le reenvíen la dirección.
+- **La entrada se cierra al que insiste.** Cinco contraseñas erradas sobre un mismo RUT y hay que esperar un minuto; si insisten, cinco y después quince. Se cuenta además por dirección de internet —para frenar a quien va probando RUT tras RUT—, pero ahí el tope es mucho más alto (veinte), porque toda la iglesia sale por el mismo wifi y nadie tiene por qué quedar afuera por el despiste del de al lado.
 - La recuperación por pregunta se **bloquea tras 5 intentos** fallidos.
 - Permisos verificados **en el servidor** en cada petición (la interfaz solo refleja lo permitido).
 - Alcance por iglesia aplicado en el servidor (lectura y escritura).
 - Protecciones: no eliminar el propio usuario ni el último administrador; correo de usuario único.
+
+> ⚠️ **Revise que `JWT_SECRET` esté configurada** en su servidor (en Railway: *Variables*). Es la llave con que se firman las sesiones. Si falta, el sistema usa una de reserva que está escrita en el código y que, por lo tanto, conoce cualquiera que haya visto el repositorio.
+
+### Respaldo: bajarse todo en un archivo 💾
+
+Los datos viven en un solo disco, y los discos se pierden. En **Configuración**, al pie, el administrador tiene **⬇️ Descargar el respaldo**: se baja un solo archivo con **todo** —la base de datos completa y los documentos y fotos que se han subido— para guardarlo donde quiera.
+
+La copia de la base no se hace copiando el archivo por debajo (mientras alguien guarda, esa copia saldría a medias), sino con la copia en caliente de SQLite: sale entera y coherente aunque el sistema se esté usando en ese momento. Se comprime al vuelo, así que el archivo pesa bastante menos de lo que dice el panel y no hace falta que quepa antes en el servidor.
+
+Para restaurarlo: descomprimir el paquete y dejar `iglesias.db` y la carpeta `uploads/` en la carpeta de datos del sistema.
+
+### Registro de Cambios: quién tocó el dinero 🧾
+
+Los miembros, las iglesias y los pastores tienen su **historial**, que cuenta su vida en la iglesia. El **Registro de Cambios** es otra cosa: está para responder *«¿quién cambió este monto?»* sin que quede en la palabra de nadie.
+
+Anota cada **creación, cambio y eliminación** en lo que no admite dudas —tesorería, cuentas, traspasos, cuotas y ayudas sociales— y también en los **usuarios y sus permisos**. De cada uno queda la fecha y la hora, quién fue, qué registro era y qué cambió exactamente:
+
+| | |
+|---|---|
+| *Cambio* | Monto: $ 50.000 → $ 1.250.000 |
+| *Eliminación* | Fecha: 2026-08-22 · Cuenta: Tesorería general · Tipo: Ingreso · Monto: $ 1.250.000 |
+
+Se escribe solo y **no se puede agregar, corregir ni borrar a mano** —el sistema lo impide, incluso al administrador—: un registro que se puede maquillar no sirve para lo que existe. Lo ven el administrador, el pastor y el tesorero; no aparece para el secretario ni para quien solo consulta.
+
+No están todos los módulos a propósito: anotar cada marca de asistencia llenaría el registro de ruido y taparía justo lo que se quiere encontrar.
 
 ## Varias personas trabajando a la vez 👥
 
@@ -1164,8 +1195,9 @@ Lo que lo hace posible:
 ### Comprobarlo
 
 ```bash
-npm run humo            # las 30 pantallas abren bien, en computador y en teléfono
+npm run humo            # todas las pantallas abren bien, en computador y en teléfono
 npm run concurrencia    # dos personas sobre la misma ficha y sobre la misma lista
+npm run seguridad       # lo que tiene que estar cerrado, está cerrado
 npm run carga           # cuánto demora cada cosa con varios usuarios a la vez
 
 USUARIOS=40 SEGUNDOS=20 npm run carga

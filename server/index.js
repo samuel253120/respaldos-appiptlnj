@@ -22,6 +22,8 @@ const { router: importarRouter } = require('./importar');
 const { router: configuracionRouter } = require('./configuracion');
 const ajustes = require('./ajustes');
 const alcance = require('./alcance');
+const archivos = require('./archivos');
+const respaldo = require('./respaldo');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
@@ -375,7 +377,45 @@ app.post('/api/upload', authRequired, upload.single('archivo'), (req, res) => {
   res.json({ filename: req.file.filename, original: req.file.originalname, url: `/uploads/${req.file.filename}` });
 });
 
-app.use('/uploads', express.static(UPLOADS_DIR));
+/**
+ * Los archivos subidos: fotos, carnets, certificados, actas escaneadas.
+ *
+ * Antes se entregaban a quien los pidiera. Ahora hay que tener sesión abierta
+ * y que el archivo pertenezca a algo que esa persona pueda ver (ver
+ * server/archivos.js). Se sirven con caché privada: el navegador de cada uno
+ * guarda los suyos —una foto no cambia—, pero ningún intermediario los
+ * comparte con otro.
+ */
+app.get('/uploads/:archivo', authRequired, (req, res) => {
+  const nombre = path.basename(String(req.params.archivo)); // nunca salir de la carpeta
+  const permiso = archivos.puedeVer(nombre, req.user);
+  if (!permiso.ok) return res.status(403).json({ error: permiso.motivo });
+  res.sendFile(path.join(UPLOADS_DIR, nombre), { headers: { 'Cache-Control': 'private, max-age=86400' } }, (err) => {
+    if (err && !res.headersSent) res.status(404).json({ error: 'Archivo no encontrado' });
+  });
+});
+
+// ---------- Respaldo: bajarse todo el sistema en un archivo ----------
+/** Solo el administrador: el respaldo lleva absolutamente todo. */
+function soloAdministrador(req, res, next) {
+  if (req.user.rol !== 'admin') {
+    return res.status(403).json({ error: 'Solo el administrador puede descargar el respaldo del sistema' });
+  }
+  next();
+}
+
+app.get('/api/respaldo/info', authRequired, soloAdministrador, (req, res) => {
+  res.json({ ...respaldo.tamano(), nombre: respaldo.nombreDelPaquete() });
+});
+
+app.get('/api/respaldo', authRequired, soloAdministrador, async (req, res) => {
+  try {
+    await respaldo.enviar(res);
+  } catch (e) {
+    console.error('⚠️  No se pudo armar el respaldo:', e);
+    if (!res.headersSent) res.status(500).json({ error: `No se pudo armar el respaldo: ${e.message}` });
+  }
+});
 
 // ---------- Importación masiva desde archivos ----------
 app.use('/api/importar', importarRouter);

@@ -183,7 +183,9 @@ function migrate() {
  *   · el campo de fecha del módulo y el campo por el que ordena su listado;
  *   · la pareja iglesia + fecha, que es como se pide casi siempre;
  *   · los campos únicos (el RUT, el correo), para que comprobar que no se
- *     repiten sea instantáneo.
+ *     repiten sea instantáneo;
+ *   · las columnas de archivo, por las que se averigua de qué ficha es una
+ *     foto o un documento cuando alguien pide abrirlo.
  *
  * Los campos únicos llevan índice, no restricción: si en los datos ya
  * traídos de antes hay un repetido, el sistema lo señala al guardar en vez de
@@ -208,6 +210,9 @@ function indexar() {
     for (const f of def.fields) {
       if (f.type === 'ref' && hay(f.name)) crear(def.name, `ix_${def.name}_${f.name}`, `"${f.name}"`);
       if ((f.unique || f.type === 'rut') && hay(f.name)) crear(def.name, `ix_${def.name}_${f.name}_unico`, `lower("${f.name}")`);
+      // Las columnas de archivo: por ellas se averigua de qué ficha es una
+      // foto o un documento, para saber quién puede abrirlo (ver archivos.js)
+      if (f.type === 'file' && hay(f.name)) crear(def.name, `ix_${def.name}_${f.name}`, `"${f.name}"`);
     }
 
     const fecha = def.dateField && hay(def.dateField) ? def.dateField : null;
