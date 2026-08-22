@@ -138,7 +138,10 @@ module.exports = {
       if (!cuerpoId) return res.json([]);
       const cuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
       if (!cuerpo) return res.json([]);
-      if (!require('../alcance').alcanzaIglesia(req.user, cuerpo.iglesia_id)) {
+      const alcance = require('../alcance');
+      // La iglesia y el cuerpo: quien tiene asignado un cuerpo no puede
+      // listar la gente de otro, aunque sea de la misma iglesia.
+      if (!alcance.alcanzaIglesia(req.user, cuerpo.iglesia_id) || !alcance.alcanzaCuerpo(req.user, cuerpoId)) {
         return res.status(403).json({ error: 'Ese cuerpo está fuera de lo que tiene asignado' });
       }
       res.json(integrantesDeCuerpo(db, cuerpoId));

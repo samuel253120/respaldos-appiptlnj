@@ -273,6 +273,15 @@ module.exports = {
 
     /** Marcar que alguien pagó su cuota de un mes, desde la propia planilla. */
     router.post('/cuerpos/:id(\\d+)/cuotas', requirePerm('cuotas_cuerpo', 'create'), (req, res) => {
+      const cuerpo = cuerpoDelUsuario(req, res);
+      if (!cuerpo) return;
+      // Y que el integrante sea de este cuerpo: si no, se estaría cobrando en
+      // el libro de uno la cuota de otro.
+      const suyo = db
+        .prepare('SELECT id FROM integrantes_cuerpo WHERE id = ? AND cuerpo_id = ?')
+        .get(req.body && req.body.integrante_id, cuerpo.id);
+      if (!suyo) return res.status(404).json({ error: 'Esa persona no es integrante de este cuerpo.' });
+
       const { registrarPago } = require('../cuotas');
       const r = registrarPago(db, {
         integranteId: req.body && req.body.integrante_id,
@@ -286,6 +295,7 @@ module.exports = {
 
     /** Y deshacerlo, cuando se marcó por equivocación. */
     router.delete('/cuerpos/:id(\\d+)/cuotas/:cuota(\\d+)', requirePerm('cuotas_cuerpo', 'delete'), (req, res) => {
+      if (!cuerpoDelUsuario(req, res)) return;
       const { borrarPago } = require('../cuotas');
       const cuota = db.prepare('SELECT * FROM cuotas_cuerpo WHERE id = ? AND cuerpo_id = ?')
         .get(req.params.cuota, req.params.id);

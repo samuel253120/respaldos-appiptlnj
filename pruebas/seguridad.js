@@ -13,7 +13,9 @@
  *   3. El respaldo se baja completo y la base que trae adentro está sana.
  *   4. El registro de cambios anota el dinero y no se puede maquillar.
  *   5. El alcance por cuerpo se respeta aunque se escriba la dirección a mano:
- *      quien tiene un cuerpo asignado no alcanza lo de otro.
+ *      quien tiene un cuerpo asignado no alcanza lo de otro —ni su gente, ni
+ *      sus cuotas, ni su cobro—.
+ *   6. Elegir con qué iglesia trabajar nunca amplía lo asignado.
  *
  * Cómo se corre, con el sistema andando:
  *
@@ -207,6 +209,9 @@ async function entrar(rut = RUT, clave = CLAVE) {
     const creado = await api('POST', '/api/usuarios', {
       rut: rutSuyo, nombre: 'Prueba De Alcance', rol: 'secretario',
       password: 'prueba1234', cuerpos: [cuerpos[0].id],
+      // También una iglesia: sin ella alcanzaría todas y no habría ajena con
+      // la que probar que elegir no amplía nada.
+      iglesias: cuerpos[0].iglesia_id ? [cuerpos[0].iglesia_id] : [],
     });
     const suyoId = creado.datos && creado.datos.id;
     if (!suyoId) {
@@ -221,6 +226,42 @@ async function entrar(rut = RUT, clave = CLAVE) {
       revisar('y no los de otro', ajeno.estado === 403, `respondió ${ajeno.estado}`);
       const cuotasAjenas = await suyo('GET', `/api/cuerpos/${cuerpos[1].id}/cuotas`);
       revisar('ni sus cuotas', cuotasAjenas.estado === 403, `respondió ${cuotasAjenas.estado}`);
+
+      // Cobrar y listar gente son las dos puertas por las que se colaba
+      const genteAjena = await suyo('GET', `/api/directivas/integrantes?cuerpo_id=${cuerpos[1].id}`);
+      revisar('ni su gente desde el selector de directivas', genteAjena.estado === 403, `respondió ${genteAjena.estado}`);
+
+      const deEllos = (await api('GET', `/api/cuerpos/${cuerpos[1].id}/integrantes`)).datos.integrantes || [];
+      if (deEllos.length) {
+        const cobrar = await suyo('POST', `/api/cuerpos/${cuerpos[1].id}/cuotas`, {
+          integrante_id: deEllos[0].id, anio: 2026, mes: 12,
+        });
+        revisar('ni cobrarles una cuota', cobrar.estado === 403, `respondió ${cobrar.estado}`);
+
+        const colar = await suyo('POST', `/api/cuerpos/${cuerpos[0].id}/cuotas`, {
+          integrante_id: deEllos[0].id, anio: 2026, mes: 12,
+        });
+        // Da lo mismo si lo frena el permiso o el alcance: lo que importa es
+        // que no entre en el libro de un cuerpo que no es el suyo.
+        revisar('ni colar a uno de ellos en el libro del suyo', [403, 404].includes(colar.estado), `respondió ${colar.estado}`);
+      }
+
+      /* 6 · Elegir iglesia no amplía lo asignado --------------------------- */
+      console.log('\n6 · Elegir con qué iglesia trabajar');
+      const todas = (await api('GET', '/api/iglesias?page=1&limit=50')).datos.rows || [];
+      const suyaId = (await suyo('GET', '/api/meta')).datos.user.iglesias_disponibles.map((i) => i.id);
+      const ajenaIglesia = todas.find((i) => !suyaId.includes(i.id));
+      if (ajenaIglesia) {
+        const intento = await suyo('PUT', '/api/auth/iglesias-de-trabajo', { iglesias: [ajenaIglesia.id] });
+        revisar(
+          'elegir una iglesia que no le tocó no le sirve de nada',
+          intento.estado === 200 && (intento.datos.iglesias || []).length === 0,
+          JSON.stringify(intento.datos.iglesias)
+        );
+      } else {
+        console.log('   ℹ️  ese usuario alcanza todas las iglesias: no hay ajena con la que probar');
+      }
+
       await api('DELETE', `/api/usuarios/${suyoId}`);
     }
   }

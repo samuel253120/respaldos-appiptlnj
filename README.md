@@ -1119,7 +1119,7 @@ Las otras tres pruebas miran lo que la de humo no ve, y ninguna necesita navegad
 
 - `npm run concurrencia` — que nadie pierda su trabajo cuando dos trabajan sobre lo mismo, incluida la lista de asistencia que pasan dos (ver *[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)*).
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro.
-- `npm run seguridad` — que los archivos no se entreguen sin sesión, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, que el registro de cambios no se pueda maquillar y que el alcance por cuerpo se respete aunque se escriba la dirección a mano. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
+- `npm run seguridad` — que los archivos no se entreguen sin sesión, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, que el registro de cambios no se pueda maquillar, que el alcance por cuerpo se respete aunque se escriba la dirección a mano —su gente, sus cuotas y su cobro— y que elegir con qué iglesia trabajar nunca amplíe lo asignado. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
 
 ## API REST
 
