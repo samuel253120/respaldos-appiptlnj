@@ -155,10 +155,17 @@ async function entrar(rut = RUT, clave = CLAVE) {
       const copia = new Base(path.join(carpeta, 'iglesias.db'), { readonly: true });
       const sana = copia.pragma('integrity_check')[0].integrity_check === 'ok';
       const cuantos = copia.prepare('SELECT COUNT(*) AS c FROM miembros').get().c;
+      // Lo que ve quien corre la prueba puede estar acotado a sus iglesias; el
+      // respaldo, en cambio, lleva la base entera. Así que no tienen por qué
+      // coincidir: lo que no puede pasar es que el respaldo traiga de menos.
       const aqui = (await api('GET', '/api/miembros?page=1&limit=1')).datos.total;
       copia.close();
       revisar('la base del respaldo está sana', sana);
-      revisar('y trae todos los miembros', cuantos === aqui, `el respaldo trae ${cuantos} y el sistema tiene ${aqui}`);
+      revisar(
+        'y trae la base entera, no un pedazo',
+        cuantos > 0 && cuantos >= aqui,
+        `el respaldo trae ${cuantos} miembro(s) y quien lo pidió alcanza a ver ${aqui}`
+      );
     } catch (e) {
       revisar('la base del respaldo se puede abrir', false, e.message);
     }

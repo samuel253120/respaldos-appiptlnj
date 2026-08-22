@@ -767,6 +767,92 @@ function cargosDePastores() {
 
 
 /**
+ * El administrador general de la organización.
+ *
+ * Es quien responde por todo el sistema y no lo acota nada: alcanza todas las
+ * iglesias, todos los cuerpos y todas las acciones. En esta organización ese
+ * lugar lo ocupa el RUT de más abajo.
+ *
+ * Si esa cuenta todavía no existe, se crea con la contraseña inicial del
+ * sistema y con la obligación de cambiarla al entrar, igual que cualquier
+ * cuenta nueva. Si ya existe, no se le toca la contraseña: solo se le quita
+ * lo que la estuviera acotando —las iglesias y los cuerpos asignados, su
+ * perfil de permisos y sus excepciones— y se le deja el rol de administrador.
+ *
+ * El nombre se toma de su ficha de miembro o de su ficha de Pastores / Guías,
+ * si la tiene, y la cuenta queda enlazada a ella.
+ *
+ * Se hace una sola vez: de ahí en adelante los usuarios se administran desde
+ * el propio sistema, como corresponde. La cuenta de fábrica no se toca, para
+ * no quedarse sin puerta de entrada antes de comprobar que la nueva funciona.
+ */
+const ADMINISTRADOR_GENERAL = '3231140-7';
+
+function administradorGeneral() {
+  if (yaAplicada('administrador_general')) return;
+  const columnas = new Set(db.prepare('PRAGMA table_info("usuarios")').all().map((c) => c.name));
+  if (!columnas.has('rut') || !columnas.has('rol')) return;
+  marcarAplicada('administrador_general');
+
+  const nombres = require('./nombres');
+  const ficha = db.prepare('SELECT id, nombres, apellidos FROM miembros WHERE rut = ?').get(ADMINISTRADOR_GENERAL);
+  const pastor = ficha
+    ? null
+    : db.prepare('SELECT nombres, apellidos FROM pastores WHERE rut = ?').get(ADMINISTRADOR_GENERAL);
+  const comoSeLlama = ficha
+    ? nombres.paraMostrar(ficha.nombres, ficha.apellidos)
+    : pastor
+      ? nombres.paraMostrar(pastor.nombres, pastor.apellidos)
+      : 'Administrador General';
+
+  let cuenta = db.prepare('SELECT * FROM usuarios WHERE rut = ?').get(ADMINISTRADOR_GENERAL);
+  if (!cuenta) {
+    const bcrypt = require('bcryptjs');
+    const inicial = require('./claves').inicial();
+    db.prepare(
+      `INSERT INTO usuarios (rut, nombre, password, rol, activo, password_origen, debe_cambiar_password)
+       VALUES (?, ?, ?, 'admin', 1, 'inicial', 1)`
+    ).run(ADMINISTRADOR_GENERAL, comoSeLlama, bcrypt.hashSync(inicial, 10));
+    cuenta = db.prepare('SELECT * FROM usuarios WHERE rut = ?').get(ADMINISTRADOR_GENERAL);
+    console.log(
+      `👤 Administrador general creado: RUT ${ADMINISTRADOR_GENERAL} / ${inicial} ` +
+        '(al entrar se le pedirá cambiarla).'
+    );
+  }
+
+  // Se le quita todo lo que lo acote y se le deja el rol que corresponde
+  const deja = [];
+  const valores = [];
+  const poner = (columna, valor) => {
+    if (!columnas.has(columna)) return;
+    if ((cuenta[columna] || null) === (valor || null)) return;
+    deja.push(`"${columna}" = ?`);
+    valores.push(valor);
+  };
+  poner('rol', 'admin');
+  poner('iglesias', '[]');
+  poner('cuerpos', '[]');
+  poner('iglesia_id', null);
+  poner('iglesias_trabajando', '[]');
+  poner('perfil_id', null);
+  poner('permisos', null);
+  poner('activo', 1);
+  if (ficha && columnas.has('miembro_id') && !cuenta.miembro_id) poner('miembro_id', ficha.id);
+  if (comoSeLlama !== 'Administrador General') poner('nombre', comoSeLlama);
+
+  if (deja.length) {
+    db.prepare(`UPDATE usuarios SET ${deja.join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`)
+      .run(...valores, cuenta.id);
+  }
+  console.log(
+    `👑 Administrador general: ${comoSeLlama} (RUT ${ADMINISTRADOR_GENERAL}) queda con acceso a todo, ` +
+      'sin iglesias ni cuerpos que lo acoten.\n' +
+      '   La cuenta de fábrica sigue como estaba: desactívela usted cuando compruebe que entra con esta.'
+  );
+}
+
+
+/**
  * «Iglesia principal» decía dos cosas a la vez, y una no le correspondía.
  *
  * Su ayuda siempre dijo lo que es: con cuál trabaja por omisión, la que se
@@ -1272,6 +1358,7 @@ function ejecutarMigraciones() {
     ['mayúsculas de los cargos', cargosConMayuscula],
     ['cargos de los pastores', cargosDePastores],
     ['la iglesia principal no es una asignación', iglesiaPrincipalNoEsAsignacion],
+    ['administrador general', administradorGeneral],
     ['categorías de tesorería', categoriasDeTesoreria],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],

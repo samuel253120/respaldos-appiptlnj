@@ -128,6 +128,20 @@ Roles disponibles (editables en `server/permissions.js`):
 
 **Iglesia local a la vista**: la barra superior y el panel de control muestran siempre en qué congregación se está trabajando — la asignada al usuario o, si administra varias, "Todas las iglesias". Cuando el sistema administra una sola iglesia, se muestra su nombre aunque el usuario no tenga ninguna asignada.
 
+### El administrador general 👑
+
+Hay una cuenta que responde por todo el sistema y a la que **no la acota nada**: alcanza todas las iglesias, todos los cuerpos y todas las acciones. En esta organización ese lugar lo ocupa el **RUT 3.231.140-7**.
+
+Al actualizar, el sistema deja esa cuenta lista sin que haya que tocar nada:
+
+- Si **no existía**, la crea con la contraseña inicial del sistema y con la obligación de cambiarla al entrar, igual que cualquier cuenta nueva. El RUT y esa contraseña se avisan por consola al iniciar.
+- Si **ya existía**, no se le toca la contraseña: solo se le quita lo que la estuviera acotando —las iglesias y los cuerpos asignados, la iglesia principal, el perfil de permisos y sus excepciones— y se le deja el rol de *Administrador*.
+- El **nombre** se toma de su ficha de miembro o de su ficha de Pastores / Guías, si la tiene, y la cuenta queda enlazada a ella.
+
+Esto se hace **una sola vez**. De ahí en adelante la cuenta se administra desde el propio sistema, como cualquier otra: si algún día se le asigna una iglesia, el sistema respeta esa decisión y no vuelve a intervenir.
+
+> La cuenta de fábrica (`11.111.111-1`) **queda como estaba, a propósito**: así nadie se queda sin puerta de entrada antes de comprobar que la nueva funciona. Desactívela usted, desde Usuarios, una vez que haya entrado con el administrador general.
+
 ### Designar a un miembro como usuario 🔐
 
 Al pie de la ficha de cualquier miembro está **🔐 Acceso al sistema**. Si todavía no tiene cuenta, el administrador la crea con un botón: el sistema toma sus mismos datos —RUT, nombre, correo, teléfono e iglesia— y entrega una **contraseña provisoria que se muestra una sola vez**, para pasársela a la persona. Queda con rol *Solo consulta*, y desde ahí se le ajusta lo que corresponda.
@@ -1115,6 +1129,7 @@ Como el sistema arma solas todas sus pantallas, un error en el motor las rompe t
 ```bash
 npm install && npx playwright install chromium          # una sola vez
 URL=http://localhost:3000 RUT=11.111.111-1 CLAVE=... npm run humo
+CHROMIUM=/ruta/al/chrome npm run humo                   # si ya hay un Chromium instalado
 ```
 
 Cualquier módulo nuevo queda cubierto solo: la lista de pantallas sale del propio sistema, no de un listado escrito a mano. Playwright es dependencia de desarrollo y **no viaja en la imagen de producción**.
