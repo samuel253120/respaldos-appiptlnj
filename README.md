@@ -1076,7 +1076,7 @@ URL=http://localhost:3000 RUT=11.111.111-1 CLAVE=... npm run humo
 
 Cualquier módulo nuevo queda cubierto solo: la lista de pantallas sale del propio sistema, no de un listado escrito a mano. Playwright es dependencia de desarrollo y **no viaja en la imagen de producción**.
 
-Las otras dos pruebas miran lo que la de humo no ve —cómo se porta el sistema con varias personas adentro— y están descritas en **[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)**: `npm run concurrencia` (que nadie pierda su trabajo) y `npm run carga` (que responda rápido). Ninguna necesita navegador.
+Las otras dos pruebas miran lo que la de humo no ve —cómo se porta el sistema con varias personas adentro— y están descritas en **[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)**: `npm run concurrencia` (que nadie pierda su trabajo, incluida la lista de asistencia que pasan dos) y `npm run carga` (que responda rápido). Ninguna necesita navegador.
 
 ## API REST
 
@@ -1125,7 +1125,15 @@ Cuando dos personas abren la **misma ficha** y las dos guardan, el segundo guard
 
 Cada guardado, además, entra **entero o no entra**: la ficha, lo que su módulo haga después (los movimientos de tesorería de una ofrenda, las cuotas de un integrante) y el historial quedan en un solo acto. Si algo falla a mitad de camino, no queda nada a medias.
 
-Al pasar lista, cada persona marca **solo a los integrantes de los cuerpos que tiene asignados**, aunque la actividad convoque a varios: dos secretarios pueden pasar lista de la misma actividad al mismo tiempo sin tocar lo del otro.
+### Dos personas pasando la misma lista
+
+Es lo que más se da un domingo, y tiene su propia regla: **al guardar se mandan solo las marcas que esa persona cambió**, nunca la lista entera. Si se mandara completa, quien la abrió antes borraría en blanco todo lo que otro hubiera marcado mientras tanto —dos secretarios pasando la misma lista, o la misma persona con el teléfono y el computador abiertos—.
+
+Además, cada guardado devuelve **cómo quedó la lista**, y la pantalla se pone al día con lo que marcaron los demás sin tocar lo que uno tiene a medio marcar. Abajo se avisa: *«Guardado a las 10:42 · 20 marca(s) de otra persona»*. Lo mismo vale para el respaldo que queda en el teléfono cuando se corta el internet: guarda solo el trabajo de esa persona, no una foto vieja de la lista.
+
+Cuando dos marcan **a la misma persona**, vale la última: en asistencia esa es la corrección, no un choque.
+
+Y cada uno marca **solo a los integrantes de los cuerpos que tiene asignados**, aunque la actividad convoque a varios.
 
 ### Que el sistema responda
 
@@ -1151,7 +1159,7 @@ Lo que lo hace posible:
 
 ```bash
 npm run humo            # las 30 pantallas abren bien, en computador y en teléfono
-npm run concurrencia    # dos personas sobre la misma ficha: ninguna pierde lo suyo
+npm run concurrencia    # dos personas sobre la misma ficha y sobre la misma lista
 npm run carga           # cuánto demora cada cosa con varios usuarios a la vez
 
 USUARIOS=40 SEGUNDOS=20 npm run carga

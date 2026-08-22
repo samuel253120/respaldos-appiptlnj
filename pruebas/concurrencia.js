@@ -13,6 +13,9 @@
  *   3. Un guardado que el sistema rechaza no deja nada a medias.
  *   4. Veinte fichas creadas en el mismo instante quedan las veinte, cada una
  *      con su número, sin repetirse ni perderse.
+ *   5. Dos secretarios pasando la misma lista: las marcas de los dos quedan.
+ *      Cada uno manda solo lo que él marcó, y el guardado le devuelve cómo
+ *      quedó la lista para que vea lo del otro.
  *
  * Cómo se corre, con el sistema andando:
  *
@@ -148,6 +151,69 @@ async function entrar() {
   revisar('y las veinte están en el listado', quedaron.total === 20, `el listado trae ${quedaron.total}`);
 
   for (const c of buenas) await ana('DELETE', `/api/inventarios/${c.datos.id}`); // se limpia lo de la prueba
+
+  /* 5 · Dos secretarios pasando la misma lista ---------------------------- */
+  console.log('\n5 · Dos personas pasan la misma lista de asistencia');
+  // Se trabaja sobre una actividad propia de la prueba, que se borra al final:
+  // así no se toca ninguna asistencia de verdad.
+  const integrante = (await ana('GET', '/api/integrantes_cuerpo?page=1&limit=1')).datos.rows[0];
+  const actividad = integrante
+    ? await ana('POST', '/api/asistencias', {
+        fecha: new Date().toISOString().slice(0, 10),
+        tipo_reunion: 'Servicio General',
+        cuerpos: [integrante.cuerpo_id],
+        nombre: `Prueba de convivencia ${Date.now()}`,
+        iglesia_id: iglesiaId,
+      })
+    : null;
+  const actId = actividad && actividad.datos && actividad.datos.id;
+
+  if (!actId) {
+    revisar('se pudo crear una actividad de prueba', false, JSON.stringify(actividad && actividad.datos).slice(0, 200));
+  } else {
+    const gente = (await ana('GET', `/api/asistencias/${actId}/lista`)).datos.personas;
+    // Los dos abren la lista al mismo tiempo, los dos la ven en blanco
+    const deLuis = gente.slice(0, 10);
+    const deAna = gente.slice(10, 13);
+
+    if (deAna.length < 3) {
+      revisar('el cuerpo de prueba tiene gente suficiente', false, `solo ${gente.length} integrante(s)`);
+    } else {
+      // Luis marca lo suyo y guarda; manda SOLO lo que él marcó
+      const g1 = await luis('POST', `/api/asistencias/${actId}/lista`, {
+        marcas: deLuis.map((p) => ({ miembro_id: p.miembro_id, estado: 'Presente' })),
+      });
+      revisar('Luis marca a diez y los guarda', g1.estado === 200 && g1.datos.guardadas === 10);
+
+      // Ana, con su pantalla de antes (todos en blanco), marca a otros tres
+      const g2 = await ana('POST', `/api/asistencias/${actId}/lista`, {
+        marcas: deAna.map((p) => ({ miembro_id: p.miembro_id, estado: 'Ausente' })),
+      });
+      revisar('Ana marca a otros tres y los guarda', g2.estado === 200 && g2.datos.guardadas === 3);
+
+      const quedaron = (await ana('GET', `/api/asistencias/${actId}/lista`)).datos.personas.filter((p) => p.estado);
+      const presentes = quedaron.filter((p) => p.estado === 'Presente').length;
+      const ausentes = quedaron.filter((p) => p.estado === 'Ausente').length;
+      revisar('las diez marcas de Luis siguen ahí', presentes === 10, `quedaron ${presentes} de 10`);
+      revisar('y las tres de Ana también', ausentes === 3, `quedaron ${ausentes} de 3`);
+      revisar(
+        'al guardar, a Ana se le devuelve la lista al día para ver lo de Luis',
+        Array.isArray(g2.datos.marcas) && g2.datos.marcas.filter((m) => m.estado === 'Presente').length === 10
+      );
+
+      // Y desmarcar sigue funcionando: es una decisión, no un descuido
+      const desmarca = await ana('POST', `/api/asistencias/${actId}/lista`, {
+        marcas: [{ miembro_id: deAna[0].miembro_id, estado: null }],
+      });
+      const trasDesmarcar = (await ana('GET', `/api/asistencias/${actId}/lista`)).datos.personas.filter((p) => p.estado);
+      revisar(
+        'quien desmarca a alguien a propósito, lo desmarca',
+        desmarca.estado === 200 && trasDesmarcar.length === 12,
+        `quedaron ${trasDesmarcar.length} marcas, se esperaban 12`
+      );
+    }
+    await ana('DELETE', `/api/asistencias/${actId}`); // se limpia la actividad de la prueba
+  }
 
   console.log(
     fallas

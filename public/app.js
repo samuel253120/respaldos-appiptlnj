@@ -5291,6 +5291,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   // Lo que quedó marcado sin guardar en este teléfono manda sobre lo guardado
   const borrador = puedeEditar ? leerBorrador(CLAVE) : null;
   let recuperadas = 0;
+  const recuperadasIds = [];
   if (borrador) {
     for (const p of datos.personas) {
       const b = borrador[p.miembro_id];
@@ -5302,6 +5303,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
       p.estado = b.estado || null;
       p.motivo = b.motivo || null;
       p.detalle = b.detalle || null;
+      recuperadasIds.push(p.miembro_id); // quedaron sin guardar: son suyas
       recuperadas++;
     }
     if (!recuperadas) borrarBorrador(CLAVE);
@@ -5379,6 +5381,18 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   if (!lista) return;
 
   const filas = () => [...lista.querySelectorAll('li[data-id]')];
+
+  /**
+   * A quiénes tocó esta persona desde que abrió la lista.
+   *
+   * Es lo único que se manda al guardar. La pantalla es una foto del momento
+   * en que se abrió, y a una lista la pueden estar pasando dos personas a la
+   * vez —o la misma con el teléfono y el computador—: si se mandara la lista
+   * entera, las filas que uno nunca tocó irían en blanco y borrarían lo que
+   * el otro acababa de marcar.
+   */
+  const tocadas = new Set(recuperadasIds);
+
   const marcasDe = () => filas().map((li) => {
     const on = li.querySelector('.pl-b.on');
     return {
@@ -5389,8 +5403,11 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     };
   });
 
-  /** Justificaciones a las que todavía les falta el motivo o el detalle. */
-  const incompletas = () => marcasDe().filter(
+  /** Lo que se manda al guardar: únicamente lo que esta persona cambió. */
+  const marcasTocadas = () => marcasDe().filter((m) => tocadas.has(m.miembro_id));
+
+  /** Justificaciones suyas a las que todavía les falta el motivo o el detalle. */
+  const incompletas = () => marcasTocadas().filter(
     (m) => m.estado === 'Justificado' && (!m.motivo || (CON_DETALLE.includes(m.motivo) && !String(m.detalle || '').trim()))
   ).length;
 
@@ -5424,7 +5441,46 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     return cuenta;
   };
 
+  /**
+   * Pone la pantalla al día con lo que hay guardado, sin tocar las filas que
+   * esta persona tiene a medio marcar: lo suyo manda sobre lo que llegue.
+   */
+  const ponerseAlDia = (marcas) => {
+    if (!Array.isArray(marcas)) return;
+    const porId = new Map(marcas.map((m) => [Number(m.miembro_id), m]));
+    let ajenas = 0;
+    for (const li of filas()) {
+      const id = Number(li.dataset.id);
+      if (tocadas.has(id)) continue; // lo que esta persona está marcando no se toca
+      const m = porId.get(id) || {};
+      const estabaEn = li.dataset.estado || '';
+      li.querySelectorAll('.pl-b').forEach((b) => b.classList.toggle('on', b.dataset.estado === m.estado));
+      li.querySelector('.pl-motivo').value = m.motivo || '';
+      li.querySelector('.pl-detalle').value = m.detalle || '';
+      pintarFila(li);
+      if ((m.estado || '') !== estabaEn) ajenas++;
+    }
+    if (ajenas) resumen();
+    return ajenas;
+  };
+
   const guardar = async (automatico) => {
+    const mias = marcasTocadas();
+    if (!mias.length) {
+      // Nada que mandar. Si lo pidió a mano, al menos se le muestra cómo va la
+      // lista con lo que hayan marcado los demás.
+      if (!automatico) {
+        try {
+          const al = await api('GET', `/asistencias/${asistenciaId}/lista`);
+          const ajenas = ponerseAlDia(al.personas || []);
+          pintarEstado(ajenas ? `Al día: ${ajenas} marca(s) de otra persona` : 'No hay cambios suyos que guardar', 'ok-texto');
+        } catch (e) {
+          pintarEstado(e.message, 'aviso-texto');
+        }
+      }
+      return;
+    }
+
     const faltan = incompletas();
     if (faltan) {
       pintarEstado(`Falta el motivo de ${faltan} justificación(es)`, 'aviso-texto');
@@ -5434,11 +5490,16 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     if (btn) btn.disabled = true;
     pintarEstado('Guardando…');
     try {
-      const r = await api('POST', `/asistencias/${asistenciaId}/lista`, { marcas: marcasDe() });
+      const r = await api('POST', `/asistencias/${asistenciaId}/lista`, { marcas: mias });
       borrarBorrador(CLAVE);
       sinGuardar = false;
+      tocadas.clear(); // ya están guardadas: dejan de ser "lo suyo sin mandar"
+      const ajenas = ponerseAlDia(r.marcas);
       const hora = new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
-      pintarEstado(`Guardado a las ${hora}`, 'ok-texto');
+      pintarEstado(
+        ajenas ? `Guardado a las ${hora} · ${ajenas} marca(s) de otra persona` : `Guardado a las ${hora}`,
+        'ok-texto'
+      );
       if (alGuardar) alGuardar(r);
       if (!automatico) {
         toast(`Lista guardada: ${r.presentes} presentes, ${r.ausentes} ausentes, ${r.justificados} justificados`);
@@ -5451,11 +5512,21 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     }
   };
 
-  /** Cada cambio queda en el teléfono al instante y se guarda solo al ratito. */
-  const cambio = () => {
+  /**
+   * Cada cambio queda en el teléfono al instante y se guarda solo al ratito.
+   *
+   * Se anota a quién se tocó, porque es lo único que se manda al guardar y lo
+   * único que se conserva en el borrador: así, si se corta el internet y la
+   * lista se recupera después, se recupera el trabajo de esta persona y no una
+   * foto vieja de lo que hayan marcado los demás.
+   */
+  const cambio = (quienes) => {
+    for (const li of Array.isArray(quienes) ? quienes : quienes ? [quienes] : []) {
+      tocadas.add(Number(li.dataset.id));
+    }
     sinGuardar = true;
     const porId = {};
-    marcasDe().forEach((m) => (porId[m.miembro_id] = m));
+    marcasTocadas().forEach((m) => (porId[m.miembro_id] = m));
     guardarBorrador(CLAVE, porId);
     resumen();
     filtrar();
@@ -5483,14 +5554,14 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
       li.querySelectorAll('.pl-b').forEach((x) => x.classList.remove('on'));
       if (!yaEstaba) b.classList.add('on'); // volver a pulsarlo la desmarca
       pintarFila(li);
-      cambio();
+      cambio(li);
     });
   });
   lista.querySelectorAll('.pl-motivo').forEach((sel) => {
-    sel.addEventListener('change', () => { pintarFila(sel.closest('li')); cambio(); });
+    sel.addEventListener('change', () => { pintarFila(sel.closest('li')); cambio(sel.closest('li')); });
   });
   lista.querySelectorAll('.pl-detalle').forEach((inp) => {
-    inp.addEventListener('input', cambio);
+    inp.addEventListener('input', () => cambio(inp.closest('li')));
   });
 
   const btnTodos = document.getElementById('plTodos');
@@ -5503,7 +5574,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
         li.querySelectorAll('.pl-b').forEach((x) => x.classList.toggle('on', x.dataset.estado === 'Presente'));
         pintarFila(li);
       });
-      cambio();
+      cambio(objetivo);
     });
   }
 

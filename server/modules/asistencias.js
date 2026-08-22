@@ -82,6 +82,22 @@ function integrantesConvocados(actividad, db, usuario) {
   return mapa;
 }
 
+/**
+ * Las marcas que hay ahora mismo en una actividad, de los cuerpos que le
+ * tocan a esta persona. Se devuelven al guardar para que la pantalla se ponga
+ * al día con lo que hayan marcado los demás mientras tanto.
+ */
+function marcasVisibles(actividad, db, usuario) {
+  const suyos = require('../alcance').cuerposDe(usuario);
+  const acota = suyos.length ? ` AND cuerpo_id IN (${suyos.map(() => '?').join(',')})` : '';
+  return db
+    .prepare(
+      `SELECT miembro_id, estado, motivo, detalle FROM asistencia_detalle
+        WHERE asistencia_id = ?${acota}`
+    )
+    .all(actividad.id, ...(acota ? suyos : []));
+}
+
 /** Cuenta las marcas de una actividad. */
 function conteo(asistenciaId, db, cuerpos) {
   const acota = cuerpos && cuerpos.length ? ` AND cuerpo_id IN (${cuerpos.map(() => '?').join(',')})` : '';
@@ -330,6 +346,16 @@ module.exports = {
      *
      * Se rige por el permiso de "Toma de Asistencia", no por el de crear
      * actividades: quien solo pasa lista no necesita poder crearlas.
+     *
+     * IMPORTANTE — se mandan **solo las marcas que esa persona cambió**, no la
+     * lista entera. Cada marca que llega manda sobre lo guardado para esa
+     * persona: con estado, se anota; sin estado, se borra. Si se mandara la
+     * lista completa, quien la abrió antes borraría en blanco todo lo que otro
+     * hubiera marcado mientras tanto —dos secretarios pasando la misma lista, o
+     * la misma persona con el teléfono y el computador abiertos—.
+     *
+     * La respuesta trae cómo quedó la lista, para que la pantalla se ponga al
+     * día con lo que hayan hecho los demás.
      */
     router.post('/asistencias/:id(\\d+)/lista', requirePerm('asistencia_detalle', 'edit'), (req, res) => {
       const actividad = db.prepare('SELECT * FROM asistencias WHERE id = ?').get(req.params.id);
@@ -411,7 +437,15 @@ module.exports = {
       });
 
       const guardadas = guardar();
-      res.json({ ok: true, guardadas, ...conteo(actividad.id, db, suyos) });
+      // Se devuelve cómo quedó la lista completa: así, si mientras esta
+      // persona marcaba lo suyo otra marcó lo de ella, la pantalla lo muestra
+      // en vez de quedarse con una foto vieja.
+      res.json({
+        ok: true,
+        guardadas,
+        marcas: marcasVisibles(actividad, db, req.user),
+        ...conteo(actividad.id, db, suyos),
+      });
     });
 
     // ---- Informes y promedios ----
