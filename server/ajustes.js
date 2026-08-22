@@ -47,7 +47,7 @@ const OPCIONES = [
       {
         clave: 'iglesia_nombre', label: 'Nombre de la institución', tipo: 'text', publica: true,
         defecto: 'Iglesia Pentecostal Triunfante La Nueva Jerusalén',
-        ayuda: 'El nombre oficial, tal como debe salir en la pantalla de ingreso, en los certificados y en las credenciales.',
+        ayuda: 'El nombre oficial, tal como debe salir en los certificados, en las credenciales y en todo lo que se imprime.',
       },
       {
         clave: 'iglesia_lema', label: 'Lema', tipo: 'text', defecto: '', publica: true,

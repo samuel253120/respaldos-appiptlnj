@@ -21,6 +21,14 @@ let AJUSTES = { imagen_lado_maximo: 1600, imagen_calidad: 88 }; // preferencias 
 
 const $app = document.getElementById('app');
 
+/**
+ * Cómo se llama este sistema. Va en la pantalla de ingreso, bajo el logo:
+ * quien entra ahí todavía no está en ninguna iglesia en particular, está
+ * entrando a administrarlas. El nombre de la institución sigue yendo donde
+ * corresponde —los certificados, las credenciales, lo que se imprime—.
+ */
+const SISTEMA = 'Administracion Iglesias';
+
 /* Identidad institucional (logo y nombre de la iglesia) */
 const IGLESIA = {
   nombre: 'Iglesia Pentecostal Triunfante La Nueva Jerusalén',
@@ -384,7 +392,7 @@ function renderLogin() {
     <div class="login-wrap">
       <form class="login-card" id="loginForm">
         <img class="logo" src="${IGLESIA.logo}" alt="${esc(IGLESIA.nombre)}" />
-        <h1>${esc(IGLESIA.nombre)}</h1>
+        <h1>${esc(SISTEMA)}</h1>
         ${IGLESIA.lema ? `<p class="lema">${esc(IGLESIA.lema)}</p>` : ''}
         <p class="sub">Ingrese con su RUT para continuar</p>
         <div class="login-error" id="loginError"></div>
@@ -399,12 +407,11 @@ function renderLogin() {
   fetch('/api/configuracion/publica')
     .then((r) => r.json())
     .then((c) => {
-      // La identidad configurada manda sobre la que trae el programa
+      // La identidad configurada manda sobre la que trae el programa. El
+      // título de la tarjeta no se toca: ese es el nombre del sistema.
       if (c.iglesia_nombre) {
         IGLESIA.nombre = c.iglesia_nombre;
-        const titulo = document.querySelector('.login-card h1');
         const logo = document.querySelector('.login-card .logo');
-        if (titulo) titulo.textContent = c.iglesia_nombre;
         if (logo) logo.alt = c.iglesia_nombre;
       }
       IGLESIA.lema = c.iglesia_lema || '';
