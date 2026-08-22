@@ -25,11 +25,21 @@ function lista(valor) {
   }
 }
 
-/** Las iglesias que se le asignaron. Vacío = todas las del sistema. */
+/**
+ * Las iglesias que se le asignaron. Vacío = todas las del sistema.
+ *
+ * Lo que ve cada persona lo decide «Iglesias que administra», y solo eso. La
+ * «iglesia principal» no entra acá: dice con cuál trabaja por omisión —la que
+ * se propone al crear un registro—, no a cuáles alcanza. Sumarla acotaba en
+ * silencio a quien solo tenía puesta esa, sin que el formulario lo dijera.
+ *
+ * Se incluye únicamente cuando ya está entre las asignadas, que es donde el
+ * propio formulario exige que esté.
+ */
 function iglesiasAsignadas(usuario) {
   if (!usuario) return [];
   const ids = new Set(lista(usuario.iglesias));
-  if (usuario.iglesia_id) ids.add(Number(usuario.iglesia_id));
+  if (ids.size && usuario.iglesia_id) ids.add(Number(usuario.iglesia_id));
   return [...ids];
 }
 

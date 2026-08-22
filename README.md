@@ -377,6 +377,10 @@ Lo que elija **acota todo el sistema** —los listados, los informes, el panel y
 
 La elección nunca amplía lo asignado: si eligiera una que no le corresponde, se descarta y vuelve a ver las suyas. Y queda guardada en su cuenta, no en el navegador, así que la encuentra igual desde el teléfono.
 
+El mismo elector está en **Mi perfil**, con lo que hace falta para entenderlo: con cuál está trabajando, cuántas alcanza y —cuando alcanza una sola— que el botón no aparece porque no hay entre qué elegir, no porque falte.
+
+> **Quién ve qué lo decide «Iglesias que administra»**, y solo eso. La **«Iglesia principal»** dice con cuál se trabaja por omisión —la que se propone al crear un registro—, no a cuáles se alcanza. Hasta la versión 1.50 el sistema sumaba la principal a lo asignado, así que a quien solo tenía puesta esa lo encerraba en esa iglesia sin decirlo, y de paso le escondía este botón. Al actualizar, a esas cuentas se les copia esa iglesia en «Iglesias que administra»: **ven exactamente lo mismo que antes**, pero ahora queda escrito donde se administra y se puede cambiar.
+
 ## Cómo se nombra a cada persona 🧍
 
 En la ficha se guarda **todo** lo que la persona tiene: «Juan Carlos Alberto» y «Pérez Soto». Pero en un listado, en un selector o al pasar lista, ese nombre entero ocupa una línea completa y no ayuda a reconocer a nadie más rápido. Por eso, en pantalla se la nombra como se la nombra en el día a día:

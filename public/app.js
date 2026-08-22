@@ -418,6 +418,55 @@ function route() {
 }
 
 /**
+ * En «Mi perfil», con qué iglesias está trabajando.
+ *
+ * El botón de la barra de arriba solo aparece cuando hay entre qué elegir, y
+ * cuando no aparece uno se queda sin saber por qué. Acá se dice siempre: con
+ * cuáles trabaja, cuántas alcanza y, si alcanza una sola, que es por eso y no
+ * porque falte el botón.
+ */
+function pintarIglesiasDelPerfil() {
+  const caja = document.getElementById('perfilIglesias');
+  if (!caja) return;
+  const disponibles = USER.iglesias_disponibles || [];
+  const elegidas = USER.iglesias_trabajando || [];
+  const nombreDe = (id) => {
+    const i = disponibles.find((x) => x.id === id);
+    return i ? iglesiaDeTrabajo(i.nombre) : `#${id}`;
+  };
+
+  if (!disponibles.length) {
+    caja.remove();
+    return;
+  }
+
+  const conQue = elegidas.length
+    ? elegidas.map(nombreDe).join(' · ')
+    : disponibles.length === 1
+      ? iglesiaDeTrabajo(disponibles[0].nombre)
+      : `Todas las suyas (${fmtNumero(disponibles.length)})`;
+
+  caja.innerHTML = `
+    <div class="toolbar">
+      <b>⛪ Con qué iglesia trabaja</b>
+      <span class="spacer"></span>
+      ${disponibles.length > 1 ? '<button class="btn secondary sm" id="perfilCambiarIglesia">Cambiar</button>' : ''}
+    </div>
+    <div class="perfil-fijos">
+      <div><span class="mut">Ahora mismo</span><b>${esc(conQue)}</b></div>
+      <div><span class="mut">Alcanza</span><b>${fmtNumero(disponibles.length)} iglesia(s)</b></div>
+    </div>
+    <div class="help" style="padding:0 20px 16px">
+      ${disponibles.length > 1
+        ? 'Lo que elija acota todo el sistema: los listados, los informes y lo que registre. También se cambia desde el botón de arriba, junto al nombre de la iglesia.'
+        : 'Administra una sola iglesia, así que no hay entre qué elegir. Para alcanzar más, la oficina tiene que agregárselas en «Iglesias que administra», en su usuario.'}
+    </div>`;
+
+  const btn = document.getElementById('perfilCambiarIglesia');
+  if (btn) btn.addEventListener('click', elegirIglesiaDeTrabajo);
+}
+
+/**
  * Elegir con qué iglesia o iglesias trabajar.
  *
  * Quien alcanza varias no siempre las quiere ver todas juntas: el domingo está
@@ -817,6 +866,8 @@ async function renderMisDatos(zona) {
       </div>
     </div>
 
+    <div class="card" style="margin-top:18px" id="perfilIglesias"></div>
+
     <div class="card" style="margin-top:18px">
       <div class="toolbar">
         <b>📝 Mis datos</b>
@@ -833,6 +884,8 @@ async function renderMisDatos(zona) {
         <div class="form-foot"><button class="btn" type="submit">💾 Guardar mis datos</button></div>
       </form>
     </div>`;
+
+  pintarIglesiasDelPerfil();
 
   // Los mismos comportamientos que en cualquier ficha: foto que se ajusta al
   // subirla, edad al lado de la fecha, listas con buscador y campos que solo

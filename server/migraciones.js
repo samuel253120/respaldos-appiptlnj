@@ -767,6 +767,47 @@ function cargosDePastores() {
 
 
 /**
+ * «Iglesia principal» decía dos cosas a la vez, y una no le correspondía.
+ *
+ * Su ayuda siempre dijo lo que es: con cuál trabaja por omisión, la que se
+ * propone al crear registros. Quien decide **qué ve** cada persona es la otra
+ * casilla, «Iglesias que administra». Pero el código sumaba la principal a lo
+ * asignado, así que a quien solo tenía puesta la principal el sistema lo
+ * encerraba en esa iglesia sin que el formulario lo dijera —y de paso le
+ * escondía el botón para elegir con cuál trabajar, porque le quedaba una
+ * sola—.
+ *
+ * Antes de cambiar la regla se copia esa iglesia a «Iglesias que administra»,
+ * de modo que **nadie gane ni pierda acceso**: quien estaba acotado a una
+ * sigue acotado a esa, pero ahora se ve escrito donde corresponde y se puede
+ * cambiar. Se hace una sola vez.
+ */
+function iglesiaPrincipalNoEsAsignacion() {
+  if (yaAplicada('principal_no_es_asignacion')) return;
+  const columnas = db.prepare('PRAGMA table_info("usuarios")').all().map((c) => c.name);
+  if (!columnas.includes('iglesias') || !columnas.includes('iglesia_id')) return;
+
+  const acotados = db
+    .prepare(
+      `SELECT id, nombre, iglesia_id FROM usuarios
+        WHERE iglesia_id IS NOT NULL
+          AND (iglesias IS NULL OR iglesias = '' OR iglesias = '[]')`
+    )
+    .all();
+  marcarAplicada('principal_no_es_asignacion');
+  if (!acotados.length) return;
+
+  const poner = db.prepare('UPDATE usuarios SET iglesias = ? WHERE id = ?');
+  for (const u of acotados) poner.run(JSON.stringify([Number(u.iglesia_id)]), u.id);
+  console.log(
+    `🔁 usuarios: a ${acotados.length} cuenta(s) que solo tenían puesta la iglesia principal se les copió esa ` +
+      `iglesia en "Iglesias que administra" (${acotados.map((u) => u.nombre).join(', ')}).\n` +
+      '   Ven exactamente lo mismo que antes; ahora queda escrito donde se administra y se puede cambiar.'
+  );
+}
+
+
+/**
  * Las categorías de tesorería salieron del programa y pasaron a ser datos que
  * la iglesia mantiene: se pueden crear, editar y desactivar desde el sistema.
  *
@@ -1230,6 +1271,7 @@ function ejecutarMigraciones() {
     ['la ofrenda entra completa', ofrendaEntraCompleta],
     ['mayúsculas de los cargos', cargosConMayuscula],
     ['cargos de los pastores', cargosDePastores],
+    ['la iglesia principal no es una asignación', iglesiaPrincipalNoEsAsignacion],
     ['categorías de tesorería', categoriasDeTesoreria],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
