@@ -59,7 +59,7 @@ const TIPOS_DE_MIEMBRO = [
 
 /**
  * Deja al día el usuario del sistema enlazado a este miembro: comparten el
- * RUT, el nombre, el correo y el teléfono. Si el miembro pasa a fallecido o
+ * RUT, el nombre, el correo, el teléfono y la foto. Si el miembro pasa a fallecido o
  * trasladado, su acceso queda desactivado.
  */
 function sincronizarUsuario(fila, db) {
@@ -78,6 +78,7 @@ function sincronizarUsuario(fila, db) {
   igualar('rut', fila.rut);
   igualar('email', fila.email);
   igualar('telefono', fila.telefono);
+  igualar('foto', fila.foto);
 
   // Quien ya no está en la iglesia no debe poder entrar al sistema
   if (['Fallecido', 'Trasladado'].includes(fila.estado) && usuario.activo) {

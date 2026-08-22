@@ -202,6 +202,17 @@ function badgeClass(value) {
   return 'blue';
 }
 
+/**
+ * La cara de una persona donde se la nombra: su foto si la tiene y, si no,
+ * sus iniciales. Siempre en el mismo redondel, para que la fila no se mueva
+ * según quién tenga foto y quién no.
+ */
+function retratoDe(quien, iniciales) {
+  return quien && quien.foto
+    ? `<img class="avatar" src="/uploads/${esc(quien.foto)}" alt="" />`
+    : `<span class="avatar">${esc(iniciales || '?')}</span>`;
+}
+
 /* ---------------- API ---------------- */
 async function api(method, path, body, isForm) {
   const opts = { method, headers: {} };
@@ -740,11 +751,17 @@ async function renderMisDatos(zona) {
     try {
       const r = await api('PUT', '/auth/perfil', collectForm({ fields: d.campos }));
       toast('Sus datos quedaron guardados');
-      // El nombre puede haber cambiado: la barra superior tiene que reflejarlo
+      // El nombre y la foto pueden haber cambiado: la barra superior tiene
+      // que reflejarlo sin obligar a recargar la página
       const me = await api('GET', '/auth/me');
       USER = { ...USER, ...me.user };
       const quien = document.querySelector('.who b');
       if (quien) quien.textContent = USER.nombre;
+      const cara = document.querySelector('.who .avatar');
+      if (cara) {
+        const iniciales = (USER.nombre || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+        cara.outerHTML = retratoDe(USER, iniciales);
+      }
       d.datos = r.perfil ? r.perfil.datos : d.datos;
     } catch (e2) {
       err.textContent = e2.message;
@@ -959,7 +976,7 @@ function renderShell() {
               : ''}
           </div>
           <div class="tb-espacio"></div>
-          <a class="who" href="#/perfil" title="Mi perfil"><span class="avatar">${esc(initials)}</span> <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></a>
+          <a class="who" href="#/perfil" title="Mi perfil">${retratoDe(USER, initials)} <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></a>
           <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
         </header>
         <div class="content" id="content"></div>
@@ -1929,6 +1946,7 @@ async function viewForm(name, id, precarga) {
       if (isNew) await api('POST', `/${name}`, data);
       else await api('PUT', `/${name}/${id}`, data);
       invalidarOpciones(name); // refrescar selectores que referencien este módulo
+      await refrescarSiEsUnoMismo(name, id);
       toast('Guardado correctamente');
       location.hash = !isNew && CON_FICHA.includes(name) ? `#/m/${name}/ficha/${id}` : `#/m/${name}`;
     } catch (err) {
@@ -1940,6 +1958,31 @@ async function viewForm(name, id, precarga) {
       errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   });
+}
+
+/**
+ * Si lo que se acaba de guardar es la propia cuenta o la propia ficha de
+ * miembro, la barra superior tiene que enterarse: el nombre y la foto de ahí
+ * son los de quien está trabajando, y quedarían mostrando lo de antes hasta
+ * volver a entrar.
+ */
+async function refrescarSiEsUnoMismo(modulo, id) {
+  const esSuCuenta = modulo === 'usuarios' && Number(id) === Number(USER.id);
+  const esSuFicha = modulo === 'miembros' && USER.miembro_id && Number(id) === Number(USER.miembro_id);
+  if (!esSuCuenta && !esSuFicha) return;
+  try {
+    const me = await api('GET', '/auth/me');
+    USER = { ...USER, ...me.user };
+  } catch (e) {
+    return; // si no se pudo, la barra queda como estaba hasta la próxima vuelta
+  }
+  const quien = document.querySelector('.who b');
+  if (quien) quien.textContent = USER.nombre;
+  const cara = document.querySelector('.who .avatar');
+  if (cara) {
+    const iniciales = (USER.nombre || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+    cara.outerHTML = retratoDe(USER, iniciales);
+  }
 }
 
 /**

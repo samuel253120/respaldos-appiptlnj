@@ -32,7 +32,7 @@ const MIOS_EN_MIEMBROS = [
 ];
 
 /** Y estos, cuando la cuenta todavía no está enlazada a una ficha de miembro. */
-const MIOS_EN_USUARIOS = ['nombre', 'email', 'telefono'];
+const MIOS_EN_USUARIOS = ['foto', 'nombre', 'email', 'telefono'];
 
 /** Los campos pedidos, tal como los declara su módulo. */
 function camposDe(modulo, nombres) {

@@ -491,7 +491,7 @@ El tamaño y la calidad se cambian en **Configuración → Preferencias**. Los a
 
 ### Ajustar la foto: recortar, girar, brillo y contraste ✂️
 
-Las fotos de perfil —la del **miembro**, la del **pastor o guía**, la del **cuerpo o grupo**, la del **templo** y la del titular de una **credencial**— tienen al lado un botón **✂️ Ajustar** que abre un editor sin salir de la ficha:
+Las fotos de perfil —la del **miembro**, la del **pastor o guía**, la del **cuerpo o grupo**, la del **templo**, la del **usuario del sistema** y la del titular de una **credencial**— tienen al lado un botón **✂️ Ajustar** que abre un editor sin salir de la ficha:
 
 | Control | Para qué |
 |---|---|
@@ -505,6 +505,12 @@ Las fotos de perfil —la del **miembro**, la del **pastor o guía**, la del **c
 El marco es cuadrado porque así se muestran estas fotos en todo el sistema —redondas en los cumpleaños, cuadradas en las fichas y en las credenciales—: **lo que se ve en el marco es exactamente lo que queda guardado**. El brillo y el contraste se aplican píxel a píxel, no con un filtro del navegador, así que lo que se ve al ajustar es lo que se guarda, en cualquier teléfono.
 
 El recorte nunca se agranda más allá de lo que da la foto original: acercarse no inventa detalle que no existe. Y es **opcional** —la foto se sube igual que siempre al elegirla—; el botón está para cuando haga falta, y se puede volver a ajustar una foto guardada hace meses.
+
+#### La foto del usuario del sistema
+
+Cada cuenta tiene la suya, y es la cara que sale **arriba a la derecha**, junto a su nombre, y en el listado de Usuarios. Cada persona puede cambiarla ella misma desde **Mi perfil**, sin pasar por la oficina.
+
+Cuando la cuenta está **enlazada a una ficha de miembro**, la foto es una sola: la misma en los dos lados, como ya pasa con el RUT, el nombre, el correo y el teléfono. Se cambia por donde sea más cómodo y el otro queda al día solo, así que nadie tiene que subirla dos veces. Quien todavía no tenga foto sigue apareciendo con sus iniciales, en el mismo redondel.
 
 ### Documentos del miembro 🗂️
 

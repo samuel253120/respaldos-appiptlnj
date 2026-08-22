@@ -37,9 +37,16 @@ module.exports = {
   order: 90,
   display: '{nombre}',
   searchFields: ['nombre', 'rut', 'email'],
-  listFields: ['rut', 'nombre', 'rol', 'miembro_id', 'iglesias', 'cuerpos', 'activo'],
+  listFields: ['foto', 'rut', 'nombre', 'rol', 'miembro_id', 'iglesias', 'cuerpos', 'activo'],
   defaultSort: { field: 'nombre', dir: 'asc' },
   fields: [
+    {
+      name: 'foto', label: 'Fotografía de perfil', type: 'file', accept: 'image/*', recorte: 'cuadrado',
+      help:
+        'La cara con la que se le reconoce en el sistema: sale arriba, junto a su nombre. Se puede sacar con ' +
+        'el teléfono, y con «Ajustar» se recorta y se corrige el brillo. Si está enlazado a una ficha de ' +
+        'miembro, es la misma foto de esa ficha.',
+    },
     {
       name: 'rut', label: 'RUT (usuario de acceso)', type: 'rut', required: true, unique: true,
       help: 'Con o sin puntos, con guion y dígito verificador. Ej: 12.345.678-5',
@@ -50,7 +57,7 @@ module.exports = {
     },
     {
       name: 'miembro_id', label: 'Su ficha de miembro', type: 'ref', ref: 'miembros',
-      help: 'Enlazándolo, el RUT, el nombre, el correo y el teléfono quedan iguales en los dos módulos. Si tienen el mismo RUT, el sistema la reconoce sola.',
+      help: 'Enlazándolo, el RUT, el nombre, el correo, el teléfono y la foto quedan iguales en los dos módulos. Si tienen el mismo RUT, el sistema la reconoce sola.',
     },
     {
       name: 'password', label: 'Contraseña', type: 'password',
@@ -232,7 +239,11 @@ module.exports = {
       }
       return null;
     },
-    /** Lo que cambió aquí se lleva a su ficha de miembro. */
+    /**
+     * Lo que cambió aquí se lleva a su ficha de miembro: son la misma persona,
+     * así que el RUT, el correo, el teléfono y la foto son los mismos en los
+     * dos lados y da igual por dónde se cambien.
+     */
     afterSave(fila, { db }) {
       if (!fila.miembro_id) return;
       const miembro = db.prepare('SELECT * FROM miembros WHERE id = ?').get(fila.miembro_id);
@@ -249,6 +260,7 @@ module.exports = {
       igualar('rut', fila.rut);
       igualar('email', fila.email);
       igualar('telefono', fila.telefono);
+      igualar('foto', fila.foto);
       if (!cambios.length) return;
       db.prepare(`UPDATE miembros SET ${cambios.join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`)
         .run(...valores, miembro.id);
