@@ -6,6 +6,13 @@
  * - `prueba: true` valida todo y NO guarda nada (revisión previa).
  * - Devuelve cuántas filas quedarían bien y el detalle de los errores por fila.
  *
+ * Lo que entra por acá pasa por lo mismo que lo que se escribe a mano: los
+ * campos obligatorios, el RUT, los duplicados, los rangos de las fechas, los
+ * topes de los montos, las reglas propias del módulo, lo que el módulo hace
+ * después de guardar —las cuentas de un cuerpo, la ofrenda de un servicio— y
+ * el rastro en el historial. Durante un tiempo no fue así, y por acá entraban
+ * cosas que el formulario ya no dejaba entrar.
+ *
  * Comodidades pensadas para archivos exportados de otros sistemas:
  * - Los campos de relación (iglesia, cuerpo, miembro…) aceptan el NOMBRE en
  *   vez del número interno: "Iglesia Central" en lugar de 3.
@@ -18,8 +25,10 @@ const express = require('express');
 const { db } = require('./db');
 const { getModule, displayOf } = require('./registry');
 const { authRequired, requirePerm } = require('./auth');
-const { coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos } = require('./crud');
+const { coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, revisarLimites } = require('./crud');
 const rut = require('./rut');
+const bitacora = require('./bitacora');
+const sensibles = require('./sensibles');
 
 const MAX_FILAS = 5000;
 
@@ -153,6 +162,14 @@ function prepararFila(def, fila, user) {
       const problema = require('./fechas').revisar(f, valor);
       if (problema) errores.push(problema);
     }
+    // Y los mismos topes de los montos. Se comprobó que sin esto entraba por
+    // planilla un movimiento de 1e308 y el saldo de la iglesia pasaba a decir
+    // «1e+308»: no es que quedara grande, es que dejaba de ser un número con
+    // el que se pueda trabajar.
+    if (f.type === 'money' || f.type === 'number') {
+      const problema = revisarLimites(f, valor);
+      if (problema) errores.push(problema);
+    }
     if (f.unique) {
       const dup = db
         .prepare(`SELECT id FROM "${def.name}" WHERE lower("${f.name}") = lower(?)`)
@@ -164,13 +181,26 @@ function prepararFila(def, fila, user) {
   const seContradicen = require('./fechas').revisarCoherencia(def, datos, null);
   if (seContradicen) errores.push(seContradicen);
 
+  // Quien no alcanza los datos de salud tampoco los escribe por planilla:
+  // si no, bastaba con importar para dejar anotado en una ficha algo que esa
+  // persona no puede ni leer (ver server/sensibles.js).
+  sensibles.protegerAlGuardar(def, datos, user, null);
+
   aplicarDefectos(def, datos);
   sincronizarPersonas(def, datos, null);
   aplicarCalculos(def, datos, null);
 
   if (!errores.length && def.hooks && def.hooks.beforeSave) {
-    const err = def.hooks.beforeSave(datos, { user, isNew: true, id: null, existing: null, db });
-    if (err) errores.push(err);
+    /**
+     * El hook puede devolver un texto —rechaza— o un objeto con `confirmar`
+     * —pregunta—. En un formulario la pregunta se contesta; en una planilla de
+     * quinientas filas no hay a quién preguntarle quinientas veces, así que se
+     * marca la fila y quien importa la revisa en la vista previa. Es lo
+     * correcto: un egreso que deja una cuenta en rojo puede ser cierto, pero
+     * no es algo que deba pasar sin que nadie lo mire.
+     */
+    const err = def.hooks.beforeSave(datos, { user, isNew: true, id: null, existing: null, db, confirmado: false });
+    if (err) errores.push(typeof err === 'string' ? err : err.error);
   }
 
   return { datos, errores };
@@ -206,10 +236,37 @@ router.post('/:modulo', (req, res) => {
           errores.push({ fila: i + 1, errores: ['La fila está vacía'] });
           return;
         }
-        db.prepare(
-          `INSERT INTO "${def.name}" (${claves.map((k) => `"${k}"`).join(',')}, created_by)
-           VALUES (${claves.map(() => '?').join(',')}, ?)`
-        ).run(...claves.map((k) => datos[k]), req.user.id);
+        const info = db
+          .prepare(
+            `INSERT INTO "${def.name}" (${claves.map((k) => `"${k}"`).join(',')}, created_by)
+             VALUES (${claves.map(() => '?').join(',')}, ?)`
+          )
+          .run(...claves.map((k) => datos[k]), req.user.id);
+
+        /**
+         * Y lo que el módulo hace DESPUÉS de guardar, que antes no se hacía.
+         *
+         * No es un detalle: `afterSave` es donde una iglesia y un cuerpo crean
+         * sus cuentas de tesorería, donde la ofrenda de un servicio se anota
+         * en los libros y donde un traspaso genera sus dos movimientos. Se
+         * comprobó que sin esto un cuerpo importado nacía sin ninguna cuenta y
+         * un servicio con cien mil pesos de ofrenda no ponía un peso en la
+         * tesorería. La fila quedaba guardada y a medias.
+         */
+        const guardada = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(info.lastInsertRowid);
+        if (guardada && def.hooks && def.hooks.afterSave) {
+          def.hooks.afterSave(guardada, { user: req.user, isNew: true, db });
+        }
+
+        // El rastro, igual que cualquier otra alta. El Registro de Cambios
+        // existe para responder quién tocó el dinero y los permisos, y por
+        // planilla se puede tocar tanto o más que a mano: sin esto, podían
+        // entrar movimientos a los libros sin que quedara quién los puso.
+        if (guardada) {
+          bitacora.registrarGuardado(def, {
+            isNew: true, antes: {}, despues: guardada, datos, user: req.user,
+          });
+        }
         listas++;
       });
       if (prueba) throw new Error('__revision__'); // deshace todo: solo era una revisión

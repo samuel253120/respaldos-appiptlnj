@@ -396,6 +396,58 @@ async function entrar(rut = RUT, clave = CLAVE) {
     revisar('se pudo crear una categoría de prueba', false, `respondió ${cat.estado}: ` + JSON.stringify(cat.datos).slice(0, 120));
   }
 
+  /* 4d-bis · Lo que entra por planilla ------------------------------------- */
+  console.log('\n4d-bis · La importación por planilla');
+  /**
+   * La planilla escribe en las mismas tablas que el formulario, y durante un
+   * tiempo se saltaba lo que el formulario sí hacía: los topes de los montos
+   * —entraba un movimiento de 1e308 y el saldo de la iglesia pasaba a decir
+   * «1e+308»—, el rastro en el Registro de Cambios y lo que cada módulo hace
+   * después de guardar. Un cuerpo importado nacía sin sus cuentas de tesorería
+   * y un servicio con cien mil pesos de ofrenda no ponía un peso en los libros.
+   */
+  const cuentaParaImportar = (await api('GET', '/api/cuentas_tesoreria?page=1&limit=1')).datos.rows[0];
+  if (cuentaParaImportar) {
+    const marca = Date.now();
+    const revision = await api('POST', '/api/importar/tesoreria', {
+      prueba: true,
+      filas: [
+        { fecha: '2026-01-05', tipo: 'Ingreso', categoria: 'Diezmos', concepto: `enorme ${marca}`, monto: '1e308', cuenta_id: cuentaParaImportar.id },
+        { fecha: '2026-01-05', tipo: 'Ingreso', categoria: 'Diezmos', concepto: `negativo ${marca}`, monto: '-999999', cuenta_id: cuentaParaImportar.id },
+        { fecha: '2026-01-05', tipo: 'Ingreso', categoria: 'Diezmos', concepto: `normal ${marca}`, monto: '50000', cuenta_id: cuentaParaImportar.id },
+      ],
+    });
+    revisar('un monto imposible no entra por planilla', revision.datos.conError >= 2,
+      `quedaron ${revision.datos.correctas} correctas de 3`);
+    revisar('y el que sí sirve pasa igual', revision.datos.correctas === 1,
+      `quedaron ${revision.datos.correctas}`);
+
+    const deVerdad = await api('POST', '/api/importar/tesoreria', {
+      prueba: false,
+      filas: [{ fecha: '2026-01-05', tipo: 'Ingreso', categoria: 'Diezmos', concepto: `rastro ${marca}`, monto: '1000', cuenta_id: cuentaParaImportar.id }],
+    });
+    const anotadoImport = (await api('GET', '/api/registro_cambios?page=1&limit=10')).datos.rows
+      .find((r) => (r.registro || '').includes(`rastro ${marca}`) || (r.detalle || '').includes(`rastro ${marca}`));
+    revisar('lo que entra por planilla deja rastro en el Registro de Cambios', !!anotadoImport,
+      `se importaron ${deVerdad.datos.correctas}, pero no apareció en el registro`);
+    revisar('y se sabe quién lo importó', !!(anotadoImport && anotadoImport.usuario));
+  } else {
+    revisar('había una cuenta de tesorería con la que probar', false);
+  }
+
+  const iglesiaParaCuerpo = (await api('GET', '/api/iglesias?page=1&limit=1')).datos.rows[0];
+  if (iglesiaParaCuerpo) {
+    const cuentasAntes = (await api('GET', '/api/cuentas_tesoreria?page=1&limit=1')).datos.total;
+    const cuerpoImportado = await api('POST', '/api/importar/cuerpos', {
+      prueba: false,
+      filas: [{ nombre: `Cuerpo importado ${Date.now()}`, iglesia_id: iglesiaParaCuerpo.id, tipo: 'Cuerpo', estado: 'Activo' }],
+    });
+    const cuentasDespues = (await api('GET', '/api/cuentas_tesoreria?page=1&limit=1')).datos.total;
+    revisar('un cuerpo importado trae sus cuentas de tesorería, como el que se crea a mano',
+      cuerpoImportado.datos.correctas === 1 && cuentasDespues > cuentasAntes,
+      `cuentas: ${cuentasAntes} → ${cuentasDespues}`);
+  }
+
   /* 4e · Las reglas que hace cumplir el navegador -------------------------- */
   console.log('\n4e · Las reglas del navegador');
   const portada = await fetch(`${URL}/`);
