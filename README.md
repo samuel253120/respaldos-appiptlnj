@@ -1158,10 +1158,15 @@ CHROMIUM=/ruta/al/chrome npm run humo                   # si ya hay un Chromium 
 
 Cualquier módulo nuevo queda cubierto solo: la lista de pantallas sale del propio sistema, no de un listado escrito a mano. Playwright es dependencia de desarrollo y **no viaja en la imagen de producción**.
 
-Las otras tres pruebas miran lo que la de humo no ve, y ninguna necesita navegador:
+Las otras cuatro pruebas miran lo que la de humo no ve, y ninguna necesita navegador:
 
 - `npm run concurrencia` — que nadie pierda su trabajo cuando dos trabajan sobre lo mismo, incluida la lista de asistencia que pasan dos (ver *[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)*).
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 75 comprobaciones y corren en menos de un segundo. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+
+  Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
+
+  Varias están escritas alrededor de errores que de verdad ocurrieron: la etiqueta que mostraba solo los apellidos, la iglesia principal que acotaba sin decirlo, la excepción de permisos que tiene que poder **quitar** y no solo dar. Agregar un `algo.test.js` en `pruebas/motor/` lo incorpora solo.
 - `npm run seguridad` — que los archivos no se entreguen sin sesión ni se abran como página, que no se pueda subir una página web —ni disfrazada de foto—, que el pase de sesión no sirva escrito en la dirección, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, que la copia automática se haga y se pueda volver a ella, que la planilla nunca traiga una fila que la pantalla no muestre, que lo que se borra quede anotado en cualquier módulo y sus archivos se vayan con la ficha, que cambiar la contraseña cierre las sesiones abiertas —incluso cuando la restablece el administrador— sin dejar afuera a quien la cambió, que el navegador reciba sus reglas de seguridad, que el registro de cambios no se pueda maquillar, que el alcance por cuerpo se respete aunque se escriba la dirección a mano —su gente, sus cuotas y su cobro— y que elegir con qué iglesia trabajar nunca amplíe lo asignado. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
 
 ## API REST

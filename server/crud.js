@@ -672,4 +672,4 @@ function buildRouter() {
   return router;
 }
 
-module.exports = { buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos };
+module.exports = { buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara };
