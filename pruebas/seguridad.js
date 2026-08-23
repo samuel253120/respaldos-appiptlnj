@@ -396,6 +396,102 @@ async function entrar(rut = RUT, clave = CLAVE) {
     revisar('se pudo crear una categoría de prueba', false, `respondió ${cat.estado}: ` + JSON.stringify(cat.datos).slice(0, 120));
   }
 
+  /* 4e · Las reglas que hace cumplir el navegador -------------------------- */
+  console.log('\n4e · Las reglas del navegador');
+  const portada = await fetch(`${URL}/`);
+  const regla = portada.headers.get('content-security-policy') || '';
+  revisar('la página trae su regla de seguridad', !!regla, 'no viene ninguna');
+  revisar(
+    'y no deja ejecutar instrucciones escritas dentro de la página',
+    /script-src 'self'/.test(regla) && !/script-src[^;]*unsafe-inline/.test(regla),
+    regla.slice(0, 120)
+  );
+  revisar('no se puede meter el sistema dentro de otro sitio',
+    portada.headers.get('x-frame-options') === 'DENY' && /frame-ancestors 'none'/.test(regla),
+    `${portada.headers.get('x-frame-options')} · ${regla.includes('frame-ancestors') ? 'con' : 'sin'} frame-ancestors`);
+  revisar('el navegador no adivina el tipo de los archivos',
+    portada.headers.get('x-content-type-options') === 'nosniff',
+    `dice ${portada.headers.get('x-content-type-options')}`);
+  revisar('al salir a otro sitio no se cuenta de dónde se venía',
+    !!portada.headers.get('referrer-policy'), 'no viene');
+
+  /* 4f · Cambiar la contraseña cierra las sesiones ------------------------- */
+  console.log('\n4f · Cambiar la contraseña cierra lo que estaba abierto');
+  // A quien le roban la clave, cambiarla tiene que sacar al que entró con
+  // ella. Antes seguía adentro hasta que su pase caducara solo.
+  const rutDePrueba = '15555555-6';
+  await api('DELETE', `/api/usuarios/${(await api('GET', `/api/usuarios?page=1&limit=1&f_rut=${rutDePrueba}`)).datos.rows.map((u) => u.id)[0] || 0}`);
+  const cuentaDePrueba = await api('POST', '/api/usuarios', {
+    rut: rutDePrueba, nombre: 'Prueba de sesiones', password: 'Sesiones2026', rol: 'consulta', activo: 1,
+  });
+  if (cuentaDePrueba.estado === 201 || cuentaDePrueba.estado === 200) {
+    const entrarComo = async (clave) => {
+      const d = await fetch(`${URL}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: rutDePrueba, password: clave }),
+      }).then((r) => r.json());
+      return d.token || null;
+    };
+    const mirar = (pase) => fetch(`${URL}/api/auth/me`, { headers: { Authorization: `Bearer ${pase}` } }).then((r) => r.status);
+
+    // La cuenta nace obligada a cambiar la contraseña: se hace y queda usable
+    const primero = await entrarComo('Sesiones2026');
+    await fetch(`${URL}/api/auth/cambiar-password`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${primero}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actual: 'Sesiones2026', nueva: 'Primera2026' }),
+    });
+
+    const enElTelefono = await entrarComo('Primera2026');
+    await new Promise((r) => setTimeout(r, 1100)); // que el pase nuevo no nazca el mismo segundo
+    const enElComputador = await entrarComo('Primera2026');
+    revisar('las dos sesiones entran', (await mirar(enElTelefono)) === 200 && (await mirar(enElComputador)) === 200);
+
+    const cambio = await fetch(`${URL}/api/auth/cambiar-password`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${enElComputador}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actual: 'Primera2026', nueva: 'Segunda2026' }),
+    }).then((r) => r.json());
+
+    revisar('la sesión del otro aparato se cierra', (await mirar(enElTelefono)) === 401,
+      `respondió ${await mirar(enElTelefono)}`);
+    revisar('y quien la cambió no queda afuera', !!cambio.token && (await mirar(cambio.token)) === 200,
+      cambio.token ? `respondió ${await mirar(cambio.token)}` : 'no le dieron pase nuevo');
+
+    // Y que el administrador la restablezca también saca al que esté adentro
+    const otraVez = await entrarComo('Segunda2026');
+    await new Promise((r) => setTimeout(r, 1100));
+    await api('POST', `/api/usuarios/${cuentaDePrueba.datos.id}/restablecer-clave`);
+    revisar('que el administrador la restablezca también cierra la sesión', (await mirar(otraVez)) === 401,
+      `respondió ${await mirar(otraVez)}`);
+
+    await api('DELETE', `/api/usuarios/${cuentaDePrueba.datos.id}`);
+  } else {
+    revisar('se pudo crear la cuenta de prueba', false, `respondió ${cuentaDePrueba.estado}`);
+  }
+
+  /* 4g · Los archivos no quedan sueltos ------------------------------------ */
+  console.log('\n4g · Los archivos de una ficha que se borra');
+  const foto = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
+  const subidaPropia = (await subir('para-borrar.jpg', foto)).cuerpo;
+  if (subidaPropia.filename) {
+    const suIglesia = (await api('GET', '/api/iglesias?page=1&limit=1')).datos.rows[0];
+    const ficha = await api('POST', '/api/miembros', {
+      iglesia_id: suIglesia && suIglesia.id, rut: '20111222-2', nombres: 'Prueba', apellidos: 'De Archivos',
+      genero: 'Masculino', estado: 'Activo', foto: subidaPropia.filename,
+    });
+    if (ficha.estado === 201 || ficha.estado === 200) {
+      const sigueAhi = async () =>
+        (await fetch(`${URL}/uploads/${subidaPropia.filename}`, { headers: { Authorization: cabecera } })).status === 200;
+      revisar('mientras la ficha existe, el archivo está', await sigueAhi());
+      await api('DELETE', `/api/miembros/${ficha.datos.id}`);
+      revisar('al borrar la ficha, su archivo se va con ella', !(await sigueAhi()),
+        'el archivo quedó en el disco sin ficha desde donde llegar a él');
+    } else {
+      revisar('se pudo crear la ficha de prueba', false, `respondió ${ficha.estado}`);
+    }
+  }
+
   console.log('\n5 · Los paneles de un cuerpo ajeno');
   const cuerpos = (await api('GET', '/api/cuerpos?page=1&limit=2')).datos.rows || [];
   if (cuerpos.length < 2) {

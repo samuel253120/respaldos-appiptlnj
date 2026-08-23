@@ -29,6 +29,7 @@ const { authRequired, requirePerm } = require('./auth');
 const rut = require('./rut');
 const { can } = require('./permissions');
 const planilla = require('./planilla');
+const archivos = require('./archivos');
 
 /**
  * Tope de filas de una planilla. No es una limitación real —una iglesia con
@@ -649,6 +650,9 @@ function buildRouter() {
           }
           // Se anota antes de borrar: después ya no hay de dónde sacar qué era
           bitacora.registrarEliminado(def, row, req.user);
+          // Y se llevan sus archivos, que si no quedarían en el disco para
+          // siempre sin ficha desde donde llegar a ellos (ver server/archivos.js)
+          archivos.borrarLosDe(def, row);
           db.prepare(`DELETE FROM "${def.name}" WHERE id = ?`).run(req.params.id);
         })();
       } catch (e) {

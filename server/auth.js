@@ -111,6 +111,16 @@ function authRequired(req, res, next) {
     const user = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(payload.id);
     if (!user || user.activo === 0) return res.status(401).json({ error: 'Usuario inactivo o inexistente' });
 
+    // Cambiar la contraseña cierra las sesiones abiertas: un pase entregado
+    // antes de ese momento ya no sirve. Sin esto, a quien le robaran la clave
+    // no lo sacaba de adentro cambiarla (ver server/claves.js).
+    if (user.sesiones_desde && payload.iat < Number(user.sesiones_desde)) {
+      res.clearCookie('sesion', { path: '/' });
+      return res.status(401).json({
+        error: 'Su sesión se cerró porque se cambió la contraseña de esta cuenta. Vuelva a entrar.',
+      });
+    }
+
     const aviso = bloqueoPorMantenimiento(user);
     if (aviso) return res.status(503).json({ error: aviso, mantenimiento: true });
 
@@ -260,7 +270,13 @@ router.post('/cambiar-password', authRequired, atender(async (req, res) => {
 
   claves.establecer(user.id, nueva, 'usuario');
   const actualizado = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(user.id);
-  res.json({ ok: true, user: publicUser(actualizado) });
+
+  // El cambio cerró todas las sesiones de la cuenta, incluida la de quien lo
+  // está haciendo. A esa persona se le entrega un pase nuevo en el acto: la
+  // idea es dejar afuera a los demás, no a ella.
+  const nuevoPase = jwt.sign({ id: actualizado.id, rol: actualizado.rol }, JWT_SECRET, { expiresIn: duracionSesion() });
+  ponerGalleta(req, res, nuevoPase);
+  res.json({ ok: true, token: nuevoPase, user: publicUser(actualizado) });
 }));
 
 /**

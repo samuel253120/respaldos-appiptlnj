@@ -22,7 +22,9 @@
  * sesión: en ese momento no hay ficha que consultar, y sin eso no se podría
  * ver la foto que uno mismo acaba de elegir.
  */
-const { db } = require('./db');
+const fs = require('fs');
+const path = require('path');
+const { db, UPLOADS_DIR } = require('./db');
 const { allModules } = require('./registry');
 const alcance = require('./alcance');
 
@@ -82,4 +84,111 @@ function puedeVer(archivo, usuario) {
   return { ok: true };
 }
 
-module.exports = { puedeVer, duenoDe };
+/**
+ * Los archivos que quedan sin dueño.
+ *
+ * Cuando se borraba una ficha con documentos, los archivos seguían en el
+ * disco para siempre. Nadie los veía —no hay ficha desde donde llegar a
+ * ellos— pero ocupaban lugar, y en un servidor con el espacio contado, lo que
+ * se acumula sin que nadie mire termina llenándolo.
+ *
+ * Se limpia por dos vías, porque una sola no alcanza:
+ *
+ *   · **Al borrar una ficha**, se borran sus archivos en el mismo momento.
+ *     Antes se comprueba que ningún otro registro los esté usando: dos fichas
+ *     pueden apuntar al mismo archivo si alguien lo copió a mano, y borrar el
+ *     de una dejaría a la otra sin su foto.
+ *   · **Una barrida cada cierto tiempo**, para los que quedaron sueltos antes
+ *     de esto y para los que se suben y nunca se guardan —uno elige una foto,
+ *     se arrepiente y cierra el formulario: el archivo ya está en el disco.
+ */
+/**
+ * Días que se le dan a un archivo recién subido antes de considerarlo perdido.
+ *
+ * No puede ser cero: entre que se sube un archivo y se guarda el formulario
+ * que lo enlaza pasan minutos, y a veces la persona deja la pantalla abierta
+ * y vuelve al otro día. Borrarlo mientras tanto sería borrarle el trabajo.
+ */
+const DIAS_DE_GRACIA = 7;
+
+/** ¿Algún registro, de cualquier módulo, está usando este archivo? */
+function loUsaAlguien(archivo, salvo) {
+  for (const { def, columnas } of columnasDeArchivo()) {
+    const donde = columnas.map((c) => `"${c}" = ?`).join(' OR ');
+    const excluir = salvo && salvo.def.name === def.name ? 'AND id <> ?' : '';
+    try {
+      const fila = db
+        .prepare(`SELECT id FROM "${def.name}" WHERE (${donde}) ${excluir} LIMIT 1`)
+        .get(...columnas.map(() => archivo), ...(excluir ? [salvo.id] : []));
+      if (fila) return true;
+    } catch (e) {
+      // Una tabla que aún no existe no impide revisar las demás. Si no se
+      // pudo preguntar, se responde que sí: nunca se borra por las dudas.
+      continue;
+    }
+  }
+  return false;
+}
+
+/** Borra un archivo del disco y lo olvida. Devuelve si se fue. */
+function borrarDelDisco(archivo) {
+  recordados.delete(archivo);
+  try {
+    fs.unlinkSync(path.join(UPLOADS_DIR, archivo));
+    return true;
+  } catch (e) {
+    return false; // ya no estaba, o el disco no deja: no es motivo para fallar
+  }
+}
+
+/**
+ * Los archivos de una ficha que se está por borrar.
+ *
+ * Se llama DENTRO de la transacción que borra el registro, pero antes del
+ * DELETE, que es cuando todavía se puede leer qué archivos tenía. Se borran
+ * del disco solo los que no use ninguna otra ficha.
+ */
+function borrarLosDe(def, fila) {
+  const suyos = def.fields.filter((f) => f.type === 'file').map((f) => fila[f.name]).filter(Boolean);
+  let borrados = 0;
+  for (const archivo of new Set(suyos)) {
+    if (loUsaAlguien(archivo, { def, id: fila.id })) continue;
+    if (borrarDelDisco(archivo)) borrados++;
+  }
+  return borrados;
+}
+
+/**
+ * La barrida: borra los archivos que no usa nadie y que llevan más de unos
+ * días ahí. Devuelve qué encontró, para poder decirlo.
+ */
+function limpiarHuerfanos({ diasDeGracia = DIAS_DE_GRACIA, deVerdad = true } = {}) {
+  let nombres;
+  try {
+    nombres = fs.readdirSync(UPLOADS_DIR);
+  } catch (e) {
+    return { revisados: 0, huerfanos: 0, borrados: 0, espacio: 0 };
+  }
+
+  const limite = Date.now() - diasDeGracia * 24 * 60 * 60 * 1000;
+  let huerfanos = 0;
+  let borrados = 0;
+  let espacio = 0;
+
+  for (const archivo of nombres) {
+    let datos;
+    try {
+      datos = fs.statSync(path.join(UPLOADS_DIR, archivo));
+    } catch (e) {
+      continue;
+    }
+    if (!datos.isFile() || datos.mtimeMs > limite) continue;
+    if (loUsaAlguien(archivo, null)) continue;
+    huerfanos++;
+    espacio += datos.size;
+    if (deVerdad && borrarDelDisco(archivo)) borrados++;
+  }
+  return { revisados: nombres.length, huerfanos, borrados, espacio };
+}
+
+module.exports = { puedeVer, duenoDe, borrarLosDe, limpiarHuerfanos, DIAS_DE_GRACIA };

@@ -1162,7 +1162,7 @@ Las otras tres pruebas miran lo que la de humo no ve, y ninguna necesita navegad
 
 - `npm run concurrencia` — que nadie pierda su trabajo cuando dos trabajan sobre lo mismo, incluida la lista de asistencia que pasan dos (ver *[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)*).
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro.
-- `npm run seguridad` — que los archivos no se entreguen sin sesión ni se abran como página, que no se pueda subir una página web —ni disfrazada de foto—, que el pase de sesión no sirva escrito en la dirección, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, que la copia automática se haga y se pueda volver a ella, que la planilla nunca traiga una fila que la pantalla no muestre, que lo que se borra quede anotado en cualquier módulo, que el registro de cambios no se pueda maquillar, que el alcance por cuerpo se respete aunque se escriba la dirección a mano —su gente, sus cuotas y su cobro— y que elegir con qué iglesia trabajar nunca amplíe lo asignado. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
+- `npm run seguridad` — que los archivos no se entreguen sin sesión ni se abran como página, que no se pueda subir una página web —ni disfrazada de foto—, que el pase de sesión no sirva escrito en la dirección, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, que la copia automática se haga y se pueda volver a ella, que la planilla nunca traiga una fila que la pantalla no muestre, que lo que se borra quede anotado en cualquier módulo y sus archivos se vayan con la ficha, que cambiar la contraseña cierre las sesiones abiertas —incluso cuando la restablece el administrador— sin dejar afuera a quien la cambió, que el navegador reciba sus reglas de seguridad, que el registro de cambios no se pueda maquillar, que el alcance por cuerpo se respete aunque se escriba la dirección a mano —su gente, sus cuotas y su cobro— y que elegir con qué iglesia trabajar nunca amplíe lo asignado. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
 
 ## API REST
 
@@ -1192,6 +1192,8 @@ POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importa
 - Contraseñas cifradas con bcrypt: **el sistema no puede leerlas**, ni siquiera para el administrador (ver *Contraseñas*). Sesiones JWT de 12 h.
 - La contraseña que entrega el administrador **obliga a cambiarla** en el primer ingreso, y hasta entonces el servidor no deja hacer nada más.
 - **Los archivos subidos piden sesión.** Los carnets, los certificados y las fotos ya no se entregan a quien tenga el enlace: hay que estar dentro del sistema y que ese archivo pertenezca a una ficha que esa persona pueda ver. El secretario de un cuerpo no abre el carnet de un miembro de otra iglesia, aunque le reenvíen la dirección.
+- **Cambiar la contraseña cierra las sesiones que estuvieran abiertas.** Antes no: quien hubiera entrado con la contraseña vieja seguía adentro hasta que su pase caducara solo, que según la configuración puede ser un mes. Si a alguien le robaban la clave, cambiarla no lo sacaba. Ahora vale para los tres casos —la cambia su dueño, la define el administrador o la restablece—, y ese último es justamente el más importante: restablecerle la contraseña a alguien echa de la sesión a quien esté usando la cuenta. A quien la está cambiando no se le corta: recibe un pase nuevo en el acto.
+- **Las reglas que hace cumplir el navegador.** Cuatro cabeceras que cierran de golpe toda una familia de problemas: `Content-Security-Policy` (lo que la página ejecuta y muestra sale solo de este mismo sitio, y **no se ejecuta nada escrito dentro de la propia página** — por eso los clics de las filas se escuchan desde un solo lugar y no dentro de cada etiqueta), `X-Content-Type-Options` (el navegador no adivina el tipo de un archivo), `X-Frame-Options` (otro sitio no puede meter el sistema en una ventana suya para engañar a quien lo usa) y `Referrer-Policy` (al salir a otro sitio no se le cuenta qué ficha se estaba mirando).
 - **No entra cualquier archivo, y ninguno se abre como página.** Se aceptan solo los formatos que la iglesia usa —fotos, PDF, documentos de Word, Excel o PowerPoint, y texto—, y no basta con ponerle el nombre: se miran los primeros bytes, así que una página web llamada `foto.jpg` se rechaza igual. Al entregarlos, el tipo lo pone el sistema desde su propia lista (nunca el nombre del archivo), se manda `nosniff` para que el navegador no adivine otro, y **solo las fotos y los PDF se muestran en pantalla**: lo demás se baja. Sin esto, quien pudiera adjuntar un documento podía dejar un archivo que corriera en el navegador del que lo abriera, con su sesión adentro y en el dominio del propio sistema.
 - **El pase de sesión no viaja escrito en la dirección.** Se aceptaba `?token=…` en todas las rutas por un solo enlace —el de bajar el respaldo—, y un pase escrito en la dirección queda anotado en los registros del servidor, en el historial del navegador y en cualquier enlace que se comparta. Ahora solo se acepta por cabecera o en la galleta de sesión, que es la que el navegador manda sola en las descargas.
 - **La entrada se cierra al que insiste.** Cinco contraseñas erradas sobre un mismo RUT y hay que esperar un minuto; si insisten, cinco y después quince. Se cuenta además por dirección de internet —para frenar a quien va probando RUT tras RUT—, pero ahí el tope es mucho más alto (veinte), porque toda la iglesia sale por el mismo wifi y nadie tiene por qué quedar afuera por el despiste del de al lado.
@@ -1232,6 +1234,17 @@ Se ajusta en **Configuración → Respaldos**: si se hace o no, a qué hora y cu
 
 Para volver a una: descomprimirla (`gunzip iglesias-2026-08-23.db.gz`) y dejar el `iglesias.db` resultante en la carpeta de datos, con el sistema detenido.
 
+### Los archivos no quedan sueltos 🧹
+
+Al borrar una ficha con documentos, los archivos seguían en el disco para siempre: nadie los veía —no hay ficha desde donde llegar a ellos— pero ocupaban lugar, y lo que se acumula sin que nadie mire termina llenando el disco.
+
+Se limpia por dos vías, porque una sola no alcanza:
+
+- **Al borrar una ficha**, sus archivos se van con ella en el mismo momento. Antes se comprueba que ninguna otra ficha los esté usando: dos pueden apuntar al mismo archivo, y borrar el de una dejaría a la otra sin su foto.
+- **Una barrida cada noche**, después del respaldo —no antes: si la barrida se equivocara, lo que borró todavía está en la copia de esa noche—, para los que quedaron sueltos de antes y para los que se suben y nunca se guardan: uno elige una foto, se arrepiente y cierra el formulario, y el archivo ya está en el disco.
+
+A un archivo recién subido se le dan **7 días** antes de considerarlo perdido. No puede ser inmediato: entre que se sube y se guarda el formulario que lo enlaza pasan minutos, y a veces la persona deja la pantalla abierta y vuelve al otro día.
+
 ### Registro de Cambios: quién tocó el dinero 🧾
 
 Los miembros, las iglesias y los pastores tienen su **historial**, que cuenta su vida en la iglesia. El **Registro de Cambios** es otra cosa: está para responder *«¿quién cambió este monto?»* sin que quede en la palabra de nadie.
@@ -1254,6 +1267,14 @@ Se escribe solo y **no se puede agregar, corregir ni borrar a mano** —el siste
 Lo único que se borra sin quedar anotado son las **marcas de asistencia**: se borran de a montones cada vez que alguien corrige una lista, y anotarlas una por una sepultaría el registro.
 
 Al anotar una eliminación se guarda un resumen de lo que traía la ficha, pero de los campos marcados como **sensibles** —las enfermedades, las alergias, la nota importante— solo queda constancia de que traían algo, no de qué: el Registro de Cambios lo leen el pastor y el tesorero, y los datos de salud de una persona no tienen por qué quedar copiados ahí para siempre.
+
+### Lo que se baja en cada visita 📶
+
+El programa de la pantalla son unos 300 KB en el disco, pero **por la red viaja comprimido en 82 KB**, y con los estilos y la página, la primera visita completa son unos 100 KB. La dirección lleva la versión escrita (`/app.js?v=1.54.0`), así que al publicar una versión nueva el navegador se la baja sola, y como la dirección de una versión ya nunca cambia de contenido, se marca `immutable`: el navegador deja de preguntar si sigue vigente y se ahorra ese viaje en cada visita.
+
+Lo que sí pesaba en cada entrada era **la definición de los módulos** —32 módulos y 380 campos, unos 180 KB de texto— que la pantalla pide al entrar y en cada recarga. Ahora esa respuesta lleva una firma de su contenido: quien ya la tiene recibe «lo mismo de antes» y no se baja nada. Son unos 17 KB menos por recarga, sin riesgo de quedarse con una versión vieja, porque si algo cambió —el sistema o los permisos de esa persona— la firma cambia.
+
+Entrar son **5 consultas al servidor** en total, y el panel de control queda a la vista aproximadamente **1,3 segundos** después de apretar *Entrar*.
 
 ## Varias personas trabajando a la vez 👥
 

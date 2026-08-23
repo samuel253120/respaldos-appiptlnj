@@ -364,6 +364,42 @@ function logout() {
   location.hash = '';
   renderLogin();
 }
+/**
+ * Los clics que antes iban escritos dentro del propio HTML.
+ *
+ * Una fila que lleva a una ficha se escribía como `onclick="location.hash=…"`,
+ * metido en la etiqueta. Funcionaba, pero obliga a permitirle al navegador
+ * ejecutar instrucciones escritas dentro de la página, y eso es justo lo que
+ * la regla de seguridad del sistema prohíbe ahora (ver server/index.js): sin
+ * esa puerta abierta, un texto que alguien lograra colar en una ficha no
+ * puede ejecutarse.
+ *
+ * Así que ahora la etiqueta solo dice a dónde va —`data-ir`— y quien
+ * escucha es este único manejador. `data-parar` es para lo que va dentro de
+ * una fila y no debe disparar el clic de la fila, como un botón propio.
+ */
+
+// `data-parar` se atiende en la ida y no en la vuelta, y ahí mismo se corta el
+// viaje del clic. Tiene que ser así: lo que lleva esa marca —el adjunto de una
+// fila— está dentro de una fila que sí tiene su propio manejador, puesto
+// aparte. Si solo se ignorara acá, la fila igual se abriría y quien quería
+// bajar el archivo terminaría en otra pantalla.
+document.addEventListener(
+  'click',
+  (e) => {
+    if (e.target.closest && e.target.closest('[data-parar]')) e.stopPropagation();
+  },
+  true
+);
+
+document.addEventListener('click', (e) => {
+  for (let el = e.target; el && el !== document; el = el.parentElement) {
+    if (el.dataset && el.dataset.parar !== undefined) return; // lo suyo, no lo de la fila
+    if (el.dataset && el.dataset.imprimir !== undefined) { window.print(); return; }
+    if (el.dataset && el.dataset.ir) { location.hash = el.dataset.ir; return; }
+  }
+});
+
 window.addEventListener('hashchange', () => {
   if (TOKEN && USER) route();
 });
@@ -664,7 +700,10 @@ async function renderCambioObligatorio(aviso) {
     }
     err.textContent = '';
     try {
-      await api('POST', '/auth/cambiar-password', { nueva });
+      const r = await api('POST', '/auth/cambiar-password', { nueva });
+      // Cambiar la contraseña cierra las sesiones de la cuenta, y esta también
+      // quedaría afuera: el servidor entrega un pase nuevo y hay que guardarlo.
+      if (r && r.token) { TOKEN = r.token; localStorage.setItem('token', TOKEN); }
       toast('Contraseña cambiada');
       await pedirPreguntaSecreta();
       await boot();
@@ -949,8 +988,11 @@ function renderSeguridad(zona) {
     }
     err.textContent = '';
     try {
-      await api('POST', '/auth/cambiar-password', { actual: document.getElementById('mcActual').value, nueva });
-      toast('Contraseña cambiada');
+      const r = await api('POST', '/auth/cambiar-password', {
+        actual: document.getElementById('mcActual').value, nueva,
+      });
+      if (r && r.token) { TOKEN = r.token; localStorage.setItem('token', TOKEN); }
+      toast('Contraseña cambiada. Si había entrado desde otro aparato, ahí se cerró la sesión.');
       document.getElementById('mcForm').reset();
       pintarPregunta();
     } catch (e2) {
@@ -1196,7 +1238,7 @@ async function viewDashboard() {
         <h3>🎂 Próximos cumpleaños</h3>
         <ul class="cumple-list">
           ${d.cumpleanos.map((c) => `
-            <li class="${c.dias === 0 ? 'hoy' : ''}" onclick="location.hash='#/m/miembros/ficha/${c.id}'">
+            <li class="${c.dias === 0 ? 'hoy' : ''}" data-ir="#/m/miembros/ficha/${c.id}">
               <div class="av">${c.foto
                 ? `<img src="/uploads/${esc(c.foto)}" alt="" />`
                 : `<span>${esc((c.nombre || '?').trim().charAt(0).toUpperCase())}</span>`}</div>
@@ -1220,7 +1262,7 @@ async function viewDashboard() {
     </div>
     <div class="stats">
       ${statDefs.map(([name, ic, lbl, num]) => `
-        <div class="stat" onclick="location.hash='#/m/${name}'">
+        <div class="stat" data-ir="#/m/${name}">
           <div class="num">${esc(fmtNumero(num))}</div><div class="lbl">${lbl}</div><div class="ic">${ic}</div>
         </div>`).join('')}
     </div>
@@ -1231,7 +1273,7 @@ async function viewDashboard() {
         <h3>📋 Últimas asistencias</h3>
         <ul class="mini-list">
           ${d.ultimasAsistencias.length ? d.ultimasAsistencias.map((a) => `
-            <li onclick="location.hash='#/asistencia?actividad=${a.id}'">
+            <li data-ir="#/asistencia?actividad=${a.id}">
               <span>${esc(a.tipo_reunion)}${a.cuerpo ? ` <span class="mut">— ${esc(a.cuerpo)}</span>` : ''}</span>
               <span class="mut">${fechaCorta(a.fecha)} · ${a.marcados ? `${a.presentes} de ${a.marcados}` : 'sin lista'}</span>
             </li>`).join('') : '<li class="mut">Sin registros aún</li>'}
@@ -1241,7 +1283,7 @@ async function viewDashboard() {
         <h3>📨 Solicitudes recientes</h3>
         <ul class="mini-list">
           ${d.solicitudesRecientes.length ? d.solicitudesRecientes.map((s) => `
-            <li onclick="location.hash='#/m/solicitudes/edit/${s.id}'">
+            <li data-ir="#/m/solicitudes/edit/${s.id}">
               <span>${esc(s.asunto)} <span class="mut">— ${esc(s.solicitante)}</span></span>
               <span class="badge ${badgeClass(s.estado)}">${esc(s.estado)}</span>
             </li>`).join('') : '<li class="mut">Sin registros aún</li>'}
@@ -1282,7 +1324,7 @@ async function renderPendientes(zona) {
   }
 
   const linea = (f) => `
-    <li onclick="location.hash='#/m/miembros?sin=${encodeURIComponent(f.campo)}'" title="Abrir los que no lo tienen">
+    <li data-ir="#/m/miembros?sin=${encodeURIComponent(f.campo)}" title="Abrir los que no lo tienen">
       <span><b>${esc(f.label)}</b><br><span class="mut">${esc(f.para)}</span></span>
       <span class="badge ${f.porcentaje >= 90 ? 'red' : f.porcentaje >= 40 ? 'yellow' : ''}">
         faltan ${fmtNumero(f.cuantos)}
@@ -1634,7 +1676,7 @@ async function viewList(name, filtrosIniciales) {
             <div class="sc-tit">Saldo de cada cuenta <span class="mut">(no depende del período filtrado)</span></div>
             <ul>
               ${cuentas.map((c) => `
-                <li onclick="location.hash='#/m/cuentas_tesoreria/edit/${c.id}'">
+                <li data-ir="#/m/cuentas_tesoreria/edit/${c.id}">
                   <span class="sc-n">${esc(c.nombre)}
                     <span class="badge ${c.tipo === 'General' ? 'blue' : ''}">${esc(c.ambito)}</span>
                   </span>
@@ -1696,7 +1738,7 @@ function cellValue(f, row, col) {
     case 'file':
       if (!v) return '';
       if (/\.(jpe?g|png|gif|webp)$/i.test(v)) return `<img class="thumb" src="/uploads/${esc(v)}" alt="" />`;
-      return `<a href="/uploads/${esc(v)}" target="_blank" onclick="event.stopPropagation()">📎 archivo</a>`;
+      return `<a href="/uploads/${esc(v)}" target="_blank" data-parar="1">📎 archivo</a>`;
     case 'select': {
       if (v == null || v === '') return '';
       // Lo normal se lee como texto; lo que se sale de lo normal, con
@@ -3916,8 +3958,8 @@ async function viewPrint(name, id) {
 
   content().innerHTML = `
     <div class="print-actions no-print">
-      <button class="btn secondary" onclick="location.hash='#/m/${name}'">← Volver</button>
-      <button class="btn" onclick="window.print()">🖨️ Imprimir</button>
+      <button class="btn secondary" data-ir="#/m/${name}">← Volver</button>
+      <button class="btn" data-imprimir="1">🖨️ Imprimir</button>
     </div>
     ${sheet}`;
 }
@@ -6211,7 +6253,7 @@ async function renderEstadoCuenta(cuentaId, contenedor) {
         </div>
         ${e.ultimos.length ? `<ul class="mini-list mov-list">
           ${e.ultimos.map((m) => `
-            <li onclick="location.hash='#/m/tesoreria/edit/${m.id}'">
+            <li data-ir="#/m/tesoreria/edit/${m.id}">
               <span>${fechaCorta(m.fecha)} · ${esc(m.concepto)} <span class="mut">— ${esc(m.categoria || '')}</span></span>
               <b class="${m.tipo === 'Egreso' ? 'monto-egreso' : 'monto-ingreso'}">${m.tipo === 'Egreso' ? '−' : '+'} ${fmtMoney(m.monto)}</b>
             </li>`).join('')}
@@ -6750,7 +6792,7 @@ async function renderTesoreriaCuerpo(cuerpoId, caja) {
       </div>
       ${cuentas.rows.length ? `<ul class="mini-list">
         ${cuentas.rows.map((c) => `
-          <li onclick="location.hash='#/m/cuentas_tesoreria/edit/${c.id}'">
+          <li data-ir="#/m/cuentas_tesoreria/edit/${c.id}">
             <span>${esc(c.nombre)}
               <span class="badge ${c.tipo === 'General' ? 'blue' : ''}">${esc(c.tipo)}</span>
               ${c.estado === 'Cerrada' ? '<span class="badge">Cerrada</span>' : ''}</span>
@@ -6765,7 +6807,7 @@ async function renderTesoreriaCuerpo(cuerpoId, caja) {
         </div>
         <ul class="mov-list">
           ${movimientos.rows.map((m) => `
-            <li onclick="location.hash='#/m/tesoreria/edit/${m.id}'">
+            <li data-ir="#/m/tesoreria/edit/${m.id}">
               <span>${esc(fechaCorta(m.fecha))} · ${esc(m.concepto)}</span>
               <span class="${m.tipo === 'Ingreso' ? 'monto-ingreso' : 'monto-egreso'}">
                 ${m.tipo === 'Ingreso' ? '+' : '−'} ${fmtMoney(m.monto)}</span>
@@ -6795,7 +6837,7 @@ async function renderDirectivasCuerpo(cuerpoId, caja) {
       </div>
       ${directivas.rows.length ? `<ul class="directivas">
         ${directivas.rows.map((d) => `
-          <li class="${d.estado === 'Vigente' ? 'vigente' : ''}" onclick="location.hash='#/m/directivas/edit/${d.id}'">
+          <li class="${d.estado === 'Vigente' ? 'vigente' : ''}" data-ir="#/m/directivas/edit/${d.id}">
             <div class="dp">
               <b>${esc(d.periodo)}</b>
               <span class="badge ${d.estado === 'Vigente' ? 'green' : ''}">${esc(d.estado)}</span>
@@ -6834,7 +6876,7 @@ async function renderActasCuerpo(cuerpoId, caja) {
       </div>
       ${actas.rows.length ? `<ul class="mini-list">
         ${actas.rows.map((a) => `
-          <li onclick="location.hash='#/m/actas_reuniones/edit/${a.id}'">
+          <li data-ir="#/m/actas_reuniones/edit/${a.id}">
             <span><b>Acta ${esc(a.numero_acta)}</b>
               <span class="mut">${esc(fechaCorta(a.fecha))}${a.presidida_por ? ` · ${esc(a.presidida_por)}` : ''}</span></span>
             <span class="mut">

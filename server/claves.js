@@ -46,13 +46,24 @@ function revisarLargo(clave) {
  * de ella: 'inicial' (la del sistema, que el administrador conoce),
  * 'definida' (una que escribió el administrador) o 'usuario' (la eligió su
  * dueño, y entonces nadie más la conoce).
+ *
+ * Cambiar la contraseña **cierra las sesiones que estuvieran abiertas**. Antes
+ * no: quien hubiera entrado con la contraseña vieja seguía adentro hasta que
+ * su pase caducara solo, que puede ser un mes según cómo esté configurado. Si
+ * a alguien le robaron la clave, cambiarla no lo sacaba. Ahora se anota desde
+ * cuándo valen los pases de esta cuenta, y los entregados antes dejan de
+ * servir en la siguiente petición.
+ *
+ * Vale para los tres orígenes, a propósito: que el administrador restablezca
+ * la contraseña de alguien es justamente el caso en que hay que echar de la
+ * sesión a quien esté usando la cuenta.
  */
 function establecer(usuarioId, clave, origen) {
   const propia = origen === 'usuario';
   db.prepare(
     `UPDATE usuarios
         SET password = ?, password_origen = ?, debe_cambiar_password = ?,
-            password_cambiada_en = ?, recuperacion_intentos = 0,
+            password_cambiada_en = ?, sesiones_desde = ?, recuperacion_intentos = 0,
             updated_at = datetime('now','localtime')
       WHERE id = ?`
   ).run(
@@ -60,6 +71,7 @@ function establecer(usuarioId, clave, origen) {
     origen,
     propia ? 0 : 1,
     propia ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null,
+    Math.floor(Date.now() / 1000),
     usuarioId
   );
 }

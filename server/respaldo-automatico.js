@@ -203,6 +203,26 @@ function rutaDe(nombre) {
   return fs.existsSync(ruta) ? ruta : null;
 }
 
+/**
+ * La barrida de archivos sin dueño, del mismo viaje nocturno.
+ *
+ * Va con el respaldo y no por su cuenta porque son la misma faena —ordenar el
+ * disco mientras nadie trabaja— y así hay un solo reloj que entender.
+ */
+function limpiarArchivos() {
+  try {
+    const r = require('./archivos').limpiarHuerfanos();
+    if (r.borrados) {
+      console.log(
+        `🧹 Archivos sin dueño: ${r.borrados} borrado(s), ` +
+          `${(r.espacio / 1024 / 1024).toFixed(1)} MB recuperados de ${r.revisados} archivo(s).`
+      );
+    }
+  } catch (e) {
+    console.error(`⚠️  No se pudieron limpiar los archivos sueltos: ${e.message}`);
+  }
+}
+
 /** Deja el reloj andando. Se llama una vez, al arrancar. */
 function programar() {
   const revisar = () => {
@@ -210,6 +230,9 @@ function programar() {
     hacerCopia().then((r) => {
       if (r.hecho) {
         console.log(`💾 Respaldo automático: ${r.nombre} (${(r.peso / 1024 / 1024).toFixed(1)} MB).`);
+        // Después del respaldo, no antes: si la barrida se equivocara, lo
+        // que borró todavía está en la copia de esta noche.
+        limpiarArchivos();
       }
     });
   };
@@ -220,4 +243,4 @@ function programar() {
   setInterval(revisar, CADA_CUANTO_MIRA).unref();
 }
 
-module.exports = { programar, hacerCopia, estado, guardadas, rutaDe, podar, CARPETA };
+module.exports = { programar, hacerCopia, estado, guardadas, rutaDe, podar, limpiarArchivos, CARPETA };

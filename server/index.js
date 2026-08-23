@@ -37,6 +37,55 @@ app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Ngin
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 
+/**
+ * Las reglas que el propio navegador hace cumplir.
+ *
+ * Son cuatro líneas y cierran de golpe toda una familia de problemas, sin que
+ * el sistema tenga que hacer nada más:
+ *
+ *   · **Content-Security-Policy** — de dónde puede salir lo que la página
+ *     ejecuta y muestra. Solo de este mismo sitio. Aunque algún día alguien
+ *     lograra colar un texto con instrucciones en una ficha, el navegador no
+ *     las ejecutaría: la página no tiene permitido ejecutar nada escrito
+ *     dentro de ella misma, solo su propio archivo de programa. Por eso los
+ *     clics de las filas se escuchan desde un solo lugar y no dentro de cada
+ *     etiqueta (ver public/app.js).
+ *   · **X-Content-Type-Options** — que no adivine el tipo de un archivo por
+ *     su contenido. Lo que el sistema dice que es una foto, se trata como
+ *     foto y no se ejecuta.
+ *   · **X-Frame-Options** — que otro sitio no pueda meter el sistema dentro
+ *     de una ventana suya para engañar a quien lo usa haciéndole apretar
+ *     cosas que no ve.
+ *   · **Referrer-Policy** — que al salir a otro sitio (el enlace de WhatsApp,
+ *     por ejemplo) no se le cuente la dirección desde donde se salió, que
+ *     lleva escrito qué ficha se estaba mirando.
+ *
+ * `style-src` acepta estilos escritos en la etiqueta porque el sistema arma
+ * pantallas así en varias partes; eso no ejecuta nada, solo pinta.
+ * `img-src` acepta `data:` y `blob:` porque la foto que uno acaba de elegir
+ * se muestra desde la memoria del navegador antes de subirse.
+ */
+const REGLAS_DEL_NAVEGADOR = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "object-src 'none'",
+].join('; ');
+
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', REGLAS_DEL_NAVEGADOR);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  next();
+});
+
 // Verificación de salud para plataformas de despliegue.
 // Incluye la versión para poder comprobar qué código está realmente en línea.
 const VERSION = require('../package.json').version;
@@ -185,7 +234,15 @@ app.get('/api/meta', authRequired, (req, res) => {
     };
   }
 
-  res.json({
+  /**
+   * Esta respuesta se vuelve a pedir en cada entrada y en cada recarga, y son
+   * unos 180 KB de definiciones —32 módulos, 380 campos— que solo cambian
+   * cuando cambia el sistema o los permisos de esa persona. Con una firma de
+   * su contenido, el navegador que ya la tiene recibe «lo mismo de antes» y
+   * no se baja nada: 17 KB menos por recarga, y sin arriesgar quedarse con
+   * una versión vieja, porque si algo cambió la firma cambia.
+   */
+  const cuerpo = {
     modules: mods,
     roles: ROLES,
     permisosCatalogo,
@@ -207,7 +264,14 @@ app.get('/api/meta', authRequired, (req, res) => {
       iglesias_trabajando: trabajando,
       cuerpos_asignados: susCuerpos,
     },
-  });
+  };
+
+  const texto = JSON.stringify(cuerpo);
+  const firma = `W/"${crypto.createHash('sha1').update(texto).digest('base64').slice(0, 22)}"`;
+  res.setHeader('ETag', firma);
+  res.setHeader('Cache-Control', 'private, no-cache'); // se revalida siempre, nunca se sirve a ciegas
+  if (req.headers['if-none-match'] === firma) return res.status(304).end();
+  res.type('application/json').send(texto);
 });
 
 // ---------- Panel de control ----------
@@ -561,7 +625,16 @@ app.use(
     index: false, // la página la arma paginaPrincipal, con la versión puesta
     maxAge: UNA_SEMANA,
     setHeaders: (res, ruta) => {
-      if (ruta.endsWith('.html') || ruta.endsWith('.webmanifest')) res.setHeader('Cache-Control', 'no-cache');
+      if (ruta.endsWith('.html') || ruta.endsWith('.webmanifest')) {
+        res.setHeader('Cache-Control', 'no-cache');
+        return;
+      }
+      // El programa y los estilos se piden con la versión en la dirección
+      // (?v=1.53.0), así que al publicar una versión nueva la dirección cambia
+      // y el navegador se la baja igual. Como la dirección de una versión ya
+      // nunca cambia de contenido, se marca «immutable»: el navegador deja de
+      // preguntar si sigue vigente y se ahorra ese viaje en cada visita.
+      res.setHeader('Cache-Control', `public, max-age=${UNA_SEMANA / 1000}, immutable`);
     },
   })
 );

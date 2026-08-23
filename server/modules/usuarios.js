@@ -68,6 +68,12 @@ module.exports = {
     { name: 'debe_cambiar_password', label: 'Debe cambiar la contraseña', type: 'boolean', oculto: true },
     { name: 'password_origen', label: 'Origen de la contraseña', type: 'text', oculto: true },
     { name: 'password_cambiada_en', label: 'Contraseña cambiada el', type: 'text', oculto: true },
+    {
+      // Desde cuándo valen las sesiones de esta cuenta. Al cambiar la
+      // contraseña se pone la hora de ese momento, y los pases que se
+      // hubieran entregado antes dejan de servir (ver server/auth.js).
+      name: 'sesiones_desde', label: 'Sesiones válidas desde', type: 'number', oculto: true,
+    },
     { name: 'pregunta_secreta', label: 'Pregunta de recuperación', type: 'text', oculto: true },
     // Se guarda cifrada y nunca sale del servidor: el motor no devuelve los
     // campos de tipo contraseña
