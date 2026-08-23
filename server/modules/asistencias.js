@@ -388,32 +388,58 @@ module.exports = {
       // cliente: se resuelve aquí, con los cuerpos que le tocan a quien marca)
       const convocados = integrantesConvocados(actividad, db, req.user);
 
-      // Y no se le acepta una marca de alguien que no le toca pasar: la
-      // pantalla ya no se los muestra, pero la regla se hace valer acá.
+      /**
+       * Y no se acepta una marca de alguien que no está convocado.
+       *
+       * Esta comprobación existía, pero corría dentro de un `if (suyos.length)`:
+       * solo se le hacía a quien tiene cuerpos asignados. A la cuenta de
+       * administrador —que no tiene ninguno, a propósito— no se le comprobaba
+       * nada. Se midió lo que eso permitía:
+       *
+       *   marcar a un miembro de OTRA iglesia ...  se guardaba, y con la
+       *                                            iglesia de la actividad
+       *   marcar al miembro número 999999 .......  se guardaba, y sumaba en
+       *                                            el porcentaje de asistencia
+       *
+       * Nadie llega a eso haciendo clic —la pantalla solo muestra a los
+       * convocados—, pero es la misma raíz que dejaba datos colgando: lo que
+       * la pantalla no ofrece, el servidor igual lo aceptaba. Y ensuciaba
+       * justo el dato que después se lee como porcentaje.
+       *
+       * La regla ahora vale para todos: se marca a quien está convocado en los
+       * cuerpos que a uno le tocan. La excepción es corregir una marca que ya
+       * está puesta —de un cuerpo que después salió de la actividad, o de
+       * alguien que desde entonces se retiró—, porque quitar esa marca es
+       * justamente lo que hay que poder hacer.
+       */
       const suyos = require('../alcance').cuerposDe(req.user);
-      if (suyos.length) {
-        const yaMarcados = new Map(
-          db.prepare('SELECT miembro_id, cuerpo_id FROM asistencia_detalle WHERE asistencia_id = ?')
-            .all(actividad.id)
-            .map((m) => [Number(m.miembro_id), Number(m.cuerpo_id)])
-        );
-        const ajeno = marcas.find((m) => {
-          const id = Number(m.miembro_id);
-          if (convocados.has(id)) return false;
-          return !suyos.includes(yaMarcados.get(id));
-        });
-        if (ajeno) {
-          return res.status(403).json({
-            error: 'Hay marcas de personas que no son de los cuerpos que tiene asignados. Solo puede pasar lista a los suyos.',
-          });
-        }
-      }
-      const anteriores = new Map(
+      const yaMarcados = new Map(
         db.prepare('SELECT miembro_id, cuerpo_id FROM asistencia_detalle WHERE asistencia_id = ?')
           .all(actividad.id)
-          .map((m) => [m.miembro_id, m.cuerpo_id])
+          .map((m) => [Number(m.miembro_id), Number(m.cuerpo_id)])
       );
-
+      const ajeno = marcas.find((m) => {
+        const id = Number(m.miembro_id);
+        if (convocados.has(id)) return false;
+        if (!yaMarcados.has(id)) return true; // ni convocado ni marcado antes
+        return suyos.length ? !suyos.includes(yaMarcados.get(id)) : false;
+      });
+      if (ajeno) {
+        const quien = db
+          .prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?')
+          .get(Number(ajeno.miembro_id));
+        if (!quien) {
+          return res.status(400).json({
+            error: `Hay una marca de una persona que no está en el sistema (n.º ${ajeno.miembro_id}).`,
+          });
+        }
+        const nombre = require('../nombres').paraMostrar(quien.nombres, quien.apellidos);
+        return res.status(403).json({
+          error: suyos.length
+            ? `${nombre} no es de los cuerpos que tiene asignados. Solo puede pasar lista a los suyos.`
+            : `${nombre} no está en ninguno de los cuerpos convocados a esta actividad.`,
+        });
+      }
       const guardar = db.transaction(() => {
         const borrar = db.prepare('DELETE FROM asistencia_detalle WHERE asistencia_id = ? AND miembro_id = ?');
         const insertar = db.prepare(
@@ -431,7 +457,7 @@ module.exports = {
             actividad.id, m.miembro_id, m.estado,
             justificado ? m.motivo : null,
             justificado && MOTIVOS_CON_DETALLE.includes(m.motivo) ? String(m.detalle).trim() : null,
-            (donde && donde.cuerpo_id) || anteriores.get(Number(m.miembro_id)) || null,
+            (donde && donde.cuerpo_id) || yaMarcados.get(Number(m.miembro_id)) || null,
             actividad.fecha, actividad.iglesia_id || null, req.user.id
           );
           guardadas++;

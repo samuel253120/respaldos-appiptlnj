@@ -694,6 +694,48 @@ async function entrar(rut = RUT, clave = CLAVE) {
     }
   }
 
+  /* 7 · Pasar lista: solo a los convocados ---------------------------------- */
+  console.log('\n7 · Pasar lista');
+  /**
+   * La comprobación de «solo los suyos» existía, pero corría dentro de un
+   * `if (tiene cuerpos asignados)`: a la cuenta de administrador —que no tiene
+   * ninguno, a propósito— no se le comprobaba nada. Se podía marcar presente a
+   * alguien de otra iglesia, y hasta al miembro número 999999, que no existe:
+   * la fila quedaba guardada y sumaba en el porcentaje de asistencia.
+   */
+  const actividades = (await api('GET', '/api/asistencias?page=1&limit=1')).datos.rows || [];
+  if (actividades.length) {
+    const actividad = actividades[0];
+    const antesDeTodo = (await api('GET', '/api/asistencia_detalle?page=1&limit=1')).datos.total;
+
+    const fantasma = await api('POST', `/api/asistencias/${actividad.id}/lista`, {
+      marcas: [{ miembro_id: 999999, estado: 'Presente' }],
+    });
+    revisar('no se puede marcar presente a alguien que no existe', fantasma.estado >= 400,
+      `respondió ${fantasma.estado}`);
+
+    // Alguien real, pero de ningún cuerpo convocado a esta actividad
+    const todosLosMiembros = (await api('GET', '/api/miembros?page=1&limit=200')).datos.rows || [];
+    const dentro = new Set(((await api('GET', `/api/asistencias/${actividad.id}/lista`)).datos.personas || []).map((p) => p.miembro_id || p.id));
+    const fuera = todosLosMiembros.find((m) => !dentro.has(m.id));
+    if (fuera) {
+      const colado = await api('POST', `/api/asistencias/${actividad.id}/lista`, {
+        marcas: [{ miembro_id: fuera.id, estado: 'Presente' }],
+      });
+      revisar('ni a quien no está en ninguno de los cuerpos convocados', colado.estado >= 400,
+        `respondió ${colado.estado}`);
+      revisar('y el aviso dice de quién se trata',
+        colado.estado >= 400 && /[A-Za-zÁÉÍÓÚáéíóúñÑ]{3}/.test(String(colado.datos.error || '')),
+        String(colado.datos.error || '').slice(0, 80));
+    }
+
+    const despues = (await api('GET', '/api/asistencia_detalle?page=1&limit=1')).datos.total;
+    revisar('y ninguna de esas marcas quedó guardada', despues === antesDeTodo,
+      `marcas: ${antesDeTodo} → ${despues}`);
+  } else {
+    console.log('   ℹ️  no hay ninguna actividad con la que probar');
+  }
+
   console.log(fallas ? `\n❌ ${fallas} comprobación(es) fallaron.` : '\n✅ Lo que tiene que estar cerrado, está cerrado.');
   process.exit(fallas ? 1 : 0);
 })();
