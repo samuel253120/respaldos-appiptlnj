@@ -616,6 +616,17 @@ function soloAdministrador(req, res, next) {
   next();
 }
 
+/**
+ * A dónde se está yendo el espacio del volumen.
+ *
+ * El «MB libres» de /health dice que queda poco pero no dice de qué. Esto lo
+ * reparte: la base, los documentos, los respaldos y lo libre, más cuánto pesa
+ * un documento en promedio y cuántos más caben (ver server/disco.js).
+ */
+app.get('/api/disco', authRequired, soloAdministrador, (req, res) => {
+  res.json(require('./disco').estado());
+});
+
 app.get('/api/respaldo/info', authRequired, soloAdministrador, (req, res) => {
   res.json({ ...respaldo.tamano(), nombre: respaldo.nombreDelPaquete(), bajada: respaldo.estadoDeLaBajada() });
 });

@@ -4557,6 +4557,86 @@ async function renderRespaldo(zona) {
   });
 
   renderRespaldoAutomatico(zona);
+  renderDisco(zona);
+}
+
+/**
+ * A dónde se está yendo el espacio del disco.
+ *
+ * El sistema vive en un volumen de tamaño fijo. Saber que «quedan 414 MB» no
+ * sirve de mucho si no se sabe en qué se gastaron los otros: la decisión de si
+ * conviene comprimir los escaneos o agrandar el disco depende justamente de
+ * eso. Acá se ve el reparto, y una cuenta que responde la pregunta de quien
+ * está por subir doscientos documentos: cuántos más caben, al peso que están
+ * pesando los que ya subió.
+ */
+async function renderDisco(zona) {
+  let d;
+  try {
+    d = await api('GET', '/disco');
+  } catch (err) {
+    return; // versión antigua del servidor: no se ofrece
+  }
+
+  const caja = document.createElement('div');
+  caja.className = 'card';
+  caja.style.marginBottom = '18px';
+  zona.appendChild(caja);
+
+  const parte = (n) => (d.total ? Math.max(n / d.total * 100, n > 0 ? 0.4 : 0) : 0);
+  const trozos = [
+    { que: 'Documentos y fotos', bytes: d.documentos, clase: 'doc' },
+    { que: 'La base de datos', bytes: d.base, clase: 'base' },
+    { que: 'Las copias automáticas', bytes: d.respaldos, clase: 'copias' },
+    // Lo que ocupa el disco y no es del sistema. Si no se nombrara, quedaría
+    // pintado como espacio libre y la barra diría que hay más sitio del que hay.
+    { que: 'Otras cosas del disco', bytes: d.otros || 0, clase: 'otros' },
+  ].filter((t) => t.bytes > 0);
+
+  const barra = d.total
+    ? `<div class="disco-barra">
+         ${trozos.map((t) => `<span class="${t.clase}" style="width:${parte(t.bytes).toFixed(2)}%" title="${esc(t.que)}: ${tamanoLegible(t.bytes)}"></span>`).join('')}
+       </div>`
+    : '';
+
+  const leyenda = trozos
+    .map((t) => `<div><span class="punto ${t.clase}"></span>${esc(t.que)}<b>${tamanoLegible(t.bytes)}</b></div>`)
+    .join('');
+
+  // La cuenta que de verdad se quiere hacer: a este peso, cuántos más entran
+  const cuentaDeDocumentos =
+    d.promedio_documento && d.documentos_que_caben !== null
+      ? `<p class="mut" style="font-size:13px;margin:10px 0 0">
+           Los ${fmtNumero(d.cuantos_documentos)} archivos subidos pesan <b>${tamanoLegible(d.promedio_documento)}</b> cada uno
+           en promedio. A ese ritmo caben unos <b>${fmtNumero(d.documentos_que_caben)}</b> más.
+           Si va a subir muchos escaneos, comprimirlos antes es lo que más rinde: un documento
+           a 200 dpi en escala de grises pesa como la décima parte que a color.
+         </p>`
+      : `<p class="mut" style="font-size:13px;margin:10px 0 0">
+           Todavía no hay archivos subidos con los que estimar. En cuanto suba unos cuantos,
+           acá aparece cuánto pesan en promedio y cuántos más caben.
+         </p>`;
+
+  caja.innerHTML = `
+    ${d.apretado ? `<div class="aviso choque">
+      <b>💾 Queda muy poco espacio</b>
+      <span>Con el disco lleno el sistema no puede guardar nada más: ni una ficha, ni una foto,
+        ni el respaldo de la noche. Libere sitio o agrande el volumen antes de que pase.</span>
+    </div>` : ''}
+    <div class="toolbar"><b>💾 En qué se está usando el disco</b></div>
+    <div class="respaldo">
+      ${barra}
+      <div class="disco-leyenda">
+        ${leyenda}
+        <div><span class="punto libre"></span>Libre<b>${d.libre === null ? '—' : tamanoLegible(d.libre)}</b></div>
+      </div>
+      ${cuentaDeDocumentos}
+      ${d.solo_nuestro ? '' : `<p class="mut" style="font-size:12.5px;margin:8px 0 0">
+        Este disco no es solo del sistema: lo que aparece como «otras cosas» son archivos de la
+        máquina que no tienen que ver con la iglesia. En el servidor publicado, donde los datos
+        viven en su propio volumen, esa parte no aparece.
+      </p>`}
+    </div>`;
 }
 
 /**

@@ -558,6 +558,41 @@ table.grid th.col-mini { font-size: 15px; }
 .aviso.confirmar .acciones { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .aviso.confirmar .acciones .btn { margin: 0; }
 
+/* ---- En qué se está usando el disco ----
+ * Una barra con las tres cosas que ocupan y lo que queda. Los colores llevan
+ * además su punto en la leyenda, para que no haya que distinguirlos solo por
+ * el color: quien no distinga dos de ellos lee igual el nombre y el peso. */
+.disco-barra {
+  display: flex;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--border);
+  margin: 4px 0 14px;
+}
+.disco-barra span { display: block; height: 100%; }
+.disco-barra .doc    { background: #2563eb; }
+.disco-barra .base   { background: #0f766e; }
+.disco-barra .copias { background: #a16207; }
+.disco-barra .otros  { background: #94a3b8; }
+
+.disco-leyenda {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 6px 18px;
+  font-size: 13.5px;
+}
+.disco-leyenda > div { display: flex; align-items: center; gap: 8px; }
+.disco-leyenda b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.disco-leyenda .punto {
+  width: 10px; height: 10px; border-radius: 3px; flex: none;
+}
+.disco-leyenda .punto.doc    { background: #2563eb; }
+.disco-leyenda .punto.base   { background: #0f766e; }
+.disco-leyenda .punto.copias { background: #a16207; }
+.disco-leyenda .punto.otros  { background: #94a3b8; }
+.disco-leyenda .punto.libre  { background: var(--border); border: 1px solid #cbd5e1; }
+
 .fld.check { display: flex; align-items: center; gap: 8px; padding-top: 22px; }
 .fld.check input { width: auto; }
 .fld.check label { margin: 0; }
