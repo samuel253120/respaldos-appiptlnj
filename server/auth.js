@@ -20,7 +20,34 @@ const { can } = require('./permissions');
 const rutUtil = require('./rut');
 const ajustes = require('./ajustes');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'cambiar-esta-clave-en-produccion';
+/**
+ * La llave con que se firman las sesiones.
+ *
+ * Sale de la variable JWT_SECRET del servidor. Si falta, se usa una de
+ * reserva que está escrita acá y que, por lo tanto, conoce cualquiera que
+ * haya visto el repositorio: con ella se puede fabricar una sesión de
+ * administrador sin saber ninguna contraseña. Sirve para trabajar en el
+ * computador de uno, no para publicar el sistema en internet.
+ *
+ * Por eso el sistema lo dice en voz alta al arrancar y lo muestra en
+ * /health: antes había que ir a mirar la configuración del servidor para
+ * saberlo, y quien no supiera dónde mirar quedaba publicado con la llave de
+ * todos sin enterarse.
+ */
+const LLAVE_DE_RESERVA = 'cambiar-esta-clave-en-produccion';
+const JWT_SECRET = process.env.JWT_SECRET || LLAVE_DE_RESERVA;
+const conLlavePropia = JWT_SECRET !== LLAVE_DE_RESERVA;
+
+if (!conLlavePropia) {
+  console.error(
+    '⚠️  ATENCIÓN: no está configurada la variable JWT_SECRET, así que las sesiones se están\n' +
+      '   firmando con la llave de reserva que viene escrita en el código y que es pública.\n' +
+      '   Si el sistema está publicado en internet, cualquiera puede entrar como administrador.\n' +
+      '   Póngala en las variables del servidor. Para generar una:\n' +
+      '   node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"\n' +
+      '   Al ponerla se cierran las sesiones abiertas y todos vuelven a entrar. Eso es lo esperado.'
+  );
+}
 
 /** Duración de la sesión, configurable desde la pantalla de configuración. */
 function duracionSesion() {
@@ -390,4 +417,4 @@ router.post('/recuperar', (req, res) => {
   res.json({ ok: true });
 });
 
-module.exports = { router, authRequired, requirePerm, JWT_SECRET, bloqueoPorMantenimiento };
+module.exports = { router, authRequired, requirePerm, JWT_SECRET, conLlavePropia, bloqueoPorMantenimiento };

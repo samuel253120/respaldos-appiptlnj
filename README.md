@@ -1207,7 +1207,16 @@ POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importa
 - Alcance por iglesia aplicado en el servidor (lectura y escritura).
 - Protecciones: no eliminar el propio usuario ni el último administrador; correo de usuario único.
 
-> ⚠️ **Revise que `JWT_SECRET` esté configurada** en su servidor (en Railway: *Variables*). Es la llave con que se firman las sesiones. Si falta, el sistema usa una de reserva que está escrita en el código y que, por lo tanto, conoce cualquiera que haya visto el repositorio.
+> ⚠️ **`JWT_SECRET` es la llave con que se firman las sesiones.** Si falta, el sistema usa una de reserva escrita en el código, que conoce cualquiera que haya visto el repositorio: con ella se puede fabricar una sesión de administrador sin saber ninguna contraseña.
+>
+> Ya no hay que adivinar si está puesta. El sistema **lo dice al arrancar**, con letras grandes en el registro, y lo muestra en `/health`:
+>
+> | Lo que dice `/health` | Qué significa |
+> |---|---|
+> | `"sesiones": "firmadas con su propia llave"` | Bien |
+> | `"sesiones": "SIN LLAVE PROPIA: falta la variable JWT_SECRET en el servidor"` | Hay que ponerla, y `"ok"` viene en `false` |
+>
+> Al ponerla **se cierran las sesiones abiertas** y todos vuelven a entrar: es lo esperado, porque las que había estaban firmadas con la otra llave.
 
 ### Respaldo: bajarse todo en un archivo 💾
 

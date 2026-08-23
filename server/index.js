@@ -94,7 +94,18 @@ app.get('/health', (req, res) => {
   // conteste y que al volumen le quede espacio. Siempre devuelve 200 mientras
   // el sistema pueda contestar —el estado va en el contenido—, para que la
   // plataforma no esconda la explicación detrás de un error en blanco.
-  const salud = { ok: true, version: VERSION, base: 'ok', disco: null };
+  const salud = { ok: true, version: VERSION, base: 'ok', disco: null, sesiones: null };
+
+  // Si las sesiones se firman con la llave de reserva, cualquiera que haya
+  // visto el código puede fabricarse una de administrador. Se dice acá para
+  // que se pueda comprobar desde el navegador, sin entrar al servidor.
+  if (require('./auth').conLlavePropia) {
+    salud.sesiones = 'firmadas con su propia llave';
+  } else {
+    salud.ok = false;
+    salud.sesiones = 'SIN LLAVE PROPIA: falta la variable JWT_SECRET en el servidor';
+  }
+
   try {
     db.prepare('SELECT COUNT(*) AS c FROM usuarios').get();
   } catch (e) {
