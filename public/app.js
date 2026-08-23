@@ -2011,6 +2011,10 @@ async function viewFicha(name, id) {
         grupos.push(grupo);
       }
     } else {
+      // Los datos de salud que el servidor no mandó no se dibujan: un campo
+      // vacío se lee como «no tiene ninguna alergia», que es peor que nada.
+      // Arriba de la ficha ya se avisa que existen y no se están mostrando.
+      if (f.sensible && row.salud_oculta) continue;
       const seccion = f.seccion || seccionPendiente;
       if (seccion || !grupo) {
         grupo = { titulo: seccion || 'Datos generales', datos: [] };
@@ -2189,14 +2193,19 @@ async function viewForm(name, id, precarga) {
   // Lo que no se puede pasar por alto de esta persona, antes de sus datos
   if (!isNew && name === 'miembros') avisosDelMiembro(row);
 
+  // Igual que en la ficha: lo que el servidor no mandó tampoco se ofrece para
+  // escribir. Si se ofreciera, la persona escribiría algo, guardaría, y el
+  // servidor lo ignoraría en silencio (ver server/sensibles.js).
+  const visibles = m.fields.filter((f) => !f.computed && !(f.sensible && row && row.salud_oculta));
+
   const grid = document.getElementById('formGrid');
   grid.innerHTML =
     // El id del registro viaja oculto: hay selectores cuya lista depende de él
     (isNew ? '' : `<input type="hidden" name="id" value="${esc(id)}" />`) +
-    formularioEnBloques(m.fields.filter((f) => !f.computed), row, isNew);
+    formularioEnBloques(visibles, row, isNew);
 
   // Comportamientos de widgets
-  m.fields.filter((f) => !f.computed).forEach((f) => {
+  visibles.forEach((f) => {
     if (f.type === 'multiref') initMultiref(f, row);
     if (f.type === 'money' || f.type === 'number') initNumero(f);
     if (f.type === 'richtext') initTextoRico(f);
@@ -2404,6 +2413,15 @@ function avisosDelMiembro(row) {
       row.indicaciones_medicas ? `Indicaciones: ${row.indicaciones_medicas}` : '',
     ].filter(Boolean);
     avisos.push(`<div class="aviso salud"><b>🩺 Información médica</b><span>${esc(partes.join(' · '))}</span></div>`);
+  } else if (row.salud_oculta) {
+    // El servidor no le mandó los datos de salud a esta persona. Se dice, en
+    // vez de dejar la ficha como si no hubiera nada: un espacio en blanco se
+    // confunde con «no tiene ninguna alergia», y eso es peor que no decir nada.
+    avisos.push(
+      `<div class="aviso"><b>🔒 Información médica reservada</b><span>Esta ficha tiene datos de salud
+       que su cuenta no alcanza a ver. Los ven el pastor y el administrador, y la propia persona en
+       Mi perfil.</span></div>`
+    );
   }
   if (!avisos.length) return;
   const tarjeta = content().querySelector('.card');

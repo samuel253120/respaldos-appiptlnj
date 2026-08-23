@@ -30,6 +30,7 @@ const rut = require('./rut');
 const { can } = require('./permissions');
 const planilla = require('./planilla');
 const archivos = require('./archivos');
+const sensibles = require('./sensibles');
 
 /**
  * Tope de filas de una planilla. No es una limitación real —una iglesia con
@@ -263,7 +264,7 @@ function idsDe(valor) {
  * Expande varias filas de una vez: refs y multirefs con su etiqueta, campos
  * de contraseña fuera, permisos como objeto y campos calculados resueltos.
  */
-function expandRows(def, filas) {
+function expandRows(def, filas, usuario) {
   if (!filas.length) return [];
 
   // 1) Se junta todo lo que hay que resolver, agrupado por módulo referenciado
@@ -293,7 +294,7 @@ function expandRows(def, filas) {
   };
 
   // 3) Se arman las filas ya resueltas
-  return filas.map((row) => {
+  const resueltas = filas.map((row) => {
     const out = { ...row };
     for (const f of def.fields) {
       if (f.type === 'multiref') {
@@ -333,11 +334,17 @@ function expandRows(def, filas) {
     }
     return out;
   });
+
+  // Y por último se quitan los datos de salud a quien no los alcanza. Va acá,
+  // al final y en un solo lugar, porque por acá pasan todas las respuestas que
+  // llevan una ficha: el listado, el detalle, lo que se devuelve al guardar y
+  // la planilla que se baja (ver server/sensibles.js).
+  return sensibles.limpiarVarias(def, resueltas, usuario);
 }
 
 /** Expande una fila suelta. */
-function expandRow(def, row) {
-  return expandRows(def, [row])[0];
+function expandRow(def, row, usuario) {
+  return expandRows(def, [row], usuario)[0];
 }
 
 /** WHERE de alcance por iglesia para el usuario actual. */
@@ -525,7 +532,7 @@ function buildRouter() {
         .prepare(`SELECT * FROM "${def.name}" ${whereSql} ${ordenSql} LIMIT ? OFFSET ?`)
         .all(...params, limit, offset);
 
-      res.json({ rows: expandRows(def, rows), total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+      res.json({ rows: expandRows(def, rows, req.user), total, page, pages: Math.max(1, Math.ceil(total / limit)) });
     });
 
     /**
@@ -546,7 +553,7 @@ function buildRouter() {
     router.get(`${base}/planilla`, requirePerm(def.name, 'view'), (req, res) => {
       const { params, whereSql, ordenSql } = consultaDelListado(req);
       const filas = db.prepare(`SELECT * FROM "${def.name}" ${whereSql} ${ordenSql} LIMIT ${TOPE_PLANILLA}`).all(...params);
-      planilla.enviar(res, def, expandRows(def, filas));
+      planilla.enviar(res, def, expandRows(def, filas, req.user));
     });
 
     // ---- detalle ----
@@ -556,7 +563,7 @@ function buildRouter() {
       if (!alcance.alcanza(def, row, req.user)) {
         return res.status(403).json({ error: 'Ese registro está fuera de lo que tiene asignado' });
       }
-      res.json(expandRow(def, row));
+      res.json(expandRow(def, row, req.user));
     });
 
     // ---- crear / actualizar ----
@@ -600,7 +607,7 @@ function buildRouter() {
                 `Otra persona guardó cambios en este ${def.labelSingular.toLowerCase()} mientras usted lo tenía abierto` +
                 `${quien ? ` (${quien})` : ''}. Para no borrar su trabajo, revise cómo quedó y vuelva a hacer los suyos.`,
               conflicto: true,
-              actual: expandRow(def, existing),
+              actual: expandRow(def, existing, req.user),
             });
           }
         }
@@ -611,6 +618,10 @@ function buildRouter() {
           const v = coerce(f, req.body[f.name]);
           if (v !== undefined) data[f.name] = v;
         }
+        // Quien no alcanza los datos de salud tampoco los escribe: si no, le
+        // bastaría con abrir la ficha y guardar para dejar en blanco un dato
+        // que ni siquiera vio (ver server/sensibles.js).
+        sensibles.protegerAlGuardar(def, data, req.user, existing);
         if (isNew) aplicarDefectos(def, data);
         sincronizarPersonas(def, data, existing);
         // Alcance: la iglesia tiene que ser una de las suyas. Si no se indica y
@@ -718,7 +729,7 @@ function buildRouter() {
         });
 
         const row = escribir();
-        return res.status(isNew ? 201 : 200).json(expandRow(def, row));
+        return res.status(isNew ? 201 : 200).json(expandRow(def, row, req.user));
       } catch (e) {
         if (e instanceof ErrorDeDatos) return res.status(400).json({ error: e.message });
         console.error(`Error guardando en ${def.name}:`, e);
@@ -759,7 +770,13 @@ function buildRouter() {
 
     // ---- rutas extra propias del módulo ----
     if (def.extraRoutes) {
-      def.extraRoutes(router, { db, base, requirePerm, can, expandRow: (row) => expandRow(def, row), scopeClause: (user, params) => scopeClause(def, user, params) });
+      def.extraRoutes(router, {
+        db, base, requirePerm, can,
+        // Lleva el usuario para que las rutas propias del módulo tapen los
+        // datos de salud igual que las del motor
+        expandRow: (row, usuario) => expandRow(def, row, usuario),
+        scopeClause: (user, params) => scopeClause(def, user, params),
+      });
     }
   }
 

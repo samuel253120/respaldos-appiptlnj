@@ -167,12 +167,15 @@ app.get('/api/meta', authRequired, (req, res) => {
       fields: [
         ...m.fields
           .filter((f) => !f.oculto)
-          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max }) => ({
+          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, sensible }) => ({
             name, label, type, required: !!required, options: options || null,
             // Los límites viajan para que el formulario avise antes de mandar.
             // Quien manda igual —o escribe la dirección a mano— se topa con la
             // misma comprobación en el servidor, que es la que manda.
             min: min === undefined ? null : min, max: max === undefined ? null : max,
+            // Para que la pantalla sepa cuáles esconder cuando el servidor no
+            // se los mandó a esta persona (ver server/sensibles.js)
+            sensible: !!sensible,
             sugerencias: sugerencias || null, ref: ref || null,
             help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
             optionsRoute: optionsRoute || null, readonly: !!readonly, mostrarEdad: !!mostrarEdad,

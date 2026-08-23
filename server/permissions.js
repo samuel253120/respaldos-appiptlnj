@@ -21,6 +21,18 @@ const ROLES = [
   { value: 'consulta', label: 'Solo consulta' },
 ];
 
+/**
+ * Los datos de salud de la ficha de un miembro —enfermedades, alergias,
+ * indicaciones médicas, nota importante— no son un módulo: son una parte de
+ * Miembros que no todos tienen por qué leer. Se controlan con esta entrada
+ * reservada, para no inventar un mecanismo aparte por un solo caso.
+ *
+ * Tiene que estar escrita rol por rol, sin depender del comodín '*': si no,
+ * cualquiera que pueda ver algo la heredaría, que es justo lo que se está
+ * corrigiendo. Ver server/sensibles.js.
+ */
+const SALUD = 'miembros_salud';
+
 const ALL = ['view', 'create', 'edit', 'delete'];
 const RW = ['view', 'create', 'edit'];
 const RO = ['view'];
@@ -28,14 +40,17 @@ const RO = ['view'];
 const MATRIX = {
   admin: {
     '*': ALL,
+    [SALUD]: ['view'], // ve los datos de salud de las fichas
   },
   pastor: {
     '*': ALL,
+    [SALUD]: ['view'], // ve los datos de salud de las fichas
     usuarios: [],
     perfiles_permisos: [],
   },
   secretario: {
     '*': RO,
+    [SALUD]: [], // los datos de salud no se heredan del comodín
     miembros: RW,
     cuerpos: RW,
     integrantes_cuerpo: RW,
@@ -67,6 +82,7 @@ const MATRIX = {
   },
   tesorero: {
     '*': RO,
+    [SALUD]: [], // los datos de salud no se heredan del comodín
     tesoreria: ALL,
     cuentas_tesoreria: ALL,
     categorias_tesoreria: ALL,
@@ -80,6 +96,7 @@ const MATRIX = {
   },
   consulta: {
     '*': RO,
+    [SALUD]: [], // los datos de salud no se heredan del comodín
     tesoreria: [],
     cuentas_tesoreria: [],
     categorias_tesoreria: [],
@@ -179,6 +196,6 @@ function permisosEfectivos(usuario, modulos) {
 }
 
 module.exports = {
-  ROLES, ACCIONES, MATRIX,
+  ROLES, ACCIONES, MATRIX, SALUD,
   can, permisosDelRol, permisosPropios, permisosDelPerfil, permisosEfectivos,
 };

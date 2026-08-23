@@ -551,7 +551,21 @@ Al abrir una ficha, antes de los datos, se muestran los avisos que importan:
 - la falta del **adulto responsable** en un menor;
 - la **información médica** —enfermedades, alergias, indicaciones—, para tenerla a mano sin buscarla.
 
-Los datos de salud y la nota importante quedan marcados como **sensibles**: cuando cambian, el historial deja constancia de que se actualizaron, **sin copiar su contenido** («Alergias: actualizada»).
+Los datos de salud y la nota importante quedan marcados como **sensibles**, y eso ahora decide dos cosas: que el historial deje constancia de que cambiaron **sin copiar su contenido** («Alergias: actualizada»), y **quién puede leerlos**.
+
+#### Quién ve los datos de salud 🔒
+
+Están en la ficha para que en una actividad se sepa si alguien es alérgico a la penicilina, no para que circulen. Los ven:
+
+- **la propia persona**, en su ficha y en Mi perfil, siempre — son suyos;
+- el **administrador** y el **pastor o guía**, que son quienes responden por la gente de la iglesia;
+- y quien tenga el permiso **dado a mano**, para cuando la iglesia quiera que también los vea alguien más —la encargada de la escuela dominical, por ejemplo— sin cambiarle el rol. Se da como cualquier otro permiso, en la ficha del usuario o en un perfil, bajo *Datos de salud de los miembros*. También se puede **quitar** a quien los tendría por su rol.
+
+A quien no los alcanza no se le muestran **en ninguna parte**: ni en la ficha, ni en el listado, ni en la planilla que se baja. En la ficha aparece un aviso de que existen y no se están mostrando, y los campos no se dibujan: dejarlos en blanco sería peor, porque un campo vacío se lee como *«esta persona no tiene ninguna alergia»*.
+
+Y **tampoco puede escribirlos**: si pudiera, le bastaría con abrir la ficha y guardar para dejar en blanco un dato que ni siquiera vio. Sus otros cambios en esa misma ficha —el teléfono, la dirección— se guardan con normalidad.
+
+> Antes esto no lo decidía nadie: los veía cualquiera que pudiera abrir la ficha, y eso incluye a todo secretario y a quien solo consulta. No era una decisión, era lo que pasaba.
 
 ### Edad al día
 

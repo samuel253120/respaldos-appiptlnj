@@ -492,6 +492,88 @@ async function entrar(rut = RUT, clave = CLAVE) {
     }
   }
 
+  /* 4h · Los datos de salud no los ve cualquiera --------------------------- */
+  console.log('\n4h · Los datos de salud de una ficha');
+  // Están en la ficha para que en una actividad se sepa si alguien es alérgico
+  // a la penicilina, no para que circulen. Antes los leía cualquiera que
+  // pudiera abrir la ficha, y eso incluye a todo secretario.
+  const iglesiaParaSalud = (await api('GET', '/api/iglesias?page=1&limit=1')).datos.rows[0];
+  const rutSano = (() => {
+    const c = String(15000000 + (Date.now() % 900000));
+    return `${c}-${require('../server/rut').digitoVerificador(c)}`;
+  })();
+  const conSalud = await api('POST', '/api/miembros', {
+    iglesia_id: iglesiaParaSalud && iglesiaParaSalud.id, rut: rutSano,
+    nombres: 'Prueba', apellidos: 'De Salud', genero: 'Masculino', estado: 'Activo',
+    alergias: 'Penicilina', enfermedades: 'Diabetes tipo 2',
+  });
+
+  if (conSalud.estado === 201 || conSalud.estado === 200) {
+    const suId = conSalud.datos.id;
+    revisar('el administrador los ve', conSalud.datos.alergias === 'Penicilina',
+      `recibió ${JSON.stringify(conSalud.datos.alergias)}`);
+
+    // Una cuenta que no debería alcanzarlos
+    const rutSec = (() => {
+      const c = String(14000000 + (Date.now() % 900000));
+      return `${c}-${require('../server/rut').digitoVerificador(c)}`;
+    })();
+    const secre = await api('POST', '/api/usuarios', {
+      rut: rutSec, nombre: 'Secretario de prueba', password: 'Salud2026', rol: 'secretario', activo: 1,
+    });
+    if (secre.estado === 201 || secre.estado === 200) {
+      const suPase = await fetch(`${URL}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: rutSec, password: 'Salud2026' }),
+      }).then((r) => r.json());
+      // Nace obligado a cambiar la contraseña; se cambia y queda usable
+      await fetch(`${URL}/api/auth/cambiar-password`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${suPase.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actual: 'Salud2026', nueva: 'Salud2026Nueva' }),
+      });
+      const entrada = await fetch(`${URL}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: rutSec, password: 'Salud2026Nueva' }),
+      }).then((r) => r.json());
+      const comoSecretario = (m, r, b) => fetch(URL + r, {
+        method: m, headers: { Authorization: `Bearer ${entrada.token}`, 'Content-Type': 'application/json' },
+        body: b === undefined ? undefined : JSON.stringify(b),
+      }).then(async (x) => ({ estado: x.status, datos: await x.json().catch(() => ({})) }));
+
+      const suVista = await comoSecretario('GET', `/api/miembros/${suId}`);
+      revisar('el secretario no', suVista.datos.alergias === undefined,
+        `recibió ${JSON.stringify(suVista.datos.alergias)}`);
+      revisar('y se le dice que hay algo que no está viendo', suVista.datos.salud_oculta === true,
+        'sin eso, la ficha se lee como si la persona no tuviera ninguna alergia');
+
+      const suListado = await comoSecretario('GET', '/api/miembros?page=1&limit=50');
+      revisar('tampoco en el listado', !JSON.stringify(suListado.datos).includes('Penicilina'));
+
+      const suPlanilla = await fetch(`${URL}/api/miembros/planilla`, {
+        headers: { Authorization: `Bearer ${entrada.token}` },
+      }).then((r) => r.text());
+      revisar('ni en la planilla que se baja', !suPlanilla.includes('Penicilina'));
+
+      // Y lo que más importa: no puede borrarlos guardando a ciegas
+      await comoSecretario('PUT', `/api/miembros/${suId}`, {
+        ...suVista.datos, telefono: '+56933334444', alergias: '', enfermedades: null,
+      });
+      const despues = (await api('GET', `/api/miembros/${suId}`)).datos;
+      revisar('ni borrarlos guardando la ficha a ciegas', despues.alergias === 'Penicilina',
+        `quedaron en ${JSON.stringify(despues.alergias)}`);
+      revisar('y su cambio legítimo sí se guarda', despues.telefono === '+56933334444',
+        `el teléfono quedó en ${JSON.stringify(despues.telefono)}`);
+
+      await api('DELETE', `/api/usuarios/${secre.datos.id}`);
+    } else {
+      revisar('se pudo crear el secretario de prueba', false, `respondió ${secre.estado}`);
+    }
+    await api('DELETE', `/api/miembros/${suId}`);
+  } else {
+    revisar('se pudo crear la ficha con datos de salud', false, JSON.stringify(conSalud.datos).slice(0, 140));
+  }
+
   console.log('\n5 · Los paneles de un cuerpo ajeno');
   const cuerpos = (await api('GET', '/api/cuerpos?page=1&limit=2')).datos.rows || [];
   if (cuerpos.length < 2) {
