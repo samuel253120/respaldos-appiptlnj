@@ -200,19 +200,69 @@ function migrate() {
  *   · las columnas de archivo, por las que se averigua de qué ficha es una
  *     foto o un documento cuando alguien pide abrirlo.
  *
- * Los campos únicos llevan índice, no restricción: si en los datos ya
- * traídos de antes hay un repetido, el sistema lo señala al guardar en vez de
- * negarse a arrancar.
+ * Los campos únicos se intentan como restricción de verdad, y si no se puede
+ * queda el índice a secas. La diferencia importa: con la restricción puesta,
+ * la base misma impide el repetido aunque llegue por un camino que no pasó por
+ * la comprobación del programa. Sin ella, la comprobación es lo único que hay.
+ *
+ * Por qué se intenta en vez de exigirse: si los datos que vinieron de antes ya
+ * traen un repetido, crear la restricción falla, y negarse a arrancar por eso
+ * dejaría el sistema inalcanzable justo cuando hay que entrar a arreglarlo. Se
+ * intenta, se anota qué pasó y se sigue.
  */
 function indexar() {
   let creados = 0;
+  const yaEsta = (nombre) =>
+    db.prepare('SELECT COUNT(*) AS c FROM sqlite_master WHERE type = ? AND name = ?').get('index', nombre).c > 0;
+
   const crear = (tabla, nombre, expresion) => {
     try {
-      const antes = db.prepare('SELECT COUNT(*) AS c FROM sqlite_master WHERE type = ? AND name = ?').get('index', nombre).c;
+      const antes = yaEsta(nombre);
       db.exec(`CREATE INDEX IF NOT EXISTS "${nombre}" ON "${tabla}" (${expresion})`);
       if (!antes) creados++;
     } catch (e) {
       console.error(`⚠️  No se pudo crear el índice ${nombre}: ${e.message}`);
+    }
+  };
+
+  /**
+   * Un campo único, como restricción de la base.
+   *
+   * Si ya hay repetidos en la tabla, SQLite se niega y ahí se dice cuáles son:
+   * es lo que hay que arreglar para que la restricción entre, y sin nombrarlos
+   * no hay por dónde empezar. Mientras tanto queda el índice a secas y la
+   * comprobación del programa, que sigue funcionando.
+   */
+  const crearUnico = (tabla, campo, acotadoPor) => {
+    const nombre = `ux_${tabla}_${campo}`;
+    if (yaEsta(nombre)) return;
+    // Se compara en minúsculas, igual que la comprobación del programa: si no,
+    // «CERT-001» y «cert-001» pasarían por dos números distintos.
+    const expresion = acotadoPor ? `"${acotadoPor}", lower("${campo}")` : `lower("${campo}")`;
+    try {
+      db.exec(`CREATE UNIQUE INDEX "${nombre}" ON "${tabla}" (${expresion})`);
+      creados++;
+    } catch (e) {
+      let repetidos = [];
+      try {
+        const grupo = acotadoPor ? `"${acotadoPor}", lower("${campo}")` : `lower("${campo}")`;
+        repetidos = db
+          .prepare(
+            `SELECT "${campo}" AS valor, COUNT(*) AS veces FROM "${tabla}"
+              WHERE "${campo}" IS NOT NULL AND TRIM("${campo}") <> ''
+              GROUP BY ${grupo} HAVING COUNT(*) > 1 ORDER BY veces DESC LIMIT 5`
+          )
+          .all();
+      } catch (e2) {
+        /* si tampoco se puede preguntar, se dice lo que se sabe */
+      }
+      const cuales = repetidos.length
+        ? repetidos.map((r) => `«${r.valor}» ×${r.veces}`).join(', ')
+        : e.message;
+      console.error(
+        `⚠️  ${tabla}.${campo} tendría que ser único y en los datos hay repetidos: ${cuales}. ` +
+          'Arréglelos y al próximo arranque la base misma lo impedirá. Mientras tanto lo comprueba el sistema al guardar.'
+      );
     }
   };
 
@@ -222,7 +272,17 @@ function indexar() {
 
     for (const f of def.fields) {
       if (f.type === 'ref' && hay(f.name)) crear(def.name, `ix_${def.name}_${f.name}`, `"${f.name}"`);
-      if ((f.unique || f.type === 'rut') && hay(f.name)) crear(def.name, `ix_${def.name}_${f.name}_unico`, `lower("${f.name}")`);
+      if ((f.unique || f.type === 'rut') && hay(f.name)) {
+        crear(def.name, `ix_${def.name}_${f.name}_unico`, `lower("${f.name}")`);
+        // Y además la restricción, cuando el módulo dice que es único de
+        // verdad. `unique: 'iglesia_id'` es único dentro de su iglesia —cada
+        // congregación lleva su propia serie de certificados—; `unique: true`
+        // lo es en todo el sistema, como el RUT.
+        if (f.unique) {
+          const acotadoPor = typeof f.unique === 'string' && hay(f.unique) ? f.unique : null;
+          crearUnico(def.name, f.name, acotadoPor);
+        }
+      }
       // Las columnas de archivo: por ellas se averigua de qué ficha es una
       // foto o un documento, para saber quién puede abrirlo (ver archivos.js)
       if (f.type === 'file' && hay(f.name)) crear(def.name, `ix_${def.name}_${f.name}`, `"${f.name}"`);

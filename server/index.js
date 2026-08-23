@@ -83,6 +83,14 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'same-origin');
+  // Y que el navegador no vuelva a pedir esto por http: la primera vez que
+  // alguien entra escribiendo la dirección a mano, sin https, ese viaje va en
+  // claro. Con esto el navegador se acuerda durante un año y ya no lo hace.
+  // Solo cuando la petición llegó cifrada: en el computador de casa, donde se
+  // prueba con http, ponerlo dejaría el sistema inalcanzable.
+  if (req.secure || req.get('x-forwarded-proto') === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   next();
 });
 
@@ -701,10 +709,22 @@ app.get('*', (req, res) => {
   paginaPrincipal(req, res);
 });
 
-// Manejo de errores no capturados en rutas
+/**
+ * Lo que se responde cuando algo falla de forma inesperada.
+ *
+ * Antes se devolvía `err.message` tal cual, que en un error de base de datos
+ * nombra tablas y columnas. Eso no le sirve de nada a quien está usando el
+ * sistema y sí le sirve a quien esté mirando dónde meter mano. El detalle
+ * completo va al registro del servidor, que es donde hay que ir a buscarlo, y
+ * con una marca para poder aparearlos: si alguien avisa que le salió el error
+ * «a las 11:20, número 8f3a», se encuentra en el registro sin adivinar.
+ */
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: err.message || 'Error interno del servidor' });
+  const marca = crypto.randomBytes(2).toString('hex');
+  console.error(`[${marca}] ${req.method} ${req.originalUrl}`, err);
+  res.status(500).json({
+    error: `Hubo un problema al procesar esto (n.º ${marca}). Vuelva a intentarlo; si sigue pasando, dele ese número a quien administra el sistema.`,
+  });
 });
 
 /**

@@ -70,6 +70,17 @@ function etiquetaDeRef(f, texto) {
 }
 
 /* ---------------- utilidades ---------------- */
+/**
+ * Deja marcado el enlace del menú donde uno está.
+ *
+ * La clase lo pinta; `aria-current` lo dice. Sin lo segundo, quien no ve la
+ * pantalla recorre nueve enlaces iguales sin saber en cuál está parado.
+ */
+function marcarActivo(link) {
+  link.classList.add('active');
+  link.setAttribute('aria-current', 'page');
+}
+
 /** El día de hoy como lo escribe un campo de fecha: 2026-08-23. */
 function hoyISO() {
   const d = new Date();
@@ -174,6 +185,11 @@ function toast(msg, isErr) {
   if (!t) {
     t = document.createElement('div');
     t.id = 'toast';
+    // Un aviso que aparece y se va solo no lo lee nadie si no se anuncia:
+    // `status` hace que un lector de pantalla lo diga sin interrumpir lo que
+    // la persona esté haciendo.
+    t.setAttribute('role', 'status');
+    t.setAttribute('aria-live', 'polite');
     document.body.appendChild(t);
   }
   t.textContent = msg;
@@ -417,7 +433,10 @@ function route() {
   // Valores para precargar un formulario nuevo: #/m/modulo/new?campo=valor
   const precarga = {};
   if (consulta) new URLSearchParams(consulta).forEach((v, k) => (precarga[k] = v));
-  document.querySelectorAll('.side-link').forEach((el) => el.classList.remove('active'));
+  document.querySelectorAll('.side-link').forEach((el) => {
+    el.classList.remove('active');
+    el.removeAttribute('aria-current');
+  });
   const sb = document.querySelector('.sidebar');
   if (sb) sb.classList.remove('open');
   const bd = document.getElementById('backdrop');
@@ -426,7 +445,7 @@ function route() {
   if (parts[0] === 'm' && MOD[parts[1]]) {
     const name = parts[1];
     const link = document.querySelector(`.side-link[data-mod="${name}"]`);
-    if (link) link.classList.add('active');
+    if (link) marcarActivo(link);
     if (parts[2] === 'new') return viewForm(name, null, precarga);
     if (parts[2] === 'ficha' && parts[3]) return viewFicha(name, parts[3]);
     if (parts[2] === 'edit' && parts[3]) return viewForm(name, parts[3]);
@@ -434,7 +453,7 @@ function route() {
   }
   if (parts[0] === 'asistencia' && MOD['asistencias']) {
     const al = document.querySelector('.side-link[data-mod="_asistencia"]');
-    if (al) al.classList.add('active');
+    if (al) marcarActivo(al);
     return viewAsistencia({ ...precarga, tab: parts[1] === 'informes' ? 'informes' : precarga.tab });
   }
   // Direcciones antiguas: llevan a la misma pantalla, que ahora reúne todo
@@ -446,17 +465,17 @@ function route() {
   }
   if (parts[0] === 'cuenta' || parts[0] === 'perfil') {
     const cl = document.querySelector('.side-link[data-mod="_cuenta"]');
-    if (cl) cl.classList.add('active');
+    if (cl) marcarActivo(cl);
     return viewMiPerfil(precarga);
   }
   if (parts[0] === 'config' && USER.rol === 'admin') {
     const cl = document.querySelector('.side-link[data-mod="_config"]');
-    if (cl) cl.classList.add('active');
+    if (cl) marcarActivo(cl);
     return viewConfiguracion();
   }
   if (parts[0] === 'print' && MOD[parts[1]] && parts[2]) return viewPrint(parts[1], parts[2]);
   const dl = document.querySelector('.side-link[data-mod="_dash"]');
-  if (dl) dl.classList.add('active');
+  if (dl) marcarActivo(dl);
   return viewDashboard();
 }
 
@@ -529,7 +548,7 @@ async function elegirIglesiaDeTrabajo() {
   fondo.className = 'modal-fondo';
   fondo.innerHTML = `
     <div class="modal" style="max-width:460px">
-      <div class="modal-head"><h3>⛪ ¿Con qué iglesia trabaja?</h3><button class="cerrar">&times;</button></div>
+      <div class="modal-head"><h3>⛪ ¿Con qué iglesia trabaja?</h3><button class="cerrar" aria-label="Cerrar">&times;</button></div>
       <div class="modal-body">
         <p class="mut" style="margin:0 0 12px;font-size:13.5px;line-height:1.5">
           Lo que elija acota todo el sistema: los listados, los informes y lo que registre.
@@ -731,7 +750,7 @@ function pedirPreguntaSecreta() {
     fondo.className = 'modal-fondo';
     fondo.innerHTML = `
       <div class="modal" style="max-width:520px">
-        <div class="modal-head"><h3>🔑 Para no quedarse afuera</h3><button class="cerrar">&times;</button></div>
+        <div class="modal-head"><h3>🔑 Para no quedarse afuera</h3><button class="cerrar" aria-label="Cerrar">&times;</button></div>
         <div class="modal-body">
           <p class="modal-nota" style="margin-top:0">
             Si algún día olvida su contraseña, respondiendo esta pregunta podrá elegir una nueva usted mismo,
@@ -783,7 +802,7 @@ function abrirRecuperacion(rutInicial) {
   fondo.className = 'modal-fondo';
   fondo.innerHTML = `
     <div class="modal" style="max-width:520px">
-      <div class="modal-head"><h3>🔑 Recuperar la contraseña</h3><button class="cerrar">&times;</button></div>
+      <div class="modal-head"><h3>🔑 Recuperar la contraseña</h3><button class="cerrar" aria-label="Cerrar">&times;</button></div>
       <div class="modal-body" id="recBody">
         <div class="fld"><label>Su RUT</label>
           <input type="text" id="recRut" value="${esc(rutFormatear(rutInicial || ''))}" placeholder="12.345.678-5" /></div>
@@ -1145,8 +1164,9 @@ function renderShell() {
   // Quien alcanza más de una iglesia puede elegir con cuál trabajar
   const puedeElegirIglesia = (USER.iglesias_disponibles || []).length > 1;
   $app.innerHTML = `
+    <a class="saltar" href="#content">Saltar al contenido</a>
     <div class="layout">
-      <nav class="sidebar" id="sidebar">
+      <nav class="sidebar" id="sidebar" aria-label="Secciones del sistema">
         <div class="brand" title="${esc(IGLESIA.nombre)}">
           <img class="logo" src="${IGLESIA.logo}" alt="" />
           <span class="txt"><b>${esc(dondeTrabaja)}</b><i>Sistema de Gestión</i></span>
@@ -1171,7 +1191,7 @@ function renderShell() {
       </nav>
       <div class="main">
         <header class="topbar">
-          <button class="menu-toggle" id="menuToggle">☰</button>
+          <button class="menu-toggle" id="menuToggle" aria-label="Abrir el menú" aria-expanded="false" aria-controls="sidebar">☰</button>
           <${puedeElegirIglesia ? 'button type="button" id="btnIglesia"' : 'div'} class="iglesia-local${conCuerpos ? '' : ' ya-esta-en-el-menu'}${puedeElegirIglesia ? ' elegible' : ''}"
                title="${puedeElegirIglesia ? 'Elegir con qué iglesia o iglesias trabajar' : 'Lo que tiene asignado para ver y administrar'}">
             <span class="ic">⛪</span>
@@ -1185,18 +1205,24 @@ function renderShell() {
           <a class="who" href="#/perfil" title="Mi perfil">${retratoDe(USER, initials)} <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></a>
           <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
         </header>
-        <div class="content" id="content"></div>
+        <main class="content" id="content" tabindex="-1"></main>
       </div>
-      <div class="backdrop" id="backdrop"></div>
+      <div class="backdrop" id="backdrop" hidden></div>
     </div>`;
   document.getElementById('logoutBtn').addEventListener('click', logout);
   const btnIglesia = document.getElementById('btnIglesia');
   if (btnIglesia) btnIglesia.addEventListener('click', elegirIglesiaDeTrabajo);
   const sidebar = document.getElementById('sidebar');
   const backdrop = document.getElementById('backdrop');
-  document.getElementById('menuToggle').addEventListener('click', () => {
+  const menuToggle = document.getElementById('menuToggle');
+  menuToggle.addEventListener('click', () => {
     sidebar.classList.toggle('open');
-    backdrop.classList.toggle('show', sidebar.classList.contains('open'));
+    const abierto = sidebar.classList.contains('open');
+    backdrop.classList.toggle('show', abierto);
+    backdrop.hidden = !abierto;
+    // Quien no ve la pantalla necesita que el botón diga si está abierto o no
+    menuToggle.setAttribute('aria-expanded', String(abierto));
+    menuToggle.setAttribute('aria-label', abierto ? 'Cerrar el menú' : 'Abrir el menú');
   });
   backdrop.addEventListener('click', () => {
     sidebar.classList.remove('open');
@@ -1650,14 +1676,18 @@ async function viewList(name, filtrosIniciales) {
     const pager = document.getElementById('pager');
     const btns = [];
     for (let p = Math.max(1, data.page - 3); p <= Math.min(data.pages, data.page + 3); p++) {
-      btns.push(`<button class="${p === data.page ? 'cur' : ''}" data-p="${p}">${p}</button>`);
+      // El número dice a qué página lleva; en la que uno está, además se dice.
+      btns.push(
+        `<button class="${p === data.page ? 'cur' : ''}" data-p="${p}"` +
+        `${p === data.page ? ' aria-current="page"' : ''} aria-label="Página ${p}">${p}</button>`
+      );
     }
     pager.innerHTML = `
       <span>${esc(fmtNumero(data.total))} registro${data.total === 1 ? '' : 's'}</span>
       <span class="pages">
-        <button data-p="${data.page - 1}" ${data.page <= 1 ? 'disabled' : ''}>‹</button>
+        <button data-p="${data.page - 1}" aria-label="Página anterior" ${data.page <= 1 ? 'disabled' : ''}>‹</button>
         ${btns.join('')}
-        <button data-p="${data.page + 1}" ${data.page >= data.pages ? 'disabled' : ''}>›</button>
+        <button data-p="${data.page + 1}" aria-label="Página siguiente" ${data.page >= data.pages ? 'disabled' : ''}>›</button>
       </span>`;
     pager.querySelectorAll('button[data-p]').forEach((b) => {
       b.addEventListener('click', () => {
@@ -2155,7 +2185,7 @@ async function viewForm(name, id, precarga) {
       </div>
     </div>
     <div class="card"><form id="recForm"><div id="formGrid"><div class="form-grid"><p>Cargando…</p></div></div>
-    <div class="form-error" id="formError"></div>
+    <div class="form-error" id="formError" role="alert" aria-live="assertive"></div>
     <div class="form-foot" id="formFoot"></div></form></div>`;
   document.getElementById('btnBack').addEventListener('click', () => (location.hash = `#/m/${name}`));
   const bf = document.getElementById('btnFicha');
@@ -3471,7 +3501,7 @@ function ajustarImagen(fuente, { titulo = 'Ajustar la foto' } = {}) {
     fondo.className = 'modal-fondo';
     fondo.innerHTML = `
       <div class="modal editor-foto" style="max-width:420px">
-        <div class="modal-head"><h3>✂️ ${esc(titulo)}</h3><button class="cerrar" title="Cerrar">&times;</button></div>
+        <div class="modal-head"><h3>✂️ ${esc(titulo)}</h3><button class="cerrar" title="Cerrar" aria-label="Cerrar">&times;</button></div>
         <div class="modal-body">
           <div class="ef-marco"><canvas id="efLienzo" width="${LADO}" height="${LADO}"></canvas></div>
           <p class="ef-ayuda">Arrastre la foto para moverla y use la barra para acercarla. Lo que se ve en el marco es lo que queda guardado.</p>
@@ -4326,7 +4356,7 @@ function abrirImportador(m, alTerminar) {
     <div class="modal">
       <div class="modal-head">
         <h3>⬆️ Importar ${esc(m.label.toLowerCase())}</h3>
-        <button class="cerrar" title="Cerrar">&times;</button>
+        <button class="cerrar" title="Cerrar" aria-label="Cerrar">&times;</button>
       </div>
       <div class="modal-body" id="impBody">
         <div class="paso">
@@ -5005,7 +5035,7 @@ async function abrirLimpieza(contenedor) {
   fondo.className = 'modal-fondo';
   fondo.innerHTML = `
     <div class="modal" style="max-width:620px">
-      <div class="modal-head"><h3>🧹 Dejar la base como nueva</h3><button class="cerrar">&times;</button></div>
+      <div class="modal-head"><h3>🧹 Dejar la base como nueva</h3><button class="cerrar" aria-label="Cerrar">&times;</button></div>
       <div class="modal-body">
         ${d.total === 0 ? `
           <p class="modal-nota" style="margin-top:0">
@@ -5872,7 +5902,7 @@ function abrirActividad(actividad) {
   fondo.className = 'modal-fondo';
   fondo.innerHTML = `
     <div class="modal" style="max-width:560px">
-      <div class="modal-head"><h3>${editando ? '✏️ Editar actividad' : '➕ Nueva actividad'}</h3><button class="cerrar">&times;</button></div>
+      <div class="modal-head"><h3>${editando ? '✏️ Editar actividad' : '➕ Nueva actividad'}</h3><button class="cerrar" aria-label="Cerrar">&times;</button></div>
       <div class="modal-body">
         <div class="modal-fila">
           <div class="fld"><label>Fecha <span class="req">*</span></label>
@@ -6611,7 +6641,7 @@ function abrirAnotacion(panel, id, alGuardar, registro) {
   fondo.className = 'modal-fondo';
   fondo.innerHTML = `
     <div class="modal" style="max-width:560px">
-      <div class="modal-head"><h3>${editando ? '✏️ Editar registro del historial' : '➕ Nueva anotación'}</h3><button class="cerrar">&times;</button></div>
+      <div class="modal-head"><h3>${editando ? '✏️ Editar registro del historial' : '➕ Nueva anotación'}</h3><button class="cerrar" aria-label="Cerrar">&times;</button></div>
       <div class="modal-body">
         ${editando && registro.origen === 'Automático'
           ? '<div class="aviso-auto">⚙️ Este registro lo generó el sistema al ocurrir el hecho. Se puede corregir su texto, y quedará marcado como editado.</div>'

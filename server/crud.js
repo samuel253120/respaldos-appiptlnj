@@ -331,6 +331,12 @@ function expandRows(def, filas, usuario) {
       try {
         out[c.name] = c.calc(row, { db });
       } catch (e) {
+        // El valor queda en blanco —una pantalla no se rompe por un campo—
+        // pero se anota. Antes se callaba, y un cálculo roto podía llevar
+        // meses dejando columnas vacías sin que nadie supiera por qué. Se
+        // anota una vez por cada cálculo, no una por fila: un listado de mil
+        // filas sepultaría el registro repitiendo lo mismo mil veces.
+        avisarDelCalculoRoto(def, c, e);
         out[c.name] = null;
       }
     }
@@ -506,6 +512,41 @@ function otroUOtra(def) {
 function avisoDeDuplicado(def, campo) {
   const donde = campo.unique === 'iglesia_id' ? ' en esta iglesia' : '';
   return `Ya existe ${otroUOtra(def)} ${def.labelSingular.toLowerCase()} con ese ${campo.label}${donde}`;
+}
+
+
+/**
+ * Lo que se responde cuando algo falla de forma inesperada.
+ *
+ * El detalle técnico —que en un error de base de datos nombra tablas y
+ * columnas— va al registro del servidor y no a la pantalla. Lo que sí viaja es
+ * una marca corta, para poder aparear lo que la persona vio con lo que quedó
+ * anotado: «me salió el error 8f3a» se encuentra sin adivinar.
+ */
+function averiaInterna(res, contexto, error) {
+  const marca = require('crypto').randomBytes(2).toString('hex');
+  console.error(`[${marca}] ${contexto}`, error);
+  return res.status(500).json({
+    error: `Hubo un problema al ${contexto} (n.º ${marca}). Vuelva a intentarlo; si sigue pasando, dele ese número a quien administra el sistema.`,
+  });
+}
+
+
+/**
+ * Un cálculo que se rompe deja de ser invisible.
+ *
+ * Se recuerda cuál ya se avisó para no repetirlo en cada fila; se olvida al
+ * reiniciar, que es cuando conviene volver a saberlo.
+ */
+const calculosRotos = new Set();
+function avisarDelCalculoRoto(def, campo, error) {
+  const cual = `${def.name}.${campo.name}`;
+  if (calculosRotos.has(cual)) return;
+  calculosRotos.add(cual);
+  console.error(
+    `⚠️  El campo calculado «${campo.label || campo.name}» de ${def.label} está fallando y se está ` +
+      `mostrando en blanco: ${error && error.message ? error.message : error}`
+  );
 }
 
 
@@ -892,8 +933,7 @@ function buildRouter() {
         if (e instanceof ErrorDeDatos) {
           return res.status(400).json(e.confirmar ? { error: e.message, confirmar: e.confirmar } : { error: e.message });
         }
-        console.error(`Error guardando en ${def.name}:`, e);
-        return res.status(500).json({ error: 'Error interno al guardar: ' + e.message });
+        return averiaInterna(res, `guardar en ${def.label}`, e);
       }
     };
 
@@ -938,8 +978,7 @@ function buildRouter() {
         })();
       } catch (e) {
         if (e instanceof ErrorDeDatos || e.esDeDatos) return res.status(400).json({ error: e.message });
-        console.error(`Error eliminando en ${def.name}:`, e);
-        return res.status(500).json({ error: 'Error interno al eliminar: ' + e.message });
+        return averiaInterna(res, `eliminar en ${def.label}`, e);
       }
       res.json({ ok: true });
     });
