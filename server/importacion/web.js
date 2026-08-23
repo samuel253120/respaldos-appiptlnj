@@ -53,8 +53,8 @@ function cuantas(tabla) {
 
 /** Esto lo maneja el administrador y nadie más. */
 function soloAdmin(req, res, siguiente) {
-  if (!req.user || req.user.rol !== 'admin') {
-    return res.status(403).json({ error: 'Solo el administrador puede manejar el traspaso de datos.' });
+  if (!require('../permissions').can(req.user, 'sistema_importacion', 'create')) {
+    return res.status(403).json({ error: 'No tiene permiso para manejar el traspaso de datos del sistema anterior.' });
   }
   return siguiente();
 }

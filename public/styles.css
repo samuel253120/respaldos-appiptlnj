@@ -593,6 +593,22 @@ table.grid th.col-mini { font-size: 15px; }
 .disco-leyenda .punto.otros  { background: #94a3b8; }
 .disco-leyenda .punto.libre  { background: var(--border); border: 1px solid #cbd5e1; }
 
+/* ---- Editor de permisos: las llaves del sistema ----
+ * La explicación va bajo el nombre, porque «Traspaso desde el sistema
+ * anterior» no dice por sí solo qué se está concediendo. Y las acciones que
+ * una llave no admite se marcan con una raya en vez de dejar el hueco: así se
+ * ve que la columna existe y que ahí no aplica. */
+.perm-tabla .nom .nota {
+  display: block;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 3px;
+  max-width: 42ch;
+  font-weight: 400;
+  white-space: normal; /* la celda del nombre va en una línea; la nota, no */
+}
+.perm-tabla .no-aplica { color: var(--muted); opacity: .55; }
+
 .fld.check { display: flex; align-items: center; gap: 8px; padding-top: 22px; }
 .fld.check input { width: auto; }
 .fld.check label { margin: 0; }

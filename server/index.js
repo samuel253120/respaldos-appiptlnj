@@ -15,7 +15,7 @@ const { db, DATA_DIR, UPLOADS_DIR } = require('./db');
 const { router: authRouter, authRequired } = require('./auth');
 const { buildRouter } = require('./crud');
 const { allModules } = require('./registry');
-const { can, ROLES, ACCIONES, MATRIX, permisosDelRol } = require('./permissions');
+const { can, ROLES, ACCIONES, MATRIX, permisosDelRol, todoLoQueSePuedePermitir } = require('./permissions');
 const { ensureSeed } = require('./seed');
 const { ejecutarMigraciones } = require('./migraciones');
 const { router: importarRouter } = require('./importar');
@@ -251,11 +251,13 @@ app.get('/api/meta', authRequired, (req, res) => {
 
     permisosCatalogo = {
       acciones: ACCIONES,
-      modulos: allModules().map((m) => ({ name: m.name, label: m.label, group: m.group })),
+      // Los módulos Y las llaves del sistema, para que en el editor se vea
+      // exactamente lo que el sistema comprueba y no quede nada escondido
+      modulos: todoLoQueSePuedePermitir(),
       porRol: Object.fromEntries(
         ROLES.map((r) => [
           r.value,
-          Object.fromEntries(allModules().map((m) => [m.name, permisosDelRol(r.value, m.name)])),
+          Object.fromEntries(todoLoQueSePuedePermitir().map((m) => [m.name, permisosDelRol(r.value, m.name)])),
         ])
       ),
       perfiles,
@@ -490,8 +492,8 @@ app.get('/api/pendientes', authRequired, (req, res) => {
  * decidir qué hacer con ello. Solo cuenta: no toca nada.
  */
 app.get('/api/huerfanos', authRequired, (req, res) => {
-  if (!req.user || req.user.rol !== 'admin') {
-    return res.status(403).json({ error: 'Solo el administrador puede revisar esto' });
+  if (!can(req.user, 'sistema_configuracion', 'view')) {
+    return res.status(403).json({ error: 'No tiene permiso para revisar la configuración del sistema' });
   }
   res.json(require('./dependencias').huerfanas(db));
 });
@@ -608,13 +610,23 @@ app.get('/uploads/:archivo', authRequired, (req, res) => {
 });
 
 // ---------- Respaldo: bajarse todo el sistema en un archivo ----------
-/** Solo el administrador: el respaldo lleva absolutamente todo. */
-function soloAdministrador(req, res, next) {
-  if (req.user.rol !== 'admin') {
-    return res.status(403).json({ error: 'Solo el administrador puede descargar el respaldo del sistema' });
-  }
-  next();
+/**
+ * El respaldo lleva absolutamente todo, así que hace falta la llave.
+ *
+ * Antes decía «solo si el rol es admin», y eso obligaba a hacer administrador
+ * general a quien solo tenía que bajarse la copia una vez al mes. Ahora es un
+ * permiso que se concede en la ficha de la persona; por defecto sigue siendo
+ * solo del administrador (ver LLAVES en server/permissions.js).
+ */
+function conLlaveDeRespaldo(accion) {
+  return (req, res, next) => {
+    if (!can(req.user, 'sistema_respaldo', accion)) {
+      return res.status(403).json({ error: 'No tiene permiso sobre los respaldos del sistema' });
+    }
+    next();
+  };
 }
+const soloAdministrador = conLlaveDeRespaldo('view');
 
 /**
  * A dónde se está yendo el espacio del volumen.
@@ -623,7 +635,12 @@ function soloAdministrador(req, res, next) {
  * reparte: la base, los documentos, los respaldos y lo libre, más cuánto pesa
  * un documento en promedio y cuántos más caben (ver server/disco.js).
  */
-app.get('/api/disco', authRequired, soloAdministrador, (req, res) => {
+app.get('/api/disco', authRequired, (req, res, next) => {
+  if (!can(req.user, 'sistema_configuracion', 'view')) {
+    return res.status(403).json({ error: 'No tiene permiso para revisar la configuración del sistema' });
+  }
+  next();
+}, (req, res) => {
   res.json(require('./disco').estado());
 });
 
@@ -656,7 +673,7 @@ app.get('/api/respaldo/automatico', authRequired, soloAdministrador, (req, res) 
 });
 
 /** Hacer la copia ahora mismo, sin esperar a la noche. */
-app.post('/api/respaldo/automatico', authRequired, soloAdministrador, async (req, res) => {
+app.post('/api/respaldo/automatico', authRequired, conLlaveDeRespaldo('create'), async (req, res) => {
   const hecho = await respaldoAutomatico.hacerCopia({ forzada: true });
   if (!hecho.hecho) return res.status(500).json({ error: `No se pudo hacer la copia: ${hecho.motivo}` });
   res.json({ ...hecho, estado: respaldoAutomatico.estado() });

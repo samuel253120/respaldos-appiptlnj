@@ -5309,6 +5309,37 @@ function initPermisos(f, row, rolActual) {
   };
   const atajoDe = (lista) => (ATAJOS_PERMISO.find((a) => mismasAcciones(a.acciones, lista)) || {}).clave || null;
 
+  /**
+   * Qué acciones tienen sentido para esta fila.
+   *
+   * Los módulos admiten las cuatro. Las llaves del sistema no: «eliminar la
+   * configuración» no significa nada, y ofrecerlo sería ruido. Cada llave dice
+   * cuáles admite y acá se recorta todo a esa lista —las casillas, los atajos
+   * y el atajo de grupo— para que no se pueda marcar algo que no existe.
+   */
+  const acepta = (m) => (Array.isArray(m.acciones) && m.acciones.length ? m.acciones : acciones.map((a) => a.value));
+  const recortar = (m, lista) => lista.filter((a) => acepta(m).includes(a));
+  const nombreDe = (v) => (acciones.find((a) => a.value === v) || {}).label || v;
+  const atajosDe = (m) => {
+    const vistos = new Set();
+    return ATAJOS_PERMISO
+      .map((a) => {
+        const queda = recortar(m, a.acciones);
+        // Si al recortar el atajo dejó de ser lo que su nombre decía, se
+        // renombra con lo que de verdad hace: en Respaldos, «Ver, agregar y
+        // corregir» quedaba en ver y crear, y el letrero mentía.
+        const cambio = queda.length !== a.acciones.length;
+        const texto = !cambio || !queda.length ? a.texto : queda.map(nombreDe).join(' + ');
+        return { ...a, acciones: queda, texto, titulo: cambio && queda.length ? `Puede: ${texto.toLowerCase()}` : a.titulo };
+      })
+      .filter((a) => {
+        const firma = [...a.acciones].sort().join(',');
+        if (vistos.has(firma)) return false; // dos atajos que quedan iguales al recortar
+        vistos.add(firma);
+        return true;
+      });
+  };
+
   const grupos = () => {
     const porGrupo = new Map();
     const texto = buscando.trim().toLowerCase();
@@ -5367,9 +5398,27 @@ function initPermisos(f, row, rolActual) {
               <b>${esc(grupo)}</b>
               <span class="mut">${suyos.length} módulo(s)</span>
               <span class="spacer"></span>
-              ${ATAJOS_PERMISO.map((a) => `
+              ${(() => {
+                // El atajo de grupo solo ofrece lo que ese grupo admite: en
+                // «Datos reservados», donde la única llave es de solo ver,
+                // ofrecer «Todo» daría a entender algo que no existe.
+                const vistos = new Set();
+                return ATAJOS_PERMISO
+                  .map((a) => {
+                    const util = suyos.some((m) => recortar(m, a.acciones).length === a.acciones.length);
+                    return util ? a : null;
+                  })
+                  .filter((a) => {
+                    if (!a) return false;
+                    const firma = [...a.acciones].sort().join(',');
+                    if (vistos.has(firma)) return false;
+                    vistos.add(firma);
+                    return true;
+                  })
+                  .map((a) => `
                 <button type="button" class="chip sm" data-grupo-atajo="${esc(grupo)}" data-atajo="${a.clave}"
-                  title="Aplicar «${esc(a.texto)}» a todo ${esc(grupo)}">${esc(a.texto)}</button>`).join('')}
+                  title="Aplicar «${esc(a.texto)}» a todo ${esc(grupo)}">${esc(a.texto)}</button>`).join('');
+              })()}
             </div>
             ${abierto ? `
             <table class="perm-tabla">
@@ -5382,19 +5431,22 @@ function initPermisos(f, row, rolActual) {
                 ${suyos.map((m) => {
                   const propio = Array.isArray(asignados[m.name]);
                   const efectivos = efectivosDe(m);
-                  const cual = atajoDe(efectivos);
                   return `<tr class="${propio ? 'personalizado' : ''}">
                     <td class="nom">${esc(m.label)}
-                      ${propio ? '<span class="marca" title="Personalizado para esta persona">•</span>' : ''}</td>
+                      ${propio ? '<span class="marca" title="Personalizado para esta persona">•</span>' : ''}
+                      ${m.ayuda ? `<span class="mut nota">${esc(m.ayuda)}</span>` : ''}</td>
                     <td class="atajos">
-                      ${ATAJOS_PERMISO.map((a) => `
-                        <button type="button" class="chip ${cual === a.clave ? 'on' : ''}"
+                      ${atajosDe(m).map((a) => `
+                        <button type="button" class="chip ${mismasAcciones(a.acciones, efectivos) ? 'on' : ''}"
                           data-mod="${m.name}" data-atajo="${a.clave}" title="${esc(a.titulo)}">${esc(a.texto)}</button>`).join('')}
                     </td>
                     ${acciones.map((a) => `
                       <td class="c">
-                        <input type="checkbox" class="perm-acc" data-mod="${m.name}" data-acc="${a.value}"
-                          ${efectivos.includes(a.value) ? 'checked' : ''} />
+                        ${acepta(m).includes(a.value)
+                          ? `<input type="checkbox" class="perm-acc" data-mod="${m.name}" data-acc="${a.value}"
+                               aria-label="${esc(a.label)} · ${esc(m.label)}"
+                               ${efectivos.includes(a.value) ? 'checked' : ''} />`
+                          : '<span class="no-aplica" title="Esta acción no tiene sentido acá">—</span>'}
                       </td>`).join('')}
                   </tr>`;
                 }).join('')}
@@ -5417,8 +5469,9 @@ function initPermisos(f, row, rolActual) {
     // ---- lo que hace cada control ----
     const ponerA = (modulo, atajo) => {
       const a = ATAJOS_PERMISO.find((x) => x.clave === atajo);
-      if (!a) return;
-      asignados[modulo] = [...a.acciones];
+      const m = modulos.find((x) => x.name === modulo);
+      if (!a || !m) return;
+      asignados[modulo] = recortar(m, a.acciones);
     };
 
     caja.querySelectorAll('[data-atajo][data-mod]').forEach((b) =>
@@ -5447,7 +5500,8 @@ function initPermisos(f, row, rolActual) {
         // Sin poder mirar no se puede hacer nada más: se van los demás con él
         if (cb.dataset.acc === 'view' && !cb.checked) set.clear();
         else if (set.size) set.add('view');
-        asignados[mod] = [...set];
+        const suyo = modulos.find((x) => x.name === mod);
+        asignados[mod] = suyo ? recortar(suyo, [...set]) : [...set];
         dibujar();
       }));
 

@@ -33,6 +33,81 @@ const ROLES = [
  */
 const SALUD = 'miembros_salud';
 
+/**
+ * Las llaves del sistema: lo que se puede permitir y no es un módulo.
+ *
+ * El editor de permisos mostraba los treinta y dos módulos y nada más, así que
+ * había cosas que el sistema sí comprueba y que no se podían ni ver ni ajustar
+ * desde ahí:
+ *
+ *   · los DATOS DE SALUD de una ficha ya se controlaban con `miembros_salud`,
+ *     pero como no aparecía en la lista no había manera de dárselos a una
+ *     secretaria concreta ni de quitárselos a un pastor concreto. Se cumplía
+ *     una regla que nadie podía leer ni cambiar;
+ *
+ *   · la CONFIGURACIÓN, los RESPALDOS y el TRASPASO desde el sistema anterior
+ *     no eran permisos de ninguna clase: estaban escritos como «solo si el rol
+ *     es admin». Eso obligaba a hacer administrador general a quien solo tenía
+ *     que bajarse el respaldo una vez al mes.
+ *
+ * Ahora son llaves como cualquier otra y se ajustan en el mismo lugar. Los
+ * valores por defecto de abajo dejan las tres exactamente donde estaban —solo
+ * el administrador—, así que nada cambia mientras nadie las conceda a
+ * propósito. Lo que cambia es que ahora se puede.
+ *
+ * Cada llave dice qué acciones tienen sentido para ella: «eliminar la
+ * configuración» no significa nada, y ofrecerlo sería ruido.
+ */
+const LLAVES = [
+  {
+    name: SALUD,
+    label: 'Datos de salud de las fichas',
+    group: 'Datos reservados',
+    acciones: ['view'],
+    ayuda:
+      'Las enfermedades, las alergias, las indicaciones médicas y la nota importante de la ficha ' +
+      'de un miembro. Quien no lo tenga ve la ficha completa menos eso, y se le avisa que hay algo ' +
+      'que no está viendo.',
+  },
+  {
+    name: 'sistema_configuracion',
+    label: 'Configuración del sistema',
+    group: 'Sistema',
+    acciones: ['view', 'edit'],
+    ayuda:
+      'La pantalla de Configuración: la identidad de la institución, el porcentaje de las ofrendas, ' +
+      'el modo mantenimiento, el largo de las contraseñas. Incluye ver en qué se usa el disco y ' +
+      'revisar los datos que quedaron colgando de borrados antiguos.',
+  },
+  {
+    name: 'sistema_respaldo',
+    label: 'Respaldos del sistema',
+    group: 'Sistema',
+    acciones: ['view', 'create'],
+    ayuda:
+      'Ver cuándo fue la última copia y bajarse el respaldo completo, que lleva la base entera y ' +
+      'todos los documentos. Quien lo tenga puede sacar del servidor una copia de todo, así que ' +
+      'conviene dárselo a poca gente.',
+  },
+  {
+    name: 'sistema_importacion',
+    label: 'Traspaso desde el sistema anterior',
+    group: 'Sistema',
+    acciones: ['view', 'create'],
+    ayuda:
+      'El traspaso masivo de datos del sistema antiguo. Escribe de una vez en casi todos los ' +
+      'módulos, así que se maneja igual que el respaldo: poca gente.',
+  },
+];
+
+/** Solo el administrador, salvo que se conceda a propósito. */
+const SOLO_ADMIN = Object.fromEntries(
+  LLAVES.filter((l) => l.name !== SALUD).map((l) => [l.name, []])
+);
+const TODO_ADMIN = Object.fromEntries(
+  LLAVES.filter((l) => l.name !== SALUD).map((l) => [l.name, l.acciones])
+);
+
 const ALL = ['view', 'create', 'edit', 'delete'];
 const RW = ['view', 'create', 'edit'];
 const RO = ['view'];
@@ -41,16 +116,19 @@ const MATRIX = {
   admin: {
     '*': ALL,
     [SALUD]: ['view'], // ve los datos de salud de las fichas
+    ...TODO_ADMIN,     // configuración, respaldos y traspaso: como hasta ahora
   },
   pastor: {
     '*': ALL,
     [SALUD]: ['view'], // ve los datos de salud de las fichas
+    ...SOLO_ADMIN,     // no tocaba la configuración ni los respaldos, y sigue igual
     usuarios: [],
     perfiles_permisos: [],
   },
   secretario: {
     '*': RO,
     [SALUD]: [], // los datos de salud no se heredan del comodín
+    ...SOLO_ADMIN,
     miembros: RW,
     cuerpos: RW,
     integrantes_cuerpo: RW,
@@ -83,6 +161,7 @@ const MATRIX = {
   tesorero: {
     '*': RO,
     [SALUD]: [], // los datos de salud no se heredan del comodín
+    ...SOLO_ADMIN,
     tesoreria: ALL,
     cuentas_tesoreria: ALL,
     categorias_tesoreria: ALL,
@@ -97,6 +176,7 @@ const MATRIX = {
   consulta: {
     '*': RO,
     [SALUD]: [], // los datos de salud no se heredan del comodín
+    ...SOLO_ADMIN,
     tesoreria: [],
     cuentas_tesoreria: [],
     categorias_tesoreria: [],
@@ -195,7 +275,25 @@ function permisosEfectivos(usuario, modulos) {
   return salida;
 }
 
+/**
+ * Todo lo que se puede permitir, en una sola lista: los módulos y las llaves
+ * del sistema. Es lo que consume el editor, para que lo que se ve ahí sea
+ * exactamente lo que el sistema comprueba, sin nada escondido.
+ */
+function todoLoQueSePuedePermitir() {
+  const { allModules } = require('./registry');
+  const acciones = ACCIONES.map((a) => a.value);
+  return [
+    ...allModules().map((m) => ({
+      name: m.name, label: m.label, group: m.group, acciones, ayuda: null, esLlave: false,
+    })),
+    ...LLAVES.map((l) => ({
+      name: l.name, label: l.label, group: l.group, acciones: l.acciones, ayuda: l.ayuda, esLlave: true,
+    })),
+  ];
+}
+
 module.exports = {
-  ROLES, ACCIONES, MATRIX, SALUD,
+  ROLES, ACCIONES, MATRIX, SALUD, LLAVES, todoLoQueSePuedePermitir,
   can, permisosDelRol, permisosPropios, permisosDelPerfil, permisosEfectivos,
 };

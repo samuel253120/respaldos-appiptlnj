@@ -8,6 +8,7 @@
  */
 const express = require('express');
 const { authRequired } = require('./auth');
+const { can } = require('./permissions');
 const { OPCIONES, POR_CLAVE, obtener, todas, guardar } = require('./ajustes');
 
 const PLANOS = OPCIONES.flatMap((g) => g.items);
@@ -23,7 +24,9 @@ router.get('/publica', (req, res) => {
 });
 
 router.get('/', authRequired, (req, res) => {
-  if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Solo los administradores pueden ver la configuración' });
+  if (!can(req.user, 'sistema_configuracion', 'view')) {
+    return res.status(403).json({ error: 'No tiene permiso para ver la configuración del sistema' });
+  }
   res.json({
     grupos: OPCIONES.map((g) => ({
       grupo: g.grupo,
@@ -33,7 +36,9 @@ router.get('/', authRequired, (req, res) => {
 });
 
 router.put('/', authRequired, (req, res) => {
-  if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Solo los administradores pueden cambiar la configuración' });
+  if (!can(req.user, 'sistema_configuracion', 'edit')) {
+    return res.status(403).json({ error: 'No tiene permiso para cambiar la configuración del sistema' });
+  }
   const cambios = req.body || {};
   for (const [clave, valor] of Object.entries(cambios)) {
     if (!POR_CLAVE[clave]) continue;
