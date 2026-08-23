@@ -65,7 +65,7 @@ const $app = document.getElementById('app');
  * entrando a administrarlas. El nombre de la institución sigue yendo donde
  * corresponde —los certificados, las credenciales, lo que se imprime—.
  */
-const SISTEMA = 'Administracion Iglesias';
+const SISTEMA = 'Gestión de Iglesias';
 
 /* Identidad institucional: lo que va en el acceso, en el menú y en lo impreso */
 const IGLESIA = {
