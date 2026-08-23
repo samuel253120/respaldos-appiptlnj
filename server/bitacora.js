@@ -397,10 +397,22 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
  *
  * Se anota **en cualquier módulo**, con un resumen de lo que traía: una vez
  * borrado ya no hay dónde ir a mirarlo, y su propio historial se fue con él.
+ *
+ * Si el borrado se llevó cosas por delante —las fichas de integrante de un
+ * cuerpo, las marcas de asistencia de un miembro— eso se anota en la misma
+ * entrada y no en una por fila. Son consecuencia de un solo acto, y ponerlas
+ * sueltas llenaría el registro de doscientas líneas que dicen lo mismo. Pero
+ * anotarlas hace falta: son las que después explican por qué desapareció algo
+ * que nadie borró a mano.
  */
-function registrarEliminado(def, fila, user) {
+function registrarEliminado(def, fila, user, arrastre) {
   if (BORRADOS_QUE_NO_SE_ANOTAN.includes(def.name)) return;
-  anotarCambio({ def, accion: 'Eliminación', fila, usuario: user, detalle: resumenDe(def, fila) });
+  let detalle = resumenDe(def, fila);
+  if (arrastre && arrastre.arrastradas) {
+    const lista = (arrastre.detalle || []).join(', ');
+    detalle += `${detalle ? ' — ' : ''}Se llevó consigo ${arrastre.arrastradas} registro(s)${lista ? `: ${lista}` : ''}.`;
+  }
+  anotarCambio({ def, accion: 'Eliminación', fila, usuario: user, detalle });
 }
 
 module.exports = { anotar, anotarIglesia, anotarPastor, registrarGuardado, registrarEliminado };

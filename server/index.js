@@ -470,6 +470,22 @@ app.get('/api/pendientes', authRequired, (req, res) => {
   res.json(pendientes.resumen(req.user));
 });
 
+/**
+ * Lo que quedó colgando de borrados anteriores.
+ *
+ * Hasta la versión 1.59 nada impedía que borrar un cuerpo dejara en pie sus
+ * fichas de integrante, ni que borrar un miembro dejara sus marcas de
+ * asistencia sumando en los porcentajes. Desde ahora no vuelve a pasar, pero
+ * lo que ya quedó de antes sigue ahí, y esto lo pone a la vista para poder
+ * decidir qué hacer con ello. Solo cuenta: no toca nada.
+ */
+app.get('/api/huerfanos', authRequired, (req, res) => {
+  if (!req.user || req.user.rol !== 'admin') {
+    return res.status(403).json({ error: 'Solo el administrador puede revisar esto' });
+  }
+  res.json(require('./dependencias').huerfanas(db));
+});
+
 // ---------- Carga de archivos ----------
 const TOPE_ARCHIVO = 15 * 1024 * 1024;
 

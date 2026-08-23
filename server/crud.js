@@ -41,6 +41,7 @@ const sensibles = require('./sensibles');
 const TOPE_PLANILLA = 20000;
 const bitacora = require('./bitacora');
 const alcance = require('./alcance');
+const dependencias = require('./dependencias');
 
 /**
  * Un dato que no cuadra, no una avería: lo que un módulo devuelve desde su
@@ -809,15 +810,31 @@ function buildRouter() {
             const err = def.hooks.beforeDelete(row, { user: req.user, db });
             if (err) throw new ErrorDeDatos(err);
           }
-          // Se anota antes de borrar: después ya no hay de dónde sacar qué era
-          bitacora.registrarEliminado(def, row, req.user);
+
+          /**
+           * Lo que colgaba de esta ficha, resuelto antes de borrarla.
+           *
+           * Va primero porque puede frenar el borrado —una cuenta con
+           * movimientos, un miembro con certificados emitidos— y entonces no
+           * tiene que haber quedado nada anotado ni ningún archivo borrado.
+           * Lo que arrastra se lleva también sus archivos, por la misma razón
+           * por la que se lleva los de esta (ver server/dependencias.js).
+           */
+          const arrastre = dependencias.resolver(db, def, row, {
+            alBorrarFila: (hijaDef, hijaFila) => archivos.borrarLosDe(hijaDef, hijaFila),
+          });
+
+          // Se anota antes de borrar: después ya no hay de dónde sacar qué era.
+          // Y se anota junto con lo que se llevó consigo, que es lo que después
+          // explica por qué desaparecieron cosas que nadie borró a mano.
+          bitacora.registrarEliminado(def, row, req.user, arrastre);
           // Y se llevan sus archivos, que si no quedarían en el disco para
           // siempre sin ficha desde donde llegar a ellos (ver server/archivos.js)
           archivos.borrarLosDe(def, row);
           db.prepare(`DELETE FROM "${def.name}" WHERE id = ?`).run(req.params.id);
         })();
       } catch (e) {
-        if (e instanceof ErrorDeDatos) return res.status(400).json({ error: e.message });
+        if (e instanceof ErrorDeDatos || e.esDeDatos) return res.status(400).json({ error: e.message });
         console.error(`Error eliminando en ${def.name}:`, e);
         return res.status(500).json({ error: 'Error interno al eliminar: ' + e.message });
       }
