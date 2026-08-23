@@ -591,7 +591,10 @@ function buildRouter() {
       // Solo se traen las columnas que se usan acá —el texto que se muestra y
       // aquello por lo que se puede buscar—: un selector de miembros pedía la
       // ficha entera de cada uno, y esto se abre en cada formulario.
-      const buscables = (def.searchFields || []).filter((n) => n !== 'password');
+      // Ni acá se busca por un dato reservado que esta persona no alcanza:
+      // si no, el selector lo devolvería en `buscar` y quedaría a la vista en
+      // el navegador de quien no tiene que verlo (ver server/sensibles.js).
+      const buscables = sensibles.buscablesPara(def, req.user);
       const columnas = columnasPara(def, buscables);
       const sql = `SELECT ${columnas} FROM "${def.name}" ${where ? 'WHERE ' + where : ''} ORDER BY id DESC LIMIT 1000`;
       const rows = db.prepare(sql).all(...params);
@@ -625,10 +628,14 @@ function buildRouter() {
       if (scope) where.push(scope);
 
       const q = (req.query.q || '').trim();
-      if (q && def.searchFields.length) {
-        const like = def.searchFields.map((f) => `"${f}" LIKE ?`).join(' OR ');
+      // Solo por los campos que esta persona alcanza: un teléfono que no se le
+      // muestra tampoco sirve para encontrar a su dueño, porque si sirviera
+      // bastaría con probar números para averiguar de quién es cada uno.
+      const buscables = sensibles.buscablesPara(def, req.user);
+      if (q && buscables.length) {
+        const like = buscables.map((f) => `"${f}" LIKE ?`).join(' OR ');
         where.push(`(${like})`);
-        def.searchFields.forEach(() => params.push(`%${q}%`));
+        buscables.forEach(() => params.push(`%${q}%`));
       }
 
       // Filtros exactos: ?f_campo=valor (solo campos declarados)
@@ -703,10 +710,19 @@ function buildRouter() {
      * dejan fuera los archivos —un nombre de archivo no dice nada en una
      * planilla— y las contraseñas.
      */
-    router.get(`${base}/planilla`, requirePerm(def.name, 'view'), (req, res) => {
+    router.get(`${base}/planilla`, requirePerm(def.name, 'view'), (req, res, next) => {
+      // Ver una ficha en pantalla y bajarse el listado entero a un archivo no
+      // son lo mismo: lo segundo saca los datos del sistema. Por eso tiene su
+      // propia llave, que de fábrica tienen todos y se le puede quitar a quien
+      // solo deba consultar (ver LLAVES en server/permissions.js).
+      if (!can(req.user, 'datos_planilla', 'view')) {
+        return res.status(403).json({ error: 'No tiene permiso para bajar listados a planilla' });
+      }
+      next();
+    }, (req, res) => {
       const { params, whereSql, ordenSql } = consultaDelListado(req);
       const filas = db.prepare(`SELECT * FROM "${def.name}" ${whereSql} ${ordenSql} LIMIT ${TOPE_PLANILLA}`).all(...params);
-      planilla.enviar(res, def, expandRows(def, filas, req.user));
+      planilla.enviar(res, def, expandRows(def, filas, req.user), req.user);
     });
 
     // ---- detalle ----

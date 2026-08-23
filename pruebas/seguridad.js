@@ -626,6 +626,117 @@ async function entrar(rut = RUT, clave = CLAVE) {
     revisar('se pudo crear la ficha con datos de salud', false, JSON.stringify(conSalud.datos).slice(0, 140));
   }
 
+  /* 4i · El contacto reservado y la planilla ------------------------------- */
+  console.log('\n4i · Lo que se le quitó a una cuenta, se le quitó por todas partes');
+  // Un permiso que se puede rodear no es un permiso. Acá se le quitan a una
+  // misma cuenta los datos de contacto y la planilla, y se prueban las cuatro
+  // puertas por las que el dato podría salir igual: la ficha, el listado, el
+  // buscador y el archivo que se baja. Durante el desarrollo el teléfono se
+  // escondía en la ficha y seguía encontrándose escribiéndolo en el buscador,
+  // que es la puerta que se olvida.
+  const numeroDePrueba = `+5699${String(Date.now()).slice(-7)}`;
+  const rutConTelefono = (() => {
+    const c = String(16000000 + (Date.now() % 900000));
+    return `${c}-${require('../server/rut').digitoVerificador(c)}`;
+  })();
+  const conTelefono = await api('POST', '/api/miembros', {
+    iglesia_id: iglesiaParaSalud && iglesiaParaSalud.id, rut: rutConTelefono,
+    nombres: 'Prueba', apellidos: 'De Contacto', estado: 'Activo',
+    telefono: numeroDePrueba, email: 'reservado@example.cl', direccion: 'Calle Reservada 1',
+  });
+
+  if (conTelefono.estado === 201 || conTelefono.estado === 200) {
+    const fichaId = conTelefono.datos.id;
+    const rutSinNada = (() => {
+      const c = String(13000000 + (Date.now() % 900000));
+      return `${c}-${require('../server/rut').digitoVerificador(c)}`;
+    })();
+    const acotada = await api('POST', '/api/usuarios', {
+      rut: rutSinNada, nombre: 'Prueba Sin Contacto', password: 'Manzanares82',
+      rol: 'secretario', activo: 1,
+      permisos: { miembros_contacto: [], datos_planilla: [] },
+    });
+
+    if (acotada.estado === 201 || acotada.estado === 200) {
+      const primera = await fetch(`${URL}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: rutSinNada, password: 'Manzanares82' }),
+      }).then((r) => r.json());
+      await fetch(`${URL}/api/auth/cambiar-password`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${primera.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actual: 'Manzanares82', nueva: 'Manzanares82Otra' }),
+      });
+      const suya = await fetch(`${URL}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: rutSinNada, password: 'Manzanares82Otra' }),
+      }).then((r) => r.json());
+      const comoElla = (m, r, b) => fetch(URL + r, {
+        method: m, headers: { Authorization: `Bearer ${suya.token}`, 'Content-Type': 'application/json' },
+        body: b === undefined ? undefined : JSON.stringify(b),
+      }).then(async (x) => ({ estado: x.status, datos: await x.json().catch(() => ({})) }));
+
+      const suFicha = await comoElla('GET', `/api/miembros/${fichaId}`);
+      revisar('el teléfono no le llega en la ficha', suFicha.datos.telefono === undefined,
+        `recibió ${JSON.stringify(suFicha.datos.telefono)}`);
+      revisar('ni el correo ni la dirección', suFicha.datos.email === undefined && suFicha.datos.direccion === undefined);
+      revisar('y se le dice que hay algo que no está viendo',
+        (suFicha.datos.reservado_oculto || []).includes('miembros_contacto'),
+        'sin eso, la ficha se lee como si la persona no tuviera teléfono');
+      revisar('lo demás de la ficha sí le llega', suFicha.datos.nombres === 'Prueba');
+
+      const suListado = await comoElla('GET', '/api/miembros?page=1&limit=50');
+      revisar('tampoco en el listado', !JSON.stringify(suListado.datos).includes(numeroDePrueba));
+
+      const buscando = await comoElla('GET', `/api/miembros?q=${encodeURIComponent(numeroDePrueba.slice(-7))}`);
+      revisar('ni puede dar con la persona buscando por su número',
+        (buscando.datos.total || 0) === 0,
+        `el buscador devolvió ${buscando.datos.total} resultado(s): el dato queda igual de expuesto`);
+      const porNombre = await comoElla('GET', '/api/miembros?q=Contacto');
+      revisar('pero busca por lo que sí ve, como siempre', (porNombre.datos.total || 0) > 0);
+
+      const elSelector = await comoElla('GET', '/api/miembros/options');
+      revisar('ni viaja escondido en el selector de personas',
+        !JSON.stringify(elSelector.datos).includes(numeroDePrueba),
+        'el selector manda «por qué se puede buscar» a la vista, en el navegador');
+
+      const suPlanilla = await fetch(`${URL}/api/miembros/planilla`, {
+        headers: { Authorization: `Bearer ${suya.token}` },
+      });
+      revisar('y la planilla no se le entrega', suPlanilla.status === 403,
+        `respondió ${suPlanilla.status}`);
+
+      // Con la planilla devuelta, sigue sin traer la columna reservada
+      await api('PUT', `/api/usuarios/${acotada.datos.id}`, {
+        version: (await api('GET', `/api/usuarios/${acotada.datos.id}`)).datos.version,
+        permisos: { miembros_contacto: [] },
+      });
+      const conPlanilla = await fetch(`${URL}/api/miembros/planilla`, {
+        headers: { Authorization: `Bearer ${suya.token}` },
+      }).then((r) => r.text());
+      revisar('y si se le devuelve, baja sin la columna reservada',
+        !conPlanilla.includes(numeroDePrueba) && !conPlanilla.includes('"Teléfono"'),
+        'la columna se quita entera: una casilla vacía se lee como «no tiene teléfono»');
+      revisar('pero con todo lo demás', conPlanilla.includes('Nombres'));
+
+      // Y no puede borrar a ciegas lo que no ve
+      await comoElla('PUT', `/api/miembros/${fichaId}`, {
+        ...suFicha.datos, apellidos: 'De Contacto Dos', telefono: '', email: '', direccion: '',
+      });
+      const despuesDelCiego = (await api('GET', `/api/miembros/${fichaId}`)).datos;
+      revisar('ni borrarlo guardando la ficha a ciegas', despuesDelCiego.telefono === numeroDePrueba,
+        `quedó en ${JSON.stringify(despuesDelCiego.telefono)}`);
+      revisar('y su cambio legítimo sí se guarda', despuesDelCiego.apellidos === 'De Contacto Dos');
+
+      await api('DELETE', `/api/usuarios/${acotada.datos.id}`);
+    } else {
+      revisar('se pudo crear la cuenta acotada', false, `respondió ${acotada.estado}`);
+    }
+    await api('DELETE', `/api/miembros/${fichaId}`);
+  } else {
+    revisar('se pudo crear la ficha con contacto', false, JSON.stringify(conTelefono.datos).slice(0, 140));
+  }
+
   console.log('\n5 · Los paneles de un cuerpo ajeno');
   const cuerpos = (await api('GET', '/api/cuerpos?page=1&limit=2')).datos.rows || [];
   if (cuerpos.length < 2) {

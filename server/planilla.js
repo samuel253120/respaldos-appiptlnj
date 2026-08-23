@@ -34,6 +34,7 @@
  * `+HYPERLINK(...)` queda marcado, que es de lo que se trataba.
  */
 const { getModule } = require('./registry');
+const sensibles = require('./sensibles');
 
 /** Tipos de campo que no tiene sentido llevar a una planilla. */
 const NO_VAN = new Set(['file', 'password', 'permisos']);
@@ -101,8 +102,13 @@ function nombreDelArchivo(def) {
 }
 
 /** Arma la planilla y la manda. */
-function enviar(res, def, filas) {
-  const columnas = columnasDe(def);
+function enviar(res, def, filas, usuario) {
+  // Las columnas reservadas que esta persona no alcanza no bajan del todo. Las
+  // filas ya vienen sin esos datos (ver server/sensibles.js), así que dejar la
+  // columna solo agregaría una fila de casillas vacías que se leería como
+  // «este miembro no tiene teléfono», que es peor que no traerla.
+  const fuera = new Set(usuario ? sensibles.vedados(def, usuario, null) : []);
+  const columnas = columnasDe(def).filter((c) => !fuera.has(sensibles.grupoDe(c)));
   const lineas = [columnas.map((c) => celda(c.label)).join(';')];
   for (const fila of filas) {
     lineas.push(columnas.map((c) => valorDe(c, fila)).join(';'));

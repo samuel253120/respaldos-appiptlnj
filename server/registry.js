@@ -106,6 +106,34 @@ function normalize(def) {
     f.label = f.label || f.name;
     f.type = f.type || 'text';
   }
+  revisarLoReservado(def);
+}
+
+/**
+ * Un campo reservado tiene que apuntar a una llave declarada.
+ *
+ * `reservado: 'la_llave'` esconde ese campo de quien no tenga esa llave. Si la
+ * llave no está declarada en LLAVES, la matriz de permisos no la escribe rol
+ * por rol y entonces la reparte el comodín '*': todos los roles que puedan ver
+ * algo se la llevarían, y el campo quedaría reservado de mentira. Es el mismo
+ * error que se corrigió con los datos de salud —el comodín se los regalaba al
+ * secretario— y no puede volver por otra puerta.
+ *
+ * Se revienta al arrancar, y no en silencio: un permiso que parece estar y no
+ * está es peor que no tenerlo, porque nadie va a ir a mirar.
+ */
+function revisarLoReservado(def) {
+  const { LLAVES } = require('./permissions');
+  const declaradas = new Set(LLAVES.map((l) => l.name));
+  for (const f of def.fields) {
+    const llave = f.reservado;
+    if (!llave || declaradas.has(llave)) continue;
+    throw new Error(
+      `El campo "${f.name}" de ${def.name} se declara reservado a «${llave}», que no existe como llave. ` +
+      `Agréguela a LLAVES en server/permissions.js con su valor de fábrica; si no, el comodín de la matriz ` +
+      `se la daría a todos y el campo quedaría reservado solo de nombre.`
+    );
+  }
 }
 
 /**
@@ -140,4 +168,8 @@ function allModules() {
   return Object.values(modules).sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
 }
 
-module.exports = { modules, getModule, allModules, displayOf };
+module.exports = {
+  modules, getModule, allModules, displayOf,
+  // Para poder comprobar desde las pruebas que un módulo mal declarado no pasa
+  normalizarParaPruebas: normalize,
+};

@@ -1032,6 +1032,28 @@ Los cinco escalones cubren lo corriente; para lo que no calce con ninguno están
 
 Los módulos van **agrupados y plegables**, con un buscador arriba, y cada grupo tiene sus propios atajos para aplicar un escalón a todo el grupo de una vez. Abajo, un **resumen en castellano** dice qué va a poder hacer esa persona, sin tener que leer una tabla de cien casillas.
 
+### Las llaves del sistema 🗝️
+
+Además de los módulos, el editor muestra **lo que el sistema comprueba y no es un módulo**. Antes esto estaba escrito como *«solo si el rol es administrador»* o directamente no era un permiso, así que para que alguien se bajara el respaldo una vez al mes había que hacerlo administrador general. Ahora se conceden y se quitan en el mismo lugar que todo lo demás:
+
+| Llave | Qué concede | De fábrica |
+|---|---|---|
+| **Datos de salud de las fichas** | Enfermedades, alergias, indicaciones médicas y la nota importante | Administrador y pastor |
+| **Datos de contacto de las fichas** | Teléfono, correo y dirección de miembros y pastores | Todos |
+| **Configuración del sistema** | La pantalla de Configuración, el uso del disco y los datos colgando | Administrador |
+| **Respaldos del sistema** | Ver la última copia y bajarse el respaldo completo | Administrador |
+| **Traspaso desde el sistema anterior** | La importación masiva del sistema antiguo | Administrador |
+| **Bajar listados a planilla** | El botón ⬇️ Excel de cada listado | Todos |
+| **Restablecer contraseñas de otros** | Devolver una cuenta a su contraseña inicial | Todos |
+
+Las que vienen **dadas a todos** están para poder **quitarlas**: son cosas que hasta ahora hacía cualquiera que pudiera abrir el listado, y no siempre corresponden. Mientras nadie las quite a propósito, nada cambia.
+
+Cada llave admite solo las acciones que tienen sentido para ella —«eliminar la configuración» no significa nada—, y las de una sola acción se marcan con **No / Sí** en vez de los cinco escalones.
+
+**Los datos reservados se reservan de verdad.** A quien no alcance un grupo no le llega por ninguna de las cuatro puertas: no aparece en la ficha, no aparece en el listado, no baja en la planilla —la columna se quita entera, no queda en blanco— y **tampoco puede dar con la persona buscando por ese dato**. Y no puede borrarlo: si abre la ficha y guarda, lo que no vio no se toca. En la ficha se le avisa que hay algo que no está viendo, porque un espacio en blanco se confunde con *«no tiene teléfono»*.
+
+Un módulo reserva un grupo de campos declarándolo en el campo mismo (`reservado: 'miembros_contacto'`). Si la llave no está declarada, el sistema **no arranca**: un permiso que parece estar y no está es peor que no tenerlo.
+
 ### Perfiles de permisos 🎭
 
 Un **perfil** es un juego de permisos con nombre —*«Tesorero de cuerpo»*, *«Secretaria de cuerpo»*— que se arma una vez y se le pone a las personas que hacen ese trabajo. Es un módulo como cualquier otro: se **crea, se edita y se elimina** desde el sistema.

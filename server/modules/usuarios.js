@@ -122,6 +122,21 @@ module.exports = {
   ],
   extraRoutes(router, { db, requirePerm }) {
     const claves = require('../claves');
+    const { can } = require('../permissions');
+
+    /**
+     * Devolverle la contraseña inicial a otra persona es la llave que permite
+     * entrar como ella. Poder corregirle un apellido mal escrito no tendría por
+     * qué incluirlo, así que va aparte: además de editar Usuarios hace falta
+     * `usuarios_clave`, que de fábrica la tienen todos —nadie pierde nada— y se
+     * le puede quitar a quien no corresponda (ver LLAVES en server/permissions.js).
+     */
+    const conLlaveDeClaves = (req, res, siguiente) => {
+      if (!can(req.user, 'usuarios_clave', 'view')) {
+        return res.status(403).json({ error: 'No tiene permiso para restablecer la contraseña de otras personas' });
+      }
+      siguiente();
+    };
 
     /** Los perfiles que se pueden asignar hoy (los archivados no se ofrecen). */
     router.get('/perfiles_permisos/activos', requirePerm('usuarios', 'view'), (req, res) => {
@@ -139,7 +154,7 @@ module.exports = {
         rut: usuario.rut,
         clave: claves.estado(usuario),
         recuperacion: claves.estadoRecuperacion(usuario),
-        puede_restablecer: require('../permissions').can(req.user, 'usuarios', 'edit'),
+        puede_restablecer: can(req.user, 'usuarios', 'edit') && can(req.user, 'usuarios_clave', 'view'),
       });
     });
 
@@ -148,7 +163,7 @@ module.exports = {
      * administrador se la entregue a su dueño. Al entrar con ella, el sistema
      * le obligará a cambiarla.
      */
-    router.post('/usuarios/:id(\\d+)/restablecer-clave', requirePerm('usuarios', 'edit'), (req, res) => {
+    router.post('/usuarios/:id(\\d+)/restablecer-clave', requirePerm('usuarios', 'edit'), conLlaveDeClaves, (req, res) => {
       const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.params.id);
       if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
       const clave = claves.restablecer(usuario.id);
@@ -156,7 +171,7 @@ module.exports = {
     });
 
     /** Vuelve a habilitar la recuperación bloqueada por intentos fallidos. */
-    router.post('/usuarios/:id(\\d+)/desbloquear-recuperacion', requirePerm('usuarios', 'edit'), (req, res) => {
+    router.post('/usuarios/:id(\\d+)/desbloquear-recuperacion', requirePerm('usuarios', 'edit'), conLlaveDeClaves, (req, res) => {
       const usuario = db.prepare('SELECT id FROM usuarios WHERE id = ?').get(req.params.id);
       if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
       claves.desbloquearRecuperacion(usuario.id);

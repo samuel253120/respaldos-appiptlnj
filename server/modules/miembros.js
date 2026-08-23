@@ -267,9 +267,12 @@ module.exports = {
     },
 
     // ---------------- Contacto ----------------
-    { name: 'telefono', label: 'Teléfono', type: 'tel', seccion: 'Contacto' },
-    { name: 'email', label: 'Correo electrónico', type: 'email' },
-    { name: 'direccion', label: 'Dirección', type: 'text' },
+    // Reservados: se puede quitar el permiso `miembros_contacto` a quien tenga
+    // que consultar el registro sin llevarse los teléfonos y las direcciones de
+    // la congregación. De fábrica lo tienen todos (ver server/sensibles.js).
+    { name: 'telefono', label: 'Teléfono', type: 'tel', seccion: 'Contacto', reservado: 'miembros_contacto' },
+    { name: 'email', label: 'Correo electrónico', type: 'email', reservado: 'miembros_contacto' },
+    { name: 'direccion', label: 'Dirección', type: 'text', reservado: 'miembros_contacto' },
 
     // ---------------- Vida en la iglesia ----------------
     {

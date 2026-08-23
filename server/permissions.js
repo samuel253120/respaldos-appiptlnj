@@ -64,6 +64,9 @@ const LLAVES = [
     label: 'Datos de salud de las fichas',
     group: 'Datos reservados',
     acciones: ['view'],
+    // De fábrica la tienen el administrador y el pastor: son quienes responden
+    // por la gente de la iglesia. Al resto se le concede a mano si hace falta.
+    defecto: ['admin', 'pastor'],
     ayuda:
       'Las enfermedades, las alergias, las indicaciones médicas y la nota importante de la ficha ' +
       'de un miembro. Quien no lo tenga ve la ficha completa menos eso, y se le avisa que hay algo ' +
@@ -74,6 +77,7 @@ const LLAVES = [
     label: 'Configuración del sistema',
     group: 'Sistema',
     acciones: ['view', 'edit'],
+    defecto: ['admin'],
     ayuda:
       'La pantalla de Configuración: la identidad de la institución, el porcentaje de las ofrendas, ' +
       'el modo mantenimiento, el largo de las contraseñas. Incluye ver en qué se usa el disco y ' +
@@ -84,6 +88,7 @@ const LLAVES = [
     label: 'Respaldos del sistema',
     group: 'Sistema',
     acciones: ['view', 'create'],
+    defecto: ['admin'],
     ayuda:
       'Ver cuándo fue la última copia y bajarse el respaldo completo, que lleva la base entera y ' +
       'todos los documentos. Quien lo tenga puede sacar del servidor una copia de todo, así que ' +
@@ -94,19 +99,76 @@ const LLAVES = [
     label: 'Traspaso desde el sistema anterior',
     group: 'Sistema',
     acciones: ['view', 'create'],
+    defecto: ['admin'],
     ayuda:
       'El traspaso masivo de datos del sistema antiguo. Escribe de una vez en casi todos los ' +
       'módulos, así que se maneja igual que el respaldo: poca gente.',
   },
+
+  /*
+   * Las tres que siguen son de la otra clase: vienen dadas a TODOS y existen
+   * para poder QUITÁRSELAS a alguien. Son cosas que hasta ahora hacía cualquiera
+   * que pudiera abrir la ficha o el listado, y que no siempre corresponden. Al
+   * venir concedidas de fábrica, nada cambia mientras nadie las quite a
+   * propósito; lo que cambia es que ahora se pueden quitar.
+   */
+  {
+    name: 'miembros_contacto',
+    label: 'Datos de contacto de las fichas',
+    group: 'Datos reservados',
+    acciones: ['view'],
+    defecto: 'todos',
+    ayuda:
+      'El teléfono, el correo y la dirección de los miembros y de los pastores. Quien no lo tenga ' +
+      've la ficha completa menos eso, tampoco lo baja en la planilla y tampoco puede dar con una ' +
+      'persona buscando por su número. Sirve para quien tiene que consultar el registro sin ' +
+      'llevarse los datos de contacto de la congregación.',
+  },
+  {
+    name: 'datos_planilla',
+    label: 'Bajar listados a planilla',
+    group: 'Sacar datos',
+    acciones: ['view'],
+    defecto: 'todos',
+    ayuda:
+      'El botón que baja un listado completo a Excel. Ver a una persona en pantalla y bajarse las ' +
+      'ciento setenta y nueve fichas con sus teléfonos y direcciones no son lo mismo: esto separa ' +
+      'las dos cosas. Quien no lo tenga sigue viendo y buscando en pantalla como siempre.',
+  },
+  {
+    name: 'usuarios_clave',
+    label: 'Restablecer contraseñas de otros',
+    group: 'Sistema',
+    acciones: ['view'],
+    defecto: 'todos',
+    ayuda:
+      'Devolver la cuenta de otra persona a su contraseña inicial y habilitarle la recuperación. ' +
+      'Es la llave que permite entrar como esa persona, así que puede convenir que no la tenga ' +
+      'todo el que puede corregir un nombre mal escrito. Solo hace algo en quien además pueda ' +
+      'editar Usuarios.',
+  },
 ];
 
-/** Solo el administrador, salvo que se conceda a propósito. */
-const SOLO_ADMIN = Object.fromEntries(
-  LLAVES.filter((l) => l.name !== SALUD).map((l) => [l.name, []])
-);
-const TODO_ADMIN = Object.fromEntries(
-  LLAVES.filter((l) => l.name !== SALUD).map((l) => [l.name, l.acciones])
-);
+/**
+ * Lo que un rol trae de fábrica en las llaves.
+ *
+ * Cada llave lo dice de sí misma —`defecto`—, en vez de estar repartido rol por
+ * rol en la matriz: así, al agregar una llave nueva, no hay que acordarse de
+ * tocar los cinco roles, que es exactamente la clase de olvido que deja un
+ * permiso concedido sin querer.
+ *
+ * Tiene que quedar escrito rol por rol y no depender del comodín '*': si se
+ * heredaran de él, cualquiera que pueda ver algo se llevaría también las
+ * llaves, que es justo lo que se corrigió en su día con los datos de salud.
+ */
+function llavesDeFabrica(rol) {
+  const salida = {};
+  for (const l of LLAVES) {
+    const tiene = l.defecto === 'todos' || (Array.isArray(l.defecto) && l.defecto.includes(rol));
+    salida[l.name] = tiene ? l.acciones : [];
+  }
+  return salida;
+}
 
 const ALL = ['view', 'create', 'edit', 'delete'];
 const RW = ['view', 'create', 'edit'];
@@ -115,20 +177,18 @@ const RO = ['view'];
 const MATRIX = {
   admin: {
     '*': ALL,
-    [SALUD]: ['view'], // ve los datos de salud de las fichas
-    ...TODO_ADMIN,     // configuración, respaldos y traspaso: como hasta ahora
+    ...llavesDeFabrica('admin'), // las tiene todas
   },
   pastor: {
     '*': ALL,
-    [SALUD]: ['view'], // ve los datos de salud de las fichas
-    ...SOLO_ADMIN,     // no tocaba la configuración ni los respaldos, y sigue igual
+    // Ve los datos de salud; no toca la configuración ni los respaldos
+    ...llavesDeFabrica('pastor'),
     usuarios: [],
     perfiles_permisos: [],
   },
   secretario: {
     '*': RO,
-    [SALUD]: [], // los datos de salud no se heredan del comodín
-    ...SOLO_ADMIN,
+    ...llavesDeFabrica('secretario'),
     miembros: RW,
     cuerpos: RW,
     integrantes_cuerpo: RW,
@@ -160,8 +220,7 @@ const MATRIX = {
   },
   tesorero: {
     '*': RO,
-    [SALUD]: [], // los datos de salud no se heredan del comodín
-    ...SOLO_ADMIN,
+    ...llavesDeFabrica('tesorero'),
     tesoreria: ALL,
     cuentas_tesoreria: ALL,
     categorias_tesoreria: ALL,
@@ -175,8 +234,7 @@ const MATRIX = {
   },
   consulta: {
     '*': RO,
-    [SALUD]: [], // los datos de salud no se heredan del comodín
-    ...SOLO_ADMIN,
+    ...llavesDeFabrica('consulta'),
     tesoreria: [],
     cuentas_tesoreria: [],
     categorias_tesoreria: [],
@@ -294,6 +352,6 @@ function todoLoQueSePuedePermitir() {
 }
 
 module.exports = {
-  ROLES, ACCIONES, MATRIX, SALUD, LLAVES, todoLoQueSePuedePermitir,
+  ROLES, ACCIONES, MATRIX, SALUD, LLAVES, llavesDeFabrica, todoLoQueSePuedePermitir,
   can, permisosDelRol, permisosPropios, permisosDelPerfil, permisosEfectivos,
 };

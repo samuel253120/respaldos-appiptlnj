@@ -90,9 +90,10 @@ module.exports = {
       help: 'Con o sin puntos. Se valida el dígito verificador y evita registros repetidos.',
     },
     { name: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date' },
-    { name: 'telefono', label: 'Teléfono', type: 'tel' },
-    { name: 'email', label: 'Correo electrónico', type: 'email' },
-    { name: 'direccion', label: 'Dirección', type: 'text' },
+    // Reservados igual que en la ficha de miembro (ver server/sensibles.js)
+    { name: 'telefono', label: 'Teléfono', type: 'tel', reservado: 'miembros_contacto' },
+    { name: 'email', label: 'Correo electrónico', type: 'email', reservado: 'miembros_contacto' },
+    { name: 'direccion', label: 'Dirección', type: 'text', reservado: 'miembros_contacto' },
     { name: 'documento_identidad', label: 'Otro documento (pasaporte / extranjero)', type: 'text' },
     { name: 'fecha_ordenacion', label: 'Fecha de ordenación', type: 'date', noAntesDe: 'fecha_nacimiento' },
     {

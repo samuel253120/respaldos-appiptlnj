@@ -24,7 +24,7 @@ const { exigirBaseDescartable } = require('./aislada');
 exigirBaseDescartable();
 
 const permisos = require('../../server/permissions');
-const { LLAVES, SALUD, can, permisosDelRol, todoLoQueSePuedePermitir } = permisos;
+const { LLAVES, MATRIX, ROLES, SALUD, can, permisosDelRol, llavesDeFabrica, todoLoQueSePuedePermitir } = permisos;
 
 // ------------------------------------------------- están donde estaban ----
 
@@ -116,4 +116,55 @@ test('los módulos de siempre siguen admitiendo las cuatro acciones', () => {
   const miembros = todoLoQueSePuedePermitir().find((x) => x.name === 'miembros');
   assert.deepEqual(miembros.acciones, ['view', 'create', 'edit', 'delete']);
   assert.equal(miembros.esLlave, false);
+});
+
+// -------------------------------------------- la regla que las sostiene ----
+
+test('ninguna llave se hereda del comodín: todas están escritas rol por rol', () => {
+  // Es la única regla que hace que una llave sirva. Si una quedara sin escribir
+  // en un rol, la matriz caería en '*' y se la llevaría cualquiera que pueda
+  // ver algo. Pasó una vez con los datos de salud, y por eso los valores de
+  // fábrica se arman solos desde la propia llave (llavesDeFabrica), en vez de
+  // repetirse cinco veces a mano.
+  for (const rol of ROLES.map((r) => r.value)) {
+    for (const llave of LLAVES) {
+      assert.ok(
+        Array.isArray(MATRIX[rol][llave.name]),
+        `${rol} no dice nada sobre ${llave.name}: la heredaría del comodín`
+      );
+    }
+  }
+});
+
+test('cada llave declara qué trae de fábrica, y es lo que entrega', () => {
+  for (const rol of ROLES.map((r) => r.value)) {
+    const fabrica = llavesDeFabrica(rol);
+    for (const llave of LLAVES) {
+      assert.deepEqual(
+        permisosDelRol(rol, llave.name), fabrica[llave.name],
+        `${llave.name} no coincide con lo que declara para ${rol}`
+      );
+    }
+  }
+});
+
+test('las llaves que están para quitarse vienen dadas a todos', () => {
+  // Las tres nuevas —contacto, planilla, contraseñas de otros— existen para
+  // poder QUITARLAS: son cosas que hasta ahora hacía cualquiera. Si alguna
+  // llegara apagada de fábrica, el sistema le quitaría en silencio algo que la
+  // gente venía haciendo, y esa no era la idea.
+  for (const nombre of ['miembros_contacto', 'datos_planilla', 'usuarios_clave']) {
+    const llave = LLAVES.find((l) => l.name === nombre);
+    assert.equal(llave.defecto, 'todos', `${nombre} tendría que venir dada`);
+    for (const rol of ROLES.map((r) => r.value)) {
+      assert.equal(can({ rol }, nombre, 'view'), true, `${rol} tendría que traer ${nombre}`);
+    }
+  }
+});
+
+test('y se pueden quitar de verdad, una por una', () => {
+  const consulta = { rol: 'consulta', permisos: JSON.stringify({ datos_planilla: [] }) };
+  assert.equal(can(consulta, 'datos_planilla', 'view'), false, 'ya no baja planillas');
+  assert.equal(can(consulta, 'miembros_contacto', 'view'), true, 'y lo demás le queda igual');
+  assert.equal(can(consulta, 'miembros', 'view'), true);
 });

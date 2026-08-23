@@ -19,6 +19,44 @@ let PERMISOS_CATALOGO = null; // módulos y acciones para el editor de permisos
 let ROLES = []; // roles disponibles, para mostrarlos por su nombre
 let AJUSTES = { imagen_lado_maximo: 1600, imagen_calidad: 88 }; // preferencias de la interfaz
 
+/**
+ * ¿Tiene esta llave del sistema?
+ *
+ * Las llaves son lo que se puede permitir y no es un módulo: la configuración,
+ * los respaldos, el traspaso desde el sistema anterior, los datos de salud de
+ * las fichas (ver LLAVES en server/permissions.js). El servidor manda en cada
+ * llamada las que tiene esta persona; acá se usan solo para decidir qué
+ * mostrarle. Preguntar por el rol —«¿es administrador?»— era lo que hacía que
+ * conceder los respaldos a alguien funcionara en el servidor pero no le
+ * apareciera en el menú.
+ */
+function tieneLlave(nombre, accion = 'view') {
+  return !!(USER && USER.llaves && (USER.llaves[nombre] || []).includes(accion));
+}
+
+/**
+ * ¿Este campo está reservado y el servidor no se lo mandó a esta persona?
+ *
+ * Los datos reservados —la salud, el contacto— no vienen en blanco: no vienen.
+ * La fila trae en `reservado_oculto` los grupos que faltan, y acá se pregunta
+ * campo por campo. Un campo vacío se leería como «no tiene ninguna alergia» o
+ * «no tiene teléfono», y eso es peor que decir que hay algo que no se está
+ * mostrando (ver server/sensibles.js).
+ */
+function estaReservado(f, row) {
+  if (!f || !f.reservado) return false;
+  // En una ficha que ya existe manda lo que dijo el servidor: él sabe si esta
+  // persona la alcanza —la suya propia la ve siempre, tenga la llave o no—.
+  if (row && row.id) {
+    const fuera = row.reservado_oculto || (row.salud_oculta ? ['miembros_salud'] : []);
+    return fuera.includes(f.reservado);
+  }
+  // En una ficha nueva no hay nada que preguntar todavía: decide su llave. Si
+  // no se hiciera, se le ofrecería escribir un dato que al guardar se
+  // descartaría en silencio.
+  return !tieneLlave(f.reservado);
+}
+
 const $app = document.getElementById('app');
 
 /**
@@ -468,7 +506,7 @@ function route() {
     if (cl) marcarActivo(cl);
     return viewMiPerfil(precarga);
   }
-  if (parts[0] === 'config' && USER.rol === 'admin') {
+  if (parts[0] === 'config' && tieneLlave('sistema_configuracion')) {
     const cl = document.querySelector('.side-link[data-mod="_config"]');
     if (cl) marcarActivo(cl);
     return viewConfiguracion();
@@ -651,7 +689,7 @@ function renderLogin() {
         const errEl = document.getElementById('loginError');
         if (errEl) {
           errEl.innerHTML = `<div class="aviso-mantenimiento">🛠️ ${esc(c.mantenimiento_mensaje || 'Sistema en mantenimiento.')}
-            <span>Solo los administradores pueden ingresar.</span></div>`;
+            <span>Solo puede ingresar quien administre la configuración del sistema.</span></div>`;
         }
       }
     })
@@ -1183,7 +1221,7 @@ function renderShell() {
         <div class="side-group">
           <div class="group-title">Sistema</div>
           <a class="side-link" data-mod="_cuenta" href="#/perfil"><span class="ic">🙋</span> Mi perfil</a>
-          ${USER.rol === 'admin'
+          ${tieneLlave('sistema_configuracion')
             ? '<a class="side-link" data-mod="_config" href="#/config"><span class="ic">⚙️</span> Configuración</a>'
             : ''}
         </div>
@@ -1464,7 +1502,9 @@ async function viewList(name, filtrosIniciales) {
       <label class="range">Desde <input type="date" id="fDesde" value="${esc(st.desde)}" /></label>
       <label class="range">Hasta <input type="date" id="fHasta" value="${esc(st.hasta)}" /></label>` : ''}
     <span class="spacer"></span>
-    <a class="btn secondary sm" id="btnPlanilla" download>⬇️ Excel</a>
+    ${tieneLlave('datos_planilla')
+      ? '<a class="btn secondary sm" id="btnPlanilla" download>⬇️ Excel</a>'
+      : ''}
     <button class="btn secondary sm" id="btnReload">⟳ Actualizar</button>`;
 
   // Cuando se llega desde «Datos por completar», se dice por qué la lista está
@@ -2048,10 +2088,10 @@ async function viewFicha(name, id) {
         grupos.push(grupo);
       }
     } else {
-      // Los datos de salud que el servidor no mandó no se dibujan: un campo
-      // vacío se lee como «no tiene ninguna alergia», que es peor que nada.
-      // Arriba de la ficha ya se avisa que existen y no se están mostrando.
-      if (f.sensible && row.salud_oculta) continue;
+      // Lo reservado que el servidor no mandó no se dibuja: un campo vacío se
+      // lee como «no tiene ninguna alergia» o «no tiene teléfono», que es peor
+      // que nada. Arriba de la ficha se avisa que existe y no se está mostrando.
+      if (estaReservado(f, row)) continue;
       const seccion = f.seccion || seccionPendiente;
       if (seccion || !grupo) {
         grupo = { titulo: seccion || 'Datos generales', datos: [] };
@@ -2127,6 +2167,7 @@ async function viewFicha(name, id) {
 
   // Lo que no se puede pasar por alto de esta persona, antes de sus datos
   if (name === 'miembros') avisosDelMiembro(row);
+  avisoDeLoReservado(row, name === 'miembros' ? ['miembros_salud'] : []);
 
   // Y todo lo que cuelga de la ficha: sus grupos, sus documentos, su historial
   const zona = (fn, ...args) => {
@@ -2229,11 +2270,12 @@ async function viewForm(name, id, precarga) {
 
   // Lo que no se puede pasar por alto de esta persona, antes de sus datos
   if (!isNew && name === 'miembros') avisosDelMiembro(row);
+  if (!isNew) avisoDeLoReservado(row, name === 'miembros' ? ['miembros_salud'] : []);
 
   // Igual que en la ficha: lo que el servidor no mandó tampoco se ofrece para
   // escribir. Si se ofreciera, la persona escribiría algo, guardaría, y el
   // servidor lo ignoraría en silencio (ver server/sensibles.js).
-  const visibles = m.fields.filter((f) => !f.computed && !(f.sensible && row && row.salud_oculta));
+  const visibles = m.fields.filter((f) => !f.computed && !estaReservado(f, row));
 
   const grid = document.getElementById('formGrid');
   grid.innerHTML =
@@ -2475,6 +2517,31 @@ function preguntarSiIgualVa(err, seguir) {
  * menor de edad, la falta de su adulto responsable. Van arriba de todo para
  * que se vean sin buscarlos.
  */
+/**
+ * Lo que esta ficha tiene y esta persona no está viendo.
+ *
+ * Vale para cualquier módulo con datos reservados. Se dice en vez de callarlo:
+ * una ficha sin teléfono y una ficha cuyo teléfono no se alcanza a ver se
+ * parecen demasiado, y confundirlas hace que alguien salga a pedir un dato que
+ * el sistema ya tiene.
+ */
+const LO_RESERVADO = {
+  miembros_salud: ['🩺 Información médica reservada',
+    'Esta ficha tiene datos de salud que su cuenta no alcanza a ver: los ve quien tenga ese permiso, y la propia persona en Mi perfil.'],
+  miembros_contacto: ['📵 Datos de contacto reservados',
+    'El teléfono, el correo y la dirección de esta ficha no se le están mostrando. Si necesita comunicarse con esta persona, pídalo en la oficina.'],
+};
+
+function avisoDeLoReservado(row, yaDichos) {
+  const fuera = (row && row.reservado_oculto) || [];
+  const avisos = fuera
+    .filter((g) => LO_RESERVADO[g] && !(yaDichos || []).includes(g))
+    .map((g) => `<div class="aviso"><b>${esc(LO_RESERVADO[g][0])}</b><span>${esc(LO_RESERVADO[g][1])}</span></div>`);
+  if (!avisos.length) return;
+  const tarjeta = content().querySelector('.card');
+  if (tarjeta) tarjeta.insertAdjacentHTML('beforebegin', `<div class="avisos-ficha">${avisos.join('')}</div>`);
+}
+
 function avisosDelMiembro(row) {
   const avisos = [];
   if (row.nota_importante) {
@@ -2501,8 +2568,8 @@ function avisosDelMiembro(row) {
     // confunde con «no tiene ninguna alergia», y eso es peor que no decir nada.
     avisos.push(
       `<div class="aviso"><b>🔒 Información médica reservada</b><span>Esta ficha tiene datos de salud
-       que su cuenta no alcanza a ver. Los ven el pastor y el administrador, y la propia persona en
-       Mi perfil.</span></div>`
+       que su cuenta no alcanza a ver. Los ve quien tenga ese permiso —de fábrica, el pastor y el
+       administrador— y la propia persona en Mi perfil.</span></div>`
     );
   }
   if (row.pareja_pendiente) {
@@ -4517,7 +4584,7 @@ function abrirImportador(m, alTerminar) {
  * archivos subidos— y la guarda donde le parezca.
  */
 async function renderRespaldo(zona) {
-  if (!zona || USER.rol !== 'admin') return;
+  if (!zona || !tieneLlave('sistema_respaldo')) return;
   let info;
   try {
     info = await api('GET', '/respaldo/info');
@@ -4746,7 +4813,9 @@ async function renderRespaldoAutomatico(zona) {
         </div>
         <ul class="respaldo-copias">${filas}</ul>
         <div class="respaldo-acciones">
-          <button class="btn secundario" id="btnCopiaAhora">🕒 Hacer una copia ahora</button>
+          ${tieneLlave('sistema_respaldo', 'create')
+            ? '<button class="btn secundario" id="btnCopiaAhora">🕒 Hacer una copia ahora</button>'
+            : ''}
           <span class="mut" id="copiaEstado"></span>
         </div>
         <p class="mut" style="font-size:12.5px">
@@ -4756,7 +4825,8 @@ async function renderRespaldoAutomatico(zona) {
         </p>
       </div>`;
 
-    document.getElementById('btnCopiaAhora').addEventListener('click', async (ev) => {
+    const botonCopia = document.getElementById('btnCopiaAhora');
+    if (botonCopia) botonCopia.addEventListener('click', async (ev) => {
       const boton = ev.currentTarget;
       const aviso = document.getElementById('copiaEstado');
       boton.disabled = true;
@@ -4792,18 +4862,27 @@ async function viewConfiguracion() {
     return;
   }
 
+  /**
+   * Se puede tener la configuración a la vista sin poder cambiarla: son dos
+   * permisos distintos. A quien solo la ve se le muestra todo igual, pero sin
+   * el botón de guardar y con los campos bloqueados, para que no llene un
+   * formulario que después el servidor le va a rechazar.
+   */
+  const puedeCambiarla = tieneLlave('sistema_configuracion', 'edit');
+  const bloqueado = puedeCambiarla ? '' : ' disabled';
+
   const campo = (o) => {
     if (o.tipo === 'boolean') {
       return `<div class="fld check full">
-        <input type="checkbox" id="cfg_${o.clave}" data-clave="${o.clave}" data-tipo="boolean" ${String(o.valor) === '1' ? 'checked' : ''} />
+        <input type="checkbox" id="cfg_${o.clave}" data-clave="${o.clave}" data-tipo="boolean" ${String(o.valor) === '1' ? 'checked' : ''}${bloqueado} />
         <label for="cfg_${o.clave}">${esc(o.label)}</label>
         ${o.ayuda ? `<div class="help" style="flex-basis:100%">${esc(o.ayuda)}</div>` : ''}
       </div>`;
     }
     const tipo = o.tipo === 'number' ? 'number' : 'text';
     const control = o.tipo === 'textarea'
-      ? `<textarea data-clave="${o.clave}" data-tipo="textarea">${esc(o.valor || '')}</textarea>`
-      : `<input type="${tipo}" data-clave="${o.clave}" data-tipo="${o.tipo}" value="${esc(o.valor || '')}" />`;
+      ? `<textarea data-clave="${o.clave}" data-tipo="textarea"${bloqueado}>${esc(o.valor || '')}</textarea>`
+      : `<input type="${tipo}" data-clave="${o.clave}" data-tipo="${o.tipo}" value="${esc(o.valor || '')}"${bloqueado} />`;
     return `<div class="fld${o.tipo === 'textarea' ? ' full' : ''}">
       <label>${esc(o.label)}</label>${control}
       ${o.ayuda ? `<div class="help">${esc(o.ayuda)}</div>` : ''}
@@ -4813,8 +4892,9 @@ async function viewConfiguracion() {
   content().innerHTML = `
     <div class="page-head">
       <h2>⚙️ Configuración del sistema</h2>
-      <div class="actions"><button class="btn" id="cfgGuardar">💾 Guardar cambios</button></div>
+      <div class="actions">${puedeCambiarla ? '<button class="btn" id="cfgGuardar">💾 Guardar cambios</button>' : ''}</div>
     </div>
+    ${puedeCambiarla ? '' : '<div class="resultado warn">👁️ Puede <b>ver</b> la configuración, pero no cambiarla. Para modificar algo de acá, pídale a la oficina que le dé también el permiso de editarla.</div>'}
     ${datos.grupos.map((g) => `
       <div class="card" style="margin-bottom:18px">
         <div class="toolbar"><b>${esc(g.grupo)}</b></div>
@@ -4828,18 +4908,19 @@ async function viewConfiguracion() {
   renderRespaldo(document.getElementById('cfgRespaldo'));
   renderTraspaso(document.getElementById('cfgTraspaso'));
 
-  document.getElementById('cfgGuardar').addEventListener('click', async () => {
+  const botonGuardar = document.getElementById('cfgGuardar');
+  if (botonGuardar) botonGuardar.addEventListener('click', async () => {
     const cambios = {};
     content().querySelectorAll('[data-clave]').forEach((el) => {
       cambios[el.dataset.clave] = el.dataset.tipo === 'boolean' ? el.checked : el.value;
     });
     const mantenimiento = cambios.mantenimiento_activo === true;
-    if (mantenimiento && !confirm('¿Activar el modo mantenimiento?\n\nSolo los administradores podrán ingresar; el resto verá el aviso y se cerrará su sesión.')) return;
+    if (mantenimiento && !confirm('¿Activar el modo mantenimiento?\n\nSolo podrá ingresar quien tenga permiso para cambiar la configuración; el resto verá el aviso y se cerrará su sesión.')) return;
     try {
       await api('PUT', '/configuracion', cambios);
       toast('Configuración guardada');
       document.getElementById('cfgEstado').innerHTML = mantenimiento
-        ? `<div class="resultado warn"><b>🛠️ El sistema quedó en mantenimiento.</b> Solo los administradores pueden ingresar. Desactive esta opción para volver a la normalidad.</div>`
+        ? `<div class="resultado warn"><b>🛠️ El sistema quedó en mantenimiento.</b> Solo puede ingresar quien tenga permiso para cambiar la configuración. Desactive esta opción para volver a la normalidad.</div>`
         : '';
       // El traspaso depende del modo mantenimiento: al cambiarlo, su panel se
       // pinta de nuevo para que el botón de importar quede como corresponde
@@ -4907,6 +4988,13 @@ function mostrarInforme(contenedor, r) {
 }
 
 async function renderTraspaso(contenedor, mostrarDespues) {
+  // Sin la llave del traspaso no se pregunta siquiera: preguntar y comerse el
+  // 403 funcionaba, pero dejaba un error en la consola del navegador de alguien
+  // que no hizo nada mal.
+  if (!tieneLlave('sistema_importacion')) {
+    if (contenedor) contenedor.innerHTML = '';
+    return;
+  }
   let estado;
   try {
     estado = await api('GET', '/importacion/estado');
@@ -5322,9 +5410,17 @@ function initPermisos(f, row, rolActual) {
   const nombreDe = (v) => (acciones.find((a) => a.value === v) || {}).label || v;
   const atajosDe = (m) => {
     const vistos = new Set();
+    // Una llave de una sola acción se tiene o no se tiene: ahí «Nada» y «Solo
+    // ver» son una manera rebuscada de decir no y sí, y así se dicen.
+    const deSiONo = acepta(m).length === 1;
     return ATAJOS_PERMISO
       .map((a) => {
         const queda = recortar(m, a.acciones);
+        if (deSiONo) {
+          return queda.length
+            ? { ...a, acciones: queda, texto: 'Sí', titulo: `La tiene: ${m.label.toLowerCase()}` }
+            : { ...a, acciones: queda, texto: 'No', titulo: `No la tiene: ${m.label.toLowerCase()}` };
+        }
         // Si al recortar el atajo dejó de ser lo que su nombre decía, se
         // renombra con lo que de verdad hace: en Respaldos, «Ver, agregar y
         // corregir» quedaba en ver y crear, y el letrero mentía.
@@ -5371,7 +5467,12 @@ function initPermisos(f, row, rolActual) {
       .filter((x) => x.acc.length)
       .map((x) => {
         const atajo = ATAJOS_PERMISO.find((a) => mismasAcciones(a.acciones, x.acc));
-        const como = atajo ? atajo.texto.toLowerCase() : x.acc.map((a) => (acciones.find((y) => y.value === a) || {}).label || a).join(' + ').toLowerCase();
+        // Una llave de una sola acción se resume como lo que es: la tiene
+        const como = acepta(x.m).length === 1
+          ? 'sí'
+          : atajo
+            ? atajo.texto.toLowerCase()
+            : x.acc.map((a) => (acciones.find((y) => y.value === a) || {}).label || a).join(' + ').toLowerCase();
         return `<li><b>${esc(x.m.label)}</b><span class="mut">${esc(como)}</span></li>`;
       });
 
@@ -5400,13 +5501,17 @@ function initPermisos(f, row, rolActual) {
               <span class="spacer"></span>
               ${(() => {
                 // El atajo de grupo solo ofrece lo que ese grupo admite: en
-                // «Datos reservados», donde la única llave es de solo ver,
-                // ofrecer «Todo» daría a entender algo que no existe.
+                // «Datos reservados», donde las llaves son de solo ver,
+                // ofrecer «Todo» daría a entender algo que no existe. Y si
+                // todas las de ese grupo se tienen o no se tienen, el atajo se
+                // dice como se dicen ellas: no y sí.
                 const vistos = new Set();
+                const grupoDeSiONo = suyos.every((m) => acepta(m).length === 1);
                 return ATAJOS_PERMISO
                   .map((a) => {
                     const util = suyos.some((m) => recortar(m, a.acciones).length === a.acciones.length);
-                    return util ? a : null;
+                    if (!util) return null;
+                    return grupoDeSiONo ? { ...a, texto: a.acciones.length ? 'Sí' : 'No' } : a;
                   })
                   .filter((a) => {
                     if (!a) return false;
@@ -5776,7 +5881,7 @@ function pintarAcciones() {
   if (!zona) return;
   zona.innerHTML = ASIS.tab === 'informes'
     ? `<button class="btn secondary" id="asisPDF">🖨️ PDF</button>
-       <button class="btn secondary" id="asisExcel">⬇️ Excel</button>`
+       ${tieneLlave('datos_planilla') ? '<button class="btn secondary" id="asisExcel">⬇️ Excel</button>' : ''}`
     : `<button class="btn secondary" id="asisHoy">📅 Hoy</button>`;
   const pdf = document.getElementById('asisPDF');
   if (pdf) pdf.addEventListener('click', () => window.print());

@@ -15,7 +15,7 @@ const { db, DATA_DIR, UPLOADS_DIR } = require('./db');
 const { router: authRouter, authRequired } = require('./auth');
 const { buildRouter } = require('./crud');
 const { allModules } = require('./registry');
-const { can, ROLES, ACCIONES, MATRIX, permisosDelRol, todoLoQueSePuedePermitir } = require('./permissions');
+const { can, ROLES, ACCIONES, MATRIX, LLAVES, SALUD, permisosDelRol, todoLoQueSePuedePermitir } = require('./permissions');
 const { ensureSeed } = require('./seed');
 const { ejecutarMigraciones } = require('./migraciones');
 const { router: importarRouter } = require('./importar');
@@ -175,7 +175,7 @@ app.get('/api/meta', authRequired, (req, res) => {
       fields: [
         ...m.fields
           .filter((f) => !f.oculto)
-          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, sensible, futuro }) => ({
+          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, sensible, reservado, futuro }) => ({
             name, label, type, required: !!required, options: options || null,
             // Los límites viajan para que el formulario avise antes de mandar.
             // Quien manda igual —o escribe la dirección a mano— se topa con la
@@ -184,8 +184,10 @@ app.get('/api/meta', authRequired, (req, res) => {
             // Si el campo admite fecha adelante, el calendario no le pone tope de hoy
             futuro: !!futuro,
             // Para que la pantalla sepa cuáles esconder cuando el servidor no
-            // se los mandó a esta persona (ver server/sensibles.js)
+            // se los mandó a esta persona (ver server/sensibles.js). `sensible`
+            // es la forma antigua de decir «reservado a los datos de salud».
             sensible: !!sensible,
+            reservado: reservado || (sensible ? SALUD : null),
             sugerencias: sugerencias || null, ref: ref || null,
             help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
             optionsRoute: optionsRoute || null, readonly: !!readonly, mostrarEdad: !!mostrarEdad,
@@ -236,9 +238,29 @@ app.get('/api/meta', authRequired, (req, res) => {
     (db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(id) || {}).nombre
   ).filter(Boolean);
 
-  // Catálogo para el editor de permisos personalizados (solo administradores)
+  /**
+   * Las llaves del sistema que tiene esta persona, ya resueltas.
+   *
+   * La pantalla las necesita para saber qué mostrarle. Hasta la 1.67 preguntaba
+   * «¿es administrador?», y por eso conceder los respaldos a una tesorera
+   * funcionaba en el servidor —la dirección escrita a mano respondía— pero a
+   * ella no le aparecía nada en el menú: un permiso concedido que no se veía.
+   * Ahora viaja lo que de verdad puede, llave por llave.
+   */
+  const llaves = Object.fromEntries(
+    LLAVES.map((l) => [l.name, l.acciones.filter((a) => can(req.user, l.name, a))])
+  );
+
+  /**
+   * Catálogo para el editor de permisos personalizados.
+   *
+   * Lo necesita quien pueda tocar los permisos de otro: la ficha de un usuario
+   * o la de un perfil. Antes se mandaba solo a los administradores, así que un
+   * secretario con permiso de editar usuarios abría la ficha y el editor de
+   * permisos le salía vacío.
+   */
   let permisosCatalogo = null;
-  if (req.user.rol === 'admin') {
+  if (can(req.user, 'usuarios', 'edit') || can(req.user, 'perfiles_permisos', 'view')) {
     // Los perfiles, para que el editor sepa de dónde sale lo que no se ajusta
     const perfiles = {};
     try {
@@ -293,6 +315,7 @@ app.get('/api/meta', authRequired, (req, res) => {
       iglesias_disponibles: puedeElegir,
       iglesias_trabajando: trabajando,
       cuerpos_asignados: susCuerpos,
+      llaves,
     },
   };
 

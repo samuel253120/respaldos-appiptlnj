@@ -55,12 +55,20 @@ function duracionSesion() {
 }
 
 /**
- * Con el sistema en mantenimiento solo entran los administradores.
+ * Con el sistema en mantenimiento solo entra quien pueda sacarlo de ahí.
+ *
+ * Antes decía «solo si el rol es administrador». Ahora pasa quien tenga el
+ * permiso de CAMBIAR la configuración, que es exactamente quien puede apagar
+ * el mantenimiento: dejar entrar a alguien que después no puede desactivarlo
+ * no ayuda a nadie, y dejar fuera a quien sí puede sería encerrarlo. De
+ * fábrica es el mismo grupo de siempre —solo el administrador—, porque ese
+ * permiso no lo tiene nadie más mientras no se conceda a propósito.
+ *
  * Devuelve el aviso a mostrar, o null si el paso está permitido.
  */
 function bloqueoPorMantenimiento(usuario) {
   if (!ajustes.activo('mantenimiento_activo')) return null;
-  if (usuario && usuario.rol === 'admin') return null;
+  if (usuario && can(usuario, 'sistema_configuracion', 'edit')) return null;
   return ajustes.obtener('mantenimiento_mensaje') || 'El sistema está en mantenimiento.';
 }
 

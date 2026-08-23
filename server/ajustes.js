@@ -32,7 +32,7 @@ const OPCIONES = [
       {
         clave: 'mantenimiento_activo', label: 'Sistema en mantenimiento', tipo: 'boolean', defecto: '0',
         publica: true,
-        ayuda: 'Mientras esté activo, solo los administradores pueden ingresar. El resto verá el aviso de abajo.',
+        ayuda: 'Mientras esté activo, solo puede ingresar quien tenga permiso para cambiar esta configuración. El resto verá el aviso de abajo.',
       },
       {
         clave: 'mantenimiento_mensaje', label: 'Aviso que verán los usuarios', tipo: 'textarea',
