@@ -29,6 +29,6 @@ module.exports = {
     },
     { name: 'respuesta', label: 'Respuesta / Resolución', type: 'textarea' },
     { name: 'atendida_por', label: 'Atendida por', type: 'text' },
-    { name: 'fecha_respuesta', label: 'Fecha de respuesta', type: 'date' },
+    { name: 'fecha_respuesta', label: 'Fecha de respuesta', type: 'date', noAntesDe: 'fecha' },
   ],
 };

@@ -42,6 +42,7 @@ const TOPE_PLANILLA = 20000;
 const bitacora = require('./bitacora');
 const alcance = require('./alcance');
 const dependencias = require('./dependencias');
+const fechas = require('./fechas');
 
 /**
  * Un dato que no cuadra, no una avería: lo que un módulo devuelve desde su
@@ -727,6 +728,41 @@ function buildRouter() {
           if (problema) return res.status(400).json({ error: problema });
         }
 
+        /**
+         * Y de las fechas: que sean fechas, que estén en un rango con sentido
+         * y que se lleven bien entre ellas (ver server/fechas.js).
+         *
+         * Solo se revisa lo que este guardado ESTÁ CAMBIANDO. Una ficha que ya
+         * traía una fecha imposible de antes —de una importación vieja, o de
+         * un descuido anterior a esta comprobación— se sigue pudiendo guardar
+         * para corregirle el teléfono: la comprobación frena el guardado que
+         * empeora las cosas, no el que simplemente no arregla algo que ya
+         * estaba. Lo que ya estaba se corrige cuando alguien toque esa fecha,
+         * que es cuando puede hacer algo al respecto.
+         */
+        const cambia = (nombre) => {
+          const val = data[nombre];
+          if (val === undefined) return false;
+          if (!existing) return true;
+          const antes = existing[nombre];
+          return String(antes == null ? '' : antes) !== String(val == null ? '' : val);
+        };
+
+        for (const f of def.fields) {
+          if (f.type !== 'date' || !cambia(f.name)) continue;
+          const val = data[f.name];
+          if (val === null || val === '') continue;
+          const problema = fechas.revisar(f, val);
+          if (problema) return res.status(400).json({ error: problema });
+        }
+        // La coherencia se mira solo si alguna de las dos fechas del par se
+        // está tocando; si no, es una contradicción que ya venía.
+        const tocaAlgunaFecha = def.fields.some((f) => f.type === 'date' && cambia(f.name));
+        if (tocaAlgunaFecha) {
+          const seContradicen = fechas.revisarCoherencia(def, data, existing);
+          if (seContradicen) return res.status(400).json({ error: seContradicen });
+        }
+
         // Validación de RUT (dígito verificador) y de campos únicos
         for (const f of def.fields) {
           const val = data[f.name];
@@ -754,8 +790,23 @@ function buildRouter() {
         // personas guardan en el mismo momento.
         const escribir = db.transaction(() => {
           if (def.hooks && def.hooks.beforeSave) {
-            const err = def.hooks.beforeSave(data, { user: req.user, isNew, id, existing, db });
-            if (err) throw new ErrorDeDatos(err);
+            // `confirmado` dice que la persona ya vio un aviso de los que se pueden
+            // confirmar y respondió que sí. No es un dato de la ficha —no se
+            // guarda en ninguna columna—, es una instrucción de esta petición.
+            const confirmado = req.body.igual_asi === true || req.body.igual_asi === 'true';
+            const err = def.hooks.beforeSave(data, { user: req.user, isNew, id, existing, db, confirmado });
+            /**
+             * Un hook puede devolver dos cosas distintas, y la diferencia
+             * importa: un texto es un rechazo —el dato no entra— y un objeto
+             * con `confirmar` es una pregunta —el dato puede entrar, pero
+             * alguien tiene que decir que sí—. La pantalla convierte lo
+             * segundo en dos botones en vez de en un aviso rojo.
+             */
+            if (err) {
+              const problema = new ErrorDeDatos(typeof err === 'string' ? err : err.error);
+              if (err && err.confirmar) problema.confirmar = err.confirmar;
+              throw problema;
+            }
           }
 
           const keys = Object.keys(data);
@@ -788,7 +839,9 @@ function buildRouter() {
         const row = escribir();
         return res.status(isNew ? 201 : 200).json(expandRow(def, row, req.user));
       } catch (e) {
-        if (e instanceof ErrorDeDatos) return res.status(400).json({ error: e.message });
+        if (e instanceof ErrorDeDatos) {
+          return res.status(400).json(e.confirmar ? { error: e.message, confirmar: e.confirmar } : { error: e.message });
+        }
         console.error(`Error guardando en ${def.name}:`, e);
         return res.status(500).json({ error: 'Error interno al guardar: ' + e.message });
       }

@@ -59,7 +59,7 @@ module.exports = {
     { name: 'servicio_id', type: 'number', oculto: true, readonly: true },
   ],
   hooks: {
-    beforeSave(data, { user, existing, db }) {
+    beforeSave(data, { user, existing, db, confirmado }) {
       // Los dos movimientos de un traspaso se corrigen desde el traspaso, para
       // que los dos lados queden siempre por el mismo monto y la misma fecha.
       if (existing && existing.traspaso_id) {
@@ -87,6 +87,18 @@ module.exports = {
       }
 
       data.iglesia_id = cuenta.iglesia_id || null;
+
+      // ¿Este egreso deja la cuenta en rojo? No se bloquea —una cuenta puede
+      // quedar en rojo de verdad— pero se pregunta, porque el caso corriente
+      // no es ese sino el cero de más (ver server/saldos.js).
+      if (!confirmado) {
+        const tipo = data.tipo !== undefined ? data.tipo : existing ? existing.tipo : null;
+        const monto = data.monto !== undefined ? data.monto : existing ? existing.monto : 0;
+        const aviso = require('../saldos').avisoSiQuedaEnRojo(cuentaId, {
+          tipo, monto, excluirMovimiento: existing ? existing.id : null,
+        });
+        if (aviso) return aviso;
+      }
       return null;
     },
 

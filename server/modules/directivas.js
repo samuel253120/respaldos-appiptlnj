@@ -95,8 +95,9 @@ module.exports = {
   fields: [
     { name: 'cuerpo_id', label: 'Cuerpo', type: 'ref', ref: 'cuerpos', required: true },
     { name: 'periodo', label: 'Período', type: 'text', required: true, help: 'Ej: 2026 – 2027' },
-    { name: 'fecha_inicio', label: 'Fecha de inicio', type: 'date', required: true },
-    { name: 'fecha_termino', label: 'Fecha de término', type: 'date', help: 'Al llegar esta fecha, la directiva figura como vencida en el estado de cumplimiento.' },
+    // Una directiva puede quedar electa para asumir más adelante.
+    { name: 'fecha_inicio', label: 'Fecha de inicio', type: 'date', required: true, futuro: true },
+    { name: 'fecha_termino', label: 'Fecha de término', type: 'date', futuro: true, noAntesDe: 'fecha_inicio', help: 'Al llegar esta fecha, la directiva figura como vencida en el estado de cumplimiento.' },
     // --- Integrantes de la directiva ---
     {
       name: 'oficial_supervisor_id', label: 'Oficial supervisor(a)', type: 'ref', ref: 'miembros',

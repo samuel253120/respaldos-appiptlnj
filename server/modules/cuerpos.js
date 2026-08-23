@@ -119,7 +119,7 @@ module.exports = {
 
     // --- Propios de los cuerpos formales ---
     {
-      name: 'fecha_constitucion', label: 'Fecha de constitución formal', type: 'date',
+      name: 'fecha_constitucion', label: 'Fecha de constitución formal', type: 'date', noAntesDe: 'fecha_creacion',
       showIf: { field: 'tipo', equals: 'Cuerpo' },
     },
     {

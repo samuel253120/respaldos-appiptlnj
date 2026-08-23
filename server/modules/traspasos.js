@@ -65,7 +65,7 @@ module.exports = {
   ],
 
   hooks: {
-    beforeSave(data, { user, existing, db }) {
+    beforeSave(data, { user, existing, db, confirmado }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
       const origenId = dato('cuenta_origen_id');
       const destinoId = dato('cuenta_destino_id');
@@ -91,6 +91,18 @@ module.exports = {
       if (destino.estado === 'Cerrada') return `La cuenta "${destino.nombre}" está cerrada: no puede entrar dinero en ella`;
 
       data.iglesia_id = origen.iglesia_id || null;
+
+      // ¿Se está sacando de la cuenta de origen más de lo que hay? Se pregunta
+      // antes de dejarla en rojo. Los dos lados del traspaso que ya estuvieran
+      // guardados no cuentan: este guardado los rehace enteros.
+      if (!confirmado) {
+        const aviso = require('../saldos').avisoSiQuedaEnRojo(origenId, {
+          tipo: 'Egreso', monto,
+          excluirTraspaso: existing ? existing.id : null,
+          queEs: 'Este traspaso',
+        });
+        if (aviso) return aviso;
+      }
       return null;
     },
 

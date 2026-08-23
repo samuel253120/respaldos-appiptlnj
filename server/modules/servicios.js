@@ -60,7 +60,8 @@ module.exports = {
   ],
 
   fields: [
-    { name: 'fecha', label: 'Fecha', type: 'date', required: true, seccion: 'Fecha y hora' },
+    // Un servicio se agenda antes de celebrarse: admite fecha adelante.
+    { name: 'fecha', label: 'Fecha', type: 'date', required: true, futuro: true, seccion: 'Fecha y hora' },
     { name: 'hora_inicio', label: 'Hora de inicio', type: 'time' },
     {
       name: 'tipo', label: 'Tipo de servicio', type: 'select', default: TIPOS_DE_SERVICIO[0],

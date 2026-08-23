@@ -248,11 +248,11 @@ module.exports = {
       options: ['Soltero(a)', 'Casado(a)', 'Unión libre', 'Separado(a)', 'Viudo(a)', 'Divorciado(a)'],
     },
     {
-      name: 'fecha_matrimonio_civil', label: 'Fecha de matrimonio civil', type: 'date',
+      name: 'fecha_matrimonio_civil', label: 'Fecha de matrimonio civil', type: 'date', noAntesDe: 'fecha_nacimiento',
       showIf: { field: 'estado_civil', equals: 'Casado(a)' },
     },
     {
-      name: 'fecha_matrimonio_religioso', label: 'Fecha de matrimonio por la iglesia', type: 'date',
+      name: 'fecha_matrimonio_religioso', label: 'Fecha de matrimonio por la iglesia', type: 'date', noAntesDe: 'fecha_nacimiento',
       showIf: { field: 'estado_civil', equals: 'Casado(a)' },
     },
     {
@@ -277,9 +277,9 @@ module.exports = {
       options: FORMAS_DE_INGRESO,
       help: 'Por dónde llegó a esta iglesia.',
     },
-    { name: 'fecha_ingreso', label: 'Fecha de ingreso a la iglesia', type: 'date' },
-    { name: 'fecha_conversion', label: 'Fecha de conversión', type: 'date' },
-    { name: 'fecha_bautismo', label: 'Fecha de bautismo', type: 'date' },
+    { name: 'fecha_ingreso', label: 'Fecha de ingreso a la iglesia', type: 'date', noAntesDe: 'fecha_nacimiento' },
+    { name: 'fecha_conversion', label: 'Fecha de conversión', type: 'date', noAntesDe: 'fecha_nacimiento' },
+    { name: 'fecha_bautismo', label: 'Fecha de bautismo', type: 'date', noAntesDe: 'fecha_nacimiento' },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Activo',
       options: ['Activo', 'Inactivo', 'En disciplina', 'Trasladado', 'Fallecido'],

@@ -148,7 +148,8 @@ module.exports = {
   ],
 
   fields: [
-    { name: 'fecha', label: 'Fecha', type: 'date', required: true },
+    // Una actividad se programa antes de que ocurra: admite fecha adelante.
+    { name: 'fecha', label: 'Fecha', type: 'date', required: true, futuro: true },
     {
       name: 'cuerpos', label: 'Cuerpos convocados', type: 'multiref', ref: 'cuerpos', required: true,
       help: 'A una actividad puede asistir más de un cuerpo. Se pasará lista a los integrantes de todos los elegidos.',

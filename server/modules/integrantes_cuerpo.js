@@ -61,10 +61,12 @@ module.exports = {
     },
     {
       name: 'fecha_fin_prueba', label: 'Termina el período de prueba', type: 'date', readonly: true,
+      futuro: true, noAntesDe: 'fecha_ingreso',
       help: 'Se calcula sola con los meses que define el cuerpo. Antes de esa fecha hay que evaluar su informe.',
     },
     {
       name: 'fecha_oficial', label: 'Pasó a integrante oficial el', type: 'date', readonly: true,
+      futuro: true, noAntesDe: 'fecha_ingreso',
       showIf: { field: 'estado', equals: 'Activo' },
       help: 'La fecha en que se aprobó su informe. La pone la evaluación.',
     },
@@ -79,7 +81,7 @@ module.exports = {
       sugerencias: ['Situación económica', 'Salud', 'Edad', 'Estudiante', 'Acuerdo de la directiva'],
     },
     {
-      name: 'fecha_retiro', label: 'Fecha de retiro', type: 'date',
+      name: 'fecha_retiro', label: 'Fecha de retiro', type: 'date', noAntesDe: 'fecha_ingreso',
       seccion: 'Retiro', showIf: { field: 'estado', equals: 'Retirado' },
     },
     {

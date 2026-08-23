@@ -145,6 +145,14 @@ function prepararFila(def, fila, user) {
     if (f.type === 'rut' && !rut.validar(valor)) {
       errores.push(`${f.label}: "${valor}" no es válido (dígito verificador)`);
     }
+    // Las mismas reglas de fecha que el formulario: que sea una fecha, que
+    // esté en un rango con sentido y que no llegue del futuro cuando el campo
+    // anota algo que ya pasó (ver server/fechas.js). Sin esto, la planilla
+    // metía por la puerta de atrás lo que el formulario ya no deja entrar.
+    if (f.type === 'date') {
+      const problema = require('./fechas').revisar(f, valor);
+      if (problema) errores.push(problema);
+    }
     if (f.unique) {
       const dup = db
         .prepare(`SELECT id FROM "${def.name}" WHERE lower("${f.name}") = lower(?)`)
@@ -152,6 +160,9 @@ function prepararFila(def, fila, user) {
       if (dup) errores.push(`${f.label}: "${valor}" ya existe (registro #${dup.id})`);
     }
   }
+
+  const seContradicen = require('./fechas').revisarCoherencia(def, datos, null);
+  if (seContradicen) errores.push(seContradicen);
 
   aplicarDefectos(def, datos);
   sincronizarPersonas(def, datos, null);

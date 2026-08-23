@@ -94,7 +94,7 @@ module.exports = {
     { name: 'email', label: 'Correo electrónico', type: 'email' },
     { name: 'direccion', label: 'Dirección', type: 'text' },
     { name: 'documento_identidad', label: 'Otro documento (pasaporte / extranjero)', type: 'text' },
-    { name: 'fecha_ordenacion', label: 'Fecha de ordenación', type: 'date' },
+    { name: 'fecha_ordenacion', label: 'Fecha de ordenación', type: 'date', noAntesDe: 'fecha_nacimiento' },
     {
       name: 'miembro_id', label: 'Su ficha de miembro', type: 'ref', ref: 'miembros',
       help: 'El pastor y la pastora son también miembros de su iglesia. Si tienen el mismo RUT, el sistema la reconoce sola.',

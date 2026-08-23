@@ -25,7 +25,7 @@ module.exports = {
     { name: 'miembro_id', label: 'Miembro (si está registrado)', type: 'ref', ref: 'miembros' },
     { name: 'cargo', label: 'Cargo que acredita', type: 'text' },
     { name: 'fecha_emision', label: 'Fecha de emisión', type: 'date', required: true },
-    { name: 'fecha_vencimiento', label: 'Fecha de vencimiento', type: 'date' },
+    { name: 'fecha_vencimiento', label: 'Fecha de vencimiento', type: 'date', futuro: true, noAntesDe: 'fecha_emision' },
     { name: 'foto', label: 'Foto del titular', type: 'file', accept: 'image/*', recorte: 'cuadrado' },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Vigente',

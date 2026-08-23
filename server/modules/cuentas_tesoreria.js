@@ -95,6 +95,7 @@ module.exports = {
     },
     {
       name: 'fecha_cierre', label: 'Fecha de cierre', type: 'date',
+      futuro: true, noAntesDe: 'fecha_apertura',
       showIf: { field: 'estado', equals: 'Cerrada' },
     },
     { name: 'descripcion', label: 'Descripción / Objetivo', type: 'textarea' },

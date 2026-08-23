@@ -70,6 +70,13 @@ function etiquetaDeRef(f, texto) {
 }
 
 /* ---------------- utilidades ---------------- */
+/** El día de hoy como lo escribe un campo de fecha: 2026-08-23. */
+function hoyISO() {
+  const d = new Date();
+  const dos = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
+}
+
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -2303,6 +2310,10 @@ async function viewForm(name, id, precarga) {
   const bp = document.getElementById('btnPrint');
   if (bp) bp.addEventListener('click', () => (location.hash = `#/print/${name}/${id}`));
 
+  // Se pone en true cuando la persona confirma un aviso que admite confirmarse,
+  // para que el segundo intento entre. Vuelve a false en cuanto se guarda.
+  let yaConfirmo = false;
+
   document.getElementById('recForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!canEdit) return;
@@ -2312,15 +2323,25 @@ async function viewForm(name, id, precarga) {
     // La versión que se tenía a la vista: si otro la guardó mientras tanto, el
     // servidor avisa en vez de dejar que uno le borre el trabajo al otro.
     if (!isNew && row.updated_at) data.updated_at = row.updated_at;
+    // Y si ya se respondió que sí a un aviso de los que se pueden confirmar
+    // —un egreso que deja la cuenta en rojo—, se lo dice al servidor.
+    if (yaConfirmo) data.igual_asi = true;
     try {
       if (isNew) await api('POST', `/${name}`, data);
       else await api('PUT', `/${name}/${id}`, data);
+      yaConfirmo = false;
       invalidarOpciones(name); // refrescar selectores que referencien este módulo
       await refrescarSiEsUnoMismo(name, id);
       toast('Guardado correctamente');
       location.hash = !isNew && CON_FICHA.includes(name) ? `#/m/${name}/ficha/${id}` : `#/m/${name}`;
     } catch (err) {
       if (err.datos && err.datos.conflicto) return avisarEdicionSimultanea(err, row, name, id);
+      if (err.datos && err.datos.confirmar) {
+        return preguntarSiIgualVa(err, () => {
+          yaConfirmo = true;
+          document.getElementById('recForm').requestSubmit();
+        });
+      }
       errEl.textContent = err.message;
       // El aviso va al pie del formulario, junto al botón: se lleva la vista
       // hasta ahí. Antes se subía al encabezado y el motivo quedaba abajo, sin
@@ -2386,6 +2407,36 @@ function avisarEdicionSimultanea(err, row, name, id) {
     row.updated_at = (err.datos.actual && err.datos.actual.updated_at) || null;
     errEl.textContent = '';
     document.getElementById('recForm').requestSubmit();
+  });
+}
+
+/**
+ * Un aviso que no es un rechazo sino una pregunta.
+ *
+ * El servidor puede responder que algo se puede guardar pero conviene mirarlo
+ * dos veces: un egreso que deja la cuenta en rojo, por ejemplo. No es un error
+ * —una cuenta puede quedar en rojo de verdad—, así que en vez del aviso rojo
+ * de siempre se ofrecen los dos caminos, y el de volver atrás va primero,
+ * porque en el caso corriente el número está mal.
+ */
+function preguntarSiIgualVa(err, seguir) {
+  const errEl = document.getElementById('formError');
+  errEl.innerHTML = `
+    <div class="aviso confirmar">
+      <b>🔎 Revise este monto</b>
+      <span>${esc(err.message)}</span>
+      <div class="acciones">
+        <button type="button" class="btn secondary" id="confVolver">Volver y corregirlo</button>
+        <button type="button" class="btn" id="confSeguir">Está bien, guardar así</button>
+      </div>
+    </div>`;
+  errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  document.getElementById('confVolver').addEventListener('click', () => {
+    errEl.textContent = '';
+  });
+  document.getElementById('confSeguir').addEventListener('click', () => {
+    errEl.textContent = '';
+    seguir();
   });
 }
 
@@ -2715,9 +2766,15 @@ function fieldHtml(f, row, isNew) {
         : caja;
       break;
     }
-    case 'date':
-      input = `<input type="date" name="${f.name}" value="${esc(fechaISO(val))}" ${f.required ? 'required' : ''} />`;
+    case 'date': {
+      // El calendario del navegador ya no ofrece lo que el servidor va a
+      // rechazar: nada antes de 1900 y, salvo en los campos que admiten
+      // futuro, nada después de hoy. Es un atajo, no la regla: quien mande
+      // la petición a mano se topa igual con la comprobación del servidor.
+      const tope = f.futuro ? '' : ` max="${hoyISO()}"`;
+      input = `<input type="date" name="${f.name}" value="${esc(fechaISO(val))}" min="1900-01-01"${tope} ${f.required ? 'required' : ''} />`;
       break;
+    }
     case 'time':
       input = `<input type="time" name="${f.name}" value="${esc(val)}" />`;
       break;
