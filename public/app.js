@@ -4560,6 +4560,51 @@ async function renderRespaldo(zona) {
 }
 
 /**
+ * El aviso de que hace mucho que nadie se baja el respaldo completo.
+ *
+ * Es el único que sale del servidor. La copia automática vive en el mismo
+ * disco que protege: sirve para volver atrás cuando algo se borró mal, y no
+ * sirve para lo único contra lo que existen los respaldos, que es que el disco
+ * se pierda. Y para que este salga, alguien tiene que acordarse.
+ *
+ * Por eso el sistema lo cuenta en vez de esperar a que se acuerden. Se avisa
+ * con tres tonos, según cuánto haga: al día no se dice nada más que la fecha;
+ * pasado el plazo se avisa; y si no consta ninguno, se avisa más fuerte,
+ * porque ahí no hay nada afuera.
+ */
+function avisoDeLaCopiaAMano(b) {
+  if (!b) return ''; // servidor anterior a esto: no se inventa nada
+
+  const bajar = '<a class="btn sm" href="/api/respaldo" download>⬇️ Bajar el respaldo completo</a>';
+
+  if (!b.cuando) {
+    return `<div class="aviso choque">
+      <b>📦 No hay ningún respaldo guardado fuera del servidor</b>
+      <span>No consta que nadie se haya bajado el respaldo completo. Mientras no salga una copia
+        de acá, si se pierde el servidor se pierde todo: las fichas, el dinero y los documentos.</span>
+      <div class="acciones">${bajar}</div>
+    </div>`;
+  }
+
+  const cuando = String(b.cuando).slice(0, 10).split('-').reverse().join('-');
+  const hace = b.dias === 0 ? 'hoy' : b.dias === 1 ? 'ayer' : `hace ${b.dias} días`;
+  const quien = b.quien ? ` · lo bajó ${esc(b.quien)}` : '';
+
+  if (b.alDia) {
+    return `<p class="mut" style="margin:0 0 12px;font-size:13px">
+      ✅ El respaldo completo se bajó ${esc(hace)} (${esc(cuando)})${quien}. Guárdelo fuera del servidor.
+    </p>`;
+  }
+
+  return `<div class="aviso confirmar">
+    <b>📦 Hace ${b.dias} días que nadie se baja el respaldo</b>
+    <span>El último salió el ${esc(cuando)}${quien}. Conviene bajarlo al menos cada ${b.cada} días
+      y guardarlo en otra parte: es la única copia que no se pierde junto con el servidor.</span>
+    <div class="acciones">${bajar}</div>
+  </div>`;
+}
+
+/**
  * La copia que el sistema hace solo, a la vista.
  *
  * Un respaldo automático que nadie ve es un respaldo en el que nadie confía:
@@ -4606,6 +4651,7 @@ async function renderRespaldoAutomatico(zona) {
       : '<li class="mut">Ninguna todavía</li>';
 
     caja.innerHTML = `
+      ${avisoDeLaCopiaAMano(estado.bajada)}
       <div class="toolbar"><b>🕒 La copia que se hace sola</b></div>
       <div class="respaldo">
         <p>

@@ -85,6 +85,19 @@ async function enviar(res) {
   tar.stderr.on('data', (d) => { problema += String(d); });
   tar.stdout.pipe(res);
 
+  /**
+   * Anotar que se bajó exige que hayan pasado las dos cosas: que tar terminara
+   * bien y que la respuesta saliera entera. Y pueden pasar en cualquier orden
+   * —depende de cuándo el sistema vacíe el último trozo—, así que se espera a
+   * las dos en vez de colgarse de una. Se probó al revés y no anotaba nunca.
+   */
+  let comoTerminoTar = null;
+  let salioEntera = false;
+  const anotarSiLlegoEntero = () => {
+    if (comoTerminoTar === 0 && salioEntera) anotarQueSeBajo(res.locals && res.locals.usuarioId);
+  };
+  res.on('finish', () => { salioEntera = true; anotarSiLlegoEntero(); });
+
   tar.on('error', (e) => {
     limpiar();
     if (!res.headersSent) res.status(500).json({ error: `No se pudo armar el respaldo: ${e.message}` });
@@ -92,6 +105,8 @@ async function enviar(res) {
   });
   tar.on('close', (codigo) => {
     limpiar();
+    comoTerminoTar = codigo;
+    anotarSiLlegoEntero();
     // tar avisa con 1 cuando un archivo cambió mientras lo leía: el respaldo
     // sirve igual, así que solo se anota.
     if (codigo !== 0) {
@@ -107,4 +122,70 @@ async function enviar(res) {
   });
 }
 
-module.exports = { enviar, tamano, nombreDelPaquete };
+/**
+ * Cuándo se bajó por última vez el respaldo completo, a mano.
+ *
+ * El respaldo automático se guarda en el mismo volumen que protege: sirve para
+ * un error humano —alguien borró algo que no debía— y no sirve para lo único
+ * contra lo que existen los respaldos, que es que el disco se pierda. El
+ * único que sale del servidor es este, y para que salga hay que acordarse.
+ *
+ * Por eso se anota cuándo fue la última vez. No es un ajuste que alguien
+ * elija, es un hecho que el sistema recuerda, así que se guarda directo en la
+ * tabla y no pasa por la pantalla de Configuración.
+ */
+const CLAVE_BAJADA = 'respaldo_bajado_en';
+
+function anotarQueSeBajo(usuarioId) {
+  try {
+    db.prepare(
+      `INSERT INTO configuracion (clave, valor, actualizado_por) VALUES (?, datetime('now','localtime'), ?)
+       ON CONFLICT(clave) DO UPDATE SET valor = datetime('now','localtime'),
+         actualizado_en = datetime('now','localtime'), actualizado_por = excluded.actualizado_por`
+    ).run(CLAVE_BAJADA, usuarioId || null);
+  } catch (e) {
+    console.error('No se pudo anotar la bajada del respaldo:', e.message);
+  }
+}
+
+/** Cuántos días de calendario van desde una marca de tiempo. */
+function diasDesde(cuando) {
+  const d = new Date(String(cuando).replace(' ', 'T'));
+  if (Number.isNaN(d.getTime())) return null;
+  const soloDia = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+  return Math.round((soloDia(new Date()) - soloDia(d)) / 86400000);
+}
+
+/**
+ * Cada cuántos días conviene bajarlo. Un mes es el plazo con el que, si el
+ * disco se pierde, lo que falta es a lo más un mes de trabajo.
+ */
+const CADA_CUANTOS_DIAS = 30;
+
+/** Qué contar en el panel sobre la última copia bajada a mano. */
+function estadoDeLaBajada() {
+  let fila = null;
+  try {
+    fila = db.prepare('SELECT valor, actualizado_por FROM configuracion WHERE clave = ?').get(CLAVE_BAJADA);
+  } catch (e) {
+    /* si no se puede preguntar, se responde que no consta */
+  }
+  const cuando = fila && fila.valor ? fila.valor : null;
+  const dias = cuando ? diasDesde(cuando) : null;
+  let quien = null;
+  if (fila && fila.actualizado_por) {
+    try {
+      const u = db.prepare('SELECT nombre FROM usuarios WHERE id = ?').get(fila.actualizado_por);
+      quien = (u && u.nombre) || null;
+    } catch (e) { /* da igual quién si no se puede saber */ }
+  }
+  return {
+    cuando,
+    dias,
+    quien,
+    cada: CADA_CUANTOS_DIAS,
+    alDia: dias !== null && dias <= CADA_CUANTOS_DIAS,
+  };
+}
+
+module.exports = { enviar, tamano, nombreDelPaquete, anotarQueSeBajo, estadoDeLaBajada, CADA_CUANTOS_DIAS };

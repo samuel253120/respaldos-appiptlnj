@@ -617,11 +617,12 @@ function soloAdministrador(req, res, next) {
 }
 
 app.get('/api/respaldo/info', authRequired, soloAdministrador, (req, res) => {
-  res.json({ ...respaldo.tamano(), nombre: respaldo.nombreDelPaquete() });
+  res.json({ ...respaldo.tamano(), nombre: respaldo.nombreDelPaquete(), bajada: respaldo.estadoDeLaBajada() });
 });
 
 app.get('/api/respaldo', authRequired, soloAdministrador, async (req, res) => {
   try {
+    res.locals.usuarioId = req.user.id; // para anotar quién lo bajó
     await respaldo.enviar(res);
   } catch (e) {
     console.error('⚠️  No se pudo armar el respaldo:', e);
@@ -637,7 +638,10 @@ app.get('/api/respaldo', authRequired, soloAdministrador, async (req, res) => {
  * cualquiera de ellas.
  */
 app.get('/api/respaldo/automatico', authRequired, soloAdministrador, (req, res) => {
-  res.json(respaldoAutomatico.estado());
+  // Va junto el estado de la copia que se baja a mano: es la única que sale
+  // del servidor, y el panel las muestra en el mismo lugar porque la pregunta
+  // que responden es la misma —¿estamos respaldados?—.
+  res.json({ ...respaldoAutomatico.estado(), bajada: respaldo.estadoDeLaBajada() });
 });
 
 /** Hacer la copia ahora mismo, sin esperar a la noche. */
