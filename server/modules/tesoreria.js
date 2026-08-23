@@ -36,7 +36,7 @@ module.exports = {
       help: 'Se mantienen en «Categorías de Tesorería». Se ofrecen solo las que corresponden al tipo de movimiento.',
     },
     { name: 'concepto', label: 'Concepto / Descripción', type: 'text', required: true, seccion: 'Monto y forma de pago' },
-    { name: 'monto', label: 'Monto', type: 'money', required: true },
+    { name: 'monto', label: 'Monto', type: 'money', required: true, min: 1, },
     {
       name: 'metodo', label: 'Método', type: 'select', default: 'Efectivo',
       options: ['Efectivo', 'Transferencia', 'Cheque', 'Otro'],

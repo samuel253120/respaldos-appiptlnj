@@ -2791,11 +2791,49 @@ function initNumero(f) {
     el.setSelectionRange(donde, donde);
   });
 
-  // Al salir queda parejo, sin ceros ni comas sueltas
+  // Al salir queda parejo, sin ceros ni comas sueltas, y se avisa en el acto
+  // si el número no cabe donde va: mejor decirlo ahí que después de guardar.
   el.addEventListener('blur', () => {
     const n = numeroEscrito(el.value);
     el.value = n === null ? '' : conMiles(String(n).replace('.', ','));
+    avisarSiNoCabe(f, el, n);
   });
+  el.addEventListener('input', () => avisarSiNoCabe(f, el, numeroEscrito(el.value)));
+}
+
+/**
+ * El aviso de que un número se pasa de lo que el campo admite.
+ *
+ * Es el mismo criterio que el servidor, dicho antes: el servidor lo vuelve a
+ * comprobar igual —esto es una cortesía, no una defensa—, pero enterarse al
+ * salir del campo es muy distinto que enterarse después de apretar Guardar.
+ */
+function avisarSiNoCabe(f, el, n) {
+  const zona = el.closest('.fld') || el.parentElement;
+  const previo = zona && zona.querySelector('.aviso-numero');
+  if (previo) previo.remove();
+  el.classList.remove('fuera-de-rango');
+  if (n === null || n === undefined || !zona) return;
+
+  let problema = null;
+  if (f.min != null && n < f.min) {
+    problema = f.min === 0
+      ? 'No puede ser negativo.'
+      : n <= 0
+        ? (f.type === 'money' ? 'Tiene que ser mayor que cero. Si quiere restar, anótelo como egreso.' : 'Tiene que ser mayor que cero.')
+        : `No puede ser menor que ${fmtNumero(f.min)}.`;
+  } else if (f.max != null && n > f.max) {
+    problema = `No puede pasar de ${fmtNumero(f.max)}.`;
+  } else if (Math.abs(n) > 9999999999) {
+    problema = 'Ese número es imposible. Revise si se le fue un dígito.';
+  }
+  if (!problema) return;
+
+  el.classList.add('fuera-de-rango');
+  const aviso = document.createElement('span');
+  aviso.className = 'aviso-numero';
+  aviso.textContent = problema;
+  zona.appendChild(aviso);
 }
 
 /**

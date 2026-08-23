@@ -21,7 +21,7 @@ module.exports = {
       options: ['Alimentos', 'Económica', 'Medicamentos / Salud', 'Ropa', 'Vivienda', 'Funeraria', 'Educación', 'Otro'],
     },
     { name: 'descripcion', label: 'Descripción de la ayuda', type: 'textarea' },
-    { name: 'valor_estimado', label: 'Valor estimado', type: 'money' },
+    { name: 'valor_estimado', label: 'Valor estimado', type: 'money', min: 0, },
     { name: 'aprobada_por', label: 'Aprobada por', type: 'text' },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Solicitada',

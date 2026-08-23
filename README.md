@@ -1133,6 +1133,23 @@ Reiniciar el servidor: la tabla se crea sola y el módulo aparece en el menú co
 
 Agregar el campo al arreglo `fields` del módulo y reiniciar: la columna se crea automáticamente **sin perder datos**. (Eliminar o renombrar columnas sí requiere migración manual.)
 
+### Límites de los números y del dinero 🔢
+
+Un campo `number` o `money` puede declarar `min` y `max`, y el servidor los hace cumplir en cada guardado. Además, **ningún número pasa de diez mil millones**, lo declare o no: no es una limitación real —es más que el presupuesto de cualquier iglesia— sino un freno para que un valor absurdo no entre a la base y eche a perder todas las sumas que dependen de él.
+
+Hacía falta: se comprobó que se podía guardar un ingreso de **−50.000** y otro de **1e308**, y que después de eso el balance de la iglesia respondía «1e+308». No es que quedara grande: dejaba de ser un número con el que se pueda trabajar. Un tesorero que teclee un signo menos o un dígito de más descuadraba los libros sin que nada avisara.
+
+El límite no es el mismo para todos, porque las cosas no son iguales:
+
+| Campo | Límite | Por qué |
+|---|---|---|
+| Movimiento de tesorería, traspaso | mayor que cero | Un movimiento de cero no es un movimiento, y uno negativo es un egreso mal anotado |
+| Cuota, cuota mensual del cuerpo, ayuda, inventario, ofrenda | cero o más | Pueden ser cero —una cuota condonada, un cuerpo que no cobra— pero nunca negativos |
+| Saldo inicial de una cuenta | sin mínimo | Hay cuentas que parten en rojo |
+| Meses de período de prueba | de 0 a 60 | Más de cinco años es un error de tecleo |
+
+El aviso dice **cuál es el límite**, no solo que está mal, y a quien escribe un monto negativo le dice qué hacer en su lugar: *«Tiene que ser mayor que cero. Si lo que quiere es restar, anótelo como egreso.»* El formulario lo marca en rojo **al salir del campo**, antes de guardar; el servidor lo vuelve a comprobar igual, que es la comprobación que manda.
+
 ### Tipos de campo disponibles
 
 `text` · `textarea` · `number` · `money` · `date` · `time` · `select` (con `options`) · `boolean` · `ref` (relación a otro módulo, con `ref`) · `multiref` (varias relaciones, ej. integrantes/asistentes) · `file` (adjuntos con carga) · `email` · `tel` · `password` · `rut` (valida dígito verificador y guarda normalizado)
@@ -1318,6 +1335,10 @@ Cuando dos personas abren la **misma ficha** y las dos guardan, el segundo guard
 |---|---|
 | **Ver cómo quedó** | Vuelve a abrir la ficha con lo que guardó el otro, para rehacer lo suyo sobre eso |
 | **Guardar lo mío de todas formas** | Deja su versión, que es lo que corresponde cuando cada uno cambió una cosa distinta |
+
+Cómo se da cuenta: cada ficha lleva un **número de versión** que sube con cada guardado, y quien guarda manda el que tenía al abrirla. Si no calza, es que alguien más guardó en el medio.
+
+> Antes eso se deducía de la **hora** del último guardado, y ahí había un agujero: la hora se escribe con precisión de un segundo, así que dos personas que guardaran **dentro del mismo segundo** dejaban exactamente la misma marca, el sistema no notaba nada y la segunda le borraba el trabajo a la primera sin decir una palabra. Y ese —dos personas apretando *Guardar* casi a la vez— es justo el caso para el que existe todo esto. Se comprobó: con un segundo de diferencia avisaba; dentro del mismo segundo, no. Con el número de versión da lo mismo cuánto tiempo pase.
 
 Cada guardado, además, entra **entero o no entra**: la ficha, lo que su módulo haga después (los movimientos de tesorería de una ofrenda, las cuotas de un integrante) y el historial quedan en un solo acto. Si algo falla a mitad de camino, no queda nada a medias.
 

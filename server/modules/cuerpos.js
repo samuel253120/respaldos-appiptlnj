@@ -104,7 +104,7 @@ module.exports = {
     {
       name: 'meses_prueba', label: 'Meses de período de prueba', type: 'number',
       seccion: 'Ingreso de integrantes',
-      help: 'Cuánto dura la prueba de quien entra a este cuerpo, antes de evaluar su informe. En blanco, se usan los meses de Configuración → Organización.',
+      help: 'Cuánto dura la prueba de quien entra a este cuerpo, antes de evaluar su informe. En blanco, se usan los meses de Configuración → Organización.', min: 0, max: 60,
     },
     {
       name: 'cobra_cuota', label: 'Este cuerpo cobra cuota mensual', type: 'boolean', default: 1,
@@ -112,7 +112,7 @@ module.exports = {
       help: 'Apáguelo en los cuerpos y grupos que no cobran cuota. Un integrante suelto se exime desde su propia ficha.',
     },
     {
-      name: 'cuota_mensual', label: 'Monto de la cuota', type: 'money',
+      name: 'cuota_mensual', label: 'Monto de la cuota', type: 'money', min: 0,
       showIf: { field: 'cobra_cuota', equals: '1' },
       help: 'Lo que le corresponde pagar cada mes a cada integrante de este cuerpo.',
     },

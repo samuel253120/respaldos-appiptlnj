@@ -148,7 +148,13 @@ function migrate() {
         created_at TEXT DEFAULT (datetime('now','localtime')),
         updated_at TEXT DEFAULT (datetime('now','localtime')),
         created_by INTEGER,
-        updated_by INTEGER
+        updated_by INTEGER,
+        -- Sube en uno con cada guardado. Es lo que permite darse cuenta de que
+        -- alguien más tocó la ficha desde que uno la abrió. Antes eso se
+        -- deducía de updated_at, que se escribe con precisión de un segundo:
+        -- dos personas guardando dentro del mismo segundo dejaban la misma
+        -- marca y el sistema no notaba la diferencia (ver server/crud.js).
+        version INTEGER DEFAULT 1
       )`
     );
     // Agregar columnas nuevas declaradas después de creada la tabla.
@@ -158,10 +164,17 @@ function migrate() {
         db.exec(`ALTER TABLE "${def.name}" ADD COLUMN "${f.name}" ${sqlType(f)}`);
       }
     }
-    for (const extra of ['created_at', 'updated_at', 'created_by', 'updated_by']) {
+    for (const extra of ['created_at', 'updated_at', 'created_by', 'updated_by', 'version']) {
       if (!existing.has(extra) && existing.size) {
-        const tipo = extra === 'created_by' || extra === 'updated_by' ? 'INTEGER' : 'TEXT';
-        db.exec(`ALTER TABLE "${def.name}" ADD COLUMN "${extra}" ${tipo}`);
+        // El valor por omisión va también acá, no solo en el CREATE TABLE: sin
+        // él, las tablas que ya existían aceptaban la columna pero las fichas
+        // nuevas nacían sin versión, y sin versión el aviso de «alguien más
+        // guardó esto» no tenía con qué compararse.
+        const tipo = extra === 'created_at' || extra === 'updated_at' ? 'TEXT' : 'INTEGER';
+        const porOmision = extra === 'version' ? ' DEFAULT 1' : '';
+        db.exec(`ALTER TABLE "${def.name}" ADD COLUMN "${extra}" ${tipo}${porOmision}`);
+        // Y lo que ya estaba parte en la versión 1: desde ahí en adelante sube
+        if (extra === 'version') db.exec(`UPDATE "${def.name}" SET version = 1 WHERE version IS NULL`);
       }
     }
   }

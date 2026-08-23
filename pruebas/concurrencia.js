@@ -58,15 +58,36 @@ async function entrar() {
   const ana = await entrar(); // dos sesiones distintas, como dos personas
   const luis = await entrar();
 
-  // Una ficha cualquiera con la que trabajar
-  const listado = await ana('GET', '/api/miembros?page=1&limit=1');
-  const id = listado.datos.rows && listado.datos.rows[0] && listado.datos.rows[0].id;
-  if (!id) {
-    console.log('❌ No hay ningún miembro con el que probar. Cargue datos antes (PREPARAR=solo npm run carga).');
-    process.exit(1);
-  }
   const iglesias = (await ana('GET', '/api/iglesias?page=1&limit=1')).datos;
   const iglesiaId = iglesias.rows && iglesias.rows[0] && iglesias.rows[0].id;
+  if (!iglesiaId) {
+    console.log('❌ No hay ninguna iglesia registrada: sin eso no hay nada sobre lo que probar.');
+    process.exit(1);
+  }
+
+  /**
+   * La ficha con la que se trabaja la crea la propia prueba.
+   *
+   * Antes tomaba «la primera que hubiera», y eso la hacía depender de con qué
+   * se encontrara: una ficha con cónyuge pastor, por ejemplo, no se deja
+   * guardar hasta resolver el trato de los dos, y la prueba fallaba ocho
+   * veces por algo que no tenía nada que ver con lo que quería comprobar.
+   * Creando la suya, comprueba lo que dice comprobar.
+   */
+  const sufijo = String(Date.now()).slice(-6);
+  const rutDePrueba = (() => {
+    const cuerpo = `19${sufijo}`;
+    return `${cuerpo}-${require('../server/rut').digitoVerificador(cuerpo)}`;
+  })();
+  const creada = await ana('POST', '/api/miembros', {
+    iglesia_id: iglesiaId, rut: rutDePrueba, nombres: 'Ficha', apellidos: 'De Concurrencia',
+    genero: 'Femenino', estado: 'Activo',
+  });
+  const id = creada.datos && creada.datos.id;
+  if (!id) {
+    console.log(`❌ No se pudo crear la ficha de prueba: ${JSON.stringify(creada.datos).slice(0, 160)}`);
+    process.exit(1);
+  }
 
   /* 1 · Dos personas editando la misma ficha ------------------------------ */
   console.log('1 · Dos personas editan la misma ficha');
@@ -92,6 +113,37 @@ async function entrar() {
   const despues = (await ana('GET', `/api/miembros/${id}`)).datos;
   revisar('lo que guardó Ana sigue ahí', despues.telefono === telefonoDeAna, `quedó "${despues.telefono}"`);
   revisar('lo de Luis no se guardó a medias', despues.direccion !== direccionDeLuis);
+
+  /* 1b · Y también cuando los dos guardan dentro del mismo segundo -------- */
+  console.log('\n1b · Los dos guardan dentro del mismo segundo');
+  // Este es el caso que de verdad ocurre: dos personas apretando Guardar casi
+  // a la vez. Durante un tiempo NO se detectaba, porque la marca de versión se
+  // deducía de la hora del último guardado, que se escribe con precisión de un
+  // segundo: dos guardados en el mismo segundo dejaban la misma marca y el
+  // segundo le borraba el trabajo al primero sin decir nada. La prueba de más
+  // arriba no lo veía porque siempre trabajaba sobre una ficha vieja.
+  const cuerpoRut = `17${sufijo}`.slice(0, 8);
+  const otra = await ana('POST', '/api/miembros', {
+    iglesia_id: iglesiaId, rut: `${cuerpoRut}-${require('../server/rut').digitoVerificador(cuerpoRut)}`,
+    nombres: 'Mismo', apellidos: 'Segundo', genero: 'Masculino', estado: 'Activo',
+  });
+  if (otra.datos && otra.datos.id) {
+    const suId = otra.datos.id;
+    const abierta = (await ana('GET', `/api/miembros/${suId}`)).datos; // los dos abren lo mismo
+    const primero = await ana('PUT', `/api/miembros/${suId}`, { ...abierta, telefono: '+56911112222' });
+    const segundo = await luis('PUT', `/api/miembros/${suId}`, { ...abierta, direccion: 'Calle del mismo segundo' });
+    revisar('el primero guarda', primero.estado === 200, JSON.stringify(primero.datos).slice(0, 120));
+    revisar(
+      'y al segundo se le avisa aunque haya sido en el mismo segundo',
+      segundo.estado === 409,
+      `respondió ${segundo.estado}: sin esto, le borra el trabajo al primero sin decir nada`
+    );
+    const comoQuedo = (await ana('GET', `/api/miembros/${suId}`)).datos;
+    revisar('y lo del primero no se perdió', comoQuedo.telefono === '+56911112222', `quedó "${comoQuedo.telefono}"`);
+    await ana('DELETE', `/api/miembros/${suId}`);
+  } else {
+    revisar('se pudo crear la ficha para probar el mismo segundo', false, JSON.stringify(otra.datos).slice(0, 140));
+  }
 
   /* 2 · Luis mira cómo quedó e insiste ------------------------------------ */
   console.log('\n2 · Luis mira cómo quedó y decide guardar lo suyo igual');
@@ -156,12 +208,42 @@ async function entrar() {
   console.log('\n5 · Dos personas pasan la misma lista de asistencia');
   // Se trabaja sobre una actividad propia de la prueba, que se borra al final:
   // así no se toca ninguna asistencia de verdad.
-  const integrante = (await ana('GET', '/api/integrantes_cuerpo?page=1&limit=1')).datos.rows[0];
-  const actividad = integrante
+  // El cuerpo y su gente también los crea la prueba, por lo mismo de antes:
+  // tomar «el primer integrante que haya» la dejaba a merced de lo que
+  // hubiera en la base, y sin nada cargado no probaba nada.
+  const dv = require('../server/rut').digitoVerificador;
+  const cuerpoDePrueba = await ana('POST', '/api/cuerpos', {
+    iglesia_id: iglesiaId, nombre: `Cuerpo de concurrencia ${sufijo}`, tipo: 'Cuerpo', activo: 1,
+  });
+  const cuerpoId = cuerpoDePrueba.datos && cuerpoDePrueba.datos.id;
+  const suGente = [];
+  if (cuerpoId) {
+    // Un RUT distinto por integrante: el número base cambia en cada corrida y
+    // cada uno suma su lugar. (Antes se recortaba a ocho dígitos y salían los
+    // quince iguales, así que solo entraba el primero.)
+    const base = 18000000 + (Date.now() % 900000);
+    for (let i = 0; i < 15; i++) {
+      const num = String(base + i);
+      const ficha = await ana('POST', '/api/miembros', {
+        iglesia_id: iglesiaId, rut: `${num}-${dv(num)}`, nombres: `Integrante ${i + 1}`,
+        apellidos: 'De Concurrencia', genero: i % 2 ? 'Femenino' : 'Masculino', estado: 'Activo',
+      });
+      if (!ficha.datos || !ficha.datos.id) continue;
+      suGente.push(ficha.datos.id);
+      await ana('POST', '/api/integrantes_cuerpo', {
+        iglesia_id: iglesiaId, cuerpo_id: cuerpoId, miembro_id: ficha.datos.id,
+        estado: 'Activo', fecha_ingreso: new Date().toISOString().slice(0, 10),
+      });
+    }
+  }
+  revisar('se pudo armar un cuerpo con gente para la prueba', suGente.length >= 13,
+    `quedaron ${suGente.length} integrante(s)`);
+
+  const actividad = cuerpoId
     ? await ana('POST', '/api/asistencias', {
         fecha: new Date().toISOString().slice(0, 10),
         tipo_reunion: 'Servicio General',
-        cuerpos: [integrante.cuerpo_id],
+        cuerpos: [cuerpoId],
         nombre: `Prueba de convivencia ${Date.now()}`,
         iglesia_id: iglesiaId,
       })
@@ -214,6 +296,11 @@ async function entrar() {
     }
     await ana('DELETE', `/api/asistencias/${actId}`); // se limpia la actividad de la prueba
   }
+
+  // Se recoge todo lo que la prueba creó: nada de esto es de la iglesia
+  for (const m of suGente) await ana('DELETE', `/api/miembros/${m}`);
+  if (cuerpoId) await ana('DELETE', `/api/cuerpos/${cuerpoId}`);
+  await ana('DELETE', `/api/miembros/${id}`);
 
   console.log(
     fallas

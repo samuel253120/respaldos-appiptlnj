@@ -40,7 +40,7 @@ module.exports = {
       optionsRoute: '/cuentas_tesoreria/destinos',
       help: 'A dónde entra el dinero, incluidas las cuentas de la corporación.',
     },
-    { name: 'monto', label: 'Monto', type: 'money', required: true },
+    { name: 'monto', label: 'Monto', type: 'money', required: true, min: 1, },
     {
       name: 'forma', label: 'Forma del traspaso', type: 'select', required: true, default: 'Transferencia',
       options: ['Efectivo', 'Transferencia', 'Depósito', 'Cheque', 'Vale vista', 'Otra'],

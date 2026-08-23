@@ -116,7 +116,7 @@ module.exports = {
     // ---- Ofrenda ----
     {
       name: 'ofrenda_total', label: 'Ofrenda recibida (total)', type: 'money', seccion: 'Ofrenda',
-      help: 'Todo lo que se recibió. Entra completo a la tesorería de la iglesia.',
+      help: 'Todo lo que se recibió. Entra completo a la tesorería de la iglesia.', min: 0,
     },
     {
       name: 'ofrenda_fondo', label: 'Aporte a la corporación', type: 'money', readonly: true,

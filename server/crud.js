@@ -345,6 +345,70 @@ function expandRow(def, row) {
  * Acota las consultas a lo que el usuario puede ver: sus iglesias y, si se le
  * asignaron, sus cuerpos (ver server/alcance.js).
  */
+/**
+ * Techo de cualquier cantidad que se guarde.
+ *
+ * No es una limitación real: son diez mil millones, más que el presupuesto de
+ * cualquier iglesia. Está para que un número absurdo no entre a la base y
+ * eche a perder todas las sumas que dependen de él. Se comprobó que sin este
+ * tope se podía guardar un ingreso de 1e308 y el balance de la iglesia pasaba
+ * a decir «1e+308»: no es que quedara grande, es que dejaba de ser un número
+ * con el que se pueda trabajar.
+ */
+const TECHO = 9_999_999_999;
+
+/**
+ * Un número como se lee acá, para poder decirlo en el aviso.
+ *
+ * Si es tan grande que escribirlo llenaría la pantalla —y los hay: 1e308 son
+ * trescientos nueve dígitos— no se escribe. El aviso tiene que caber en una
+ * línea y decirle algo a quien lo lee.
+ */
+const enPesos = (n) => (Math.abs(Number(n)) >= 1e15 ? 'un número enorme' : Number(n).toLocaleString('es-CL'));
+
+/**
+ * ¿El número que llega cabe donde va?
+ *
+ * Cada campo puede declarar su `min` y su `max`; si no los declara, igual se
+ * revisa que sea un número de verdad y que no pase del techo. Devuelve el
+ * aviso escrito para quien lo lea, o null si está bien.
+ *
+ * El aviso dice el límite y no solo que se pasó: quien está anotando una
+ * ofrenda necesita saber qué se espera de él, no que «el valor es inválido».
+ */
+function revisarLimites(campo, valor) {
+  const n = Number(valor);
+  const esDinero = campo.type === 'money';
+
+  if (!Number.isFinite(n)) {
+    return `El campo "${campo.label}" tiene que ser un número.`;
+  }
+
+  const minimo = campo.min !== undefined ? campo.min : null;
+  const maximo = campo.max !== undefined ? campo.max : TECHO;
+
+  if (minimo !== null && n < minimo) {
+    if (minimo === 0) return `El campo "${campo.label}" no puede ser negativo.`;
+    if (minimo > 0 && n <= 0) {
+      // El consejo va donde sirve: en un movimiento de dinero, lo que quería
+      // hacer quien escribió un número negativo casi siempre es un egreso.
+      return esDinero
+        ? `El campo "${campo.label}" tiene que ser mayor que cero. Si lo que quiere es restar, anótelo como egreso.`
+        : `El campo "${campo.label}" tiene que ser mayor que cero.`;
+    }
+    return `El campo "${campo.label}" no puede ser menor que ${enPesos(minimo)}.`;
+  }
+
+  if (n > maximo) {
+    return maximo === TECHO
+      ? `El campo "${campo.label}" tiene un valor imposible (${enPesos(n)}). Revise si se le fue un dígito.`
+      : `El campo "${campo.label}" no puede pasar de ${enPesos(maximo)}.`;
+  }
+
+  return null;
+}
+
+
 function scopeClause(def, user, params) {
   return alcance.condiciones(def, user, params);
 }
@@ -506,12 +570,30 @@ function buildRouter() {
           if (!alcance.alcanza(def, existing, req.user)) {
             return res.status(403).json({ error: 'Ese registro está fuera de lo que tiene asignado' });
           }
-          // ¿Alguien más guardó esta ficha mientras esta persona la tenía
-          // abierta? Se avisa en vez de pisarle el trabajo al otro. Quien no
-          // manda la marca de versión (la importación, un programa externo)
-          // sigue guardando como antes.
-          const versionQueTraia = req.body.updated_at;
-          if (versionQueTraia && existing.updated_at && String(versionQueTraia) !== String(existing.updated_at)) {
+          /**
+           * ¿Alguien más guardó esta ficha mientras esta persona la tenía
+           * abierta? Se avisa en vez de pisarle el trabajo al otro. Quien no
+           * manda ninguna marca de versión (la importación, un programa
+           * externo) sigue guardando como antes.
+           *
+           * La marca es `version`, un número que sube con cada guardado.
+           * Antes se usaba `updated_at`, que se escribe con precisión de un
+           * segundo, y ahí estaba el problema: dos personas que guardaran
+           * dentro del mismo segundo dejaban exactamente la misma marca, así
+           * que el sistema no notaba nada y la segunda le borraba el trabajo
+           * a la primera sin decir una palabra. Y ese —dos personas apretando
+           * Guardar casi a la vez— es justo el caso para el que existe todo
+           * esto. Se comprobó: con un segundo de diferencia avisaba; dentro
+           * del mismo segundo, no.
+           *
+           * `updated_at` se sigue aceptando de quien no mande `version`, para
+           * no dejar afuera a una pantalla que todavía no se haya recargado.
+           */
+          const traeVersion = req.body.version !== undefined && req.body.version !== null;
+          const versionQueTraia = traeVersion ? req.body.version : req.body.updated_at;
+          const versionQueHay = traeVersion ? (existing.version === null ? 1 : existing.version) : existing.updated_at;
+          if (versionQueTraia !== undefined && versionQueTraia !== null && versionQueHay !== null &&
+              String(versionQueTraia) !== String(versionQueHay)) {
             const quien = nombreDeUsuario(existing.updated_by);
             return res.status(409).json({
               error:
@@ -568,6 +650,15 @@ function buildRouter() {
           }
         }
 
+        // Validación de los límites de los números y del dinero
+        for (const f of def.fields) {
+          if (f.type !== 'money' && f.type !== 'number') continue;
+          const val = data[f.name];
+          if (val === undefined || val === null || val === '') continue;
+          const problema = revisarLimites(f, val);
+          if (problema) return res.status(400).json({ error: problema });
+        }
+
         // Validación de RUT (dígito verificador) y de campos únicos
         for (const f of def.fields) {
           const val = data[f.name];
@@ -608,8 +699,11 @@ function buildRouter() {
             row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(info.lastInsertRowid);
           } else {
             if (keys.length) {
+              // La versión sube en el mismo UPDATE: así no hay manera de que
+              // un guardado quede escrito sin que la marca avance.
               const sql = `UPDATE "${def.name}" SET ${keys.map((k) => `"${k}" = ?`).join(', ')},
-                             updated_at = datetime('now','localtime'), updated_by = ? WHERE id = ?`;
+                             updated_at = datetime('now','localtime'), updated_by = ?,
+                             version = COALESCE(version, 1) + 1 WHERE id = ?`;
               db.prepare(sql).run(...keys.map((k) => data[k]), req.user.id, id);
             }
             row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
@@ -672,4 +766,4 @@ function buildRouter() {
   return router;
 }
 
-module.exports = { buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara };
+module.exports = { buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara, revisarLimites, TECHO };
