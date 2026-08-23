@@ -580,6 +580,15 @@ table.grid th.col-mini { font-size: 15px; }
   .ficha-pestanas button { padding: 11px 13px; font-size: 13.5px; gap: 6px; }
 }
 
+/* El logo de la institución, en la pantalla de configuración */
+.cfg-imagen-caja { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.cfg-imagen-caja img {
+  width: 84px; height: 84px; object-fit: contain; flex: none;
+  border: 1px solid var(--border); border-radius: 12px; background: #f8fafc; padding: 6px;
+}
+.cfg-imagen-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cfg-imagen-acciones .mut { font-size: 12.5px; }
+
 /* Avisos al encabezar una ficha */
 .avisos-ficha { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 .aviso {
@@ -786,6 +795,13 @@ table.grid th.col-mini { font-size: 15px; }
 .membrete img { width: 62px; height: 62px; object-fit: contain; flex: none; }
 .membrete b { display: block; font-size: 14px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--marca-azul); }
 .membrete i { font-style: normal; font-size: 12.5px; color: var(--marca-oro-oscuro); font-weight: 600; }
+/* Los datos de contacto y la personalidad jurídica, bajo el nombre */
+.membrete .datos { display: block; font-size: 10.5px; color: #78716c; margin-top: 3px; line-height: 1.4; }
+/* Lo mismo al pie de un certificado, donde va abajo del todo */
+.cert-pie {
+  margin-top: 14px; padding-top: 10px; border-top: 1px solid #e7e5e4;
+  font-size: 10px; color: #a8a29e; text-align: center; line-height: 1.5;
+}
 .acta-sheet h1 { text-align: center; font-size: 19px; text-transform: uppercase; letter-spacing: 1px; }
 .acta-sheet .sub { text-align: center; color: var(--muted); margin-bottom: 26px; font-size: 13px; }
 .acta-sheet .meta-tbl { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }

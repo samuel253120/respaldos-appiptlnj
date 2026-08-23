@@ -115,8 +115,10 @@ function estado() {
     usado,
     promedio_documento: promedio,
     documentos_que_caben: caben,
-    // Con menos de esto el sistema empieza a no poder guardar; se avisa antes
-    apretado: libre !== null && libre < 100 * 1024 * 1024,
+    // Con menos de esto el sistema empieza a no poder guardar; se avisa antes.
+    // Cuánto es «poco» se fija en la pantalla de configuración: en un disco de
+    // 500 MB, 100 libres son holgura; en uno de 50 GB, son la víspera.
+    apretado: libre !== null && libre < require('./ajustes').numero('disco_aviso_mb', 20, 5000) * 1024 * 1024,
   };
 }
 

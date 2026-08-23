@@ -111,8 +111,26 @@ function puedeVer(archivo, usuario) {
  */
 const DIAS_DE_GRACIA = 7;
 
+/**
+ * ¿La configuración del sistema está usando este archivo?
+ *
+ * El logo de la institución es un archivo subido que no pertenece a ninguna
+ * ficha: vive en la tabla de configuración. Sin preguntar por él, la barrida
+ * lo daría por perdido y lo borraría a los siete días, y un buen día la
+ * pantalla de acceso amanecería con el logo de fábrica.
+ */
+function loUsaLaConfiguracion(archivo) {
+  try {
+    const fila = db.prepare('SELECT 1 FROM configuracion WHERE valor = ? LIMIT 1').get(archivo);
+    return !!fila;
+  } catch (e) {
+    return true; // si no se puede preguntar, no se borra: nunca por las dudas
+  }
+}
+
 /** ¿Algún registro, de cualquier módulo, está usando este archivo? */
 function loUsaAlguien(archivo, salvo) {
+  if (loUsaLaConfiguracion(archivo)) return true;
   for (const { def, columnas } of columnasDeArchivo()) {
     const donde = columnas.map((c) => `"${c}" = ?`).join(' OR ');
     const excluir = salvo && salvo.def.name === def.name ? 'AND id <> ?' : '';

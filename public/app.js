@@ -67,12 +67,24 @@ const $app = document.getElementById('app');
  */
 const SISTEMA = 'Administracion Iglesias';
 
-/* Identidad institucional (logo y nombre de la iglesia) */
+/* Identidad institucional: lo que va en el acceso, en el menú y en lo impreso */
 const IGLESIA = {
   nombre: 'Iglesia Pentecostal Triunfante La Nueva Jerusalén',
   lema: '',
-  logo: '/img/logo.png',
+  // El logo lo entrega el servidor: el que se haya subido, o el de fábrica
+  // mientras no haya ninguno. La versión al final es para que un logo nuevo se
+  // vea en el momento y no quede el viejo guardado en el navegador.
+  logo: '/api/configuracion/logo',
+  rut: '', direccion: '', telefono: '', email: '', web: '',
 };
+
+/** Lo de la institución que se imprime al pie: contacto y personalidad jurídica. */
+function pieDeLaInstitucion() {
+  return [IGLESIA.rut, IGLESIA.direccion, IGLESIA.telefono, IGLESIA.email, IGLESIA.web]
+    .map((x) => (x || '').trim())
+    .filter(Boolean)
+    .join(' · ');
+}
 
 /**
  * El nombre oficial de la institución va donde importa —la pantalla de
@@ -399,6 +411,10 @@ async function boot() {
     if (meta.institucion) {
       if (meta.institucion.nombre) IGLESIA.nombre = meta.institucion.nombre;
       IGLESIA.lema = meta.institucion.lema || '';
+      if (meta.institucion.logo) IGLESIA.logo = `/api/configuracion/logo?v=${encodeURIComponent(meta.institucion.logo)}`;
+      for (const dato of ['rut', 'direccion', 'telefono', 'email', 'web']) {
+        IGLESIA[dato] = meta.institucion[dato] || '';
+      }
     }
     MODULES = meta.modules;
     MOD = {};
@@ -676,6 +692,11 @@ function renderLogin() {
         IGLESIA.nombre = c.iglesia_nombre;
         const logo = document.querySelector('.login-card .logo');
         if (logo) logo.alt = c.iglesia_nombre;
+      }
+      if (c.iglesia_logo) {
+        IGLESIA.logo = `/api/configuracion/logo?v=${encodeURIComponent(c.iglesia_logo)}`;
+        const logo = document.querySelector('.login-card .logo');
+        if (logo) logo.src = IGLESIA.logo;
       }
       IGLESIA.lema = c.iglesia_lema || '';
       const lema = document.querySelector('.login-card p.lema');
@@ -4348,6 +4369,7 @@ function printCertificado(row) {
           <div class="firma">Secretaría<br><span style="font-size:11px;color:#a8a29e">Firma y sello</span></div>
         </div>
         <div class="cert-fecha">Dado el ${fechaLarga(row.fecha_emision)}</div>
+        ${pieDeLaInstitucion() ? `<div class="cert-pie">${esc(pieDeLaInstitucion())}</div>` : ''}
       </div>
     </div>`;
 }
@@ -4393,6 +4415,7 @@ function printActa(m, row, esAsamblea) {
         <div>
           <b>${esc(IGLESIA.nombre)}</b>
           ${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}
+          ${pieDeLaInstitucion() ? `<span class="datos">${esc(pieDeLaInstitucion())}</span>` : ''}
         </div>
       </div>
       <h1>${esAsamblea ? 'Acta de Asamblea' : 'Acta de Reunión'} N.º ${esc(row.numero_acta || '')}</h1>
@@ -4424,7 +4447,8 @@ function printServicio(m, row) {
     <div class="print-sheet print-generic">
       <div class="membrete">
         <img src="${IGLESIA.logo}" alt="" />
-        <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}</div>
+        <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}${
+          pieDeLaInstitucion() ? `<span class="datos">${esc(pieDeLaInstitucion())}</span>` : ''}</div>
       </div>
       <h1>Registro de Servicio</h1>
       <div class="sub">${esc(iglesiaDeTrabajo(row.iglesia_id_label))} — ${fechaLarga(row.fecha)}</div>
@@ -4474,7 +4498,8 @@ function printGenerico(m, row) {
     <div class="print-sheet print-generic">
       <div class="membrete">
         <img src="${IGLESIA.logo}" alt="" />
-        <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}</div>
+        <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}${
+          pieDeLaInstitucion() ? `<span class="datos">${esc(pieDeLaInstitucion())}</span>` : ''}</div>
       </div>
       <h1>${esc(m.labelSingular)}</h1>
       <div class="sub">Registro N.º ${row.id} — impreso el ${fechaLarga(new Date().toISOString())}</div>
@@ -5013,12 +5038,37 @@ async function viewConfiguracion() {
         ${o.ayuda ? `<div class="help" style="flex-basis:100%">${esc(o.ayuda)}</div>` : ''}
       </div>`;
     }
+    if (o.tipo === 'imagen') {
+      // El logo se ve, se cambia y se quita en el mismo lugar. El valor que
+      // viaja al guardar es el nombre del archivo, igual que en cualquier
+      // campo de archivo; lo que se muestra es la ruta pública que lo entrega.
+      return `<div class="fld full cfg-imagen">
+        <label>${esc(o.label)}</label>
+        <div class="cfg-imagen-caja">
+          <img id="cfgImagen_${o.clave}" alt=""
+               src="/api/configuracion/logo${o.valor ? `?v=${encodeURIComponent(o.valor)}` : ''}" />
+          <input type="hidden" data-clave="${o.clave}" data-tipo="imagen"
+                 data-antes="${esc(o.valor || '')}" value="${esc(o.valor || '')}" />
+          ${puedeCambiarla ? `
+            <div class="cfg-imagen-acciones">
+              <button type="button" class="btn secondary sm" data-elegir-imagen="${o.clave}">🖼️ Elegir una imagen</button>
+              <button type="button" class="btn secondary sm" data-quitar-imagen="${o.clave}"
+                ${o.valor ? '' : 'disabled'}>Volver al de fábrica</button>
+              <span class="mut" id="cfgImagenEstado_${o.clave}"></span>
+            </div>` : ''}
+        </div>
+        ${o.ayuda ? `<div class="help">${esc(o.ayuda)}</div>` : ''}
+      </div>`;
+    }
     const tipo = o.tipo === 'number' ? 'number' : 'text';
+    const limites = o.tipo === 'number'
+      ? `${o.min === undefined || o.min === null ? '' : ` min="${o.min}"`}${o.max === undefined || o.max === null ? '' : ` max="${o.max}"`}`
+      : '';
     const control = o.tipo === 'textarea'
       ? `<textarea data-clave="${o.clave}" data-tipo="textarea"${bloqueado}>${esc(o.valor || '')}</textarea>`
-      : `<input type="${tipo}" data-clave="${o.clave}" data-tipo="${o.tipo}" value="${esc(o.valor || '')}"${bloqueado} />`;
+      : `<input type="${tipo}" data-clave="${o.clave}" data-tipo="${o.tipo}" value="${esc(o.valor || '')}"${limites}${bloqueado} />`;
     return `<div class="fld${o.tipo === 'textarea' ? ' full' : ''}">
-      <label>${esc(o.label)}</label>${control}
+      <label>${esc(o.label)}${o.tipo === 'number' && o.min !== undefined ? ` <span class="mut">(${fmtNumero(o.min)} a ${fmtNumero(o.max)})</span>` : ''}</label>${control}
       ${o.ayuda ? `<div class="help">${esc(o.ayuda)}</div>` : ''}
     </div>`;
   };
@@ -5042,6 +5092,57 @@ async function viewConfiguracion() {
   renderRespaldo(document.getElementById('cfgRespaldo'));
   renderTraspaso(document.getElementById('cfgTraspaso'));
 
+  /**
+   * Elegir y quitar el logo.
+   *
+   * Se sube por la misma puerta que cualquier archivo —con su comprobación de
+   * formato y de tamaño—, y lo que queda escrito en la configuración es el
+   * nombre del archivo. No se guarda hasta que se toca «Guardar cambios», como
+   * todo lo demás de esta pantalla: se ve antes de comprometerse.
+   */
+  content().querySelectorAll('[data-elegir-imagen]').forEach((boton) => {
+    const clave = boton.dataset.elegirImagen;
+    const oculto = content().querySelector(`input[data-clave="${clave}"]`);
+    const vista = document.getElementById(`cfgImagen_${clave}`);
+    const aviso = document.getElementById(`cfgImagenEstado_${clave}`);
+    const quitar = content().querySelector(`[data-quitar-imagen="${clave}"]`);
+
+    boton.addEventListener('click', () => {
+      const elegir = document.createElement('input');
+      elegir.type = 'file';
+      elegir.accept = 'image/png,image/jpeg,image/webp';
+      elegir.addEventListener('change', async () => {
+        const archivo = elegir.files[0];
+        if (!archivo) return;
+        aviso.textContent = 'Preparando la imagen…';
+        try {
+          const ajustada = await reducirImagen(archivo);
+          const fd = new FormData();
+          fd.append('archivo', ajustada.file);
+          aviso.textContent = 'Subiendo…';
+          const r = await api('POST', '/upload', fd, true);
+          oculto.value = r.filename;
+          vista.src = `/uploads/${encodeURIComponent(r.filename)}`;
+          if (quitar) quitar.disabled = false;
+          aviso.textContent = 'Listo: guarde los cambios para dejarlo puesto.';
+        } catch (e) {
+          aviso.textContent = '';
+          toast(e.message, true);
+        }
+      });
+      elegir.click();
+    });
+
+    if (quitar) {
+      quitar.addEventListener('click', () => {
+        oculto.value = '';
+        vista.src = '/img/logo.png';
+        quitar.disabled = true;
+        aviso.textContent = 'Vuelve el de fábrica: guarde los cambios.';
+      });
+    }
+  });
+
   const botonGuardar = document.getElementById('cfgGuardar');
   if (botonGuardar) botonGuardar.addEventListener('click', async () => {
     const cambios = {};
@@ -5051,11 +5152,38 @@ async function viewConfiguracion() {
     const mantenimiento = cambios.mantenimiento_activo === true;
     if (mantenimiento && !confirm('¿Activar el modo mantenimiento?\n\nSolo podrá ingresar quien tenga permiso para cambiar la configuración; el resto verá el aviso y se cerrará su sesión.')) return;
     try {
-      await api('PUT', '/configuracion', cambios);
+      const r = await api('PUT', '/configuracion', cambios);
       toast('Configuración guardada');
-      document.getElementById('cfgEstado').innerHTML = mantenimiento
-        ? `<div class="resultado warn"><b>🛠️ El sistema quedó en mantenimiento.</b> Solo puede ingresar quien tenga permiso para cambiar la configuración. Desactive esta opción para volver a la normalidad.</div>`
+      // Lo que se guarda es lo que se usa: si un número quedó fuera de sus
+      // límites, se ajustó y se dice cuál y en cuánto quedó. Callarlo dejaría
+      // la pantalla mostrando un valor que el sistema no está usando.
+      const ajustados = (r && r.ajustados) || [];
+      const avisoDeLimites = ajustados.length
+        ? `<div class="resultado warn"><b>✏️ Se ajustó lo que no cabía.</b> ${ajustados
+            .map((a) => `«${esc(a.label)}» quedó en <b>${fmtNumero(a.quedo)}</b> (se pidió ${fmtNumero(a.pedido)})`)
+            .join(' · ')}.</div>`
         : '';
+      // Y los campos se ponen al día con lo que de verdad quedó guardado: si
+      // uno se ajustó, dejar el número pedido en pantalla sería seguir
+      // mostrando algo que el sistema no está usando.
+      if (r && r.valores) {
+        content().querySelectorAll('[data-clave]').forEach((el) => {
+          const quedo = r.valores[el.dataset.clave];
+          if (quedo === undefined) return;
+          if (el.dataset.tipo === 'boolean') el.checked = String(quedo) === '1';
+          else el.value = quedo === null ? '' : quedo;
+        });
+      }
+      document.getElementById('cfgEstado').innerHTML = avisoDeLimites + (mantenimiento
+        ? `<div class="resultado warn"><b>🛠️ El sistema quedó en mantenimiento.</b> Solo puede ingresar quien tenga permiso para cambiar la configuración. Desactive esta opción para volver a la normalidad.</div>`
+        : '');
+      // El logo se ve en toda la pantalla —el menú, lo que se imprime—, así
+      // que si cambió se vuelve a cargar para que quede puesto en todas partes
+      const campoLogo = content().querySelector('[data-tipo="imagen"][data-clave="iglesia_logo"]');
+      if (campoLogo && campoLogo.value !== campoLogo.dataset.antes) {
+        setTimeout(() => location.reload(), 700);
+        return;
+      }
       // El traspaso depende del modo mantenimiento: al cambiarlo, su panel se
       // pinta de nuevo para que el botón de importar quede como corresponde
       renderTraspaso(document.getElementById('cfgTraspaso'));

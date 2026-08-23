@@ -302,6 +302,15 @@ app.get('/api/meta', authRequired, (req, res) => {
     institucion: {
       nombre: ajustes.obtener('iglesia_nombre') || '',
       lema: ajustes.obtener('iglesia_lema') || '',
+      // El nombre del archivo del logo no se usa para pedirlo —eso va por
+      // /api/configuracion/logo— sino para saber cuándo cambió y no quedarse
+      // con el anterior guardado en el navegador
+      logo: ajustes.obtener('iglesia_logo') || '',
+      rut: ajustes.obtener('iglesia_rut') || '',
+      direccion: ajustes.obtener('iglesia_direccion') || '',
+      telefono: ajustes.obtener('iglesia_telefono') || '',
+      email: ajustes.obtener('iglesia_email') || '',
+      web: ajustes.obtener('iglesia_web') || '',
     },
     // Ajustes que la interfaz necesita para trabajar (no son públicos)
     ajustes: {
@@ -526,7 +535,14 @@ app.get('/api/huerfanos', authRequired, (req, res) => {
 });
 
 // ---------- Carga de archivos ----------
-const TOPE_ARCHIVO = 15 * 1024 * 1024;
+/**
+ * Lo que puede pesar un archivo que se sube.
+ *
+ * Se lee en cada subida y no una sola vez al arrancar: es un ajuste de la
+ * pantalla de configuración, y si se guardara al inicio habría que reiniciar
+ * el servidor para que un cambio surtiera efecto.
+ */
+const topeDeArchivo = () => ajustes.numero('archivo_tope_mb', 1, 50) * 1024 * 1024;
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
@@ -543,9 +559,9 @@ const storage = multer.diskStorage({
  * la subida acá mismo. El contenido se revisa después, ya en el disco, donde
  * están los bytes que hay que mirar.
  */
-const upload = multer({
+const elPortero = () => multer({
   storage,
-  limits: { fileSize: TOPE_ARCHIVO },
+  limits: { fileSize: topeDeArchivo() },
   fileFilter: (req, file, cb) => {
     const veredicto = tiposDeArchivo.seAcepta(file.originalname, null);
     if (!veredicto.ok) return cb(Object.assign(new Error(veredicto.motivo), { deFormato: true }));
@@ -582,6 +598,8 @@ function primerosBytes(ruta, cuantos = 16) {
  * dónde poner lo que suba.
  */
 function puedeAdjuntarAlgo(usuario) {
+  // Quien puede cambiar la configuración tiene dónde: el logo de la institución
+  if (can(usuario, 'sistema_configuracion', 'edit')) return true;
   return allModules().some(
     (m) => m.fields.some((f) => f.type === 'file') && (can(usuario, m.name, 'create') || can(usuario, m.name, 'edit'))
   );
@@ -591,12 +609,12 @@ app.post('/api/upload', authRequired, (req, res) => {
   if (!puedeAdjuntarAlgo(req.user)) {
     return res.status(403).json({ error: 'No tiene dónde adjuntar un archivo: su cuenta es de solo consulta.' });
   }
-  upload.single('archivo')(req, res, (err) => {
+  elPortero().single('archivo')(req, res, (err) => {
     if (err) {
       if (err.deFormato) return res.status(400).json({ error: err.message });
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({
-          error: `El archivo pesa más de ${TOPE_ARCHIVO / 1024 / 1024} MB. Redúzcalo o guárdelo con menos calidad.`,
+          error: `El archivo pesa más de ${topeDeArchivo() / 1024 / 1024} MB. Redúzcalo o guárdelo con menos calidad.`,
         });
       }
       return res.status(400).json({ error: `No se pudo subir el archivo: ${err.message}` });

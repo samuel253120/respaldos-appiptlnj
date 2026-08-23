@@ -38,17 +38,24 @@
  * va probando RUT tras RUT sigue topando, y nadie queda fuera por el error
  * del de al lado.
  */
-const ESCALA_RUT = [
-  { fallos: 15, minutos: 15 },
-  { fallos: 10, minutos: 5 },
-  { fallos: 5, minutos: 1 },
-];
-const ESCALA_DIRECCION = [
-  { fallos: 60, minutos: 15 },
-  { fallos: 40, minutos: 5 },
-  { fallos: 20, minutos: 1 },
-];
-const escalaDe = (llave) => (llave.startsWith('rut:') ? ESCALA_RUT : ESCALA_DIRECCION);
+/**
+ * De cuántos errores hablamos se fija en la pantalla de configuración, con un
+ * solo número: a los cuántos se cierra la primera vez. Los demás peldaños
+ * salen de ese —el doble y el triple, con esperas más largas—, y el de la
+ * dirección va cuatro veces más arriba por lo del wifi compartido.
+ *
+ * Con el valor de fábrica (5) queda exactamente la escala de siempre:
+ * 5 · 10 · 15 por RUT, y 20 · 40 · 60 por dirección.
+ */
+function escalaDe(llave) {
+  const base = require('./ajustes').numero('acceso_intentos', 3, 20);
+  const cuantos = llave.startsWith('rut:') ? base : base * 4;
+  return [
+    { fallos: cuantos * 3, minutos: 15 },
+    { fallos: cuantos * 2, minutos: 5 },
+    { fallos: cuantos, minutos: 1 },
+  ];
+}
 
 /** Cuánto se recuerda un intento fallido suelto. */
 const MEMORIA_MS = 30 * 60 * 1000;

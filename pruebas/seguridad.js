@@ -688,10 +688,25 @@ async function entrar(rut = RUT, clave = CLAVE) {
       const suListado = await comoElla('GET', '/api/miembros?page=1&limit=50');
       revisar('tampoco en el listado', !JSON.stringify(suListado.datos).includes(numeroDePrueba));
 
-      const buscando = await comoElla('GET', `/api/miembros?q=${encodeURIComponent(numeroDePrueba.slice(-7))}`);
+      /**
+       * Se buscan NUEVE dígitos del teléfono, y no siete, por una razón.
+       *
+       * Un RUT guarda ocho dígitos y después el guion, así que una tirada de
+       * nueve seguidos no puede aparecer en esa columna. Con siete sí podía:
+       * el RUT y el teléfono de esta prueba se arman los dos del mismo reloj,
+       * y una de cada cien veces el RUT contenía el fragmento buscado. La
+       * comprobación fallaba sin que nada estuviera mal, que es la peor clase
+       * de prueba: la que enseña a no creerle.
+       */
+      const nueveDigitos = numeroDePrueba.replace(/\D/g, '').slice(-9);
+      const buscando = await comoElla('GET', `/api/miembros?q=${encodeURIComponent(nueveDigitos)}`);
       revisar('ni puede dar con la persona buscando por su número',
         (buscando.datos.total || 0) === 0,
         `el buscador devolvió ${buscando.datos.total} resultado(s): el dato queda igual de expuesto`);
+      // Y la premisa de la comprobación: quien sí lo alcanza lo encuentra
+      const laEncuentra = await api('GET', `/api/miembros?q=${encodeURIComponent(nueveDigitos)}`);
+      revisar('y quien sí lo alcanza sí da con ella', (laEncuentra.datos.total || 0) === 1,
+        `el administrador encontró ${laEncuentra.datos.total}: la prueba no está midiendo lo que cree`);
       const porNombre = await comoElla('GET', '/api/miembros?q=Contacto');
       revisar('pero busca por lo que sí ve, como siempre', (porNombre.datos.total || 0) > 0);
 
@@ -864,6 +879,34 @@ async function entrar(rut = RUT, clave = CLAVE) {
       if (m.datos && m.datos.id) await api('DELETE', `/api/tesoreria/${m.datos.id}`);
     }
   }
+
+  /* 4j-bis · La configuración, sin sesión ------------------------------- */
+  console.log('\n4j-bis · Lo que la configuración entrega sin sesión iniciada');
+  // La pantalla de acceso necesita tres cosas antes de que haya nadie
+  // identificado: el aviso de mantenimiento, la identidad y el logo. Todo lo
+  // demás —la contraseña inicial, las horas de sesión, los topes— tiene que
+  // quedarse adentro. Es la clase de cosa que se rompe agregando una opción
+  // nueva y marcándola «publica» sin pensarlo.
+  const sinSesion = await fetch(`${URL}/api/configuracion/publica`).then((r) => r.json());
+  revisar('lo público es solo lo que la pantalla de acceso necesita',
+    Object.keys(sinSesion).sort().join(',') ===
+      'iglesia_lema,iglesia_logo,iglesia_nombre,mantenimiento_activo,mantenimiento_mensaje,recuperacion_activa',
+    `entrega ${Object.keys(sinSesion).join(', ')}`);
+  revisar('la contraseña inicial no sale sin sesión', !('password_inicial' in sinSesion));
+
+  const laConfigEntera = await fetch(`${URL}/api/configuracion`).then((r) => r.status);
+  revisar('y la configuración completa pide sesión', laConfigEntera === 401 || laConfigEntera === 403,
+    `respondió ${laConfigEntera}`);
+
+  const elLogo = await fetch(`${URL}/api/configuracion/logo`);
+  revisar('el logo sí se entrega sin sesión, que para eso está',
+    elLogo.status === 200 && String(elLogo.headers.get('content-type')).startsWith('image/'),
+    `respondió ${elLogo.status} ${elLogo.headers.get('content-type')}`);
+
+  // Y no puede servir de puerta para leer cualquier archivo del disco
+  const conTrampa = await fetch(`${URL}/api/configuracion/logo?v=../../iglesias.db`).then((r) => r.headers.get('content-type'));
+  revisar('y no sirve para pedir otro archivo del disco', String(conTrampa).startsWith('image/'),
+    `devolvió ${conTrampa}`);
 
   /* 4k · Los paneles de la ficha de un cuerpo ---------------------------- */
   console.log('\n4k · Cada panel de la ficha de un cuerpo pide SU permiso');

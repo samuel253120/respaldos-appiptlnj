@@ -39,7 +39,11 @@ const tesorerias = require('./tesorerias');
  * si alguien pide el listado entero de una tabla que creció sin que nadie
  * mirara: mejor una planilla grande que un servidor sin memoria.
  */
-const TOPE_PLANILLA = 20000;
+/**
+ * Tope de filas de una planilla. Se lee en cada bajada, no al arrancar: es un
+ * ajuste de la pantalla de configuración y tiene que valer en cuanto se cambia.
+ */
+const topeDePlanilla = () => require('./ajustes').numero('planilla_tope_filas', 100, 100000);
 const bitacora = require('./bitacora');
 const alcance = require('./alcance');
 const dependencias = require('./dependencias');
@@ -722,7 +726,7 @@ function buildRouter() {
       next();
     }, (req, res) => {
       const { params, whereSql, ordenSql } = consultaDelListado(req);
-      const filas = db.prepare(`SELECT * FROM "${def.name}" ${whereSql} ${ordenSql} LIMIT ${TOPE_PLANILLA}`).all(...params);
+      const filas = db.prepare(`SELECT * FROM "${def.name}" ${whereSql} ${ordenSql} LIMIT ${topeDePlanilla()}`).all(...params);
       planilla.enviar(res, def, expandRows(def, filas, req.user), req.user);
     });
 

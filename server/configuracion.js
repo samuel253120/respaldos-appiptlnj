@@ -6,9 +6,12 @@
  *   GET  /api/configuracion           definiciones + valores actuales
  *   PUT  /api/configuracion           guardar cambios
  */
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const { authRequired } = require('./auth');
 const { can } = require('./permissions');
+const { UPLOADS_DIR } = require('./db');
 const { OPCIONES, POR_CLAVE, obtener, todas, guardar } = require('./ajustes');
 
 const PLANOS = OPCIONES.flatMap((g) => g.items);
@@ -23,6 +26,31 @@ router.get('/publica', (req, res) => {
   res.json(publicas);
 });
 
+/**
+ * El logo de la institución, sin pedir sesión.
+ *
+ * Tiene que salir en la pantalla de acceso, o sea antes de que haya nadie
+ * identificado, así que no puede ir por /uploads —que sí pide sesión—. Se
+ * entrega desde acá, y mientras no se haya subido ninguno se responde con el
+ * que trae el sistema, para que la pantalla nunca quede con un hueco.
+ *
+ * El nombre del archivo lleva un trozo al azar y cambia con cada logo nuevo,
+ * así que se puede dejar que el navegador lo guarde un buen rato: la dirección
+ * que se pide es la misma, pero se le cuelga la versión (?v=) para que un
+ * cambio se vea en el momento.
+ */
+router.get('/logo', (req, res) => {
+  const suyo = obtener('iglesia_logo');
+  const ruta = suyo ? path.join(UPLOADS_DIR, path.basename(suyo)) : null;
+  if (ruta && fs.existsSync(ruta)) {
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.sendFile(ruta);
+  }
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.sendFile(path.join(__dirname, '..', 'public', 'img', 'logo.png'));
+});
+
 router.get('/', authRequired, (req, res) => {
   if (!can(req.user, 'sistema_configuracion', 'view')) {
     return res.status(403).json({ error: 'No tiene permiso para ver la configuración del sistema' });
@@ -30,7 +58,14 @@ router.get('/', authRequired, (req, res) => {
   res.json({
     grupos: OPCIONES.map((g) => ({
       grupo: g.grupo,
-      items: g.items.map((o) => ({ clave: o.clave, label: o.label, tipo: o.tipo, ayuda: o.ayuda || null, valor: obtener(o.clave) })),
+      items: g.items.map((o) => ({
+        clave: o.clave, label: o.label, tipo: o.tipo, ayuda: o.ayuda || null,
+        // Los límites viajan para que el formulario los muestre y avise antes
+        // de mandar; el que manda igual se topa con la misma comprobación acá
+        min: o.min === undefined ? null : o.min,
+        max: o.max === undefined ? null : o.max,
+        valor: obtener(o.clave),
+      })),
     })),
   });
 });
@@ -40,6 +75,17 @@ router.put('/', authRequired, (req, res) => {
     return res.status(403).json({ error: 'No tiene permiso para cambiar la configuración del sistema' });
   }
   const cambios = req.body || {};
+  /**
+   * Lo que se guarda es lo que se usa.
+   *
+   * Cada número se lee después con sus límites —`ajustes.numero(clave, min,
+   * max)`—, así que escribir 9999 en «cuántas copias se guardan» nunca guardó
+   * 9999: el sistema usaba 60. Pero la pantalla mostraba el 9999, y entonces
+   * decía una cosa mientras pasaba otra. Ahora se ajusta al guardar y se avisa
+   * de lo que quedó distinto, que es la única manera de que lo que se ve sea
+   * lo que hay.
+   */
+  const ajustados = [];
   for (const [clave, valor] of Object.entries(cambios)) {
     if (!POR_CLAVE[clave]) continue;
     const opcion = POR_CLAVE[clave];
@@ -49,10 +95,19 @@ router.put('/', authRequired, (req, res) => {
     if (opcion.tipo === 'boolean') {
       v = valor === true || valor === 1 || valor === '1' || valor === 'true' ? '1' : '0';
     }
-    if (opcion.tipo === 'number' && !Number.isFinite(Number(valor))) continue;
+    if (opcion.tipo === 'number') {
+      const n = Number(valor);
+      if (!Number.isFinite(n)) continue;
+      const dentro = Math.min(
+        opcion.max === undefined ? n : opcion.max,
+        Math.max(opcion.min === undefined ? n : opcion.min, Math.round(n))
+      );
+      if (dentro !== n) ajustados.push({ clave, label: opcion.label, pedido: n, quedo: dentro });
+      v = String(dentro);
+    }
     guardar(clave, v, req.user.id);
   }
-  res.json({ ok: true, valores: todas() });
+  res.json({ ok: true, valores: todas(), ajustados });
 });
 
 module.exports = { router };

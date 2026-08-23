@@ -158,9 +158,11 @@ function diasDesde(cuando) {
 
 /**
  * Cada cuántos días conviene bajarlo. Un mes es el plazo con el que, si el
- * disco se pierde, lo que falta es a lo más un mes de trabajo.
+ * disco se pierde, lo que falta es a lo más un mes de trabajo. Se fija en la
+ * pantalla de configuración: una iglesia que carga todos los días querrá el
+ * recordatorio más seguido que una que carga una vez al mes.
  */
-const CADA_CUANTOS_DIAS = 30;
+const cadaCuantosDias = () => require('./ajustes').numero('respaldo_recordar_dias', 7, 180);
 
 /** Qué contar en el panel sobre la última copia bajada a mano. */
 function estadoDeLaBajada() {
@@ -183,9 +185,9 @@ function estadoDeLaBajada() {
     cuando,
     dias,
     quien,
-    cada: CADA_CUANTOS_DIAS,
-    alDia: dias !== null && dias <= CADA_CUANTOS_DIAS,
+    cada: cadaCuantosDias(),
+    alDia: dias !== null && dias <= cadaCuantosDias(),
   };
 }
 
-module.exports = { enviar, tamano, nombreDelPaquete, anotarQueSeBajo, estadoDeLaBajada, CADA_CUANTOS_DIAS };
+module.exports = { enviar, tamano, nombreDelPaquete, anotarQueSeBajo, estadoDeLaBajada, cadaCuantosDias };

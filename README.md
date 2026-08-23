@@ -948,21 +948,40 @@ Cada servicio tiene su hoja con el membrete de la iglesia, los datos agrupados (
 
 ## Configuración del sistema ⚙️
 
-Los administradores tienen en el menú la entrada **Configuración**, con opciones agrupadas:
+Quien tenga la llave **Configuración del sistema** tiene en el menú la entrada **Configuración**, con **33 opciones** en siete grupos:
 
-- **Mantenimiento** — deja el sistema en mantenimiento y define el aviso que verán los usuarios.
-- **Identidad** — nombre y lema de la institución.
-- **Organización** — nombre del cuerpo de oficiales (de donde salen los oficiales supervisores y quienes reciben el trato de *Oficial*), porcentaje de la ofrenda que se aparta y si ese reparto se registra solo en tesorería.
-- **Preferencias** — símbolo de moneda, registros por página, duración de la sesión, tamaño y calidad de las imágenes al subirlas, cuántos cumpleaños muestra el panel y si la bitácora registra automáticamente.
+| Grupo | Qué se decide ahí |
+|---|---|
+| **Mantenimiento** | Deja el sistema en mantenimiento y el aviso que verán los usuarios |
+| **Identidad** | Nombre, lema, **logo**, RUT o personalidad jurídica, dirección, teléfono, correo y sitio web |
+| **Organización** | Cuerpo de oficiales, meses de prueba, si las cuotas y la ofrenda se registran solas en tesorería y el porcentaje que aporta a la corporación |
+| **Acceso** | Contraseña inicial, largo mínimo, **a los cuántos errores se cierra la puerta** y si se puede recuperar con una pregunta |
+| **Respaldos** | Copia automática, a qué hora, cuántas se guardan y **cada cuánto se recuerda bajar el respaldo completo** |
+| **Límites y espacio** | **Cuánto puede pesar un archivo**, **filas máximas de una planilla** y **con cuánto espacio libre avisar** |
+| **Preferencias** | Moneda, registros por página, duración de la sesión, tamaño y calidad de las imágenes, cumpleaños del panel y bitácora automática |
+
+Lo marcado en negrita antes estaba **escrito en el código**: cambiarlo obligaba a tocar el programa y volver a publicarlo. Los valores de fábrica son exactamente los que estaban fijos, así que al actualizar no cambia nada.
+
+### El logo de la institución 🖼️
+
+Se sube desde la misma pantalla y sale **en todas partes**: la pantalla de acceso, el menú, el membrete de todo lo que se imprime y las credenciales. Mientras no se suba ninguno, se usa el que trae el sistema, y el botón *Volver al de fábrica* deshace el cambio.
+
+Lo entrega una dirección propia y **pública** (`/api/configuracion/logo`), porque tiene que verse en la pantalla de acceso, o sea antes de que haya nadie identificado. Esa dirección solo entrega el logo: no sirve para pedir otro archivo del disco.
+
+Los datos de contacto y el RUT o personalidad jurídica van bajo el nombre en el **membrete** de las hojas impresas y al **pie de los certificados**. En blanco no aparecen.
+
+### Lo que se guarda es lo que se usa
+
+Cada número se lee con sus límites, pero antes se guardaba sin ninguno: escribir 9999 en *«cuántas copias se guardan»* guardaba 9999 mientras el sistema usaba 60, y la pantalla decía una cosa mientras pasaba otra. Ahora **se ajusta al guardar, se dice qué quedó distinto y el campo se pone al día** con lo que de verdad quedó. Cada campo numérico muestra además entre qué y qué se mueve.
 
 ### Modo mantenimiento
 
-Al activarlo, **solo los administradores pueden ingresar**. A los demás:
+Al activarlo, **solo puede ingresar quien tenga permiso para cambiar la configuración** —que es quien puede apagarlo—. A los demás:
 
 - Se les impide iniciar sesión, mostrando el aviso configurado.
 - Si estaban trabajando, la siguiente acción los devuelve a la pantalla de acceso con ese mismo aviso (la restricción se aplica en el servidor, no solo en la interfaz).
 
-Para agregar más opciones, añadirlas al arreglo `OPCIONES` de `server/ajustes.js`: aparecen solas en la pantalla, con su tipo de campo y valor por defecto.
+Para agregar más opciones, añadirlas al arreglo `OPCIONES` de `server/ajustes.js`: aparecen solas en la pantalla, con su tipo de campo, sus límites y su valor por defecto.
 
 ## Mi perfil: cada persona mantiene sus datos 🙋
 

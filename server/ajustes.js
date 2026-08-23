@@ -53,6 +53,30 @@ const OPCIONES = [
         clave: 'iglesia_lema', label: 'Lema', tipo: 'text', defecto: '', publica: true,
         ayuda: 'Va bajo el nombre. Si se deja en blanco, no aparece en ninguna parte.',
       },
+      {
+        clave: 'iglesia_logo', label: 'Logo', tipo: 'imagen', defecto: '', publica: true,
+        ayuda:
+          'El emblema que va en la pantalla de acceso, en el menú y arriba de todo lo que se imprime. ' +
+          'Mientras no se suba uno, se usa el que trae el sistema. Conviene una imagen cuadrada y con ' +
+          'fondo transparente (PNG).',
+      },
+      {
+        clave: 'iglesia_rut', label: 'RUT o personalidad jurídica', tipo: 'text', defecto: '',
+        ayuda: 'Va al pie de los certificados y las credenciales, junto a los datos de contacto. En blanco, no aparece.',
+      },
+      {
+        clave: 'iglesia_direccion', label: 'Dirección', tipo: 'text', defecto: '',
+        ayuda: 'La casa central o la sede de la corporación. Va al pie de lo que se imprime.',
+      },
+      {
+        clave: 'iglesia_telefono', label: 'Teléfono', tipo: 'text', defecto: '',
+      },
+      {
+        clave: 'iglesia_email', label: 'Correo electrónico', tipo: 'text', defecto: '',
+      },
+      {
+        clave: 'iglesia_web', label: 'Sitio web', tipo: 'text', defecto: '',
+      },
     ],
   },
   {
@@ -65,7 +89,7 @@ const OPCIONES = [
           'cuerpos. Mientras ese cuerpo no exista o no tenga integrantes, se puede elegir a cualquier miembro.',
       },
       {
-        clave: 'cuerpos_meses_prueba', label: 'Meses de prueba al entrar a un cuerpo', tipo: 'number', defecto: '3',
+        clave: 'cuerpos_meses_prueba', label: 'Meses de prueba al entrar a un cuerpo', tipo: 'number', defecto: '3', min: 0, max: 60,
         ayuda:
           'Cuánto dura el período de prueba de quien entra a un cuerpo, antes de evaluar su informe para pasar ' +
           'a integrante oficial. Cada cuerpo puede fijar los suyos en su ficha.',
@@ -78,7 +102,7 @@ const OPCIONES = [
       },
       {
         clave: 'ofrenda_porcentaje_fondo', label: 'Porcentaje de la ofrenda que aporta a la corporación',
-        tipo: 'number', defecto: '10',
+        tipo: 'number', defecto: '10', min: 0, max: 100,
         ayuda:
           'En el Registro de Servicios, la ofrenda entra completa a la tesorería de la iglesia y de ahí sale ' +
           'este porcentaje como aporte para la corporación, que entra a su «Fondo para la corporación».',
@@ -103,9 +127,17 @@ const OPCIONES = [
           'olvida la suya. Al entrar con ella, el sistema obliga a cambiarla por una propia.',
       },
       {
-        clave: 'password_minimo', label: 'Largo mínimo de la contraseña', tipo: 'number', defecto: '8',
+        clave: 'password_minimo', label: 'Largo mínimo de la contraseña', tipo: 'number', defecto: '8', min: 8, max: 40,
         ayuda: 'Cuántos caracteres debe tener, como mínimo, la contraseña que elija cada persona (entre 8 y 40). '
           + 'Además, el sistema no acepta las contraseñas de siempre («123456», «iglesia») ni el propio RUT o nombre de la persona.',
+      },
+      {
+        clave: 'acceso_intentos', label: 'Errores de contraseña antes de cerrar la puerta', tipo: 'number',
+        defecto: '5', min: 3, max: 20,
+        ayuda:
+          'Tras esa cantidad de errores seguidos sobre una misma cuenta, el sistema no acepta más intentos ' +
+          'por un rato, y ese rato crece si insisten. Es lo que hace inútil probar contraseñas a máquina. ' +
+          'Bajarlo aprieta más; subirlo da más margen a quien se equivoca de verdad.',
       },
       {
         clave: 'recuperacion_activa', label: 'Permitir recuperar la contraseña con una pregunta', tipo: 'boolean', defecto: '1',
@@ -127,16 +159,52 @@ const OPCIONES = [
           'respaldo completo y guardarlo en otra parte.',
       },
       {
-        clave: 'respaldo_hora', label: 'A qué hora se hace', tipo: 'number', defecto: '3',
+        clave: 'respaldo_hora', label: 'A qué hora se hace', tipo: 'number', defecto: '3', min: 0, max: 23,
         ayuda:
           'Hora del día (0 a 23) a partir de la cual se hace la copia. Conviene una en que nadie esté ' +
           'trabajando. Si el sistema estuvo apagado a esa hora, la hace en cuanto vuelve.',
       },
       {
-        clave: 'respaldo_conservar', label: 'Cuántas copias se guardan', tipo: 'number', defecto: '7',
+        clave: 'respaldo_conservar', label: 'Cuántas copias se guardan', tipo: 'number', defecto: '7', min: 2, max: 60,
         ayuda:
           'Las más viejas se van borrando solas. Con 7 se puede volver a cualquier día de la última semana ' +
           '(entre 2 y 60).',
+      },
+      {
+        clave: 'respaldo_recordar_dias', label: 'Recordar bajar el respaldo cada tantos días', tipo: 'number',
+        defecto: '30', min: 7, max: 180,
+        ayuda:
+          'La copia de todas las noches queda en el mismo disco que los datos, así que no sirve si se pierde ' +
+          'el servidor. Pasado este tiempo sin que nadie baje el respaldo completo, el sistema lo recuerda en ' +
+          'la pantalla de configuración.',
+      },
+    ],
+  },
+  {
+    grupo: 'Límites y espacio',
+    items: [
+      {
+        clave: 'archivo_tope_mb', label: 'Tamaño máximo de un archivo (MB)', tipo: 'number',
+        defecto: '15', min: 1, max: 50,
+        ayuda:
+          'Lo que puede pesar un documento o una foto que se sube. Las fotos se reducen antes de enviarlas ' +
+          '(ver más abajo), así que este tope lo topan sobre todo los escaneos y los PDF. Subirlo llena el ' +
+          'disco más rápido.',
+      },
+      {
+        clave: 'planilla_tope_filas', label: 'Filas máximas de una planilla', tipo: 'number',
+        defecto: '20000', min: 100, max: 100000,
+        ayuda:
+          'Cuántas filas puede traer, como mucho, un listado bajado a Excel. No es una limitación real —una ' +
+          'iglesia no llega— sino un freno para que un pedido enorme no deje al servidor sin memoria.',
+      },
+      {
+        clave: 'disco_aviso_mb', label: 'Avisar cuando queden menos de (MB)', tipo: 'number',
+        defecto: '100', min: 20, max: 5000,
+        ayuda:
+          'Con menos espacio libre que esto, el sistema avisa en la pantalla de configuración antes de que ' +
+          'empiece a no poder guardar. Conviene dejarlo holgado: agrandar el disco a último minuto obliga a ' +
+          'reiniciar el servidor.',
       },
     ],
   },
@@ -148,25 +216,25 @@ const OPCIONES = [
         ayuda: 'Se usa al mostrar montos en tesorería, ayudas sociales e inventarios.',
       },
       {
-        clave: 'registros_por_pagina', label: 'Registros por página', tipo: 'number', defecto: '25',
+        clave: 'registros_por_pagina', label: 'Registros por página', tipo: 'number', defecto: '25', min: 10, max: 200,
         ayuda: 'Cantidad de filas que muestran los listados (entre 10 y 200).',
       },
       {
-        clave: 'sesion_horas', label: 'Duración de la sesión (horas)', tipo: 'number', defecto: '12',
+        clave: 'sesion_horas', label: 'Duración de la sesión (horas)', tipo: 'number', defecto: '12', min: 1, max: 720,
         ayuda: 'Tras ese tiempo sin renovar, se pide iniciar sesión nuevamente.',
       },
       {
-        clave: 'imagen_lado_maximo', label: 'Tamaño máximo de las imágenes (píxeles)', tipo: 'number', defecto: '1600',
+        clave: 'imagen_lado_maximo', label: 'Tamaño máximo de las imágenes (píxeles)', tipo: 'number', defecto: '1600', min: 600, max: 4000,
         ayuda:
           'Al subir una foto (de un miembro, de un documento), el sistema la reduce hasta ese lado mayor ' +
           'antes de enviarla: carga mucho más rápido y se ve igual. Entre 600 y 4000.',
       },
       {
-        clave: 'imagen_calidad', label: 'Calidad de las imágenes (%)', tipo: 'number', defecto: '88',
+        clave: 'imagen_calidad', label: 'Calidad de las imágenes (%)', tipo: 'number', defecto: '88', min: 40, max: 100,
         ayuda: 'Qué tanto detalle conserva la foto reducida. 88 conserva la calidad a simple vista; 100 no comprime.',
       },
       {
-        clave: 'cumpleanos_cantidad', label: 'Cumpleaños que muestra el panel', tipo: 'number', defecto: '4',
+        clave: 'cumpleanos_cantidad', label: 'Cumpleaños que muestra el panel', tipo: 'number', defecto: '4', min: 1, max: 20,
         ayuda: 'Cuántos miembros próximos a cumplir años aparecen en la pantalla de inicio (entre 1 y 20).',
       },
       {
