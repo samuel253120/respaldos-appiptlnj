@@ -14,6 +14,18 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const alcance = require('../../server/alcance');
 
+/**
+ * Un usuario de mentira.
+ *
+ * Lleva rol a propósito: desde que la tesorería se permite por nivel —la de la
+ * iglesia y la de los cuerpos son dos llaves distintas—, `condiciones` también
+ * consulta los permisos, y un objeto sin rol no alcanza ninguna de las dos. En
+ * el sistema eso no pasa (el rol es obligatorio en la ficha del usuario), pero
+ * la prueba tiene que parecerse a un usuario de verdad para medir lo que dice
+ * que mide, que es el alcance por iglesia y por cuerpo.
+ */
+const usuario = (extra) => ({ rol: 'tesorero', ...extra });
+
 /** Un módulo de mentira, con los campos que la lógica mira. */
 const modulo = (name, campos = []) => ({ name, fields: campos.map((n) => ({ name: n })) });
 const MIEMBROS = modulo('miembros', ['iglesia_id', 'nombres']);
@@ -54,7 +66,7 @@ test('la iglesia principal sí cuenta cuando ya está entre las asignadas', () =
 });
 
 test('con iglesias asignadas, lo de otra queda afuera', () => {
-  const u = { iglesias: '[2,5]' };
+  const u = usuario({ iglesias: '[2,5]' });
   assert.equal(alcance.alcanzaIglesia(u, 2), true);
   assert.equal(alcance.alcanzaIglesia(u, 5), true);
   assert.equal(alcance.alcanzaIglesia(u, 9), false);
@@ -203,8 +215,16 @@ test('las condiciones SQL llevan sus parámetros en orden', () => {
 
 test('sin nada asignado no se agrega ninguna condición', () => {
   const params = [];
-  assert.equal(alcance.condiciones(TESORERIA, { iglesias: '[]', cuerpos: '[]' }, params), null);
+  assert.equal(alcance.condiciones(TESORERIA, usuario({ iglesias: '[]', cuerpos: '[]' }), params), null);
   assert.deepEqual(params, []);
+});
+
+test('y alguien sin un rol que el sistema conozca no alcanza ninguna tesorería', () => {
+  // No debería llegar a pasar —el rol es obligatorio— pero si pasara, lo que
+  // corresponde es no entregar nada, no entregarlo todo.
+  const sql = alcance.condiciones(TESORERIA, { iglesias: '[]', cuerpos: '[]' }, []);
+  assert.ok(sql && sql.includes('IS NULL') && sql.includes('IS NOT NULL'),
+    `tendría que quedar sin ninguna fila, y quedó: ${sql}`);
 });
 
 test('un usuario que no existe no alcanza nada', () => {

@@ -179,6 +179,10 @@ module.exports = {
         where += ` AND (iglesia_id IS NULL OR iglesia_id IN (${suyas.map(() => '?').join(',')}))`;
         params.push(...suyas);
       }
+      // Y del nivel que alcance: no se ofrece como destino una cuenta que
+      // después no va a poder ver (ver server/tesorerias.js)
+      const porNivel = require('../tesorerias').condicion(module.exports, req.user);
+      if (porNivel) where += ` AND ${porNivel}`;
       const filas = db
         .prepare(`SELECT id, nombre, ambito FROM cuentas_tesoreria WHERE ${where} ORDER BY ambito, nombre`)
         .all(...params);

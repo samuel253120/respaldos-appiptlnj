@@ -1044,6 +1044,8 @@ Además de los módulos, el editor muestra **lo que el sistema comprueba y no es
 | **Respaldos del sistema** | Ver la última copia y bajarse el respaldo completo | Administrador |
 | **Traspaso desde el sistema anterior** | La importación masiva del sistema antiguo | Administrador |
 | **Bajar listados a planilla** | El botón ⬇️ Excel de cada listado | Todos |
+| **Tesorería de la iglesia y la corporación** | Sus cuentas, sus movimientos y los traspasos entre ellas | Todos |
+| **Tesorería de los cuerpos y grupos** | Las cuentas propias de cada cuerpo, sus movimientos y las cuotas de sus integrantes | Todos |
 | **Restablecer contraseñas de otros** | Devolver una cuenta a su contraseña inicial | Todos |
 
 Las que vienen **dadas a todos** están para poder **quitarlas**: son cosas que hasta ahora hacía cualquiera que pudiera abrir el listado, y no siempre corresponden. Mientras nadie las quite a propósito, nada cambia.
@@ -1053,6 +1055,25 @@ Cada llave admite solo las acciones que tienen sentido para ella —«eliminar l
 **Los datos reservados se reservan de verdad.** A quien no alcance un grupo no le llega por ninguna de las cuatro puertas: no aparece en la ficha, no aparece en el listado, no baja en la planilla —la columna se quita entera, no queda en blanco— y **tampoco puede dar con la persona buscando por ese dato**. Y no puede borrarlo: si abre la ficha y guarda, lo que no vio no se toca. En la ficha se le avisa que hay algo que no está viendo, porque un espacio en blanco se confunde con *«no tiene teléfono»*.
 
 Un módulo reserva un grupo de campos declarándolo en el campo mismo (`reservado: 'miembros_contacto'`). Si la llave no está declarada, el sistema **no arranca**: un permiso que parece estar y no está es peor que no tenerlo.
+
+### Las dos tesorerías 💰
+
+La organización lleva **dos libros distintos**, y eran el mismo permiso:
+
+- la **general** — las cuentas de la corporación y de cada iglesia local, sus movimientos y los traspasos entre ellas;
+- la **de cada cuerpo** — su cuenta propia, sus movimientos y las cuotas que pagan sus integrantes.
+
+Dar *Tesorería* daba las dos. Para que la tesorera de un cuerpo llevara la plata de su cuerpo había que abrirle también el libro de la iglesia, y al tesorero general no había manera de dejarlo fuera de la plata interna de los cuerpos. Ahora son dos llaves y se conceden por separado.
+
+Quitar una cierra **todas** las puertas del otro libro: el listado, la ficha —aunque se escriba la dirección a mano—, la planilla, el selector de cuentas de un movimiento, el panel de la ficha del cuerpo y el total del panel de control, que no suma plata que esa persona no pueda abrir. Y tampoco puede registrarla: si intenta anotar un movimiento en una cuenta del otro nivel, el servidor lo rechaza.
+
+**El nivel lo decide la cuenta.** Antes el cuerpo de un movimiento era un campo suelto que se escribía a mano: podía decir que era del cuerpo A estando en la cuenta del cuerpo B, o no decir nada estándolo —y entonces la tesorería que mostraba la ficha del cuerpo estaba incompleta—. Ahora se toma de la cuenta al guardar, y una migración puso al día lo que había.
+
+Esto **no reemplaza al alcance**: los cuerpos asignados en la ficha del usuario siguen diciendo *sobre cuáles* cuerpos alcanza; la llave dice de qué *nivel* puede ver la plata. Se aplican los dos.
+
+### Cada panel de la ficha de un cuerpo pide su propio permiso
+
+La ficha de un cuerpo muestra su cumplimiento, sus **integrantes**, sus **cuotas**, su **tesorería**, sus **directivas** y sus **actas**. Cada uno es su propio módulo o su propia llave, y cada uno pide lo suyo: quitarle a alguien *Integrantes de Cuerpos* le quita el panel de la gente, y quitarle *Cuotas de Cuerpos* le quita la planilla de cuotas, sin tocar el resto de la ficha.
 
 ### Perfiles de permisos 🎭
 

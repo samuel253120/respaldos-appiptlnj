@@ -1336,6 +1336,45 @@ function origenDeLasContrasenas() {
 }
 
 
+/**
+ * El cuerpo de cada movimiento sale de su cuenta.
+ *
+ * Hasta ahora era un campo suelto que se escribía a mano: un movimiento podía
+ * estar en la cuenta del cuerpo Dorcas y no decirlo, o decir que era de otro.
+ * El panel de la ficha del cuerpo filtra por ese campo, así que la tesorería
+ * que mostraba estaba incompleta —faltaban los movimientos que nadie marcó—.
+ *
+ * Desde ahora se toma de la cuenta al guardar. Acá se pone al día lo de antes:
+ * cada movimiento queda con el cuerpo de su cuenta, y los que están en una
+ * cuenta que no es de ningún cuerpo quedan sin cuerpo, como corresponde.
+ */
+function movimientosConElCuerpoDeSuCuenta() {
+  const columnas = db.prepare('PRAGMA table_info(tesoreria)').all().map((c) => c.name);
+  if (!columnas.includes('cuerpo_id') || !columnas.includes('cuenta_id')) return;
+
+  const descuadrados = db
+    .prepare(
+      `SELECT COUNT(*) AS c
+         FROM tesoreria t LEFT JOIN cuentas_tesoreria k ON k.id = t.cuenta_id
+        WHERE IFNULL(t.cuerpo_id, 0) <> IFNULL(k.cuerpo_id, 0)`
+    )
+    .get().c;
+  if (!descuadrados) return;
+
+  db.prepare(
+    `UPDATE tesoreria
+        SET cuerpo_id = (SELECT k.cuerpo_id FROM cuentas_tesoreria k WHERE k.id = tesoreria.cuenta_id)
+      WHERE IFNULL(cuerpo_id, 0) <> IFNULL(
+              (SELECT IFNULL(k.cuerpo_id, 0) FROM cuentas_tesoreria k WHERE k.id = tesoreria.cuenta_id), 0)`
+  ).run();
+
+  console.log(
+    `🔁 tesorería: ${descuadrados} movimiento(s) quedaron con el cuerpo de su cuenta. ` +
+      'Antes ese dato se escribía a mano y podía no coincidir; ahora sale de la cuenta.'
+  );
+}
+
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -1369,6 +1408,7 @@ function ejecutarMigraciones() {
     ['tipos de servicio', tiposDeServicio],
     ['origen de las contraseñas', origenDeLasContrasenas],
     ['nombre oficial de la iglesia', nombreOficialDeLaIglesia],
+    ['el cuerpo de cada movimiento', movimientosConElCuerpoDeSuCuenta],
   ];
 
   for (const [nombre, paso] of pasos) {

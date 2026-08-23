@@ -172,6 +172,35 @@ module.exports = {
       return fila;
     };
 
+    /**
+     * Cada panel de la ficha pide SU permiso, no el del cuerpo.
+     *
+     * Los paneles se pintan dentro de la ficha del cuerpo, y por eso pedían
+     * solo «Cuerpos → ver». Con eso, a quien se le quitaba Integrantes de
+     * Cuerpos o Cuotas de Cuerpos igual los veía completos acá: el permiso
+     * estaba puesto en el editor y no servía de nada, que es peor que no
+     * tenerlo. Escribir en ellos sí exigía lo que corresponde; leer, no.
+     *
+     * Cada llave que se pide de más se nombra, para que el que se topa con un
+     * 403 sepa cuál le falta.
+     */
+    const conPermisoDe = (...llaves) => (req, res, siguiente) => {
+      for (const [modulo, accion, comoSeLlama] of llaves) {
+        if (!can(req.user, modulo, accion)) {
+          return res.status(403).json({ error: `No tiene permiso para ver ${comoSeLlama}` });
+        }
+      }
+      siguiente();
+    };
+
+    const VE_INTEGRANTES = conPermisoDe(['integrantes_cuerpo', 'view', 'los integrantes de los cuerpos']);
+    // Las cuotas son plata del cuerpo: hacen falta las dos cosas
+    const VE_CUOTAS = conPermisoDe(
+      ['cuotas_cuerpo', 'view', 'las cuotas de los cuerpos'],
+      ['tesoreria_cuerpo', 'view', 'la tesorería de los cuerpos']
+    );
+    const COBRA_CUOTAS = conPermisoDe(['tesoreria_cuerpo', 'view', 'la tesorería de los cuerpos']);
+
     // Detalle del cumplimiento de un cuerpo, para mostrarlo en su ficha
     router.get('/cuerpos/:id(\\d+)/cumplimiento', requirePerm('cuerpos', 'view'), (req, res) => {
       const fila = cuerpoDelUsuario(req, res);
@@ -184,7 +213,7 @@ module.exports = {
      * su período de prueba y si le corresponde pagar cuota. Vienen todos,
      * retirados incluidos, y la pantalla decide a quién muestra.
      */
-    router.get('/cuerpos/:id(\\d+)/integrantes', requirePerm('cuerpos', 'view'), (req, res) => {
+    router.get('/cuerpos/:id(\\d+)/integrantes', requirePerm('cuerpos', 'view'), VE_INTEGRANTES, (req, res) => {
       const cuerpo = cuerpoDelUsuario(req, res);
       if (!cuerpo) return;
       const { integrantesDe } = require('../integrantes');
@@ -234,7 +263,7 @@ module.exports = {
      * por mes, con lo que ya está pagado. Los retirados no salen, y quien está
      * exento —o pertenece a un cuerpo que no cobra— sale marcado como tal.
      */
-    router.get('/cuerpos/:id(\\d+)/cuotas', requirePerm('cuerpos', 'view'), (req, res) => {
+    router.get('/cuerpos/:id(\\d+)/cuotas', requirePerm('cuerpos', 'view'), VE_CUOTAS, (req, res) => {
       const cuerpo = cuerpoDelUsuario(req, res);
       if (!cuerpo) return;
       const anio = Number(req.query.anio) || new Date().getFullYear();
@@ -267,12 +296,12 @@ module.exports = {
         cuota_mensual: cuerpo.cuota_mensual,
         filas,
         total_recaudado: filas.reduce((t, f) => t + f.total, 0),
-        puede_cobrar: can(req.user, 'cuotas_cuerpo', 'create'),
+        puede_cobrar: can(req.user, 'cuotas_cuerpo', 'create') && can(req.user, 'tesoreria_cuerpo', 'view'),
       });
     });
 
     /** Marcar que alguien pagó su cuota de un mes, desde la propia planilla. */
-    router.post('/cuerpos/:id(\\d+)/cuotas', requirePerm('cuotas_cuerpo', 'create'), (req, res) => {
+    router.post('/cuerpos/:id(\\d+)/cuotas', requirePerm('cuotas_cuerpo', 'create'), COBRA_CUOTAS, (req, res) => {
       const cuerpo = cuerpoDelUsuario(req, res);
       if (!cuerpo) return;
       // Y que el integrante sea de este cuerpo: si no, se estaría cobrando en
@@ -294,7 +323,7 @@ module.exports = {
     });
 
     /** Y deshacerlo, cuando se marcó por equivocación. */
-    router.delete('/cuerpos/:id(\\d+)/cuotas/:cuota(\\d+)', requirePerm('cuotas_cuerpo', 'delete'), (req, res) => {
+    router.delete('/cuerpos/:id(\\d+)/cuotas/:cuota(\\d+)', requirePerm('cuotas_cuerpo', 'delete'), COBRA_CUOTAS, (req, res) => {
       if (!cuerpoDelUsuario(req, res)) return;
       const { borrarPago } = require('../cuotas');
       const cuota = db.prepare('SELECT * FROM cuotas_cuerpo WHERE id = ? AND cuerpo_id = ?')

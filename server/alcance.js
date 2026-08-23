@@ -10,6 +10,11 @@
  * Sin iglesias asignadas, ve todas (es el caso del administrador general).
  * Sin cuerpos asignados, ve todos los de sus iglesias.
  *
+ * Y una tercera cosa, que no es una asignación sino un permiso: de qué
+ * TESORERÍA puede ver la plata —la de la iglesia, la de los cuerpos, o las
+ * dos—. Se resuelve en server/tesorerias.js y se aplica desde acá, para que
+ * entre por las mismas puertas que todo lo demás.
+ *
  * El alcance se aplica en el servidor, en cada consulta y en cada guardado:
  * no depende de lo que muestre la pantalla.
  */
@@ -177,6 +182,12 @@ function condiciones(def, usuario, params) {
     }
   }
 
+  // ---- Por nivel de tesorería ----
+  // La plata de la iglesia y la de un cuerpo son dos libros distintos y se
+  // permiten aparte (ver server/tesorerias.js). Va acá, junto al resto del
+  // alcance, para que lo tomen los mismos listados, fichas y planillas.
+  partes.push(require('./tesorerias').condicion(def, usuario));
+
   const utiles = partes.filter(Boolean);
   return utiles.length ? utiles.join(' AND ') : null;
 }
@@ -214,6 +225,10 @@ function alcanza(def, fila, usuario) {
       return miembrosDeCuerpos(cuerpos).includes(Number(fila.miembro_id));
     }
   }
+
+  // Y del nivel de tesorería, que es la otra cosa que acota lo que se ve
+  if (!require('./tesorerias').alcanza(def, fila, usuario)) return false;
+
   return true;
 }
 

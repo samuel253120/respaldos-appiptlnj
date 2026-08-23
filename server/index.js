@@ -14,7 +14,7 @@ const multer = require('multer');
 const { db, DATA_DIR, UPLOADS_DIR } = require('./db');
 const { router: authRouter, authRequired } = require('./auth');
 const { buildRouter } = require('./crud');
-const { allModules } = require('./registry');
+const { allModules, getModule } = require('./registry');
 const { can, ROLES, ACCIONES, MATRIX, LLAVES, SALUD, permisosDelRol, todoLoQueSePuedePermitir } = require('./permissions');
 const { ensureSeed } = require('./seed');
 const { ejecutarMigraciones } = require('./migraciones');
@@ -375,7 +375,11 @@ app.get('/api/dashboard', authRequired, (req, res) => {
   if (can(req.user, 'tesoreria', 'view')) {
     const mes = new Date().toISOString().slice(0, 7); // YYYY-MM
     const marcas = susIglesias.map(() => '?').join(',');
-    const w = susIglesias.length ? `AND iglesia_id IN (${marcas})` : '';
+    // El resumen no puede sumar plata que esa persona no puede ver: quien no
+    // alcanza la tesorería de los cuerpos vería su total sin poder abrir un
+    // solo movimiento que lo explique (ver server/tesorerias.js).
+    const porNivel = require('./tesorerias').condicion(getModule('tesoreria'), req.user);
+    const w = `${susIglesias.length ? `AND iglesia_id IN (${marcas})` : ''}${porNivel ? ` AND ${porNivel}` : ''}`;
     const p = susIglesias;
     const row = (tipo, mesOnly) =>
       db

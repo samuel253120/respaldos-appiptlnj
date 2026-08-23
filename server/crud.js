@@ -31,6 +31,7 @@ const { can } = require('./permissions');
 const planilla = require('./planilla');
 const archivos = require('./archivos');
 const sensibles = require('./sensibles');
+const tesorerias = require('./tesorerias');
 
 /**
  * Tope de filas de una planilla. No es una limitación real —una iglesia con
@@ -807,6 +808,13 @@ function buildRouter() {
             data.iglesia_id = elegida;
           }
         }
+
+        // Alcance: y el nivel de tesorería. Sin esto, quien no ve la plata de
+        // los cuerpos podría registrarle un movimiento escribiendo la cuenta a
+        // mano, y después no vería lo que acaba de anotar
+        // (ver server/tesorerias.js).
+        const avisoDeNivel = tesorerias.alGuardar(def, { ...(existing || {}), ...data }, req.user, db);
+        if (avisoDeNivel) return res.status(403).json({ error: avisoDeNivel });
 
         /** ¿Aplica este campo, según su condición showIf? */
         const aplica = (f) => {

@@ -7032,6 +7032,9 @@ const ESTADO_INTEGRANTE = {
  * con el aviso de a quién se le venció el período de prueba.
  */
 async function renderIntegrantesCuerpo(cuerpoId, caja, filtro) {
+  // Este panel es Integrantes de Cuerpos: si a esta persona se le quitó ese
+  // permiso, no se le muestra ni se pregunta al servidor por él
+  if (!MOD['integrantes_cuerpo']) return;
   const d = await api('GET', `/cuerpos/${cuerpoId}/integrantes`).catch(() => null);
   if (!d) return;
   const ver = filtro || (caja.dataset.filtro || 'vigentes');
@@ -7114,6 +7117,8 @@ async function renderIntegrantesCuerpo(cuerpoId, caja, filtro) {
 
 /** La planilla de cuotas del año: quién pagó cada mes. */
 async function renderCuotasCuerpo(cuerpoId, caja, anio) {
+  // Las cuotas son plata del cuerpo: hacen falta su módulo y la llave
+  if (!MOD['cuotas_cuerpo'] || !tieneLlave('tesoreria_cuerpo')) return;
   const cual = anio || Number(caja.dataset.anio) || new Date().getFullYear();
   caja.dataset.anio = cual;
   const d = await api('GET', `/cuerpos/${cuerpoId}/cuotas?anio=${cual}`).catch(() => null);
@@ -7208,7 +7213,9 @@ async function renderCuotasCuerpo(cuerpoId, caja, anio) {
 
 /** Las cuentas del cuerpo con su saldo, y sus últimos movimientos. */
 async function renderTesoreriaCuerpo(cuerpoId, caja) {
-  if (!MOD['cuentas_tesoreria']) return;
+  // La plata del cuerpo es un permiso aparte del de la iglesia: quien no lo
+  // tenga no ve este panel (ver LLAVES en server/permissions.js)
+  if (!MOD['cuentas_tesoreria'] || !tieneLlave('tesoreria_cuerpo')) return;
   const [cuentas, movimientos] = await Promise.all([
     api('GET', `/cuentas_tesoreria?f_cuerpo_id=${cuerpoId}&limit=50`).catch(() => null),
     MOD['tesoreria']

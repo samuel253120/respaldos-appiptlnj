@@ -737,6 +737,182 @@ async function entrar(rut = RUT, clave = CLAVE) {
     revisar('se pudo crear la ficha con contacto', false, JSON.stringify(conTelefono.datos).slice(0, 140));
   }
 
+  /* 4j · Las dos tesorerías --------------------------------------------- */
+  console.log('\n4j · La plata de la iglesia y la plata de los cuerpos');
+  // Eran el mismo permiso: dar «Tesorería» daba las dos. Ahora son dos llaves,
+  // y lo que hay que comprobar es que quitar una cierre TODAS las puertas del
+  // otro libro —el listado, la ficha, la planilla, el resumen del panel y el
+  // guardado—, porque cerrar solo el listado no sirve de nada.
+  const cuerpoConPlata = (await api('GET', '/api/cuerpos?page=1&limit=1')).datos.rows || [];
+  const cuentas = (await api('GET', '/api/cuentas_tesoreria?page=1&limit=50')).datos.rows || [];
+  const deCuerpo = cuentas.find((c) => c.cuerpo_id);
+  const deIglesia = cuentas.find((c) => !c.cuerpo_id && c.estado === 'Activa');
+
+  if (!deCuerpo || !deIglesia) {
+    console.log('   ⚠️  hacen falta una cuenta de cuerpo y una de iglesia para probar esta parte');
+  } else {
+    const marca = `Prueba ${Date.now()}`;
+    const movCuerpo = await api('POST', '/api/tesoreria', {
+      fecha: new Date().toISOString().slice(0, 10), tipo: 'Ingreso', categoria: 'Otros ingresos',
+      concepto: `${marca} cuerpo`, monto: 12345, cuenta_id: deCuerpo.id,
+    });
+    const movIglesia = await api('POST', '/api/tesoreria', {
+      fecha: new Date().toISOString().slice(0, 10), tipo: 'Ingreso', categoria: 'Otros ingresos',
+      concepto: `${marca} iglesia`, monto: 54321, cuenta_id: deIglesia.id,
+    });
+
+    revisar('el cuerpo de un movimiento sale de su cuenta, no de lo que se escriba',
+      movCuerpo.datos.cuerpo_id && Number(movCuerpo.datos.cuerpo_id) === Number(deCuerpo.cuerpo_id),
+      `quedó en ${JSON.stringify(movCuerpo.datos.cuerpo_id)} y la cuenta es del cuerpo ${deCuerpo.cuerpo_id}`);
+
+    // Y no se puede mentir: decir que un movimiento de la iglesia es del cuerpo
+    const mentira = await api('POST', '/api/tesoreria', {
+      fecha: new Date().toISOString().slice(0, 10), tipo: 'Ingreso', categoria: 'Otros ingresos',
+      concepto: `${marca} mentira`, monto: 100, cuenta_id: deIglesia.id, cuerpo_id: deCuerpo.cuerpo_id,
+    });
+    revisar('y no se le puede poner a mano el de otro', !mentira.datos.cuerpo_id,
+      `quedó en ${JSON.stringify(mentira.datos.cuerpo_id)}`);
+
+    const conNivel = async (quita, nombre) => {
+      const c = String(12000000 + (Date.now() % 900000));
+      const suRut = `${c}-${require('../server/rut').digitoVerificador(c)}`;
+      const creado = await api('POST', '/api/usuarios', {
+        rut: suRut, nombre, password: 'Manzanares82', rol: 'tesorero', activo: 1,
+        permisos: { [quita]: [] },
+      });
+      if (creado.estado !== 201 && creado.estado !== 200) return null;
+      const primera = await fetch(`${URL}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: suRut, password: 'Manzanares82' }),
+      }).then((r) => r.json());
+      await fetch(`${URL}/api/auth/cambiar-password`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${primera.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actual: 'Manzanares82', nueva: 'Manzanares82Otra' }),
+      });
+      const suya = await fetch(`${URL}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: suRut, password: 'Manzanares82Otra' }),
+      }).then((r) => r.json());
+      return {
+        id: creado.datos.id,
+        token: suya.token,
+        api: (m, r, b) => fetch(URL + r, {
+          method: m, headers: { Authorization: `Bearer ${suya.token}`, 'Content-Type': 'application/json' },
+          body: b === undefined ? undefined : JSON.stringify(b),
+        }).then(async (x) => ({ estado: x.status, datos: await x.json().catch(() => ({})) })),
+      };
+    };
+
+    const soloIglesia = await conNivel('tesoreria_cuerpo', 'Prueba Solo Iglesia');
+    const soloCuerpo = await conNivel('tesoreria_general', 'Prueba Solo Cuerpo');
+
+    if (soloIglesia && soloCuerpo) {
+      const suListado = await soloIglesia.api('GET', '/api/tesoreria?page=1&limit=100');
+      revisar('quien no lleva la plata de los cuerpos no ve sus movimientos',
+        !JSON.stringify(suListado.datos).includes(`${marca} cuerpo`));
+      revisar('pero sí los de la iglesia, como siempre',
+        JSON.stringify(suListado.datos).includes(`${marca} iglesia`));
+
+      const alReves = await soloCuerpo.api('GET', '/api/tesoreria?page=1&limit=100');
+      revisar('y quien solo lleva la de los cuerpos no ve la de la iglesia',
+        !JSON.stringify(alReves.datos).includes(`${marca} iglesia`));
+      revisar('pero sí la de su cuerpo', JSON.stringify(alReves.datos).includes(`${marca} cuerpo`));
+
+      const laFicha = await soloIglesia.api('GET', `/api/tesoreria/${movCuerpo.datos.id}`);
+      revisar('ni la abre escribiendo la dirección a mano', laFicha.estado === 403,
+        `respondió ${laFicha.estado}`);
+      const suCuenta = await soloIglesia.api('GET', `/api/cuentas_tesoreria/${deCuerpo.id}`);
+      revisar('ni la cuenta del cuerpo', suCuenta.estado === 403, `respondió ${suCuenta.estado}`);
+
+      const suPlanilla = await fetch(`${URL}/api/tesoreria/planilla`, {
+        headers: { Authorization: `Bearer ${soloIglesia.token}` },
+      }).then((r) => r.text());
+      revisar('ni la baja en la planilla', !suPlanilla.includes(`${marca} cuerpo`));
+
+      // El resumen del panel es un total suelto: si sumara plata que la persona
+      // no puede abrir, vería un número que ningún movimiento suyo explica.
+      const suPanel = await soloIglesia.api('GET', '/api/dashboard');
+      const elDeTodos = (await api('GET', '/api/dashboard')).datos.finanzas;
+      const elSuyo = suPanel.datos.finanzas;
+      revisar('y el resumen del panel no suma plata que no puede abrir',
+        elSuyo && elDeTodos && elDeTodos.ingresos_total - elSuyo.ingresos_total >= 12345,
+        `el administrador suma ${elDeTodos && elDeTodos.ingresos_total} y ella ${elSuyo && elSuyo.ingresos_total}: ` +
+        'la diferencia tendría que llevarse al menos los 12.345 del cuerpo');
+
+      const alGuardar = await soloIglesia.api('POST', '/api/tesoreria', {
+        fecha: new Date().toISOString().slice(0, 10), tipo: 'Ingreso', categoria: 'Otros ingresos',
+        concepto: `${marca} a escondidas`, monto: 999, cuenta_id: deCuerpo.id,
+      });
+      revisar('ni le registra plata al cuerpo escribiendo la cuenta a mano',
+        alGuardar.estado === 403, `respondió ${alGuardar.estado}`);
+
+      // Las cuotas son plata del cuerpo: sin esa llave, tampoco
+      if (cuerpoConPlata.length) {
+        const susCuotas = await soloIglesia.api('GET', `/api/cuerpos/${cuerpoConPlata[0].id}/cuotas`);
+        revisar('ni la planilla de cuotas del cuerpo', susCuotas.estado === 403,
+          `respondió ${susCuotas.estado}`);
+      }
+
+      await api('DELETE', `/api/usuarios/${soloIglesia.id}`);
+      await api('DELETE', `/api/usuarios/${soloCuerpo.id}`);
+    } else {
+      revisar('se pudieron crear las dos tesoreras de prueba', false);
+    }
+
+    for (const m of [movCuerpo, movIglesia, mentira]) {
+      if (m.datos && m.datos.id) await api('DELETE', `/api/tesoreria/${m.datos.id}`);
+    }
+  }
+
+  /* 4k · Los paneles de la ficha de un cuerpo ---------------------------- */
+  console.log('\n4k · Cada panel de la ficha de un cuerpo pide SU permiso');
+  // Los paneles se pintan dentro de la ficha del cuerpo y por eso pedían solo
+  // «Cuerpos → ver». Con eso, a quien se le quitaba Integrantes de Cuerpos los
+  // seguía viendo completos: el permiso estaba en el editor y no servía de nada.
+  if (!cuerpoConPlata.length) {
+    console.log('   ⚠️  hace falta un cuerpo para probar esta parte');
+  } else {
+    const c = String(11000000 + (Date.now() % 900000));
+    const suRut = `${c}-${require('../server/rut').digitoVerificador(c)}`;
+    const recortado = await api('POST', '/api/usuarios', {
+      rut: suRut, nombre: 'Prueba Sin Paneles', password: 'Manzanares82', rol: 'secretario', activo: 1,
+      permisos: { integrantes_cuerpo: [], cuotas_cuerpo: [] },
+    });
+    if (recortado.estado === 201 || recortado.estado === 200) {
+      const primera = await fetch(`${URL}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: suRut, password: 'Manzanares82' }),
+      }).then((r) => r.json());
+      await fetch(`${URL}/api/auth/cambiar-password`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${primera.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actual: 'Manzanares82', nueva: 'Manzanares82Otra' }),
+      });
+      const suya = await fetch(`${URL}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: suRut, password: 'Manzanares82Otra' }),
+      }).then((r) => r.json());
+      const comoEl = (r) => fetch(URL + r, { headers: { Authorization: `Bearer ${suya.token}` } })
+        .then(async (x) => ({ estado: x.status, datos: await x.json().catch(() => ({})) }));
+
+      const cid = cuerpoConPlata[0].id;
+      const susIntegrantes = await comoEl(`/api/cuerpos/${cid}/integrantes`);
+      revisar('sin Integrantes de Cuerpos, el panel de la gente no se entrega',
+        susIntegrantes.estado === 403, `respondió ${susIntegrantes.estado}`);
+      const susCuotas = await comoEl(`/api/cuerpos/${cid}/cuotas`);
+      revisar('sin Cuotas de Cuerpos, la planilla de cuotas tampoco',
+        susCuotas.estado === 403, `respondió ${susCuotas.estado}`);
+      const elCumplimiento = await comoEl(`/api/cuerpos/${cid}/cumplimiento`);
+      revisar('pero el cuerpo en sí lo sigue viendo, que es lo suyo',
+        elCumplimiento.estado === 200, `respondió ${elCumplimiento.estado}`);
+
+      await api('DELETE', `/api/usuarios/${recortado.datos.id}`);
+    } else {
+      revisar('se pudo crear la cuenta recortada', false, `respondió ${recortado.estado}`);
+    }
+  }
+
   console.log('\n5 · Los paneles de un cuerpo ajeno');
   const cuerpos = (await api('GET', '/api/cuerpos?page=1&limit=2')).datos.rows || [];
   if (cuerpos.length < 2) {

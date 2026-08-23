@@ -50,7 +50,10 @@ module.exports = {
       name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true,
       help: 'Se toma de la cuenta elegida. Las cuentas de la corporación no pertenecen a una iglesia.',
     },
-    { name: 'cuerpo_id', label: 'Cuerpo / Grupo (si aplica)', type: 'ref', ref: 'cuerpos' },
+    {
+      name: 'cuerpo_id', label: 'Cuerpo / Grupo', type: 'ref', ref: 'cuerpos', readonly: true,
+      help: 'Se toma de la cuenta elegida, igual que la iglesia. Solo lo llevan los movimientos de una cuenta de un cuerpo.',
+    },
     { name: 'comprobante', label: 'Comprobante (imagen o PDF)', type: 'file', seccion: 'Respaldo y notas' },
     { name: 'notas', label: 'Notas', type: 'textarea' },
     // Movimientos generados por un traspaso o por la ofrenda de un servicio
@@ -87,6 +90,19 @@ module.exports = {
       }
 
       data.iglesia_id = cuenta.iglesia_id || null;
+
+      /**
+       * Y el cuerpo, también de la cuenta.
+       *
+       * Antes era un campo suelto que se escribía a mano, así que un
+       * movimiento podía decir que era del cuerpo A estando en la cuenta del
+       * cuerpo B, o no decir nada estándolo. Con eso, el panel de la ficha del
+       * cuerpo mostraba una tesorería incompleta —los movimientos que nadie se
+       * acordó de marcar no aparecían— y no había forma de saber de quién era
+       * la plata sin ir a mirar la cuenta. La cuenta es el único dato que no
+       * se puede contradecir consigo mismo: de ahí sale.
+       */
+      data.cuerpo_id = cuenta.cuerpo_id || null;
 
       // ¿Este egreso deja la cuenta en rojo? No se bloquea —una cuenta puede
       // quedar en rojo de verdad— pero se pregunta, porque el caso corriente

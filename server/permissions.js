@@ -135,6 +135,41 @@ const LLAVES = [
       'ciento setenta y nueve fichas con sus teléfonos y direcciones no son lo mismo: esto separa ' +
       'las dos cosas. Quien no lo tenga sigue viendo y buscando en pantalla como siempre.',
   },
+  /*
+   * La tesorería no es una sola: hay dos, y hasta ahora eran el mismo permiso.
+   *
+   * La corporación y cada iglesia llevan su tesorería general; cada cuerpo o
+   * grupo lleva la suya, con sus cuentas, sus movimientos y las cuotas de sus
+   * integrantes. Eran un solo módulo, así que dar «Tesorería» daba las dos: no
+   * había manera de dejar que la tesorera de un cuerpo llevara la plata de su
+   * cuerpo sin abrirle también el libro de la iglesia, ni al revés.
+   *
+   * Con estas dos llaves se separan. Lo que acota a QUÉ cuerpo alcanza sigue
+   * siendo, como siempre, los cuerpos asignados en la ficha del usuario: esto
+   * dice de qué NIVEL puede ver la plata, y aquello sobre cuál.
+   */
+  {
+    name: 'tesoreria_general',
+    label: 'Tesorería de la iglesia y la corporación',
+    group: 'Finanzas',
+    acciones: ['view'],
+    defecto: 'todos',
+    ayuda:
+      'Las cuentas y los movimientos de la corporación y de cada iglesia local, y los traspasos ' +
+      'entre ellas. Quien no la tenga puede llevar la tesorería de su cuerpo sin ver el libro de ' +
+      'la iglesia.',
+  },
+  {
+    name: 'tesoreria_cuerpo',
+    label: 'Tesorería de los cuerpos y grupos',
+    group: 'Finanzas',
+    acciones: ['view'],
+    defecto: 'todos',
+    ayuda:
+      'Las cuentas propias de cada cuerpo o grupo, sus movimientos y las cuotas de sus ' +
+      'integrantes. Quien no la tenga lleva la tesorería de la iglesia sin entrar en la plata de ' +
+      'los cuerpos. Sobre cuáles alcanza lo siguen diciendo los cuerpos asignados en su ficha.',
+  },
   {
     name: 'usuarios_clave',
     label: 'Restablecer contraseñas de otros',
