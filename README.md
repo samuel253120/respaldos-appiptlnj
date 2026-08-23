@@ -152,6 +152,20 @@ Esto se hace **una sola vez**. De ahí en adelante la cuenta se administra desde
 
 > La cuenta de fábrica (`11.111.111-1`) **queda como estaba, a propósito**: así nadie se queda sin puerta de entrada antes de comprobar que la nueva funciona. Desactívela usted, desde Usuarios, una vez que haya entrado con el administrador general.
 
+### Qué cuentas ve cada administrador 🔐
+
+El módulo Usuarios no se acota como los demás, y la diferencia importa. En una ficha cualquiera, *iglesia_id* dice de qué iglesia es ese registro; en una **cuenta de usuario** dice cuál es su *iglesia principal* —la que se le propone al crear cosas— y muchas cuentas la tienen en blanco.
+
+Quien tiene iglesias asignadas ve:
+
+- **su propia cuenta, siempre**;
+- las de quienes administran alguna de sus iglesias;
+- y las de quienes tienen alguna de sus iglesias como principal, que es el caso de las cuentas creadas desde la ficha de un miembro.
+
+Lo que **no** ve, a propósito, son las cuentas **sin ninguna iglesia asignada**: esas alcanzan toda la organización, y quien administra una sola iglesia no tiene por qué poder abrirlas ni cambiarles la contraseña. El administrador general, que no tiene iglesias asignadas, las ve todas.
+
+> Antes esto se acotaba por la iglesia principal, y pasaban dos cosas: las cuentas sin iglesia principal desaparecían de la lista —incluida la del administrador general y la de fábrica— y quien tenía iglesias asignadas **no se veía ni a sí mismo**, así que la lista salía vacía sin explicación.
+
 ### Designar a un miembro como usuario 🔐
 
 Al pie de la ficha de cualquier miembro está **🔐 Acceso al sistema**. Si todavía no tiene cuenta, el administrador la crea con un botón: el sistema toma sus mismos datos —RUT, nombre, correo, teléfono e iglesia— y entrega una **contraseña provisoria que se muestra una sola vez**, para pasársela a la persona. Queda con rol *Solo consulta*, y desde ahí se le ajusta lo que corresponda.

@@ -90,6 +90,55 @@ function enLista(columna, ids, params) {
 }
 
 /**
+ * Qué cuentas de usuario alcanza quien administra solo algunas iglesias.
+ *
+ * Este módulo no se puede acotar como los demás. En una ficha cualquiera,
+ * «iglesia_id» dice de qué iglesia es ese registro; en una cuenta de usuario
+ * dice cuál es su **iglesia principal**, que es solo la que se le propone al
+ * crear cosas y que muchas cuentas tienen en blanco. Acotando por ahí
+ * pasaban dos cosas, las dos malas: las cuentas sin iglesia principal
+ * desaparecían de la lista —incluida la del administrador general— y quien
+ * tenía iglesias asignadas **no se veía ni a sí mismo**, porque su propia
+ * cuenta también la tenía en blanco. La lista quedaba vacía sin explicación.
+ *
+ * La regla ahora es la que corresponde:
+ *
+ *   · uno siempre se ve a sí mismo, pase lo que pase;
+ *   · ve a quienes administran alguna de sus iglesias;
+ *   · y a quienes tienen alguna de sus iglesias como principal, que es el
+ *     caso de las cuentas creadas desde la ficha de un miembro.
+ *
+ * Lo que **no** alcanza, a propósito, son las cuentas sin ninguna iglesia
+ * asignada: esas ven toda la organización, y quien administra una sola
+ * iglesia no tiene por qué poder abrirlas ni cambiarles la contraseña.
+ */
+function usuariosAlAlcance(usuario, iglesias, params) {
+  const partes = [];
+
+  // Uno siempre se ve a sí mismo
+  if (usuario && usuario.id) {
+    partes.push('usuarios.id = ?');
+    params.push(Number(usuario.id));
+  }
+
+  // Quien administra alguna de sus iglesias. json_each revienta con un texto
+  // que no sea JSON, así que primero se comprueba que lo sea.
+  const marcas = iglesias.map(() => '?').join(',');
+  partes.push(
+    `(usuarios.iglesias IS NOT NULL AND json_valid(usuarios.iglesias)
+      AND EXISTS (SELECT 1 FROM json_each(usuarios.iglesias) WHERE json_each.value IN (${marcas})))`
+  );
+  params.push(...iglesias);
+
+  // Y quien tiene alguna de sus iglesias como principal
+  partes.push(`usuarios.iglesia_id IN (${marcas})`);
+  params.push(...iglesias);
+
+  return `(${partes.join(' OR ')})`;
+}
+
+
+/**
  * Condiciones que acotan un módulo al alcance del usuario.
  * Devuelve una cadena SQL (o null) y va agregando sus parámetros.
  */
@@ -103,6 +152,8 @@ function condiciones(def, usuario, params) {
   if (iglesias.length) {
     if (def.name === 'iglesias') {
       partes.push(enLista('id', iglesias, params));
+    } else if (def.name === 'usuarios') {
+      partes.push(usuariosAlAlcance(usuario, iglesias, params));
     } else if (tieneCampo('iglesia_id')) {
       partes.push(enLista('iglesia_id', iglesias, params));
     }
@@ -137,10 +188,19 @@ function alcanza(def, fila, usuario) {
   const cuerpos = cuerposDe(usuario);
 
   if (iglesias.length) {
-    const suya = def.name === 'iglesias' ? fila.id : fila.iglesia_id;
-    // Los registros sin iglesia (p. ej. las cuentas de la corporación) no son
-    // de nadie en particular: quedan fuera del alcance de un usuario acotado.
-    if (!suya || !iglesias.includes(Number(suya))) return false;
+    if (def.name === 'usuarios') {
+      // Mismo criterio que el listado, o se vería en la lista una ficha que
+      // después no se deja abrir (ver usuariosAlAlcance)
+      const esUnoMismo = usuario && usuario.id && Number(fila.id) === Number(usuario.id);
+      const administraAlguna = lista(fila.iglesias).some((id) => iglesias.includes(id));
+      const suPrincipal = fila.iglesia_id && iglesias.includes(Number(fila.iglesia_id));
+      if (!esUnoMismo && !administraAlguna && !suPrincipal) return false;
+    } else {
+      const suya = def.name === 'iglesias' ? fila.id : fila.iglesia_id;
+      // Los registros sin iglesia (p. ej. las cuentas de la corporación) no son
+      // de nadie en particular: quedan fuera del alcance de un usuario acotado.
+      if (!suya || !iglesias.includes(Number(suya))) return false;
+    }
   }
 
   if (cuerpos.length) {

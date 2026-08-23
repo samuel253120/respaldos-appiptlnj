@@ -128,6 +128,60 @@ test('una asistencia se alcanza si convoca a alguno de sus cuerpos', () => {
   assert.equal(alcance.alcanza(ASISTENCIAS, { id: 1, iglesia_id: 2, cuerpos: '[]' }, u), false);
 });
 
+test('en Usuarios, uno siempre se ve a sí mismo', () => {
+  // Fue un error real: el alcance filtraba Usuarios por la «iglesia
+  // principal», que en una cuenta es solo un valor por omisión y que muchas
+  // tienen en blanco. Quien tenía iglesias asignadas veía la lista VACÍA,
+  // porque su propia cuenta tampoco calzaba.
+  const USUARIOS = modulo('usuarios', ['iglesia_id', 'iglesias', 'nombre']);
+  const yo = { id: 16, iglesias: '[2]' };
+  assert.equal(
+    alcance.alcanza(USUARIOS, { id: 16, iglesia_id: null, iglesias: '[2]' }, yo),
+    true,
+    'la cuenta propia tiene que alcanzarse siempre'
+  );
+});
+
+test('en Usuarios se alcanza a quien administra alguna de sus iglesias', () => {
+  const USUARIOS = modulo('usuarios', ['iglesia_id', 'iglesias', 'nombre']);
+  const yo = { id: 16, iglesias: '[2]' };
+  // Por su asignación, aunque no tenga iglesia principal puesta
+  assert.equal(alcance.alcanza(USUARIOS, { id: 40, iglesia_id: null, iglesias: '[2,5]' }, yo), true);
+  // Por su iglesia principal, que es el caso de las cuentas creadas desde una ficha
+  assert.equal(alcance.alcanza(USUARIOS, { id: 41, iglesia_id: 2, iglesias: '[]' }, yo), true);
+  // Y no a los de otra iglesia
+  assert.equal(alcance.alcanza(USUARIOS, { id: 42, iglesia_id: 3, iglesias: '[3]' }, yo), false);
+});
+
+test('quien administra una iglesia NO alcanza las cuentas globales', () => {
+  // A propósito: esas cuentas ven toda la organización, y quien administra
+  // una sola iglesia no tiene por qué poder abrirlas ni cambiarles la clave.
+  const USUARIOS = modulo('usuarios', ['iglesia_id', 'iglesias', 'nombre']);
+  const yo = { id: 16, iglesias: '[2]' };
+  assert.equal(alcance.alcanza(USUARIOS, { id: 1, iglesia_id: null, iglesias: '[]' }, yo), false);
+});
+
+test('el administrador general alcanza todas las cuentas', () => {
+  const USUARIOS = modulo('usuarios', ['iglesia_id', 'iglesias', 'nombre']);
+  const general = { id: 16, iglesias: '[]' };
+  for (const cuenta of [
+    { id: 1, iglesia_id: null, iglesias: '[]' },
+    { id: 40, iglesia_id: 2, iglesias: '[2]' },
+    { id: 41, iglesia_id: 3, iglesias: '[3]' },
+  ]) {
+    assert.equal(alcance.alcanza(USUARIOS, cuenta, general), true, `debería alcanzar la cuenta ${cuenta.id}`);
+  }
+});
+
+test('la condición SQL de Usuarios incluye la cuenta propia', () => {
+  const USUARIOS = modulo('usuarios', ['iglesia_id', 'iglesias', 'nombre']);
+  const params = [];
+  const sql = alcance.condiciones(USUARIOS, { id: 16, iglesias: '[2]' }, params);
+  assert.match(sql, /usuarios\.id = \?/, 'sin esto, quien tiene iglesias asignadas no se ve a sí mismo');
+  assert.match(sql, /json_each/, 'tiene que mirar las iglesias asignadas, no solo la principal');
+  assert.ok(params.includes(16), 'el id propio tiene que ir entre los parámetros');
+});
+
 test('una fila que no existe nunca se alcanza', () => {
   assert.equal(alcance.alcanza(MIEMBROS, null, { iglesias: '[]' }), false);
   assert.equal(alcance.alcanza(MIEMBROS, undefined, { iglesias: '[]' }), false);
