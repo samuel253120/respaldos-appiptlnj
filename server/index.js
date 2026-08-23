@@ -24,6 +24,8 @@ const ajustes = require('./ajustes');
 const alcance = require('./alcance');
 const archivos = require('./archivos');
 const respaldo = require('./respaldo');
+const tiposDeArchivo = require('./tiposdearchivo');
+const respaldoAutomatico = require('./respaldo-automatico');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
@@ -373,6 +375,8 @@ function proximosCumpleanos(iglesias, cuerpos, cuantos) {
 }
 
 // ---------- Carga de archivos ----------
+const TOPE_ARCHIVO = 15 * 1024 * 1024;
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
   filename: (req, file, cb) => {
@@ -380,11 +384,61 @@ const storage = multer.diskStorage({
     cb(null, `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safe}`);
   },
 });
-const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
 
-app.post('/api/upload', authRequired, upload.single('archivo'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
-  res.json({ filename: req.file.filename, original: req.file.originalname, url: `/uploads/${req.file.filename}` });
+/**
+ * El formato se revisa antes de escribir nada en el disco.
+ *
+ * Un archivo que no corresponde ni siquiera llega a guardarse: multer corta
+ * la subida acá mismo. El contenido se revisa después, ya en el disco, donde
+ * están los bytes que hay que mirar.
+ */
+const upload = multer({
+  storage,
+  limits: { fileSize: TOPE_ARCHIVO },
+  fileFilter: (req, file, cb) => {
+    const veredicto = tiposDeArchivo.seAcepta(file.originalname, null);
+    if (!veredicto.ok) return cb(Object.assign(new Error(veredicto.motivo), { deFormato: true }));
+    cb(null, true);
+  },
+});
+
+/** Los primeros bytes de un archivo recién guardado, para revisar qué es. */
+function primerosBytes(ruta, cuantos = 16) {
+  let fd;
+  try {
+    fd = fs.openSync(ruta, 'r');
+    const buffer = Buffer.alloc(cuantos);
+    const leidos = fs.readSync(fd, buffer, 0, cuantos, 0);
+    return buffer.slice(0, leidos);
+  } catch (e) {
+    return Buffer.alloc(0);
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+app.post('/api/upload', authRequired, (req, res) => {
+  upload.single('archivo')(req, res, (err) => {
+    if (err) {
+      if (err.deFormato) return res.status(400).json({ error: err.message });
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({
+          error: `El archivo pesa más de ${TOPE_ARCHIVO / 1024 / 1024} MB. Redúzcalo o guárdelo con menos calidad.`,
+        });
+      }
+      return res.status(400).json({ error: `No se pudo subir el archivo: ${err.message}` });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+
+    // Una foto tiene que ser una foto: llamarle «foto.jpg» a otra cosa no basta
+    const veredicto = tiposDeArchivo.seAcepta(req.file.originalname, primerosBytes(req.file.path));
+    if (!veredicto.ok) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { /* si ya no está, mejor */ }
+      return res.status(400).json({ error: veredicto.motivo });
+    }
+
+    res.json({ filename: req.file.filename, original: req.file.originalname, url: `/uploads/${req.file.filename}` });
+  });
 });
 
 /**
@@ -400,7 +454,11 @@ app.get('/uploads/:archivo', authRequired, (req, res) => {
   const nombre = path.basename(String(req.params.archivo)); // nunca salir de la carpeta
   const permiso = archivos.puedeVer(nombre, req.user);
   if (!permiso.ok) return res.status(403).json({ error: permiso.motivo });
-  res.sendFile(path.join(UPLOADS_DIR, nombre), { headers: { 'Cache-Control': 'private, max-age=86400' } }, (err) => {
+  // El tipo lo pone el sistema desde su propia lista, nunca el nombre del
+  // archivo, y solo las fotos y los PDF se abren en pantalla (ver
+  // server/tiposdearchivo.js)
+  const cabeceras = { 'Cache-Control': 'private, max-age=86400', ...tiposDeArchivo.comoSeEntrega(nombre) };
+  res.sendFile(path.join(UPLOADS_DIR, nombre), { headers: cabeceras }, (err) => {
     if (err && !res.headersSent) res.status(404).json({ error: 'Archivo no encontrado' });
   });
 });
@@ -425,6 +483,31 @@ app.get('/api/respaldo', authRequired, soloAdministrador, async (req, res) => {
     console.error('⚠️  No se pudo armar el respaldo:', e);
     if (!res.headersSent) res.status(500).json({ error: `No se pudo armar el respaldo: ${e.message}` });
   }
+});
+
+/**
+ * El respaldo que se hace solo: cómo va y qué copias hay guardadas.
+ *
+ * Existe para que no haya que creerle al sistema: se ve la fecha de la última
+ * copia, cuántas se conservan y lo que pesa cada una, y se puede bajar
+ * cualquiera de ellas.
+ */
+app.get('/api/respaldo/automatico', authRequired, soloAdministrador, (req, res) => {
+  res.json(respaldoAutomatico.estado());
+});
+
+/** Hacer la copia ahora mismo, sin esperar a la noche. */
+app.post('/api/respaldo/automatico', authRequired, soloAdministrador, async (req, res) => {
+  const hecho = await respaldoAutomatico.hacerCopia({ forzada: true });
+  if (!hecho.hecho) return res.status(500).json({ error: `No se pudo hacer la copia: ${hecho.motivo}` });
+  res.json({ ...hecho, estado: respaldoAutomatico.estado() });
+});
+
+/** Bajarse una de las copias guardadas. */
+app.get('/api/respaldo/automatico/:archivo', authRequired, soloAdministrador, (req, res) => {
+  const ruta = respaldoAutomatico.rutaDe(req.params.archivo);
+  if (!ruta) return res.status(404).json({ error: 'Esa copia ya no está' });
+  res.download(ruta, path.basename(ruta));
 });
 
 // ---------- Importación masiva desde archivos ----------
@@ -497,6 +580,11 @@ function prepararDatos() {
     ensureSeed();
   } catch (e) {
     console.error(`⚠️  Los datos iniciales no se pudieron crear: ${e.message}`);
+  }
+  try {
+    respaldoAutomatico.programar();
+  } catch (e) {
+    console.error(`⚠️  El respaldo automático no quedó programado: ${e.message}`);
   }
 }
 

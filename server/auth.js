@@ -76,11 +76,20 @@ function ponerGalleta(req, res, token) {
   });
 }
 
-/** El pase que traiga la petición: por cabecera, por la dirección o en la galleta. */
+/**
+ * El pase que traiga la petición: por cabecera o en la galleta.
+ *
+ * Ya no se acepta escrito en la dirección (`?token=…`). Se aceptaba por un
+ * solo motivo —el enlace para bajar el respaldo, que es una navegación del
+ * navegador y no lleva cabeceras—, pero se aceptaba en TODAS las rutas, y un
+ * pase escrito en la dirección queda anotado en los registros del servidor,
+ * en el historial del navegador y en cualquier dirección que se comparta.
+ * Para ese enlace basta la galleta de sesión, que el navegador manda sola en
+ * una navegación del propio sitio.
+ */
 function paseDe(req) {
   const header = req.headers.authorization || '';
   if (header.startsWith('Bearer ')) return { token: header.slice(7), deGalleta: false };
-  if (req.query.token) return { token: req.query.token, deGalleta: false };
   const galletas = String(req.headers.cookie || '')
     .split(';')
     .map((c) => c.trim())

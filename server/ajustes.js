@@ -116,6 +116,30 @@ const OPCIONES = [
     ],
   },
   {
+    grupo: 'Respaldos',
+    items: [
+      {
+        clave: 'respaldo_automatico', label: 'Hacer una copia todas las noches', tipo: 'boolean', defecto: '1',
+        ayuda:
+          'El sistema guarda solo una copia diaria de la base, comprimida, junto a los datos. Protege de los ' +
+          'errores —algo que se borró, un mes mal cargado—, pero no del disco: para eso hay que bajar el ' +
+          'respaldo completo y guardarlo en otra parte.',
+      },
+      {
+        clave: 'respaldo_hora', label: 'A qué hora se hace', tipo: 'number', defecto: '3',
+        ayuda:
+          'Hora del día (0 a 23) a partir de la cual se hace la copia. Conviene una en que nadie esté ' +
+          'trabajando. Si el sistema estuvo apagado a esa hora, la hace en cuanto vuelve.',
+      },
+      {
+        clave: 'respaldo_conservar', label: 'Cuántas copias se guardan', tipo: 'number', defecto: '7',
+        ayuda:
+          'Las más viejas se van borrando solas. Con 7 se puede volver a cualquier día de la última semana ' +
+          '(entre 2 y 60).',
+      },
+    ],
+  },
+  {
     grupo: 'Preferencias',
     items: [
       {

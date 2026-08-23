@@ -1409,3 +1409,13 @@ a.who:hover { opacity: 0.85; }
 .respaldo-datos .mut { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
 .respaldo-datos b { font-size: 14px; word-break: break-word; }
 .respaldo-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+
+/* La lista de copias automáticas guardadas */
+.respaldo-copias { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 4px; }
+.respaldo-copias li {
+  display: flex; align-items: center; gap: 12px; padding: 7px 12px;
+  background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;
+}
+.respaldo-copias li > span:first-child { font-variant-numeric: tabular-nums; min-width: 92px; }
+.respaldo-copias li .mut { flex: 1; font-size: 12.5px; }
+.respaldo-copias li a { font-size: 12.5px; white-space: nowrap; }

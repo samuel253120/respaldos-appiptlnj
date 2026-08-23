@@ -1138,7 +1138,7 @@ Las otras tres pruebas miran lo que la de humo no ve, y ninguna necesita navegad
 
 - `npm run concurrencia` — que nadie pierda su trabajo cuando dos trabajan sobre lo mismo, incluida la lista de asistencia que pasan dos (ver *[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)*).
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro.
-- `npm run seguridad` — que los archivos no se entreguen sin sesión, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, que el registro de cambios no se pueda maquillar, que el alcance por cuerpo se respete aunque se escriba la dirección a mano —su gente, sus cuotas y su cobro— y que elegir con qué iglesia trabajar nunca amplíe lo asignado. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
+- `npm run seguridad` — que los archivos no se entreguen sin sesión ni se abran como página, que no se pueda subir una página web —ni disfrazada de foto—, que el pase de sesión no sirva escrito en la dirección, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, que la copia automática se haga y se pueda volver a ella, que el registro de cambios no se pueda maquillar, que el alcance por cuerpo se respete aunque se escriba la dirección a mano —su gente, sus cuotas y su cobro— y que elegir con qué iglesia trabajar nunca amplíe lo asignado. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
 
 ## API REST
 
@@ -1168,6 +1168,8 @@ POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importa
 - Contraseñas cifradas con bcrypt: **el sistema no puede leerlas**, ni siquiera para el administrador (ver *Contraseñas*). Sesiones JWT de 12 h.
 - La contraseña que entrega el administrador **obliga a cambiarla** en el primer ingreso, y hasta entonces el servidor no deja hacer nada más.
 - **Los archivos subidos piden sesión.** Los carnets, los certificados y las fotos ya no se entregan a quien tenga el enlace: hay que estar dentro del sistema y que ese archivo pertenezca a una ficha que esa persona pueda ver. El secretario de un cuerpo no abre el carnet de un miembro de otra iglesia, aunque le reenvíen la dirección.
+- **No entra cualquier archivo, y ninguno se abre como página.** Se aceptan solo los formatos que la iglesia usa —fotos, PDF, documentos de Word, Excel o PowerPoint, y texto—, y no basta con ponerle el nombre: se miran los primeros bytes, así que una página web llamada `foto.jpg` se rechaza igual. Al entregarlos, el tipo lo pone el sistema desde su propia lista (nunca el nombre del archivo), se manda `nosniff` para que el navegador no adivine otro, y **solo las fotos y los PDF se muestran en pantalla**: lo demás se baja. Sin esto, quien pudiera adjuntar un documento podía dejar un archivo que corriera en el navegador del que lo abriera, con su sesión adentro y en el dominio del propio sistema.
+- **El pase de sesión no viaja escrito en la dirección.** Se aceptaba `?token=…` en todas las rutas por un solo enlace —el de bajar el respaldo—, y un pase escrito en la dirección queda anotado en los registros del servidor, en el historial del navegador y en cualquier enlace que se comparta. Ahora solo se acepta por cabecera o en la galleta de sesión, que es la que el navegador manda sola en las descargas.
 - **La entrada se cierra al que insiste.** Cinco contraseñas erradas sobre un mismo RUT y hay que esperar un minuto; si insisten, cinco y después quince. Se cuenta además por dirección de internet —para frenar a quien va probando RUT tras RUT—, pero ahí el tope es mucho más alto (veinte), porque toda la iglesia sale por el mismo wifi y nadie tiene por qué quedar afuera por el despiste del de al lado.
 - La recuperación por pregunta se **bloquea tras 5 intentos** fallidos.
 - Permisos verificados **en el servidor** en cada petición (la interfaz solo refleja lo permitido).
@@ -1183,6 +1185,28 @@ Los datos viven en un solo disco, y los discos se pierden. En **Configuración**
 La copia de la base no se hace copiando el archivo por debajo (mientras alguien guarda, esa copia saldría a medias), sino con la copia en caliente de SQLite: sale entera y coherente aunque el sistema se esté usando en ese momento. Se comprime al vuelo, así que el archivo pesa bastante menos de lo que dice el panel y no hace falta que quepa antes en el servidor.
 
 Para restaurarlo: descomprimir el paquete y dejar `iglesias.db` y la carpeta `uploads/` en la carpeta de datos del sistema.
+
+### La copia que se hace sola, todas las noches 🕒
+
+El respaldo de arriba sirve mientras alguien se acuerde de bajarlo, y nadie se acuerda todas las semanas. Por eso el sistema guarda además **una copia diaria de la base**, comprimida, junto a los datos, y conserva **las últimas** (7 por omisión). Se hace a partir de la hora que se fije —las 3 de la madrugada por omisión—; si el servidor estuvo apagado a esa hora, la hace en cuanto vuelve.
+
+**Qué protege y qué no.** La diferencia importa y conviene tenerla clara:
+
+| | Copia automática | Respaldo que se baja |
+|---|---|---|
+| Algo se borró por error | ✅ se vuelve a la de anoche | ✅ |
+| Un mes quedó mal cargado | ✅ | ✅ |
+| Se perdió el servidor entero | ❌ vivía en el mismo disco | ✅ si está guardado en otra parte |
+
+Por eso el panel sigue insistiendo en bajar el respaldo completo: **la copia automática no lo reemplaza**.
+
+Se copia la base y **no** los documentos subidos, a propósito: la base cambia todos los días y es la que se puede echar a perder de golpe, mientras que un documento, una vez subido, no lo toca nadie más. Duplicar cada noche todas las fotos llenaría el disco sin proteger de nada nuevo.
+
+En **Configuración → 🕒 La copia que se hace sola** se ve cuándo fue la última, cuántas hay guardadas y lo que pesa cada una; se puede **bajar cualquiera** y **hacer una en el momento** sin esperar a la noche. Un respaldo automático que nadie ve es un respaldo en el que nadie confía.
+
+Se ajusta en **Configuración → Respaldos**: si se hace o no, a qué hora y cuántas se guardan (entre 2 y 60). Antes de escribir una copia nueva se borran las viejas que sobran —así el sitio que liberan queda disponible— y si el disco está apretado no se hace y se anota el motivo.
+
+Para volver a una: descomprimirla (`gunzip iglesias-2026-08-23.db.gz`) y dejar el `iglesias.db` resultante en la carpeta de datos, con el sistema detenido.
 
 ### Registro de Cambios: quién tocó el dinero 🧾
 

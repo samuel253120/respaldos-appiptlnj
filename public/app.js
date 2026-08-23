@@ -4242,7 +4242,7 @@ async function renderRespaldo(zona) {
           <div><span class="mut">Se baja como</span><b>${esc(info.nombre)}</b></div>
         </div>
         <div class="respaldo-acciones">
-          <a class="btn" id="btnRespaldo" href="/api/respaldo?token=${encodeURIComponent(TOKEN)}" download>⬇️ Descargar el respaldo</a>
+          <a class="btn" id="btnRespaldo" href="/api/respaldo" download>⬇️ Descargar el respaldo</a>
           <span class="mut" id="respaldoEstado"></span>
         </div>
         <p class="mut" style="font-size:12.5px">
@@ -4257,6 +4257,105 @@ async function renderRespaldo(zona) {
     estado.textContent = 'Preparando el respaldo… la descarga parte en unos segundos.';
     setTimeout(() => { estado.textContent = ''; }, 20000);
   });
+
+  renderRespaldoAutomatico(zona);
+}
+
+/**
+ * La copia que el sistema hace solo, a la vista.
+ *
+ * Un respaldo automático que nadie ve es un respaldo en el que nadie confía:
+ * el día que hace falta, lo primero que se pregunta es si de verdad se estaba
+ * haciendo. Acá se ve la fecha de la última copia, cuántas hay guardadas y lo
+ * que pesa cada una, se puede bajar cualquiera y se puede hacer una ahora
+ * mismo sin esperar a la noche.
+ */
+async function renderRespaldoAutomatico(zona) {
+  let e;
+  try {
+    e = await api('GET', '/respaldo/automatico');
+  } catch (err) {
+    return; // versión antigua del servidor: no se ofrece
+  }
+
+  const caja = document.createElement('div');
+  caja.className = 'card';
+  caja.style.marginBottom = '18px';
+  caja.id = 'cajaRespaldoAuto';
+  zona.appendChild(caja);
+
+  const pintar = (estado) => {
+    const u = estado.ultima;
+    const senal = !estado.activo ? '⏸️' : estado.alDia ? '✅' : '⚠️';
+    const cuando = !u
+      ? 'Todavía no hay ninguna. La primera se hace esta noche.'
+      : estado.dias === 0
+        ? `Hoy (${u.dia}), ${tamanoLegible(u.peso)}.`
+        : estado.dias === 1
+          ? `Ayer (${u.dia}), ${tamanoLegible(u.peso)}.`
+          : `Hace ${estado.dias} días (${u.dia}), ${tamanoLegible(u.peso)}.`;
+
+    const filas = estado.copias.length
+      ? estado.copias
+          .map(
+            (c) => `<li>
+              <span>${esc(c.dia)}</span>
+              <span class="mut">${tamanoLegible(c.peso)}</span>
+              <a href="/api/respaldo/automatico/${encodeURIComponent(c.nombre)}" download>⬇️ bajar</a>
+            </li>`
+          )
+          .join('')
+      : '<li class="mut">Ninguna todavía</li>';
+
+    caja.innerHTML = `
+      <div class="toolbar"><b>🕒 La copia que se hace sola</b></div>
+      <div class="respaldo">
+        <p>
+          ${estado.activo
+            ? `Todas las noches, a partir de las <b>${String(estado.hora).padStart(2, '0')}:00</b>, el sistema guarda
+               una copia comprimida de la base y conserva las <b>últimas ${estado.conservar}</b>.`
+            : 'Está <b>apagada</b>. Se enciende más abajo, en <i>Respaldos</i>.'}
+        </p>
+        <div class="respaldo-datos">
+          <div><span class="mut">Última copia</span><b>${senal} ${esc(cuando)}</b></div>
+          <div><span class="mut">Guardadas</span><b>${estado.copias.length} de ${estado.conservar}</b></div>
+        </div>
+        <ul class="respaldo-copias">${filas}</ul>
+        <div class="respaldo-acciones">
+          <button class="btn secundario" id="btnCopiaAhora">🕒 Hacer una copia ahora</button>
+          <span class="mut" id="copiaEstado"></span>
+        </div>
+        <p class="mut" style="font-size:12.5px">
+          <b>Ojo con qué protege esto.</b> La copia queda en el mismo disco que los datos, así que sirve para
+          volver atrás cuando algo se borró o quedó mal cargado, pero <b>no</b> sirve si se pierde el servidor.
+          Para eso está el respaldo de arriba: ese hay que bajarlo y guardarlo en otra parte.
+        </p>
+      </div>`;
+
+    document.getElementById('btnCopiaAhora').addEventListener('click', async (ev) => {
+      const boton = ev.currentTarget;
+      const aviso = document.getElementById('copiaEstado');
+      boton.disabled = true;
+      aviso.textContent = 'Haciendo la copia…';
+      try {
+        const r = await api('POST', '/respaldo/automatico');
+        pintar(r.estado);
+        const nuevo = document.getElementById('copiaEstado');
+        if (nuevo) {
+          nuevo.textContent = `Lista: ${r.nombre} (${tamanoLegible(r.peso)}).`;
+          setTimeout(() => {
+            const q = document.getElementById('copiaEstado');
+            if (q) q.textContent = '';
+          }, 6000);
+        }
+      } catch (err) {
+        aviso.textContent = err.message;
+        boton.disabled = false;
+      }
+    });
+  };
+
+  pintar(e);
 }
 
 async function viewConfiguracion() {

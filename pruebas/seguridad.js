@@ -65,10 +65,19 @@ async function entrar(rut = RUT, clave = CLAVE) {
   // Se sube uno propio de la prueba y se enlaza a una ficha, para no depender
   // de que ya haya alguno ni tocar los que están en uso.
   const cabecera = await tokenDe();
-  const sobre = new FormData();
-  sobre.append('archivo', new Blob(['prueba de seguridad'], { type: 'image/jpeg' }), 'prueba-seguridad.jpg');
-  const subido = await fetch(`${URL}/api/upload`, { method: 'POST', headers: { Authorization: cabecera }, body: sobre })
-    .then((r) => r.json());
+
+  /** Sube un archivo y devuelve lo que respondió el servidor. */
+  const subir = async (nombre, contenido) => {
+    const sobre = new FormData();
+    sobre.append('archivo', new Blob([contenido]), nombre);
+    const r = await fetch(`${URL}/api/upload`, { method: 'POST', headers: { Authorization: cabecera }, body: sobre });
+    return { status: r.status, cuerpo: await r.json() };
+  };
+
+  // Una foto de verdad: los primeros bytes son los que tiene un JPEG. El
+  // sistema los mira, así que un archivo con cualquier contenido no pasa.
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
+  const subido = (await subir('prueba-seguridad.jpg', JPEG)).cuerpo;
 
   const miembro = (await api('GET', '/api/miembros?page=1&limit=1')).datos.rows[0];
   const fotoDeAntes = miembro ? miembro.foto || null : null;
@@ -93,12 +102,66 @@ async function entrar(rut = RUT, clave = CLAVE) {
     const escapar = await fetch(`${URL}/uploads/..%2f..%2fpackage.json`, { headers: { Authorization: cabecera } });
     revisar('no se puede salir de la carpeta de archivos', escapar.status === 404, `respondió ${escapar.status}`);
 
+    // Una foto se entrega como foto, dicho por el sistema y no adivinado por
+    // el navegador: así, aunque algún día entrara un archivo que no
+    // corresponde, no se abriría como página.
+    revisar(
+      'la foto se entrega como foto y sin dejar adivinar',
+      conSesion.headers.get('content-type') === 'image/jpeg' &&
+        conSesion.headers.get('x-content-type-options') === 'nosniff',
+      `tipo ${conSesion.headers.get('content-type')} · nosniff ${conSesion.headers.get('x-content-type-options')}`
+    );
+
     // La ficha queda como estaba
     if (miembro) {
       const alDia = (await api('GET', `/api/miembros/${miembro.id}`)).datos;
       await api('PUT', `/api/miembros/${miembro.id}`, { ...alDia, foto: fotoDeAntes });
     }
   }
+
+  /* 1b · No entra cualquier archivo ---------------------------------------- */
+  console.log('\n1b · Lo que se puede subir');
+  // Un archivo que el navegador abra como página, subido por cualquiera que
+  // pueda adjuntar un documento, correría con la sesión del que lo abra. Se
+  // cierra por el nombre y por el contenido, porque cada uno solo tapa la
+  // mitad.
+  const paginaWeb = await subir('trampa.html', '<script>alert(1)</script>');
+  revisar('una página web no se puede subir', paginaWeb.status === 400, `respondió ${paginaWeb.status}`);
+
+  const dibujo = await subir('trampa.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>');
+  revisar('un SVG tampoco, que también lleva instrucciones', dibujo.status === 400, `respondió ${dibujo.status}`);
+
+  const disfrazada = await subir('trampa.jpg', '<script>alert(1)</script>');
+  revisar(
+    'ni disfrazada de foto: se le miran los bytes',
+    disfrazada.status === 400,
+    `respondió ${disfrazada.status}`
+  );
+
+  const documento = await subir('reglamento.docx', 'PK\u0003\u0004 contenido');
+  revisar('un documento de Word sí, que es lo que la iglesia usa', documento.status === 200,
+    `respondió ${documento.status}`);
+  if (documento.cuerpo.filename) {
+    const comoLlega = await fetch(`${URL}/uploads/${documento.cuerpo.filename}`, { headers: { Authorization: cabecera } });
+    revisar(
+      'y se baja en vez de abrirse',
+      comoLlega.headers.get('content-disposition') === 'attachment',
+      `llegó como ${comoLlega.headers.get('content-disposition')}`
+    );
+  }
+
+  /* 1c · El pase no viaja escrito en la dirección --------------------------- */
+  console.log('\n1c · El pase de sesión');
+  // Escrito en la dirección quedaría anotado en los registros del servidor y
+  // en el historial del navegador, y se iría en cualquier enlace que se
+  // comparta. Solo se acepta por cabecera o en la galleta.
+  const pelado = cabecera.replace('Bearer ', '');
+  const porLaDireccion = await fetch(`${URL}/api/miembros?page=1&limit=1&token=${encodeURIComponent(pelado)}`);
+  revisar('escrito en la dirección no sirve', porLaDireccion.status === 401, `respondió ${porLaDireccion.status}`);
+
+  const porGalleta = await fetch(`${URL}/api/miembros?page=1&limit=1`, { headers: { Cookie: `sesion=${pelado}` } });
+  revisar('y la galleta sigue sirviendo, que es de lo que dependen las descargas',
+    porGalleta.status === 200, `respondió ${porGalleta.status}`);
 
   /* 2 · La puerta se cierra al que insiste --------------------------------- */
   console.log('\n2 · Probando contraseñas a la mala');
@@ -173,6 +236,55 @@ async function entrar(rut = RUT, clave = CLAVE) {
   }
 
   /* 4 · El registro de cambios no se maquilla ------------------------------ */
+  /* 3b · El respaldo que se hace solo -------------------------------------- */
+  console.log('\n3b · El respaldo que se hace solo');
+  // De nada sirve una copia automática si nadie puede comprobar que se está
+  // haciendo, ni volver a ella.
+  const auto = await api('POST', '/api/respaldo/automatico');
+  revisar('se puede hacer una copia en el momento', !!(auto.datos && auto.datos.hecho),
+    JSON.stringify(auto.datos).slice(0, 140));
+
+  if (auto.datos && auto.datos.hecho) {
+    const como = await api('GET', '/api/respaldo/automatico');
+    revisar('queda a la vista cuándo fue la última', como.datos.dias === 0, `dice ${como.datos.dias} día(s)`);
+    revisar('y no se guardan más de las que se pidió',
+      como.datos.copias.length <= como.datos.conservar,
+      `${como.datos.copias.length} guardadas y se pidieron ${como.datos.conservar}`);
+
+    // La copia tiene que ser una base entera y sana, no un archivo cualquiera
+    const bajada = await fetch(`${URL}/api/respaldo/automatico/${auto.datos.nombre}`, {
+      headers: { Authorization: cabecera },
+    });
+    revisar('la copia se puede bajar', bajada.status === 200, `respondió ${bajada.status}`);
+    if (bajada.status === 200) {
+      const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), 'copia-'));
+      const comprimida = path.join(carpeta, 'copia.db.gz');
+      fs.writeFileSync(comprimida, Buffer.from(await bajada.arrayBuffer()));
+      try {
+        execFileSync('gunzip', ['-f', comprimida]);
+        const Base = require('better-sqlite3');
+        const copia = new Base(path.join(carpeta, 'copia.db'), { readonly: true });
+        const sana = copia.pragma('integrity_check')[0].integrity_check === 'ok';
+        const cuantos = copia.prepare('SELECT COUNT(*) AS c FROM miembros').get().c;
+        copia.close();
+        revisar('y es una base sana', sana);
+        revisar('con los datos adentro', cuantos > 0, `trae ${cuantos} miembro(s)`);
+      } catch (e) {
+        revisar('la copia se puede abrir', false, e.message);
+      }
+      fs.rmSync(carpeta, { recursive: true, force: true });
+    }
+
+    // Y no la baja cualquiera
+    const ajeno = await fetch(`${URL}/api/respaldo/automatico/${auto.datos.nombre}`);
+    revisar('sin sesión no se baja', ajeno.status === 401, `respondió ${ajeno.status}`);
+
+    const inventada = await fetch(`${URL}/api/respaldo/automatico/..%2f..%2figlesias.db`, {
+      headers: { Authorization: cabecera },
+    });
+    revisar('ni se puede pedir otra cosa por el nombre', inventada.status === 404, `respondió ${inventada.status}`);
+  }
+
   console.log('\n4 · El registro de cambios');
   const cuenta = (await api('GET', '/api/cuentas_tesoreria?page=1&limit=1')).datos.rows[0];
   const iglesia = (await api('GET', '/api/iglesias?page=1&limit=1')).datos.rows[0];
