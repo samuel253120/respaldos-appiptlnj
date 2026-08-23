@@ -19,9 +19,18 @@
  *   USUARIOS=25 SEGUNDOS=20 npm run carga
  *   PREPARAR=1 npm run carga      (primero llena la base con datos de prueba)
  *   PREPARAR=solo npm run carga   (solo llena la base y termina)
+ *   LIMPIAR=1 npm run carga       (dice qué datos de prueba hay, sin borrar)
+ *   LIMPIAR=borrar npm run carga  (los borra)
  *
- * PREPARAR toca la base directamente, así que se usa contra una base de
- * pruebas, nunca contra la de la iglesia.
+ * PREPARAR escribe 600 fichas de miembro, 12 cuerpos, 150 actividades y 3.000
+ * movimientos de tesorería DIRECTO en la base, sin pasar por el sistema. Eso
+ * antes solo estaba advertido acá, en un comentario que nadie tiene por qué
+ * leer antes de escribir un comando; ahora está impedido: si la base tiene
+ * fichas que esta prueba no generó, se niega a tocarla y explica qué hacer.
+ *
+ * Los datos que genera se reconocen: los RUT van del 30.000.000 en adelante
+ * —un tramo que no está en uso—, los cuerpos se llaman «Cuerpo de prueba N» y
+ * los movimientos «Movimiento de prueba N». Por ahí los encuentra LIMPIAR.
  */
 const URL = process.env.URL || 'http://localhost:4314';
 const RUT = process.env.RUT || '11.111.111-1';
@@ -37,10 +46,121 @@ const SEGUNDOS = Number(process.env.SEGUNDOS) || 15;
  * Llena la base con un tamaño parecido al de una iglesia grande, para que la
  * medición diga algo. Solo agrega lo que falte para llegar a esos números.
  */
+/**
+ * Cómo se reconoce lo que generó esta prueba.
+ *
+ * Los RUT del tramo 30.000.000 en adelante no están en uso, así que ninguna
+ * persona de verdad cae ahí. Los cuerpos y los movimientos llevan su nombre
+ * escrito. Con esto se sabe qué es de la prueba y qué es de la iglesia.
+ */
+const SENAS = {
+  miembros: "rut GLOB '3[0-9][0-9][0-9][0-9][0-9][0-9][0-9]-*'",
+  cuerpos: "nombre LIKE 'Cuerpo de prueba %'",
+  tesoreria: "concepto LIKE 'Movimiento de prueba %'",
+};
+
+/** Cuántas fichas hay que esta prueba NO generó: son de alguien. */
+function fichasDeVerdad(db) {
+  try {
+    return db.prepare(`SELECT COUNT(*) AS c FROM miembros WHERE NOT (${SENAS.miembros})`).get().c;
+  } catch (e) {
+    return 0; // si la tabla aún no existe, no hay nada de nadie
+  }
+}
+
+/**
+ * El seguro: esta prueba escribe cientos de fichas inventadas directo en la
+ * base, y eso no puede pasarle a la base de una iglesia.
+ *
+ * Pasó: se llenó una base de trabajo con 600 fichas de mentira y durante
+ * varios días se estuvo mirando esos números creyendo que eran los de la
+ * iglesia. Un comentario en la cabecera no alcanzó, así que ahora se
+ * comprueba de verdad.
+ */
+function exigirBaseDePruebas(db) {
+  const reales = fichasDeVerdad(db);
+  if (!reales) return;
+  console.error(
+    `\n⛔ Esta base tiene ${reales.toLocaleString('es-CL')} ficha(s) de miembro que esta prueba no generó.\n` +
+      '   PREPARAR escribe 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos\n' +
+      '   directo en la base, así que no se toca una base con datos de alguien.\n\n' +
+      '   Para medir con una base vacía:\n' +
+      '     DATA_DIR=/tmp/carga node server/index.js     (en otra terminal)\n' +
+      '     DATA_DIR=/tmp/carga PREPARAR=1 npm run carga\n\n' +
+      '   Para medir sin preparar nada, sobre lo que ya haya:\n' +
+      '     npm run carga\n'
+  );
+  process.exit(1);
+}
+
+/**
+ * Dice qué datos de prueba hay en la base y, si se le pide, los borra.
+ *
+ * Por omisión solo mira y cuenta: borrar cientos de filas no es algo que
+ * deba pasar porque alguien se equivocó de comando. Con LIMPIAR=borrar sí
+ * borra, y solo lo que lleva las señas de arriba.
+ */
+function limpiarDatosDePrueba(deVerdad) {
+  const { db } = require('../server/db');
+  const cuenta = (sql, ...p) => {
+    try {
+      return db.prepare(sql).get(...p).c;
+    } catch (e) {
+      return 0;
+    }
+  };
+
+  const hallazgos = {
+    miembros: cuenta(`SELECT COUNT(*) AS c FROM miembros WHERE ${SENAS.miembros}`),
+    cuerpos: cuenta(`SELECT COUNT(*) AS c FROM cuerpos WHERE ${SENAS.cuerpos}`),
+    tesoreria: cuenta(`SELECT COUNT(*) AS c FROM tesoreria WHERE ${SENAS.tesoreria}`),
+    integrantes_cuerpo: cuenta(
+      `SELECT COUNT(*) AS c FROM integrantes_cuerpo WHERE miembro_id IN (SELECT id FROM miembros WHERE ${SENAS.miembros})`
+    ),
+    asistencia_detalle: cuenta(
+      `SELECT COUNT(*) AS c FROM asistencia_detalle WHERE miembro_id IN (SELECT id FROM miembros WHERE ${SENAS.miembros})`
+    ),
+  };
+
+  const total = Object.values(hallazgos).reduce((a, b) => a + b, 0);
+  console.log('\n🔎 Datos de prueba encontrados en esta base:\n');
+  for (const [tabla, cuantos] of Object.entries(hallazgos)) {
+    console.log(`   ${tabla.padEnd(20)} ${cuantos.toLocaleString('es-CL').padStart(8)}`);
+  }
+  console.log(`   ${'─'.repeat(29)}`);
+  console.log(`   ${'total'.padEnd(20)} ${total.toLocaleString('es-CL').padStart(8)}`);
+  console.log(`\n   Fichas que NO son de la prueba (las de la iglesia): ${fichasDeVerdad(db).toLocaleString('es-CL')}\n`);
+
+  if (!total) return;
+  if (!deVerdad) {
+    console.log('   No se borró nada. Para borrarlo:  LIMPIAR=borrar npm run carga');
+    console.log('   Baje el respaldo antes, desde Configuración.\n');
+    return;
+  }
+
+  const borrar = db.transaction(() => {
+    db.prepare(
+      `DELETE FROM asistencia_detalle WHERE miembro_id IN (SELECT id FROM miembros WHERE ${SENAS.miembros})`
+    ).run();
+    db.prepare(
+      `DELETE FROM integrantes_cuerpo WHERE miembro_id IN (SELECT id FROM miembros WHERE ${SENAS.miembros})`
+    ).run();
+    db.prepare(`DELETE FROM tesoreria WHERE ${SENAS.tesoreria}`).run();
+    db.prepare(`DELETE FROM miembros WHERE ${SENAS.miembros}`).run();
+    // Los cuerpos al final: primero hay que sacarles la gente
+    db.prepare(`DELETE FROM cuerpos WHERE ${SENAS.cuerpos}`).run();
+  });
+  borrar();
+  console.log('   ✅ Borrado. Las actividades quedaron: no llevan seña propia y pueden ser suyas.');
+  console.log('      Si las 150 «Servicio General» tampoco son suyas, bórrelas desde Asistencia.\n');
+}
+
 function prepararDatos() {
   const { db } = require('../server/db');
   const rut = require('../server/rut');
   const META = { miembros: 600, cuerpos: 12, actividades: 150, movimientos: 3000 };
+
+  exigirBaseDePruebas(db); // nunca sobre la base de una iglesia
 
   const cuantos = (t) => db.prepare(`SELECT COUNT(*) AS c FROM "${t}"`).get().c;
   let iglesia = db.prepare('SELECT id FROM iglesias').get();
@@ -257,6 +377,10 @@ function informe() {
 }
 
 (async () => {
+  if (process.env.LIMPIAR) {
+    limpiarDatosDePrueba(process.env.LIMPIAR === 'borrar');
+    return;
+  }
   if (process.env.PREPARAR) prepararDatos();
   if (process.env.PREPARAR === 'solo') return; // solo llenar la base, sin medir
   console.log(`🏃 ${USUARIOS} usuarios trabajando a la vez durante ${SEGUNDOS} s contra ${URL}…`);
