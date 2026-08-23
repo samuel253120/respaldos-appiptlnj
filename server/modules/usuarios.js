@@ -124,7 +124,7 @@ module.exports = {
     const claves = require('../claves');
 
     /** Los perfiles que se pueden asignar hoy (los archivados no se ofrecen). */
-    router.get('/perfiles_permisos/activos', (req, res) => {
+    router.get('/perfiles_permisos/activos', requirePerm('usuarios', 'view'), (req, res) => {
       res.json(
         db.prepare("SELECT id, nombre AS label FROM perfiles_permisos WHERE estado = 'Activo' ORDER BY nombre").all()
       );

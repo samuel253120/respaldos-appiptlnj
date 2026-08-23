@@ -416,6 +416,43 @@ function revisarLimites(campo, valor) {
 }
 
 
+/**
+ * Qué módulos referencian a cada uno, calculado una sola vez.
+ *
+ * Sirve para saber si a alguien le hace falta la lista de un módulo para
+ * llenar un selector de otro que sí puede usar.
+ */
+let quienesLoReferencian = null;
+function referenciadoresDe(nombre) {
+  if (!quienesLoReferencian) {
+    quienesLoReferencian = new Map();
+    for (const m of allModules()) {
+      for (const f of m.fields) {
+        if ((f.type !== 'ref' && f.type !== 'multiref') || !f.ref) continue;
+        if (!quienesLoReferencian.has(f.ref)) quienesLoReferencian.set(f.ref, new Set());
+        quienesLoReferencian.get(f.ref).add(m.name);
+      }
+    }
+  }
+  return quienesLoReferencian.get(nombre) || new Set();
+}
+
+/**
+ * ¿Puede esta persona pedir las opciones de este módulo?
+ *
+ * Sí cuando puede ver el módulo, y también cuando puede ver alguno de los que
+ * lo referencian: para llenar el selector de «Cuenta» de un movimiento hace
+ * falta la lista de cuentas, aunque Cuentas no se abra directamente.
+ */
+function puedeVerOpcionesDe(def, usuario) {
+  if (can(usuario, def.name, 'view')) return true;
+  for (const otro of referenciadoresDe(def.name)) {
+    if (can(usuario, otro, 'view')) return true;
+  }
+  return false;
+}
+
+
 function scopeClause(def, user, params) {
   return alcance.condiciones(def, user, params);
 }
@@ -428,11 +465,30 @@ function buildRouter() {
     const base = `/${def.name}`;
     const fields = fieldMap(def);
 
-    // ---- opciones para selectores (requiere solo poder ver el módulo que referencia,
-    //      por eso basta 'view' sobre este módulo o sobre cualquiera que lo use) ----
+    /**
+     * Opciones para llenar un selector: id y texto, nada más.
+     *
+     * Quién puede pedirlas: quien puede ver ESTE módulo, o quien puede ver
+     * alguno de los que lo referencian —porque para llenar el selector de
+     * «Cuenta» dentro de un movimiento de tesorería hace falta la lista de
+     * cuentas, aunque el módulo de Cuentas no se abra directamente—.
+     *
+     * Eso es lo que este comentario decía desde el principio, pero no era lo
+     * que el código hacía: la ruta estaba abierta a cualquiera con sesión. Se
+     * comprobó lo que eso significaba: un usuario de «solo consulta» —el rol
+     * más restringido— alcanzaba los nombres de los OCHO módulos que tiene
+     * explícitamente cerrados. Entre ellos la lista completa de usuarios del
+     * sistema, los nombres de las 59 cuentas de tesorería y 883 entradas del
+     * Registro de Cambios, cuyo texto dice qué se cambió y dónde.
+     *
+     * No era acceso al dinero —solo viajan el id y el texto— pero sí era leer
+     * de módulos que el sistema le decía que no podía ver, y esa diferencia
+     * entre lo que dice y lo que hace es justamente lo que no puede quedar.
+     */
     router.get(`${base}/options`, (req, res) => {
-      // Cualquier usuario autenticado puede listar opciones básicas (id + texto),
-      // necesario para llenar selectores de referencia en formularios.
+      if (!puedeVerOpcionesDe(def, req.user)) {
+        return res.status(403).json({ error: 'No tiene permiso para ver esta lista' });
+      }
       const params = [];
       let where = scopeClause(def, req.user, params);
       // Solo se traen las columnas que se usan acá —el texto que se muestra y

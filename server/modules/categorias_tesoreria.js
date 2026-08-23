@@ -61,14 +61,14 @@ module.exports = {
       return null;
     },
   },
-  extraRoutes(router, { db }) {
+  extraRoutes(router, { db, requirePerm }) {
     /**
      * Las categorías que se pueden elegir para un movimiento, según sea un
      * ingreso o un egreso. Devuelve el nombre como valor, porque es el nombre
      * lo que se guarda en el movimiento: así, si algún día la categoría se
      * borra o se renombra, lo ya registrado sigue diciendo lo que decía.
      */
-    router.get('/categorias_tesoreria/opciones', (req, res) => {
+    router.get('/categorias_tesoreria/opciones', requirePerm('tesoreria', 'view'), (req, res) => {
       const tipo = TIPOS.includes(req.query.tipo) ? req.query.tipo : null;
       const donde = tipo && tipo !== 'Ambos' ? "AND tipo IN (?, 'Ambos')" : '';
       const filas = db

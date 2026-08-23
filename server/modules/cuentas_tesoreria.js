@@ -170,7 +170,7 @@ module.exports = {
     // Destinos posibles de un traspaso: las cuentas de la corporación —una
     // iglesia le traspasa lo que apartó— y las de la propia iglesia. Las de
     // otras congregaciones no se ofrecen ni se muestran.
-    router.get('/cuentas_tesoreria/destinos', (req, res) => {
+    router.get('/cuentas_tesoreria/destinos', requirePerm('traspasos', 'view'), (req, res) => {
       const params = [];
       let where = "estado = 'Activa'";
       const suyas = require('../alcance').iglesiasDe(req.user);
@@ -186,7 +186,7 @@ module.exports = {
 
     // Opciones para el selector de cuenta de un movimiento: solo las activas
     // (una cuenta cerrada ya no recibe dinero) y solo las del alcance del usuario.
-    router.get('/cuentas_tesoreria/activas', (req, res) => {
+    router.get('/cuentas_tesoreria/activas', requirePerm('tesoreria', 'view'), (req, res) => {
       const params = [];
       const where = ["estado = 'Activa'"];
       const scope = scopeClause(req.user, params);

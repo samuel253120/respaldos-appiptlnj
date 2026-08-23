@@ -125,15 +125,18 @@ module.exports = {
     },
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],
-  extraRoutes(router, { db, base }) {
-    // Opciones del selector "Oficial supervisor(a)" (ver optionsRoute del campo).
-    router.get(`${base}/oficiales`, (req, res) => {
+  extraRoutes(router, { db, base, requirePerm }) {
+    // Las dos rutas de acá llenan selectores del formulario de directivas, así
+    // que hay que poder ver directivas para pedirlas. Antes solo comprobaban el
+    // alcance —de qué iglesia y de qué cuerpo—, no el permiso, y eso dejaba que
+    // alguien a quien se le hubiera cerrado el módulo igual leyera sus listas.
+    router.get(`${base}/oficiales`, requirePerm('directivas', 'view'), (req, res) => {
       res.json(oficialesDisponibles(db, req.user));
     });
 
     // Integrantes del cuerpo elegido: de ahí salen los cargos de su directiva.
     // Sin cuerpo no hay a quién ofrecer, y el selector lo dice.
-    router.get(`${base}/integrantes`, (req, res) => {
+    router.get(`${base}/integrantes`, requirePerm('directivas', 'view'), (req, res) => {
       const cuerpoId = Number(req.query.cuerpo_id) || null;
       if (!cuerpoId) return res.json([]);
       const cuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);

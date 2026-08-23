@@ -120,7 +120,7 @@ module.exports = {
      * pastor principal, porque de una iglesia responden los dos y al elegirlo
      * conviene ver a la pareja completa.
      */
-    router.get('/pastores/con-conyuge', (req, res) => {
+    router.get('/pastores/con-conyuge', requirePerm('pastores', 'view'), (req, res) => {
       const trato = require('../tratamiento');
       const nombres = require('../nombres');
       const params = [];
@@ -177,7 +177,7 @@ module.exports = {
      * no diga el sexo del pastor —o sea una ficha nueva— se ofrecen todos los
      * que tengan género registrado, y la comprobación se hace al guardar.
      */
-    router.get('/pastores/conyuges', (req, res) => {
+    router.get('/pastores/conyuges', requirePerm('pastores', 'view'), (req, res) => {
       const { getModule, displayOf } = require('../registry');
       const alcance = require('../alcance');
       const miembros = getModule('miembros');
