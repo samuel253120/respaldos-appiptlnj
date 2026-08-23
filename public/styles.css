@@ -1419,3 +1419,25 @@ a.who:hover { opacity: 0.85; }
 .respaldo-copias li > span:first-child { font-variant-numeric: tabular-nums; min-width: 92px; }
 .respaldo-copias li .mut { flex: 1; font-size: 12.5px; }
 .respaldo-copias li a { font-size: 12.5px; white-space: nowrap; }
+
+/* Un botón-enlace que por ahora no lleva a nada (listado vacío) */
+.btn.deshabilitado { opacity: .45; pointer-events: none; }
+
+/* Aviso de que el listado viene recortado desde «Datos por completar» */
+.aviso-filtro {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  padding: 9px 16px; font-size: 13px;
+  background: #fffbeb; border-bottom: 1px solid var(--border); color: #92400e;
+}
+
+/* Datos por completar, en el panel */
+.pendientes { margin-top: 18px; }
+.pendientes h3 { margin: 0; padding: 14px 18px 0; font-size: 15px; }
+.pendientes > p { margin: 6px 18px 12px; font-size: 13px; line-height: 1.5; }
+.pendientes .mini-list li { align-items: flex-start; cursor: pointer; }
+.pendientes .mini-list li .mut { font-size: 12px; line-height: 1.45; }
+.pendientes .aviso-fuerte {
+  margin: 0 18px 12px; padding: 10px 12px; border-radius: 9px; font-size: 13px; line-height: 1.5;
+  background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
+}
+.pendientes .aviso-fuerte a { margin-left: 6px; white-space: nowrap; }

@@ -1247,6 +1247,62 @@ async function viewDashboard() {
             </li>`).join('') : '<li class="mut">Sin registros aún</li>'}
         </ul>
       </div>
+    </div>
+    <div id="dashPendientes"></div>`;
+
+  if (MOD['miembros']) renderPendientes(document.getElementById('dashPendientes'));
+}
+
+/**
+ * Lo que falta por llenar en las fichas.
+ *
+ * Una base traída de otro sistema llega siempre con huecos, y mientras nadie
+ * los vea, nadie los llena. Acá se ven, y sobre todo se pueden **abrir**:
+ * cada línea lleva al listado de Miembros filtrado por los que a quienes les
+ * falta ese dato, para ir completándolos de a uno o bajarlos a una planilla y
+ * salir a pedirlos.
+ */
+async function renderPendientes(zona) {
+  if (!zona) return;
+  let p;
+  try {
+    p = await api('GET', '/pendientes');
+  } catch (e) {
+    return; // sin permiso sobre Miembros, o servidor antiguo
+  }
+  if (!p.total) return;
+
+  if (p.alDia) {
+    zona.innerHTML = `
+      <div class="card pendientes">
+        <h3>✅ Las fichas están completas</h3>
+        <p class="mut">Las ${fmtNumero(p.total)} fichas tienen puestos los datos que hacen falta para ubicar y atender a cada persona.</p>
+      </div>`;
+    return;
+  }
+
+  const linea = (f) => `
+    <li onclick="location.hash='#/m/miembros?sin=${encodeURIComponent(f.campo)}'" title="Abrir los que no lo tienen">
+      <span><b>${esc(f.label)}</b><br><span class="mut">${esc(f.para)}</span></span>
+      <span class="badge ${f.porcentaje >= 90 ? 'red' : f.porcentaje >= 40 ? 'yellow' : ''}">
+        faltan ${fmtNumero(f.cuantos)}
+      </span>
+    </li>`;
+
+  zona.innerHTML = `
+    <div class="card pendientes">
+      <h3>📝 Datos por completar</h3>
+      <p class="mut">
+        De las <b>${fmtNumero(p.total)}</b> fichas, <b>${fmtNumero(p.conTodo)}</b> tienen todos estos datos
+        puestos. Toque una línea para abrir a quiénes les falta; desde ahí puede bajar la planilla y salir a pedirlos.
+      </p>
+      ${p.menoresSinResponsable ? `
+        <div class="aviso-fuerte">
+          ⚠️ Hay <b>${fmtNumero(p.menoresSinResponsable)}</b> menor(es) de edad sin adulto responsable en su ficha.
+          Eso no es un dato que falte: es una obligación de la iglesia.
+          <a href="#/m/miembros?sin=responsable_nombre">Ver quiénes son</a>
+        </div>` : ''}
+      <ul class="mini-list">${p.faltas.map(linea).join('')}</ul>
     </div>`;
 }
 
@@ -1254,7 +1310,7 @@ async function viewDashboard() {
 function stateOf(name) {
   if (!listState[name]) {
     const m = MOD[name];
-    listState[name] = { q: '', page: 1, sort: m.defaultSort.field, dir: m.defaultSort.dir, filters: {}, desde: '', hasta: '' };
+    listState[name] = { q: '', page: 1, sort: m.defaultSort.field, dir: m.defaultSort.dir, filters: {}, desde: '', hasta: '', sin: '' };
   }
   return listState[name];
 }
@@ -1273,6 +1329,15 @@ async function viewList(name, filtrosIniciales) {
       st.filters[campo] = String(valor);
       st.page = 1;
     }
+  }
+  // «Lo que falta»: #/m/miembros?sin=telefono trae a los que no lo tienen. Se
+  // reescribe siempre, incluso vacío, para que al volver al listado por el
+  // menú no quede colgado el filtro de la vez anterior.
+  const sinPedido = (filtrosIniciales || {}).sin;
+  if (sinPedido !== undefined || st.sin) {
+    const campo = String(sinPedido || '');
+    st.sin = fieldsBy[campo] ? campo : '';
+    st.page = 1;
   }
 
   content().innerHTML = `
@@ -1324,7 +1389,30 @@ async function viewList(name, filtrosIniciales) {
       <label class="range">Desde <input type="date" id="fDesde" value="${esc(st.desde)}" /></label>
       <label class="range">Hasta <input type="date" id="fHasta" value="${esc(st.hasta)}" /></label>` : ''}
     <span class="spacer"></span>
+    <a class="btn secondary sm" id="btnPlanilla" download>⬇️ Excel</a>
     <button class="btn secondary sm" id="btnReload">⟳ Actualizar</button>`;
+
+  // Cuando se llega desde «Datos por completar», se dice por qué la lista está
+  // recortada y cómo salir del filtro: si no, parece que se perdieron fichas.
+  const pintarAvisoSin = () => {
+    const previo = document.getElementById('avisoSin');
+    if (previo) previo.remove();
+    if (!st.sin) return;
+    const campo = fieldsBy[st.sin];
+    const aviso = document.createElement('div');
+    aviso.id = 'avisoSin';
+    aviso.className = 'aviso-filtro';
+    aviso.innerHTML = `📝 Mostrando solo los que <b>no tienen ${esc((campo && campo.label ? campo.label : st.sin).toLowerCase())}</b>.
+      <button class="btn secondary sm" id="btnQuitarSin">Ver todos</button>`;
+    tb.insertAdjacentElement('afterend', aviso);
+    document.getElementById('btnQuitarSin').addEventListener('click', () => {
+      st.sin = '';
+      st.page = 1;
+      pintarAvisoSin();
+      load();
+    });
+  };
+  pintarAvisoSin();
 
   if (iglesiaField) {
     getOptions('iglesias').then((opts) => {
@@ -1378,6 +1466,7 @@ async function viewList(name, filtrosIniciales) {
     for (const [k, v] of Object.entries(st.filters)) if (v) params.set('f_' + k, v);
     if (st.desde) params.set('desde', st.desde);
     if (st.hasta) params.set('hasta', st.hasta);
+    if (st.sin) params.set('sin', st.sin);
 
     let data;
     try {
@@ -1388,6 +1477,20 @@ async function viewList(name, filtrosIniciales) {
     }
 
     if (name === 'tesoreria') loadTreasurySummary(params);
+
+    // La planilla baja lo mismo que se está viendo —búsqueda, filtros, fechas
+    // y orden—, pero entero y no solo la página. El enlace se rehace en cada
+    // carga para que nunca quede apuntando a un filtro anterior.
+    const planilla = document.getElementById('btnPlanilla');
+    if (planilla) {
+      const suyos = new URLSearchParams(params);
+      suyos.delete('page');
+      planilla.href = `/api/${name}/planilla?${suyos.toString()}`;
+      planilla.title = data.total
+        ? `Baja ${fmtNumero(data.total)} registro(s) a una planilla, con lo que esté filtrado`
+        : 'No hay registros que bajar';
+      planilla.classList.toggle('deshabilitado', !data.total);
+    }
 
     // Mientras haya una sola iglesia registrada, su nombre en cada fila solo
     // quita espacio: la columna aparece cuando haya más de una.

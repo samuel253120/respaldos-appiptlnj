@@ -317,6 +317,85 @@ async function entrar(rut = RUT, clave = CLAVE) {
   }
 
   /* 5 · El alcance por cuerpo no se salta escribiendo la dirección ---------- */
+  /* 4b · La planilla no baja más de lo que la pantalla muestra ------------- */
+  console.log('\n4b · La planilla del listado');
+  // Una planilla que trajera filas que la pantalla no muestra sería una
+  // filtración con forma de comodidad.
+  const planillaAdmin = await fetch(`${URL}/api/miembros/planilla`, { headers: { Authorization: cabecera } });
+  revisar('se baja', planillaAdmin.status === 200, `respondió ${planillaAdmin.status}`);
+  revisar(
+    'viene como archivo para guardar y no como página',
+    (planillaAdmin.headers.get('content-disposition') || '').startsWith('attachment') &&
+      planillaAdmin.headers.get('x-content-type-options') === 'nosniff',
+    `${planillaAdmin.headers.get('content-disposition')} · ${planillaAdmin.headers.get('x-content-type-options')}`
+  );
+
+  // Se leen los bytes y no el texto: al decodificar, fetch se come la marca
+  // del principio, que es justo lo que hay que comprobar.
+  const bytes = Buffer.from(await planillaAdmin.arrayBuffer());
+  const csv = bytes.toString('utf8');
+  const filasCsv = csv.replace(/^\ufeff/, '').trim().split(/\r?\n/).length - 1; // menos el encabezado
+  const enPantalla = (await api('GET', '/api/miembros?page=1&limit=1')).datos.total;
+  revisar('trae todo lo que la pantalla dice tener', filasCsv === enPantalla,
+    `la planilla trae ${filasCsv} y la pantalla dice ${enPantalla}`);
+  revisar(
+    'parte con la marca que hace que Excel lea las tildes',
+    bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf,
+    `empieza con ${bytes.slice(0, 3).toString('hex')}`
+  );
+  revisar('no lleva contraseñas', !/contrase|password/i.test(csv.split(/\r?\n/)[0]));
+
+  // Y obedece los filtros, que es de lo que depende que sirva
+  const conFiltro = await fetch(`${URL}/api/miembros/planilla?sin=telefono`, { headers: { Authorization: cabecera } })
+    .then((r) => r.text());
+  const filasFiltradas = conFiltro.replace(/^\ufeff/, '').trim().split(/\r?\n/).length - 1;
+  const sinTelefono = (await api('GET', '/api/miembros?page=1&limit=1&sin=telefono')).datos.total;
+  revisar('y obedece los filtros que estén puestos', filasFiltradas === sinTelefono,
+    `la planilla filtrada trae ${filasFiltradas} y la lista dice ${sinTelefono}`);
+
+  const sinPase = await fetch(`${URL}/api/miembros/planilla`);
+  revisar('sin sesión no se baja', sinPase.status === 401, `respondió ${sinPase.status}`);
+
+  /* 4c · Lo que falta por completar ---------------------------------------- */
+  console.log('\n4c · Los datos por completar');
+  const faltan = await api('GET', '/api/pendientes');
+  revisar('se puede preguntar qué falta', faltan.estado === 200, `respondió ${faltan.estado}`);
+  if (faltan.estado === 200) {
+    const p = faltan.datos;
+    revisar('dice cuántas fichas hay', typeof p.total === 'number' && p.total >= 0, `dice ${p.total}`);
+    // Cada conteo tiene que poder abrirse: si no cuadra con la lista, el
+    // número no sirve para nada.
+    let cuadran = true;
+    let detalle = '';
+    for (const f of (p.faltas || []).slice(0, 3)) {
+      const lista = (await api('GET', `/api/miembros?page=1&limit=1&sin=${f.campo}`)).datos.total;
+      if (lista !== f.cuantos) {
+        cuadran = false;
+        detalle += `${f.campo}: dice ${f.cuantos} y la lista trae ${lista}. `;
+      }
+    }
+    revisar('y cada conteo se puede abrir como lista', cuadran, detalle);
+  }
+
+  /* 4d · Lo que se borra queda anotado ------------------------------------- */
+  console.log('\n4d · Lo que se borra, en cualquier módulo');
+  // Borrar es lo único que no se deshace, y con la ficha se va su historial:
+  // si no queda acá, no queda en ninguna parte.
+  const cat = await api('POST', '/api/categorias_tesoreria', {
+    nombre: `Prueba borrado ${Date.now()}`, tipo: 'Ingreso', activo: 1,
+  });
+  if (cat.estado === 201 || cat.estado === 200) {
+    const comoSeLlamaba = cat.datos.nombre;
+    await api('DELETE', `/api/categorias_tesoreria/${cat.datos.id}`);
+    const registro = (await api('GET', '/api/registro_cambios?page=1&limit=10')).datos.rows;
+    const anotado = registro.find((r) => r.accion === 'Eliminación' && (r.detalle || '').includes(comoSeLlamaba));
+    revisar('un módulo que no es del dinero también deja rastro al borrarse', !!anotado,
+      'no apareció la eliminación en el Registro de Cambios');
+    revisar('y se sabe quién fue', !!(anotado && anotado.usuario), anotado ? 'sin usuario' : '');
+  } else {
+    revisar('se pudo crear una categoría de prueba', false, `respondió ${cat.estado}: ` + JSON.stringify(cat.datos).slice(0, 120));
+  }
+
   console.log('\n5 · Los paneles de un cuerpo ajeno');
   const cuerpos = (await api('GET', '/api/cuerpos?page=1&limit=2')).datos.rows || [];
   if (cuerpos.length < 2) {

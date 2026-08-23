@@ -116,6 +116,16 @@ Reglas que valen para todos los módulos:
 - **Nada se inventa.** Un RUT con el dígito cambiado no se «corrige» —se conserva y queda anotado en el historial de esa persona—, y un archivo que no llegó no deja la ficha apuntando al vacío: su ruta espera en la lista de pendientes.
 - **Se informa lo que no se pudo traer.** El informe final cuenta las dos bases módulo por módulo, revisa las relaciones y deja por escrito qué quedó fuera y por qué.
 
+## Bajar cualquier listado a una planilla 📤
+
+Todo listado tiene, en su barra, **⬇️ Excel**. Baja **lo que se está viendo, pero entero**: respeta la búsqueda, los filtros, el rango de fechas y el orden que estén puestos, y trae todas las filas, no la página que se muestra en pantalla. Quien pide una nómina la quiere completa.
+
+Van **todos los datos de la ficha**, no solo las columnas que caben en pantalla: en una planilla no hay ancho que cuidar. Se dejan fuera los archivos —un nombre de archivo no dice nada en una planilla— y las contraseñas.
+
+Y respeta el alcance de quien la pide: el secretario de un cuerpo baja su gente, no la de toda la organización. Es la **misma consulta** que dibuja la pantalla, así que no puede traer una fila que esa persona no vería.
+
+> Tres detalles pensados para que se abra bien en un computador de acá: el separador es **punto y coma** (en la configuración chilena, la coma es el decimal), los números van con **coma decimal**, y el archivo lleva la marca por la que Excel reconoce las tildes y las eñes. Además, una celda que empiece con `=` o `@` se marca como texto: un dato que alguien escribió no tiene por qué ejecutarse como fórmula al abrir la planilla en otro computador. Los teléfonos con `+` y los montos negativos bajan limpios.
+
 ## Usuarios, roles y alcance por iglesia
 
 Roles disponibles (editables en `server/permissions.js`):
@@ -373,6 +383,20 @@ A mano se puede anotar cualquier otra cosa: la fundación, una inauguración, un
 ## Panel de control 📊
 
 La pantalla de inicio muestra los totales del sistema, el resumen financiero del mes (a quien tenga acceso a Tesorería), las últimas asistencias y las solicitudes recientes.
+
+### Datos por completar 📝
+
+Una base traída de otro sistema llega siempre con huecos: gente sin teléfono, sin fecha de nacimiento, sin correo. No es un error del programa —esos datos nunca se cargaron— pero mientras nadie los vea, nadie los llena, y el día que hay que avisarle a alguien no hay por dónde.
+
+El panel los pone a la vista: cuántas fichas hay, cuántas tienen todo puesto, y a cuántas les falta cada dato —teléfono, fecha de nacimiento, dirección, correo, sexo, fecha de ingreso, contacto de emergencia y estado—, con una línea que dice para qué sirve cada uno.
+
+Lo importante es que **cada número se abre**: al tocarlo, lleva al listado de Miembros filtrado justo por los que no lo tienen, con un aviso arriba que explica por qué la lista viene recortada y un botón para volver a verlas todas. De ahí se baja la planilla y se sale a pedir los datos, que es como se llenan de verdad.
+
+Aparte va un aviso en rojo si hay **menores de edad sin adulto responsable** en su ficha: eso no es un dato que falte por completar, es una obligación de la propia iglesia.
+
+Se cuenta sobre todas las fichas, sin distinguir por estado. Contar solo las activas era tentador —a quien se trasladó no hay que perseguirlo por su correo— pero entonces el número no calzaría con la lista que se abre al tocarlo, y un conteo que no se puede abrir es justo lo que se quería evitar.
+
+Respeta el alcance: el secretario de un cuerpo ve lo que falta en su cuerpo, no en toda la organización.
 
 ### Próximos cumpleaños 🎂
 
@@ -1138,7 +1162,7 @@ Las otras tres pruebas miran lo que la de humo no ve, y ninguna necesita navegad
 
 - `npm run concurrencia` — que nadie pierda su trabajo cuando dos trabajan sobre lo mismo, incluida la lista de asistencia que pasan dos (ver *[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)*).
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro.
-- `npm run seguridad` — que los archivos no se entreguen sin sesión ni se abran como página, que no se pueda subir una página web —ni disfrazada de foto—, que el pase de sesión no sirva escrito en la dirección, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, que la copia automática se haga y se pueda volver a ella, que el registro de cambios no se pueda maquillar, que el alcance por cuerpo se respete aunque se escriba la dirección a mano —su gente, sus cuotas y su cobro— y que elegir con qué iglesia trabajar nunca amplíe lo asignado. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
+- `npm run seguridad` — que los archivos no se entreguen sin sesión ni se abran como página, que no se pueda subir una página web —ni disfrazada de foto—, que el pase de sesión no sirva escrito en la dirección, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, que la copia automática se haga y se pueda volver a ella, que la planilla nunca traiga una fila que la pantalla no muestre, que lo que se borra quede anotado en cualquier módulo, que el registro de cambios no se pueda maquillar, que el alcance por cuerpo se respete aunque se escriba la dirección a mano —su gente, sus cuotas y su cobro— y que elegir con qué iglesia trabajar nunca amplíe lo asignado. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
 
 ## API REST
 
@@ -1212,7 +1236,13 @@ Para volver a una: descomprimirla (`gunzip iglesias-2026-08-23.db.gz`) y dejar e
 
 Los miembros, las iglesias y los pastores tienen su **historial**, que cuenta su vida en la iglesia. El **Registro de Cambios** es otra cosa: está para responder *«¿quién cambió este monto?»* sin que quede en la palabra de nadie.
 
-Anota cada **creación, cambio y eliminación** en lo que no admite dudas —tesorería, cuentas, traspasos, cuotas y ayudas sociales— y también en los **usuarios y sus permisos**. De cada uno queda la fecha y la hora, quién fue, qué registro era y qué cambió exactamente:
+La regla tiene dos partes, y la diferencia es a propósito:
+
+**Todo lo que se borra, en cualquier módulo.** Borrar es raro y no se deshace, y con la ficha se va también su propio historial: si mañana falta un miembro de la lista, el Registro de Cambios es el único lugar donde puede quedar quién lo borró y qué decía. Por eso la eliminación se anota siempre, en todos los módulos.
+
+**Las creaciones y los cambios, solo donde importan**: el dinero —tesorería, cuentas, traspasos, cuotas y ayudas sociales—, las llaves del sistema —usuarios y perfiles de permisos— y lo que no lleva historial propio —los cuerpos, sus directivas, sus actas y quiénes los integran—. Miembros, pastores e iglesias no están ahí porque cada uno tiene su **bitácora**, que cuenta lo mismo con más detalle y en el lugar donde se busca.
+
+De cada anotación queda la fecha y la hora, quién fue, qué registro era y qué cambió exactamente:
 
 | | |
 |---|---|
@@ -1221,7 +1251,9 @@ Anota cada **creación, cambio y eliminación** en lo que no admite dudas —tes
 
 Se escribe solo y **no se puede agregar, corregir ni borrar a mano** —el sistema lo impide, incluso al administrador—: un registro que se puede maquillar no sirve para lo que existe. Lo ven el administrador, el pastor y el tesorero; no aparece para el secretario ni para quien solo consulta.
 
-No están todos los módulos a propósito: anotar cada marca de asistencia llenaría el registro de ruido y taparía justo lo que se quiere encontrar.
+Lo único que se borra sin quedar anotado son las **marcas de asistencia**: se borran de a montones cada vez que alguien corrige una lista, y anotarlas una por una sepultaría el registro.
+
+Al anotar una eliminación se guarda un resumen de lo que traía la ficha, pero de los campos marcados como **sensibles** —las enfermedades, las alergias, la nota importante— solo queda constancia de que traían algo, no de qué: el Registro de Cambios lo leen el pastor y el tesorero, y los datos de salud de una persona no tienen por qué quedar copiados ahí para siempre.
 
 ## Varias personas trabajando a la vez 👥
 

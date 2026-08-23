@@ -26,6 +26,7 @@ const archivos = require('./archivos');
 const respaldo = require('./respaldo');
 const tiposDeArchivo = require('./tiposdearchivo');
 const respaldoAutomatico = require('./respaldo-automatico');
+const pendientes = require('./pendientes');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
@@ -373,6 +374,19 @@ function proximosCumpleanos(iglesias, cuerpos, cuantos) {
   conFecha.sort((a, b) => a.dias - b.dias || a.nombre.localeCompare(b.nombre));
   return conFecha.slice(0, Math.max(1, Math.min(20, cuantos || 4)));
 }
+
+/**
+ * Lo que falta por llenar en las fichas de miembros.
+ *
+ * Pide poder ver Miembros y se acota a lo que esa persona alcanza, igual que
+ * el listado: el secretario de un cuerpo ve lo que falta en su cuerpo.
+ */
+app.get('/api/pendientes', authRequired, (req, res) => {
+  if (!can(req.user, 'miembros', 'view')) {
+    return res.status(403).json({ error: 'No tiene permiso para ver Miembros' });
+  }
+  res.json(pendientes.resumen(req.user));
+});
 
 // ---------- Carga de archivos ----------
 const TOPE_ARCHIVO = 15 * 1024 * 1024;

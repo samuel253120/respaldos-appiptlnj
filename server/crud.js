@@ -28,6 +28,15 @@ const { getModule, allModules, displayOf } = require('./registry');
 const { authRequired, requirePerm } = require('./auth');
 const rut = require('./rut');
 const { can } = require('./permissions');
+const planilla = require('./planilla');
+
+/**
+ * Tope de filas de una planilla. No es una limitación real —una iglesia con
+ * más de veinte mil registros en un solo módulo no existe— sino un freno por
+ * si alguien pide el listado entero de una tabla que creció sin que nadie
+ * mirara: mejor una planilla grande que un servidor sin memoria.
+ */
+const TOPE_PLANILLA = 20000;
 const bitacora = require('./bitacora');
 const alcance = require('./alcance');
 
@@ -377,8 +386,14 @@ function buildRouter() {
       );
     });
 
-    // ---- listar ----
-    router.get(base, requirePerm(def.name, 'view'), (req, res) => {
+    /**
+     * La consulta del listado: alcance, búsqueda, filtros, rango de fechas y
+     * orden. Se arma en un solo lugar porque la usan dos rutas —la que pinta
+     * la pantalla y la que baja la planilla—, y tienen que mirar exactamente
+     * lo mismo: si la planilla se armara aparte, un día traería filas que la
+     * pantalla no muestra, o de una iglesia que no le toca a quien la pide.
+     */
+    const consultaDelListado = (req) => {
       const params = [];
       const where = [];
       const scope = scopeClause(def, req.user, params);
@@ -399,6 +414,15 @@ function buildRouter() {
         where.push(`"${fname}" = ?`);
         params.push(val);
       }
+      // Lo que falta por llenar: ?sin=email trae los que no tienen correo.
+      // Sirve para que un conteo de «datos por completar» se pueda abrir como
+      // lista y llenarse, en vez de quedar en un número que nadie sabe a
+      // quiénes corresponde.
+      for (const nombre of String(req.query.sin || '').split(',').map((n) => n.trim()).filter(Boolean)) {
+        if (!fields[nombre]) continue;
+        where.push(`("${nombre}" IS NULL OR TRIM("${nombre}") = '')`);
+      }
+
       // Rango de fechas: ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD sobre dateField del módulo
       const dateField = def.dateField || (fields['fecha'] ? 'fecha' : null);
       if (dateField && req.query.desde) {
@@ -414,23 +438,50 @@ function buildRouter() {
       if (!fields[sortField] && sortField !== 'id') sortField = 'id';
       const sortDir = (req.query.dir || def.defaultSort.dir) === 'asc' ? 'ASC' : 'DESC';
 
+      // Se desempata por id para que el orden sea estable y cronológico
+      // cuando varios registros comparten el mismo valor (p. ej. la misma fecha).
+      return {
+        params,
+        whereSql: where.length ? 'WHERE ' + where.join(' AND ') : '',
+        ordenSql: `ORDER BY "${sortField}" ${sortDir}${sortField === 'id' ? '' : `, id ${sortDir}`}`,
+      };
+    };
+
+    // ---- listar ----
+    router.get(base, requirePerm(def.name, 'view'), (req, res) => {
+      const { params, whereSql, ordenSql } = consultaDelListado(req);
+
       const page = Math.max(1, parseInt(req.query.page, 10) || 1);
       const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 25));
       const offset = (page - 1) * limit;
 
-      const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
       const total = db.prepare(`SELECT COUNT(*) AS c FROM "${def.name}" ${whereSql}`).get(...params).c;
-      // Se desempata por id para que el orden sea estable y cronológico
-      // cuando varios registros comparten el mismo valor (p. ej. la misma fecha).
       const rows = db
-        .prepare(
-          `SELECT * FROM "${def.name}" ${whereSql}
-           ORDER BY "${sortField}" ${sortDir}${sortField === 'id' ? '' : `, id ${sortDir}`}
-           LIMIT ? OFFSET ?`
-        )
+        .prepare(`SELECT * FROM "${def.name}" ${whereSql} ${ordenSql} LIMIT ? OFFSET ?`)
         .all(...params, limit, offset);
 
       res.json({ rows: expandRows(def, rows), total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+    });
+
+    /**
+     * El listado como planilla, para abrirlo en Excel.
+     *
+     * Baja **todo lo que el listado está mostrando**, no la página que se ve:
+     * quien pide una nómina la quiere entera. Respeta la búsqueda, los
+     * filtros, el rango de fechas y el orden que tenga puestos, y por sobre
+     * todo el alcance de quien la pide, porque usa la misma consulta que la
+     * pantalla.
+     *
+     * Va todo el contenido de la ficha y no solo las columnas que caben en
+     * pantalla: en una planilla no hay ancho que cuidar, y lo que se necesita
+     * para mandar una nómina o cuadrar el año son los datos completos. Se
+     * dejan fuera los archivos —un nombre de archivo no dice nada en una
+     * planilla— y las contraseñas.
+     */
+    router.get(`${base}/planilla`, requirePerm(def.name, 'view'), (req, res) => {
+      const { params, whereSql, ordenSql } = consultaDelListado(req);
+      const filas = db.prepare(`SELECT * FROM "${def.name}" ${whereSql} ${ordenSql} LIMIT ${TOPE_PLANILLA}`).all(...params);
+      planilla.enviar(res, def, expandRows(def, filas));
     });
 
     // ---- detalle ----

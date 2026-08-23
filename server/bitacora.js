@@ -72,17 +72,42 @@ function anotarPastor(pastorId, datos) {
 }
 
 /**
- * Los módulos que quedan anotados en el Registro de Cambios: el dinero y las
- * llaves. Son aquellos en los que, si algo aparece distinto, hay que poder
- * responder quién lo hizo sin depender de la memoria de nadie.
+ * Qué queda anotado en el Registro de Cambios.
  *
- * No están todos a propósito. Anotar cada marca de asistencia llenaría el
- * registro de ruido y taparía justo lo que se quiere encontrar.
+ * La regla tiene dos partes, y la diferencia entre las dos es a propósito:
+ * anotarlo todo llenaría el registro de ruido y taparía justo lo que se
+ * quiere encontrar.
+ *
+ * **Todo lo que se borra, en cualquier módulo.** Borrar es raro y no se
+ * deshace, y con la ficha se va también su propio historial: si mañana falta
+ * un miembro de la lista, el Registro de Cambios es el único lugar donde
+ * puede quedar quién lo borró y qué decía. Por eso la eliminación se anota
+ * aunque el módulo no esté en la lista de abajo.
+ *
+ * **Las creaciones y los cambios, solo donde importan**: el dinero, las
+ * llaves del sistema y lo que no lleva historial propio —los cuerpos, sus
+ * directivas, sus actas y quiénes los integran—. Miembros, pastores e
+ * iglesias no están acá porque cada uno tiene su propia bitácora, que cuenta
+ * lo mismo con más detalle y en el lugar donde se busca.
  */
 const MODULOS_VIGILADOS = [
+  // El dinero
   'tesoreria', 'cuentas_tesoreria', 'traspasos', 'cuotas_cuerpo', 'ayudas_sociales',
+  // Las llaves
   'usuarios', 'perfiles_permisos',
+  // Lo que no tiene historial propio
+  'cuerpos', 'directivas', 'actas_reuniones', 'actas_asambleas', 'integrantes_cuerpo',
 ];
+
+/**
+ * Lo único que se borra sin quedar anotado.
+ *
+ * Las marcas de asistencia se borran de a montones cada vez que alguien
+ * corrige una lista, y anotarlas una por una sepultaría el registro. El
+ * propio Registro de Cambios no se puede borrar, así que la línea sobra,
+ * pero se deja escrita para que nadie la agregue por descuido.
+ */
+const BORRADOS_QUE_NO_SE_ANOTAN = ['asistencia_detalle', 'registro_cambios'];
 
 /** Escribe una línea en el Registro de Cambios. */
 function anotarCambio({ def, accion, fila, detalle, usuario }) {
@@ -138,12 +163,21 @@ function legible(campo, valor) {
 /**
  * Un resumen de lo que traía un registro, para que su eliminación no quede
  * como una línea muda: el que revisa después necesita saber qué se borró.
+ *
+ * De los campos marcados como `sensible` —las enfermedades, las alergias, la
+ * nota importante— se deja constancia de que traían algo, pero no de qué:
+ * el Registro de Cambios lo leen el pastor y el tesorero, y los datos de
+ * salud de una persona no tienen por qué quedar copiados ahí para siempre.
  */
 function resumenDe(def, fila) {
   return (def.listFields || [])
     .map((nombre) => {
       const campo = def.fields.find((f) => f.name === nombre);
       if (!campo || campo.type === 'password' || campo.type === 'file') return null;
+      if (campo.sensible) {
+        const traia = fila[nombre];
+        return traia === null || traia === undefined || traia === '' ? null : `${campo.label}: (tenía dato)`;
+      }
       const valor = fila[nombre];
       if (valor === null || valor === undefined || valor === '') return null;
       return `${campo.label}: ${legible(campo, valor)}`;
@@ -359,12 +393,13 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
 }
 
 /**
- * Se llama desde el motor CRUD antes de eliminar un registro. Solo deja
- * constancia de lo que se vigila, con un resumen de lo que traía: después de
- * borrado ya no hay dónde ir a mirarlo.
+ * Se llama desde el motor CRUD antes de eliminar un registro.
+ *
+ * Se anota **en cualquier módulo**, con un resumen de lo que traía: una vez
+ * borrado ya no hay dónde ir a mirarlo, y su propio historial se fue con él.
  */
 function registrarEliminado(def, fila, user) {
-  if (!MODULOS_VIGILADOS.includes(def.name)) return;
+  if (BORRADOS_QUE_NO_SE_ANOTAN.includes(def.name)) return;
   anotarCambio({ def, accion: 'Eliminación', fila, usuario: user, detalle: resumenDe(def, fila) });
 }
 
