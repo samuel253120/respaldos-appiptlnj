@@ -25,7 +25,10 @@ const express = require('express');
 const { db } = require('./db');
 const { getModule, displayOf } = require('./registry');
 const { authRequired, requirePerm } = require('./auth');
-const { coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, revisarLimites } = require('./crud');
+const {
+  coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, revisarLimites,
+  buscarDuplicado, avisoDeDuplicado,
+} = require('./crud');
 const rut = require('./rut');
 const bitacora = require('./bitacora');
 const sensibles = require('./sensibles');
@@ -171,10 +174,10 @@ function prepararFila(def, fila, user) {
       if (problema) errores.push(problema);
     }
     if (f.unique) {
-      const dup = db
-        .prepare(`SELECT id FROM "${def.name}" WHERE lower("${f.name}") = lower(?)`)
-        .get(String(valor));
-      if (dup) errores.push(`${f.label}: "${valor}" ya existe (registro #${dup.id})`);
+      // La misma regla que el formulario, incluida la unicidad acotada a la
+      // iglesia (ver buscarDuplicado en server/crud.js).
+      const dup = buscarDuplicado(def, f, valor, null, datos, null);
+      if (dup) errores.push(`${avisoDeDuplicado(def, f)}: "${valor}" (registro #${dup.id})`);
     }
   }
 

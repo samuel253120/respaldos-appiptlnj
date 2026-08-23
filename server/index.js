@@ -531,7 +531,29 @@ function primerosBytes(ruta, cuantos = 16) {
   }
 }
 
+/**
+ * ¿Esta persona tiene algo donde adjuntar un archivo?
+ *
+ * La subida pedía sesión y nada más, así que un usuario de «solo consulta»
+ * —que no puede crear ni un registro— podía escribir en el volumen: se
+ * comprobó, y respondía 200. El daño era acotado (son usuarios de la casa, y
+ * hay una barrida que borra a los siete días lo que no quedó enganchado a
+ * ninguna ficha), pero quien solo puede mirar no tiene por qué poder escribir.
+ *
+ * La pregunta que se hace es la que importa: ¿hay algún módulo con campos de
+ * archivo donde esta persona pueda crear o editar? Si no lo hay, no tiene
+ * dónde poner lo que suba.
+ */
+function puedeAdjuntarAlgo(usuario) {
+  return allModules().some(
+    (m) => m.fields.some((f) => f.type === 'file') && (can(usuario, m.name, 'create') || can(usuario, m.name, 'edit'))
+  );
+}
+
 app.post('/api/upload', authRequired, (req, res) => {
+  if (!puedeAdjuntarAlgo(req.user)) {
+    return res.status(403).json({ error: 'No tiene dónde adjuntar un archivo: su cuenta es de solo consulta.' });
+  }
   upload.single('archivo')(req, res, (err) => {
     if (err) {
       if (err.deFormato) return res.status(400).json({ error: err.message });

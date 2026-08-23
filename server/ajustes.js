@@ -103,8 +103,9 @@ const OPCIONES = [
           'olvida la suya. Al entrar con ella, el sistema obliga a cambiarla por una propia.',
       },
       {
-        clave: 'password_minimo', label: 'Largo mínimo de la contraseña', tipo: 'number', defecto: '6',
-        ayuda: 'Cuántos caracteres debe tener, como mínimo, la contraseña que elija cada persona (entre 4 y 40).',
+        clave: 'password_minimo', label: 'Largo mínimo de la contraseña', tipo: 'number', defecto: '8',
+        ayuda: 'Cuántos caracteres debe tener, como mínimo, la contraseña que elija cada persona (entre 8 y 40). '
+          + 'Además, el sistema no acepta las contraseñas de siempre («123456», «iglesia») ni el propio RUT o nombre de la persona.',
       },
       {
         clave: 'recuperacion_activa', label: 'Permitir recuperar la contraseña con una pregunta', tipo: 'boolean', defecto: '1',

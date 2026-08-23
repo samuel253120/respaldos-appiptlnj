@@ -289,7 +289,7 @@ router.post('/cambiar-password', authRequired, atender(async (req, res) => {
       return res.status(400).json({ error: 'La contraseña actual no es correcta' });
     }
   }
-  const problema = claves.revisarLargo(nueva);
+  const problema = claves.revisarClave(nueva, user);
   if (problema) return res.status(400).json({ error: problema });
   if (await bcrypt.compare(String(nueva), user.password)) {
     return res.status(400).json({ error: 'La contraseña nueva tiene que ser distinta de la actual' });
@@ -400,7 +400,7 @@ router.post('/recuperar', (req, res) => {
   if (estado.bloqueada) {
     return res.status(423).json({ error: 'La recuperación quedó bloqueada por demasiados intentos. Pida al administrador que la habilite.' });
   }
-  const problema = claves.revisarLargo(nueva);
+  const problema = claves.revisarClave(nueva, user);
   if (problema) return res.status(400).json({ error: problema });
 
   if (!claves.respuestaCorrecta(user, respuesta)) {

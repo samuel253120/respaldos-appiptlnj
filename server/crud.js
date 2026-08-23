@@ -455,6 +455,60 @@ function puedeVerOpcionesDe(def, usuario) {
 }
 
 
+/**
+ * ¿Hay ya otro registro con este mismo valor en un campo marcado como único?
+ *
+ * `unique: true` es único en todo el sistema —un RUT lo es—. Pero hay números
+ * que solo tienen que ser únicos **dentro de su iglesia**: el número de un
+ * certificado o de una credencial los pone cada congregación en su propia
+ * serie, y dos iglesias distintas pueden emitir las dos su «CERT-001» sin que
+ * eso sea un error. Para esos se declara `unique: 'iglesia_id'`.
+ *
+ * Hasta ahora ninguno de los dos números estaba marcado de ninguna manera, así
+ * que se podían emitir dos certificados con el mismo número, para dos personas
+ * distintas, y nada lo decía.
+ */
+function buscarDuplicado(def, campo, valor, id, datos, existing) {
+  if (!campo.unique) return null;
+  const params = [String(valor), id || 0];
+  let dentroDe = '';
+
+  if (typeof campo.unique === 'string') {
+    const columna = campo.unique;
+    const suyo = datos[columna] !== undefined ? datos[columna] : existing ? existing[columna] : null;
+    // Sin valor en la columna que acota, se compara contra los que tampoco lo
+    // tienen: si no, un certificado sin iglesia chocaría con los de todas.
+    if (suyo === null || suyo === undefined || suyo === '') {
+      dentroDe = ` AND "${columna}" IS NULL`;
+    } else {
+      dentroDe = ` AND "${columna}" = ?`;
+      params.push(suyo);
+    }
+  }
+
+  return db
+    .prepare(`SELECT id FROM "${def.name}" WHERE lower("${campo.name}") = lower(?) AND id != ?${dentroDe} LIMIT 1`)
+    .get(...params);
+}
+
+/**
+ * ¿«otro» u «otra»? El módulo lo dice con `genero` cuando la terminación no
+ * lo acierta —«credencial» es femenina y no acaba en a—; si no, se deduce de
+ * la primera palabra, igual que en la pantalla (ver nuevoDe en public/app.js).
+ */
+function otroUOtra(def) {
+  if (def.genero) return def.genero === 'f' ? 'otra' : 'otro';
+  const cabeza = String(def.labelSingular || '').toLowerCase().split(/[\s/]+/)[0];
+  return /(a|ción|sión|dad|tad|ud|umbre|triz)$/.test(cabeza) ? 'otra' : 'otro';
+}
+
+/** Cómo se le dice a alguien que ese valor ya está usado. */
+function avisoDeDuplicado(def, campo) {
+  const donde = campo.unique === 'iglesia_id' ? ' en esta iglesia' : '';
+  return `Ya existe ${otroUOtra(def)} ${def.labelSingular.toLowerCase()} con ese ${campo.label}${donde}`;
+}
+
+
 function scopeClause(def, user, params) {
   return alcance.condiciones(def, user, params);
 }
@@ -771,12 +825,8 @@ function buildRouter() {
             return res.status(400).json({ error: `El ${f.label} ingresado no es válido: revise el número y su dígito verificador` });
           }
           if (f.unique) {
-            const dup = db
-              .prepare(`SELECT id FROM "${def.name}" WHERE lower("${f.name}") = lower(?) AND id != ?`)
-              .get(String(val), id || 0);
-            if (dup) {
-              return res.status(400).json({ error: `Ya existe otro ${def.labelSingular.toLowerCase()} con ese ${f.label}` });
-            }
+            const dup = buscarDuplicado(def, f, val, id, data, existing);
+            if (dup) return res.status(400).json({ error: avisoDeDuplicado(def, f) });
           }
         }
 
@@ -909,4 +959,7 @@ function buildRouter() {
   return router;
 }
 
-module.exports = { buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara, revisarLimites, TECHO };
+module.exports = {
+  buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara,
+  revisarLimites, buscarDuplicado, avisoDeDuplicado, TECHO,
+};

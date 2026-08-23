@@ -13,7 +13,10 @@ module.exports = {
   listFields: ['numero', 'tipo', 'nombre_titular', 'fecha_emision', 'iglesia_id', 'estado'],
   defaultSort: { field: 'fecha_emision', dir: 'desc' },
   fields: [
-    { name: 'numero', label: 'Número', type: 'text', required: true, help: 'Ej. CERT-001-2026' },
+    {
+      name: 'numero', label: 'Número', type: 'text', required: true, unique: 'iglesia_id',
+      help: 'Ej. CERT-001-2026. No puede repetirse dentro de la misma iglesia.',
+    },
     {
       name: 'tipo', label: 'Tipo de certificado', type: 'select', required: true, default: 'Bautismo',
       options: ['Bautismo', 'Presentación de niños', 'Matrimonio', 'Membresía', 'Traslado', 'Buena conducta', 'Reconocimiento', 'Otro'],

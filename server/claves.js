@@ -28,16 +28,96 @@ function inicial() {
 
 /** Largo mínimo exigido a una contraseña propia. */
 function largoMinimo() {
-  return ajustes.numero('password_minimo', 4, 40);
+  return ajustes.numero('password_minimo', 8, 40);
 }
 
-/** Devuelve el problema con una contraseña, o null si sirve. */
-function revisarLargo(clave) {
+/**
+ * Las contraseñas que se prueban primero.
+ *
+ * No es una lista de las «más usadas del mundo» —esas son cientos de miles y
+ * no caben acá—: son las que alguien escribe cuando el sistema le exige una y
+ * quiere salir del paso. Puestas a mano, en español y pensando en dónde se usa
+ * esto. Si alguna vez hace falta más, se agrega una línea.
+ */
+const LAS_DE_SIEMPRE = [
+  '123456', '1234567', '12345678', '123456789', '1234567890', '12345',
+  'password', 'contrasena', 'contraseña', 'clave', 'claveclave', 'qwerty',
+  'qwertyui', 'asdfghjk', 'abc123', 'abcd1234', '111111', '000000', '123123',
+  'admin', 'administrador', 'usuario', 'iglesia', 'iglesia1', 'iglesia123',
+  'jesus', 'jesucristo', 'amen', 'dios', 'diosesamor', 'pastor', 'hermano',
+  'secretaria', 'tesorero', 'chile', 'santiago',
+];
+
+/** Sin tildes, sin mayúsculas y sin espacios: «Iglesia 123» y «iglesia123» son la misma idea. */
+const aPelo = (t) =>
+  String(t || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+
+/**
+ * Devuelve el problema con una contraseña, o null si sirve.
+ *
+ * Antes lo único que se exigía era el largo, y con eso pasaban «123456»,
+ * «password» y —lo que más importa— **el propio RUT de la persona**, que es lo
+ * primero que probaría cualquiera que tenga la lista de usuarios delante.
+ *
+ * `quien` es la persona a la que se le está poniendo: su RUT y su nombre no
+ * pueden ser su contraseña. Es la regla que más sirve y la más barata.
+ */
+function revisarClave(clave, quien) {
   const texto = String(clave || '');
   const minimo = largoMinimo();
   if (texto.length < minimo) return `La contraseña debe tener al menos ${minimo} caracteres`;
+
+  const limpia = aPelo(texto);
+  if (!limpia) return 'La contraseña no puede ser solo espacios o signos';
+
+  if (LAS_DE_SIEMPRE.includes(limpia)) {
+    return 'Esa contraseña es de las primeras que probaría cualquiera. Elija otra.';
+  }
+  if (/^(.)\1+$/.test(limpia)) return 'Una contraseña de un solo carácter repetido no protege nada. Elija otra.';
+
+  // Lo que esta persona tiene a mano, que es lo que de verdad se escribe
+  const suyo = [];
+  if (quien && quien.rut) suyo.push({ que: 'su RUT', valor: String(quien.rut).split('-')[0] });
+  if (quien && quien.nombre) {
+    for (const parte of String(quien.nombre).split(/\s+/)) {
+      if (aPelo(parte).length >= 4) suyo.push({ que: 'su nombre', valor: parte });
+    }
+  }
+  /**
+   * El nombre de la iglesia va por palabras y no entero: nadie escribe
+   * «Iglesia Pentecostal Triunfante La Nueva Jerusalén» de contraseña, escribe
+   * un pedazo reconocible.
+   *
+   * Y solo las palabras largas. Con siete letras se quedan las que identifican
+   * —Pentecostal, Triunfante, Jerusalén— y se van las corrientes: «La»,
+   * «Nueva». Es la diferencia entre atajar la contraseña obvia y rechazarle a
+   * alguien «LaNuevaCasa9», que no tiene nada que ver con la iglesia.
+   */
+  for (const parte of String(ajustes.obtener('iglesia_nombre') || '').split(/\s+/)) {
+    if (aPelo(parte).length >= 7) suyo.push({ que: 'parte del nombre de la iglesia', valor: parte });
+  }
+
+  for (const { que, valor } of suyo) {
+    const v = aPelo(valor);
+    if (!v) continue;
+    // Se mira en las dos direcciones. La primera atrapa «margarita2026»; la
+    // segunda, la contraseña que es un trozo de algo más largo —«iglesia
+    // pentecostal» dentro del nombre completo de la congregación—.
+    const dentroDeLaClave = limpia.includes(v);
+    const laClaveEstaDentro = limpia.length >= 6 && v.includes(limpia);
+    if (limpia === v || dentroDeLaClave || laClaveEstaDentro) {
+      return `La contraseña no puede ser ${que}: es lo primero que probaría cualquiera. Elija otra.`;
+    }
+  }
   return null;
 }
+
+/** Nombre anterior de la comprobación, por si algo afuera todavía lo usa. */
+const revisarLargo = revisarClave;
 
 /**
  * Deja una contraseña puesta en una cuenta.
@@ -181,7 +261,7 @@ function desbloquearRecuperacion(usuarioId) {
 }
 
 module.exports = {
-  INTENTOS_MAXIMOS, inicial, largoMinimo, revisarLargo, establecer, restablecer,
+  INTENTOS_MAXIMOS, inicial, largoMinimo, revisarClave, revisarLargo, establecer, restablecer,
   estado, estadoRecuperacion, guardarPregunta, quitarPregunta, respuestaCorrecta,
   desbloquearRecuperacion, normalizar,
 };

@@ -474,7 +474,7 @@ async function entrar(rut = RUT, clave = CLAVE) {
   const rutDePrueba = '15555555-6';
   await api('DELETE', `/api/usuarios/${(await api('GET', `/api/usuarios?page=1&limit=1&f_rut=${rutDePrueba}`)).datos.rows.map((u) => u.id)[0] || 0}`);
   const cuentaDePrueba = await api('POST', '/api/usuarios', {
-    rut: rutDePrueba, nombre: 'Prueba de sesiones', password: 'Sesiones2026', rol: 'consulta', activo: 1,
+    rut: rutDePrueba, nombre: 'Prueba de sesiones', password: 'Cordillera47', rol: 'consulta', activo: 1,
   });
   if (cuentaDePrueba.estado === 201 || cuentaDePrueba.estado === 200) {
     const entrarComo = async (clave) => {
@@ -487,11 +487,11 @@ async function entrar(rut = RUT, clave = CLAVE) {
     const mirar = (pase) => fetch(`${URL}/api/auth/me`, { headers: { Authorization: `Bearer ${pase}` } }).then((r) => r.status);
 
     // La cuenta nace obligada a cambiar la contraseña: se hace y queda usable
-    const primero = await entrarComo('Sesiones2026');
+    const primero = await entrarComo('Cordillera47');
     await fetch(`${URL}/api/auth/cambiar-password`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${primero}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actual: 'Sesiones2026', nueva: 'Primera2026' }),
+      body: JSON.stringify({ actual: 'Cordillera47', nueva: 'Primera2026' }),
     });
 
     const enElTelefono = await entrarComo('Primera2026');
@@ -636,7 +636,7 @@ async function entrar(rut = RUT, clave = CLAVE) {
     const rutSuyo = `${n}-${require('../server/rut').digitoVerificador(n)}`;
     const creado = await api('POST', '/api/usuarios', {
       rut: rutSuyo, nombre: 'Prueba De Alcance', rol: 'secretario',
-      password: 'prueba1234', cuerpos: [cuerpos[0].id],
+      password: 'Cordillera47', cuerpos: [cuerpos[0].id],
       // También una iglesia: sin ella alcanzaría todas y no habría ajena con
       // la que probar que elegir no amplía nada.
       iglesias: cuerpos[0].iglesia_id ? [cuerpos[0].iglesia_id] : [],
@@ -647,7 +647,7 @@ async function entrar(rut = RUT, clave = CLAVE) {
     } else {
       // Se le quita la obligación de cambiar la clave, que es de su primer ingreso
       await api('PUT', `/api/usuarios/${suyoId}`, { ...creado.datos, debe_cambiar_password: 0 });
-      const suyo = await entrar(rutSuyo, 'prueba1234');
+      const suyo = await entrar(rutSuyo, 'Cordillera47');
       const propio = await suyo('GET', `/api/cuerpos/${cuerpos[0].id}/integrantes`);
       const ajeno = await suyo('GET', `/api/cuerpos/${cuerpos[1].id}/integrantes`);
       revisar('alcanza los integrantes de su cuerpo', propio.estado === 200, `respondió ${propio.estado}`);
@@ -734,6 +734,84 @@ async function entrar(rut = RUT, clave = CLAVE) {
       `marcas: ${antesDeTodo} → ${despues}`);
   } else {
     console.log('   ℹ️  no hay ninguna actividad con la que probar');
+  }
+
+  /* 8 · Los números que no se repiten -------------------------------------- */
+  console.log('\n8 · Los números de los documentos que se emiten');
+  // Un certificado y una credencial son documentos numerados que salen de la
+  // iglesia con firma: su número debería identificarlos. A ninguno de los dos
+  // se le había puesto la marca de único, así que se podían emitir dos con el
+  // mismo número, para dos personas distintas, y nada lo decía.
+  const iglesiaDelNumero = (await api('GET', '/api/iglesias?page=1&limit=1')).datos.rows[0];
+  if (iglesiaDelNumero) {
+    const numero = `PRUEBA-${Date.now()}`;
+    const base = {
+      numero, tipo: 'Bautismo', iglesia_id: iglesiaDelNumero.id,
+      nombre_titular: 'Titular de prueba', fecha_emision: '2026-01-10',
+    };
+    const primero = await api('POST', '/api/certificados', base);
+    if (primero.estado === 201 || primero.estado === 200) {
+      const repetido = await api('POST', '/api/certificados', { ...base, nombre_titular: 'Otra persona' });
+      revisar('no se pueden emitir dos certificados con el mismo número', repetido.estado === 400,
+        `respondió ${repetido.estado}`);
+
+      const enMinusculas = await api('POST', '/api/certificados', { ...base, numero: numero.toLowerCase(), nombre_titular: 'Otra' });
+      revisar('ni cambiándole las mayúsculas', enMinusculas.estado === 400, `respondió ${enMinusculas.estado}`);
+
+      // Y corregirle algo al primero, sin tocar su número, tiene que poder hacerse
+      const guardado = (await api('GET', `/api/certificados/${primero.datos.id}`)).datos;
+      const corregir = await api('PUT', `/api/certificados/${primero.datos.id}`, {
+        ...guardado, nombre_titular: 'Titular corregido',
+      });
+      revisar('pero corregir el que ya está no choca consigo mismo', corregir.estado === 200,
+        `respondió ${corregir.estado}: ` + JSON.stringify(corregir.datos).slice(0, 100));
+
+      await api('DELETE', `/api/certificados/${primero.datos.id}`);
+    } else {
+      revisar('se pudo emitir un certificado de prueba', false, `respondió ${primero.estado}`);
+    }
+  }
+
+  /* 9 · Quien solo mira, no escribe en el disco ----------------------------- */
+  console.log('\n9 · Subir archivos');
+  // La subida pedía sesión y nada más, así que un usuario de «solo consulta»
+  // —que no puede crear ni un registro— podía escribir en el volumen. Se
+  // comprobó y respondía 200. Ahora se le pregunta si tiene dónde adjuntarlo.
+  const nMirón = String(19000000 + Math.floor(Math.random() * 900000));
+  const rutMirón = `${nMirón}-${require('../server/rut').digitoVerificador(nMirón)}`;
+  const mirón = await api('POST', '/api/usuarios', {
+    rut: rutMirón, nombre: 'Solo Mira', rol: 'consulta', activo: 1, password: 'Cordillera47',
+  });
+  if (mirón.datos && mirón.datos.id) {
+    await api('PUT', `/api/usuarios/${mirón.datos.id}`, { ...mirón.datos, debe_cambiar_password: 0 });
+    const pase = await fetch(`${URL}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rut: rutMirón, password: 'Cordillera47' }),
+    }).then((r) => r.json());
+
+    // Una foto de verdad: lo que se prueba es el permiso, no el formato
+    const bytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2048)]);
+    const subir = async (token) => {
+      const fd = new FormData();
+      fd.append('archivo', new Blob([bytes], { type: 'image/jpeg' }), 'prueba.jpg');
+      return fetch(`${URL}/api/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+    };
+
+    const delMirón = await subir(pase.token);
+    revisar('quien solo puede mirar no puede subir archivos', delMirón.status === 403,
+      `respondió ${delMirón.status}`);
+
+    const paseAdmin = await fetch(`${URL}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rut: RUT, password: CLAVE }),
+    }).then((r) => r.json());
+    const delQuePuede = await subir(paseAdmin.token);
+    revisar('y quien sí tiene dónde adjuntarlos, sí', delQuePuede.status === 200,
+      `respondió ${delQuePuede.status}`);
+
+    await api('DELETE', `/api/usuarios/${mirón.datos.id}`);
+  } else {
+    revisar('se pudo crear el usuario de solo consulta', false, JSON.stringify(mirón.datos).slice(0, 140));
   }
 
   console.log(fallas ? `\n❌ ${fallas} comprobación(es) fallaron.` : '\n✅ Lo que tiene que estar cerrado, está cerrado.');

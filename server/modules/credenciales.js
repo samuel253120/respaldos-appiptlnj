@@ -14,7 +14,10 @@ module.exports = {
   listFields: ['numero', 'nombre_titular', 'tipo', 'fecha_vencimiento', 'iglesia_id', 'estado'],
   defaultSort: { field: 'fecha_emision', dir: 'desc' },
   fields: [
-    { name: 'numero', label: 'Número de credencial', type: 'text', required: true, help: 'Ej. CRED-001' },
+    {
+      name: 'numero', label: 'Número de credencial', type: 'text', required: true, unique: 'iglesia_id',
+      help: 'Ej. CRED-001. No puede repetirse dentro de la misma iglesia.',
+    },
     {
       name: 'tipo', label: 'Tipo', type: 'select', required: true, default: 'Pastor',
       options: ['Pastor', 'Guía', 'Obrero', 'Diácono', 'Misionero', 'Miembro', 'Otro'],

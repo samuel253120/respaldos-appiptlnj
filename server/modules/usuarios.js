@@ -238,7 +238,10 @@ module.exports = {
       // porque una contraseña que otro conoce no es suya.
       const claves = require('../claves');
       if (data.password) {
-        const problema = claves.revisarLargo(data.password);
+        // Se le pasa a quién se le está poniendo: ni su RUT ni su nombre
+        // pueden ser su contraseña (ver server/claves.js).
+        const quien = { rut: data.rut || (existing && existing.rut), nombre: data.nombre || (existing && existing.nombre) };
+        const problema = claves.revisarClave(data.password, quien);
         if (problema) return problema;
         data.password = bcrypt.hashSync(String(data.password), 10);
         data.password_origen = 'definida';
