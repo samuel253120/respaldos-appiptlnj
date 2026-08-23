@@ -103,6 +103,25 @@ async function revisarUnMedio(navegador, medio, ancho) {
   }
   for (const ruta of PANTALLAS_SUELTAS) await revisar(ruta);
 
+  /**
+   * Y el buscador general, que vive en la barra de arriba y no tiene dirección
+   * propia. Pregunta en los treinta y dos módulos de una vez: si uno de ellos
+   * revienta, no se nota mirando ninguna pantalla.
+   */
+  await pagina.goto(URL + '/#/');
+  await pagina.waitForTimeout(500);
+  const conLupa = await pagina.$('#bgAbrir');
+  if (conLupa && await conLupa.isVisible()) await conLupa.click();
+  await pagina.fill('#bgTexto', 'a' + 'e');
+  await pagina.waitForTimeout(1200);
+  const panel = await pagina.evaluate(() => {
+    const p = document.getElementById('bgPanel');
+    return { abierto: p && !p.hidden, texto: p ? p.textContent.trim().slice(0, 40) : '' };
+  });
+  if (!panel.abierto) pegados.push('el buscador general no abrió su panel');
+  const anchoTrasBuscar = await pagina.evaluate(() => document.documentElement.scrollWidth);
+  if (anchoTrasBuscar > ancho) anchos['buscador general'] = anchoTrasBuscar;
+
   const distintos = [...new Set(errores)];
   console.log(
     `${medio.padEnd(6)} · módulos: ${modulos.length}` +

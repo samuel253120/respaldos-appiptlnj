@@ -116,6 +116,30 @@ Reglas que valen para todos los módulos:
 - **Nada se inventa.** Un RUT con el dígito cambiado no se «corrige» —se conserva y queda anotado en el historial de esa persona—, y un archivo que no llegó no deja la ficha apuntando al vacío: su ruta espera en la lista de pendientes.
 - **Se informa lo que no se pudo traer.** El informe final cuenta las dos bases módulo por módulo, revisa las relaciones y deja por escrito qué quedó fuera y por qué.
 
+## El buscador general 🔍
+
+Arriba de todo, una **sola caja** para encontrar cualquier cosa sin saber en qué módulo está. Quien atiende el teléfono no razona por módulos: le dicen un nombre, un RUT o el número de un certificado, y antes había que ir probando pantalla por pantalla.
+
+Se busca en **todos los módulos a la vez** y los resultados vienen agrupados, en el orden del menú: primero las personas, después lo demás. Cada uno se abre con un clic.
+
+**Lo que se ve ahí es exactamente lo que esa persona podría abrir por su cuenta.** Una caja que pregunta en los treinta y dos módulos de una vez es, si se hace mal, la puerta de atrás más grande del sistema, así que usa las mismas piezas que el listado de cada módulo:
+
+- **solo los módulos que puede ver** — a quien no tiene Tesorería no le aparece un movimiento;
+- **solo dentro de su alcance** — sus iglesias, sus cuerpos y su nivel de tesorería;
+- **solo por los datos que ve** — no se busca por un teléfono reservado que no alcanza, porque si se pudiera bastaría con probar números para averiguar de quién es cada uno;
+- **sin datos reservados en la respuesta.**
+
+### Detalles de uso
+
+- **Cada resultado dice por qué salió.** Buscar «Pérez» y recibir nombres se entiende solo; buscar un número y recibir tres fichas, no. Cuando lo que coincidió no está a la vista, se muestra también ese dato: *«Ana Díaz · Teléfono: +56 9 1111 2222»*.
+- **La tecla `/`** lleva el cursor al buscador desde cualquier pantalla, y no se la roba mientras se está escribiendo en otro campo.
+- **Se maneja con el teclado**: ↑ ↓ recorren, Enter abre, Esc cierra.
+- **No pregunta en cada tecla**: espera a que uno deje de escribir, y descarta las respuestas que llegan atrasadas para que no quede en pantalla el resultado de lo que se escribió antes.
+- Cuando hay más de los que caben, cada grupo ofrece **«Ver todos en …»**, que lleva al listado del módulo con la búsqueda ya puesta.
+- **En el teléfono** la caja no cabe junto al nombre de la iglesia: se muestra la lupa y al tocarla ocupa la fila entera.
+
+Con menos de dos letras no se busca —una sola trae media iglesia— y de cada módulo se traen los primeros cinco.
+
 ## Bajar cualquier listado a una planilla 📤
 
 Todo listado tiene, en su barra, **⬇️ Excel**. Baja **lo que se está viendo, pero entero**: respeta la búsqueda, los filtros, el rango de fechas y el orden que estén puestos, y trae todas las filas, no la página que se muestra en pantalla. Quien pide una nómina la quiere completa.

@@ -908,6 +908,77 @@ async function entrar(rut = RUT, clave = CLAVE) {
   revisar('y no sirve para pedir otro archivo del disco', String(conTrampa).startsWith('image/'),
     `devolvió ${conTrampa}`);
 
+  /* 4j-ter · El buscador general ---------------------------------------- */
+  console.log('\n4j-ter · El buscador general no entrega lo que no corresponde');
+  // Una caja que pregunta en los treinta y dos módulos a la vez es, si se hace
+  // mal, la puerta de atrás más grande del sistema: se salta de un tirón los
+  // permisos, el alcance y los datos reservados. Se comprueba con una cuenta
+  // acotada de verdad, no con la del administrador.
+  const sinSesionBusca = await fetch(`${URL}/api/buscar?q=Prueba`).then((r) => r.status);
+  revisar('el buscador pide sesión', sinSesionBusca === 401 || sinSesionBusca === 403,
+    `respondió ${sinSesionBusca}`);
+
+  const cortito = await api('GET', '/api/buscar?q=a');
+  revisar('con una sola letra no busca', cortito.datos.corto === true && cortito.datos.total === 0);
+
+  {
+    const c = String(19000000 + (Date.now() % 900000));
+    const suRut = `${c}-${require('../server/rut').digitoVerificador(c)}`;
+    const acotada = await api('POST', '/api/usuarios', {
+      rut: suRut, nombre: 'Prueba Del Buscador', password: 'Manzanares82', rol: 'consulta', activo: 1,
+      permisos: { miembros_contacto: [] },
+    });
+    if (acotada.estado !== 201 && acotada.estado !== 200) {
+      revisar('se pudo crear la cuenta acotada del buscador', false, `respondió ${acotada.estado}`);
+    } else {
+      const primera = await fetch(`${URL}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: suRut, password: 'Manzanares82' }),
+      }).then((r) => r.json());
+      await fetch(`${URL}/api/auth/cambiar-password`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${primera.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actual: 'Manzanares82', nueva: 'Manzanares82Otra' }),
+      });
+      const suya = await fetch(`${URL}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut: suRut, password: 'Manzanares82Otra' }),
+      }).then((r) => r.json());
+      const busca = (q) => fetch(`${URL}/api/buscar?q=${encodeURIComponent(q)}`, {
+        headers: { Authorization: `Bearer ${suya.token}` },
+      }).then((r) => r.json());
+
+      // Un miembro con teléfono, para probar el dato reservado
+      const c2 = String(14500000 + (Date.now() % 400000));
+      const rutBuscado = `${c2}-${require('../server/rut').digitoVerificador(c2)}`;
+      const numero = `+5698${String(Date.now()).slice(-7)}`;
+      const marca = `Buscable${Date.now()}`;
+      const ficha = await api('POST', '/api/miembros', {
+        iglesia_id: iglesiaParaSalud && iglesiaParaSalud.id, rut: rutBuscado,
+        nombres: marca, apellidos: 'De Prueba', estado: 'Activo', telefono: numero,
+      });
+
+      const porNombre = await busca(marca);
+      revisar('encuentra por lo que sí puede ver', (porNombre.total || 0) >= 1,
+        `no la encontró buscando «${marca}»`);
+
+      const porTelefono = await busca(numero.replace(/\D/g, '').slice(-9));
+      revisar('pero no da con ella por un teléfono que no alcanza',
+        (porTelefono.total || 0) === 0, `devolvió ${porTelefono.total} resultado(s)`);
+
+      revisar('y el teléfono no viaja escondido en la respuesta',
+        !JSON.stringify(porNombre).includes(numero.replace(/\D/g, '').slice(-9)));
+
+      const conTesoreria = await busca('Diezmo');
+      revisar('no le aparece un módulo que no puede ver',
+        !(conTesoreria.grupos || []).some((g) => g.modulo === 'tesoreria'),
+        'una cuenta de solo consulta no tiene Tesorería y no puede encontrar un movimiento');
+
+      if (ficha.datos && ficha.datos.id) await api('DELETE', `/api/miembros/${ficha.datos.id}`);
+      await api('DELETE', `/api/usuarios/${acotada.datos.id}`);
+    }
+  }
+
   /* 4k · Los paneles de la ficha de un cuerpo ---------------------------- */
   console.log('\n4k · Cada panel de la ficha de un cuerpo pide SU permiso');
   // Los paneles se pintan dentro de la ficha del cuerpo y por eso pedían solo

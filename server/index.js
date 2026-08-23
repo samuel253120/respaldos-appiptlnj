@@ -527,6 +527,17 @@ app.get('/api/pendientes', authRequired, (req, res) => {
  * lo que ya quedó de antes sigue ahí, y esto lo pone a la vista para poder
  * decidir qué hacer con ello. Solo cuenta: no toca nada.
  */
+/**
+ * El buscador general: una sola caja para encontrar cualquier cosa.
+ *
+ * Responde con lo mismo que esta persona podría abrir por su cuenta: solo los
+ * módulos que puede ver, solo dentro de su alcance y sin datos reservados
+ * (ver server/buscador.js).
+ */
+app.get('/api/buscar', authRequired, (req, res) => {
+  res.json(require('./buscador').buscar(req.query.q, req.user));
+});
+
 app.get('/api/huerfanos', authRequired, (req, res) => {
   if (!can(req.user, 'sistema_configuracion', 'view')) {
     return res.status(403).json({ error: 'No tiene permiso para revisar la configuración del sistema' });

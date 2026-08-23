@@ -310,6 +310,9 @@ async function trabajar(token, hasta, escribe) {
     if (fila) await pedir('abrir una ficha', `/api/miembros/${fila.id}`, opc);
 
     await pedir('buscar en miembros', '/api/miembros?q=so&page=1&limit=25', opc);
+    // El buscador general pregunta en todos los módulos de una vez: es la
+    // petición más cara que hace el sistema y por eso se mide aparte.
+    await pedir('buscar en todo', '/api/buscar?q=so', opc);
     await pedir('listar asistencias', '/api/asistencias?page=1&limit=25', opc);
     await pedir('listar tesorería', '/api/tesoreria?page=1&limit=25', opc);
     await pedir('opciones de un selector', '/api/miembros/options', opc);

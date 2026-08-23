@@ -1260,6 +1260,17 @@ function renderShell() {
               : ''}
             ${puedeElegirIglesia ? '<span class="cambiar">▾</span>' : ''}
           </${puedeElegirIglesia ? 'button' : 'div'}>
+          <div class="buscador-global" id="buscadorGlobal">
+            <button type="button" class="lupa" id="bgAbrir" aria-label="Buscar en todo el sistema" aria-expanded="false">🔍</button>
+            <div class="bg-caja">
+              <span class="ic" aria-hidden="true">🔍</span>
+              <input type="search" id="bgTexto" placeholder="Buscar en todo…" autocomplete="off" spellcheck="false"
+                     role="combobox" aria-expanded="false" aria-controls="bgPanel" aria-autocomplete="list"
+                     aria-label="Buscar en todo el sistema" />
+              <button type="button" class="bg-cerrar" id="bgCerrar" aria-label="Cerrar el buscador">✕</button>
+            </div>
+            <div class="bg-panel" id="bgPanel" role="listbox" aria-label="Resultados de la búsqueda" hidden></div>
+          </div>
           <div class="tb-espacio"></div>
           <a class="who" href="#/perfil" title="Mi perfil">${retratoDe(USER, initials)} <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></a>
           <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
@@ -1269,6 +1280,7 @@ function renderShell() {
       <div class="backdrop" id="backdrop" hidden></div>
     </div>`;
   document.getElementById('logoutBtn').addEventListener('click', logout);
+  iniciarBuscadorGlobal();
   const btnIglesia = document.getElementById('btnIglesia');
   if (btnIglesia) btnIglesia.addEventListener('click', elegirIglesiaDeTrabajo);
   const sidebar = document.getElementById('sidebar');
@@ -1463,6 +1475,12 @@ async function viewList(name, filtrosIniciales) {
       st.filters[campo] = String(valor);
       st.page = 1;
     }
+  }
+  // Lo que se venía buscando: #/m/miembros?q=perez. Lo usa el buscador general
+  // para pasar de sus primeros resultados al listado completo del módulo.
+  if ((filtrosIniciales || {}).q !== undefined) {
+    st.q = String(filtrosIniciales.q || '');
+    st.page = 1;
   }
   // «Lo que falta»: #/m/miembros?sin=telefono trae a los que no lo tienen. Se
   // reescribe siempre, incluso vacío, para que al volver al listado por el
@@ -2336,6 +2354,191 @@ function pintarPestanasDeLaFicha(name, id, row, pintarLosDatos, elegida) {
   });
 
   abrir(suyas.some((p) => p.clave === elegida) ? elegida : 'datos');
+}
+
+/* =====================================================================
+ * El buscador general
+ *
+ * Una sola caja arriba, para encontrar cualquier cosa sin saber de antemano
+ * en qué módulo está. Quien atiende el teléfono no razona por módulos: le
+ * dicen un nombre, un RUT o el número de un certificado.
+ *
+ * Lo que se ve acá es exactamente lo que esa persona podría abrir por su
+ * cuenta: el servidor pregunta solo en los módulos que puede ver, dentro de su
+ * alcance y sin los datos reservados que no alcanza (ver server/buscador.js).
+ *
+ * Tres detalles de uso que importan más de lo que parecen:
+ *
+ *   · **no se pregunta en cada tecla**. Se espera a que la persona deje de
+ *     escribir; si no, escribir «Rodríguez» dispararía nueve búsquedas y la
+ *     última en llegar no tiene por qué ser la última que se pidió —por eso
+ *     además se descarta toda respuesta que ya venga atrasada—;
+ *   · **se maneja con el teclado**. Las flechas recorren, Enter abre, Esc
+ *     cierra. Quien pasa el día escribiendo no quiere soltar el teclado para
+ *     tocar un resultado;
+ *   · **en el teléfono la caja se abre sobre la barra**. Ahí no cabe junto al
+ *     nombre de la iglesia, así que se muestra la lupa y al tocarla se ocupa
+ *     la fila entera.
+ * ===================================================================== */
+
+/** Lo que se está mostrando, para poder recorrerlo con el teclado. */
+let BG = { abierto: false, pedido: 0, filas: [], marcada: -1 };
+
+function iniciarBuscadorGlobal() {
+  const caja = document.getElementById('buscadorGlobal');
+  const texto = document.getElementById('bgTexto');
+  const panel = document.getElementById('bgPanel');
+  if (!caja || !texto || !panel) return;
+
+  const cerrar = () => {
+    panel.hidden = true;
+    panel.innerHTML = '';
+    texto.setAttribute('aria-expanded', 'false');
+    texto.removeAttribute('aria-activedescendant');
+    BG.filas = [];
+    BG.marcada = -1;
+  };
+
+  /** Cierra y además saca la caja de encima de la barra, en el teléfono. */
+  const guardar = () => {
+    cerrar();
+    caja.classList.remove('abierto');
+    document.getElementById('bgAbrir').setAttribute('aria-expanded', 'false');
+  };
+
+  const marcar = (i) => {
+    BG.marcada = i;
+    panel.querySelectorAll('[data-ir-a]').forEach((el, n) => {
+      const suya = n === i;
+      el.classList.toggle('marcada', suya);
+      el.setAttribute('aria-selected', suya ? 'true' : 'false');
+      if (suya) {
+        texto.setAttribute('aria-activedescendant', el.id);
+        el.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  };
+
+  const pintar = (d) => {
+    if (d.corto) {
+      panel.innerHTML = `<div class="bg-vacio">Escriba al menos ${d.minimo || 2} letras.</div>`;
+      panel.hidden = false;
+      BG.filas = [];
+      return;
+    }
+    if (!d.total) {
+      panel.innerHTML = `<div class="bg-vacio">No se encontró nada con «${esc(d.q)}».
+        <span>Se busca en todo lo que usted puede ver.</span></div>`;
+      panel.hidden = false;
+      texto.setAttribute('aria-expanded', 'true');
+      BG.filas = [];
+      return;
+    }
+
+    let n = 0;
+    const partes = d.grupos.map((g) => {
+      const filas = g.resultados.map((r) => {
+        const id = `bgr_${n}`;
+        BG.filas[n] = `#/m/${g.modulo}/ficha/${r.id}`;
+        n++;
+        const pistas = [...r.pistas];
+        // Por qué salió: cuando lo que coincidió no está a la vista, se dice
+        if (r.porque) pistas.push(`${r.porque.campo}: ${r.porque.valor}`);
+        return `<div class="bg-item" role="option" aria-selected="false" id="${id}" data-ir-a="${esc(BG.filas[n - 1])}">
+          <span class="t">${esc(r.titulo)}</span>
+          ${pistas.length ? `<span class="p">${esc(pistas.join(' · '))}</span>` : ''}
+        </div>`;
+      }).join('');
+      const verTodos = g.hay_mas
+        ? `<a class="bg-mas" href="#/m/${g.modulo}?q=${encodeURIComponent(d.q)}">Ver todos en ${esc(g.label)} →</a>`
+        : '';
+      return `<div class="bg-grupo">
+        <div class="bg-cab"><span class="ic" aria-hidden="true">${g.icon}</span>${esc(g.label)}</div>
+        ${filas}${verTodos}
+      </div>`;
+    });
+
+    panel.innerHTML = partes.join('');
+    panel.hidden = false;
+    texto.setAttribute('aria-expanded', 'true');
+    BG.marcada = -1;
+
+    panel.querySelectorAll('[data-ir-a]').forEach((el) =>
+      el.addEventListener('click', () => {
+        location.hash = el.dataset.irA;
+        guardar();
+        texto.value = '';
+      }));
+    panel.querySelectorAll('.bg-mas').forEach((el) => el.addEventListener('click', () => { guardar(); texto.value = ''; }));
+  };
+
+  const preguntar = async () => {
+    const q = texto.value.trim();
+    if (!q) return cerrar();
+    if (q.length < 2) {
+      pintar({ corto: true, minimo: 2 });
+      return;
+    }
+    const mio = ++BG.pedido;
+    panel.innerHTML = '<div class="bg-vacio">Buscando…</div>';
+    panel.hidden = false;
+    try {
+      const d = await api('GET', `/buscar?q=${encodeURIComponent(q)}`);
+      // Una respuesta que llega después de haberse pedido otra ya no sirve:
+      // pintarla dejaría en pantalla el resultado de lo que se escribió antes.
+      if (mio !== BG.pedido) return;
+      pintar(d);
+    } catch (e) {
+      if (mio !== BG.pedido) return;
+      panel.innerHTML = `<div class="bg-vacio">${esc(e.message)}</div>`;
+    }
+  };
+
+  let reloj = null;
+  texto.addEventListener('input', () => {
+    clearTimeout(reloj);
+    reloj = setTimeout(preguntar, 250);
+  });
+
+  texto.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { guardar(); texto.blur(); return; }
+    if (!BG.filas.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); marcar((BG.marcada + 1) % BG.filas.length); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); marcar((BG.marcada - 1 + BG.filas.length) % BG.filas.length); }
+    if (e.key === 'Enter' && BG.marcada >= 0) {
+      e.preventDefault();
+      location.hash = BG.filas[BG.marcada];
+      guardar();
+      texto.value = '';
+    }
+  });
+
+  texto.addEventListener('focus', () => { if (texto.value.trim().length >= 2) preguntar(); });
+
+  // Tocar fuera lo cierra: un panel que se queda abierto tapa la pantalla
+  document.addEventListener('click', (e) => {
+    if (!caja.contains(e.target)) guardar();
+  });
+
+  // En el teléfono, la lupa abre la caja sobre la barra
+  document.getElementById('bgAbrir').addEventListener('click', () => {
+    caja.classList.add('abierto');
+    document.getElementById('bgAbrir').setAttribute('aria-expanded', 'true');
+    texto.focus();
+  });
+  document.getElementById('bgCerrar').addEventListener('click', () => { texto.value = ''; guardar(); });
+
+  // Y desde cualquier parte: «/» lleva el cursor al buscador, como en tantos
+  // sistemas. No se roba la tecla mientras se está escribiendo en otro campo.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    const donde = document.activeElement;
+    if (donde && ['INPUT', 'TEXTAREA', 'SELECT'].includes(donde.tagName)) return;
+    if (donde && donde.isContentEditable) return;
+    e.preventDefault();
+    caja.classList.add('abierto');
+    texto.focus();
+  });
 }
 
 /** Los cuerpos y grupos en los que participa un miembro, bajo su ficha. */
