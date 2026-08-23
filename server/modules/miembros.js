@@ -130,6 +130,35 @@ module.exports = {
       calc: (r, { db }) => tratamientoDe(r, db),
     },
     {
+      /**
+       * Lo que quedó pendiente entre esta ficha y la de su cónyuge.
+       *
+       * Vincular el matrimonio de un pastor y registrarlo en Pastores / Guías
+       * son dos actos distintos, y pueden pasar meses entre uno y otro. En ese
+       * rato la pareja queda a medias: él figura como pastor y ella sigue con
+       * trato de hermana. Guardar la ficha ya no se bloquea por eso —bloquear
+       * castigaba a quien venía a corregir un teléfono— así que se dice acá,
+       * arriba de la ficha, que es donde alguien puede hacer algo.
+       *
+       * Cuesta poco: la ficha que no tiene cónyuge —que son casi todas— se
+       * responde sin mirar la base.
+       */
+      name: 'pareja_pendiente', label: 'Pendiente con su cónyuge', type: 'texto',
+      calc: (r, { db }) => {
+        if (!r.conyuge_id) return '';
+        const { esPastorRegistrado, esPastorPorSiMismo } = require('../tratamiento');
+        const otro = db.prepare('SELECT id, nombres, apellidos, genero, rut FROM miembros WHERE id = ?').get(r.conyuge_id);
+        if (!otro) return 'La persona que figura como su cónyuge ya no está en Miembros.';
+        if (!esPastorRegistrado(otro, db) && !esPastorRegistrado(r, db)) return '';
+        const falta = [r, otro].find((quien) => quien && !esPastorPorSiMismo(quien, db));
+        if (!falta) return '';
+        const trato = falta.genero === 'Femenino' ? 'Pastora' : 'Pastor';
+        const quien = Number(falta.id) === Number(r.id) ? 'Esta persona' : `${falta.nombres} ${falta.apellidos}`;
+        return `${quien} todavía no tiene trato de ${trato}, y su cónyuge sí figura en Pastores / Guías. ` +
+          `Regístrele su ficha en Pastores / Guías, o fíjele el trato de ${trato} en su ficha.`;
+      },
+    },
+    {
       name: 'edad', label: 'Edad', type: 'texto',
       calc: (r) => {
         const a = edadEnAnios(r.fecha_nacimiento);
@@ -394,12 +423,36 @@ module.exports = {
         return 'Un miembro no puede figurar como su propio cónyuge';
       }
 
-      // El cónyuge de quien está en Pastores / Guías es del sexo opuesto; y si
-      // el cargo es pastoral, nunca queda con trato de Hermano, Hermana ni
-      // Oficial: es Pastor o Pastora. Al guía de obra no se le aplica esto
-      // último, porque su cónyuge sigue siendo hermano o hermana.
+      /**
+       * El cónyuge de quien está en Pastores / Guías es del sexo opuesto; y si
+       * el cargo es pastoral, nunca queda con trato de Hermano, Hermana ni
+       * Oficial: es Pastor o Pastora. Al guía de obra no se le aplica esto
+       * último, porque su cónyuge sigue siendo hermano o hermana.
+       *
+       * Estas dos comprobaciones miran a DOS fichas y a lo que diga Pastores /
+       * Guías, y eso puede cambiar sin que esta ficha se toque: se registra al
+       * marido en Pastores un mes después de haber vinculado el matrimonio, y
+       * desde ese momento la ficha de la señora queda en falta.
+       *
+       * Antes se exigían en todo guardado, y el resultado era que esa ficha no
+       * se dejaba guardar más: ni para corregirle el teléfono, ni la dirección,
+       * ni nada. Se topó tres veces probando, así que en el uso real aparece.
+       * Y castigaba a quien venía a arreglar otra cosa por algo que no hizo y
+       * que a lo mejor ni sabía.
+       *
+       * Ahora se exigen cuando este guardado es el que está armando o
+       * cambiando el vínculo —o el sexo, del que dependen—. Si el vínculo ya
+       * venía así, no se bloquea: se avisa arriba de la ficha, que es donde se
+       * puede hacer algo al respecto.
+       */
       const { estaEnPastores, esPastorRegistrado } = require('../tratamiento');
-      if (conyuge) {
+      const antes = existing || {};
+      const cambiaElVinculo = data.conyuge_id !== undefined
+        && Number(data.conyuge_id || 0) !== Number(antes.conyuge_id || 0);
+      const cambiaElSexo = data.genero !== undefined && data.genero !== antes.genero;
+      const revisarLaPareja = !id || cambiaElVinculo || cambiaElSexo;
+
+      if (conyuge && revisarLaPareja) {
         const otro = db.prepare('SELECT id, nombres, apellidos, genero, rut FROM miembros WHERE id = ?').get(conyuge);
         if (!otro) return 'La persona indicada como cónyuge no existe';
         const yo = { id, rut: rutDe(data, existing), genero: data.genero !== undefined ? data.genero : existing ? existing.genero : null };
@@ -416,7 +469,17 @@ module.exports = {
         // registro: el pastor se casa con la pastora, no con una hermana.
         if (esPastorRegistrado(otro, db) || (id && esPastorRegistrado(yo, db))) {
           const { esPastorPorSiMismo } = require('../tratamiento');
-          const completo = db.prepare('SELECT * FROM miembros WHERE id = ?').get(id);
+          /**
+           * Cómo va a quedar esta ficha después de guardar, no cómo está.
+           *
+           * Antes se leía de la base por el id, y eso fallaba por los dos
+           * lados: al CREAR una ficha ya vinculada no había id que leer, así
+           * que la comprobación se saltaba entera y la pareja a medias entraba
+           * igual; y al editar se leía el trato viejo, así que fijarle el trato
+           * de Pastora en el mismo guardado que arma el vínculo no servía de
+           * nada —justo lo que el propio aviso le dice a uno que haga—.
+           */
+          const completo = { ...(existing || {}), ...data, id };
           for (const quien of [completo, otro]) {
             if (!quien || esPastorPorSiMismo(quien, db)) continue;
             const trato = quien.genero === 'Femenino' ? 'Pastora' : 'Pastor';

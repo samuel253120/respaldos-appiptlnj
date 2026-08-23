@@ -549,6 +549,7 @@ Al abrir una ficha, antes de los datos, se muestran los avisos que importan:
 
 - la **nota importante**, si la tiene, en amarillo;
 - la falta del **adulto responsable** en un menor;
+- lo que quedó **pendiente con su cónyuge**, cuando uno de los dos figura en Pastores / Guías y al otro todavía no se le ha fijado el trato;
 - la **información médica** —enfermedades, alergias, indicaciones—, para tenerla a mano sin buscarla.
 
 Los datos de salud y la nota importante quedan marcados como **sensibles**, y eso ahora decide dos cosas: que el historial deje constancia de que cambiaron **sin copiar su contenido** («Alergias: actualizada»), y **quién puede leerlos**.
@@ -838,6 +839,18 @@ El sistema lo cuida solo:
 - Cada ficha de pastor se **enlaza con su ficha de miembro**. Si ya existe una con el mismo RUT, la reconoce y la enlaza sin que haya que hacer nada.
 - Si todavía no existe, el listado de Pastores / Guías lo muestra en una columna —**Registrado** o **Falta registrarlo**— y al pie de su ficha aparece el botón **➕ Crear su ficha de miembro**, que la crea con sus mismos datos (nombres, RUT, iglesia, fecha de nacimiento, contacto y foto) y las deja enlazadas.
 - De ese enlace depende el **trato**: quien tiene cargo pastoral es *Pastor* o *Pastora* en todo el sistema, y su cónyuge también; al **guía de obra** se le dice *Guía de Obra*.
+
+### Cuando la pareja queda a medias 💍
+
+Vincular el matrimonio de un pastor y registrarlo en Pastores / Guías son **dos actos distintos**, y entre uno y otro pueden pasar meses. En ese rato la pareja queda a medias: él figura como pastor y ella sigue con trato de hermana.
+
+La regla que exige que los dos tengan trato de Pastor o Pastora se aplica **cuando el guardado es el que arma o cambia el vínculo** —o el sexo, del que depende—, no en cada guardado.
+
+> Antes se aplicaba siempre, y el resultado era que esa ficha **no se dejaba guardar más**: ni para corregirle el teléfono, ni la dirección, ni nada. Castigaba a quien venía a arreglar otra cosa por una situación que no creó y que a lo mejor ni sabía. El criterio ahora es que una comprobación frena el guardado que **empeora** las cosas, no el que simplemente no arregla algo que ya estaba.
+>
+> Lo que ya estaba no se calla: aparece como aviso arriba de la ficha, diciendo a quién le falta el trato y dónde arreglarlo.
+
+Y la comprobación mira **cómo va a quedar la ficha**, no cómo está. Eso cierra dos cosas que estaban mal: al **crear** una ficha ya vinculada no se comprobaba nada —no había id que consultar, así que la pareja a medias entraba igual— y al editar se leía el trato viejo, así que fijarle el trato de Pastora en el mismo guardado que arma el vínculo no servía de nada, que es justo lo que el aviso le dice a uno que haga. Ahora se resuelve en un solo paso.
 
 ### El RUT tiene que coincidir en las dos fichas
 

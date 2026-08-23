@@ -2413,7 +2413,8 @@ function avisosDelMiembro(row) {
       row.indicaciones_medicas ? `Indicaciones: ${row.indicaciones_medicas}` : '',
     ].filter(Boolean);
     avisos.push(`<div class="aviso salud"><b>🩺 Información médica</b><span>${esc(partes.join(' · '))}</span></div>`);
-  } else if (row.salud_oculta) {
+  }
+  if (row.salud_oculta) {
     // El servidor no le mandó los datos de salud a esta persona. Se dice, en
     // vez de dejar la ficha como si no hubiera nada: un espacio en blanco se
     // confunde con «no tiene ninguna alergia», y eso es peor que no decir nada.
@@ -2421,6 +2422,15 @@ function avisosDelMiembro(row) {
       `<div class="aviso"><b>🔒 Información médica reservada</b><span>Esta ficha tiene datos de salud
        que su cuenta no alcanza a ver. Los ven el pastor y el administrador, y la propia persona en
        Mi perfil.</span></div>`
+    );
+  }
+  if (row.pareja_pendiente) {
+    // Vincular el matrimonio de un pastor y registrarlo en Pastores / Guías
+    // son dos actos distintos, y entre uno y otro pueden pasar meses. Guardar
+    // la ficha ya no se bloquea por eso; se dice acá, que es donde alguien
+    // puede hacer algo al respecto.
+    avisos.push(
+      `<div class="aviso"><b>💍 Pendiente con su cónyuge</b><span>${esc(row.pareja_pendiente)}</span></div>`
     );
   }
   if (!avisos.length) return;
