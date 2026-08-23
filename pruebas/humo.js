@@ -63,6 +63,34 @@ async function revisarUnMedio(navegador, medio, ancho) {
     if (cargando) pegados.push(ruta);
   };
 
+  /**
+   * Y la ficha, pestaña por pestaña.
+   *
+   * Lo que cuelga de una ficha —la gente de un cuerpo, su plata, sus actas,
+   * los documentos de un miembro— vive en pestañas, y cada una se pinta recién
+   * al abrirla. Una que reviente al abrirse no se nota mirando la ficha: hay
+   * que tocarlas todas, que es lo que hace esto.
+   */
+  const revisarLaFicha = async (nombre, id) => {
+    await revisar(`#/m/${nombre}/ficha/${id}`);
+    const pestanas = await pagina.evaluate(() =>
+      [...document.querySelectorAll('.ficha-pestanas [data-pestana]')].map((b) => b.dataset.pestana)
+    );
+    for (const cual of pestanas) {
+      await pagina.click(`.ficha-pestanas [data-pestana="${cual}"]`);
+      await pagina.waitForTimeout(600);
+      const w = await pagina.evaluate(() => document.documentElement.scrollWidth);
+      if (w > ancho) anchos[`#/m/${nombre}/ficha/${id}/${cual}`] = w;
+      const vacia = await pagina.evaluate(() => {
+        const panel = document.querySelector('.ficha-panel:not([hidden])');
+        return !panel || !panel.textContent.trim();
+      });
+      if (vacia) pegados.push(`#/m/${nombre}/ficha/${id}/${cual} (pestaña en blanco)`);
+    }
+    return pestanas.length;
+  };
+
+  let conPestanas = 0;
   for (const nombre of modulos) {
     await revisar(`#/m/${nombre}`);
     const id = await pagina.evaluate(() => {
@@ -71,12 +99,14 @@ async function revisarUnMedio(navegador, medio, ancho) {
     });
     await revisar(`#/m/${nombre}/new`);
     if (id) await revisar(`#/m/${nombre}/edit/${id}`);
+    if (id) conPestanas += await revisarLaFicha(nombre, id);
   }
   for (const ruta of PANTALLAS_SUELTAS) await revisar(ruta);
 
   const distintos = [...new Set(errores)];
   console.log(
     `${medio.padEnd(6)} · módulos: ${modulos.length}` +
+      ` · pestañas de ficha abiertas: ${conPestanas}` +
       ` · pegados en "Cargando…": ${pegados.length ? pegados.join(', ') : 'ninguno'}` +
       ` · se salen de lado: ${Object.keys(anchos).length ? JSON.stringify(anchos) : 'ninguna'}` +
       ` · errores: ${distintos.length ? distintos.slice(0, 4).join(' | ') : 'ninguno'}`

@@ -537,6 +537,49 @@ table.grid th.col-mini { font-size: 15px; }
   .ficha-dato { border-bottom: 1px solid #f1f5f9; padding: 10px 0; }
 }
 
+/* ---------------- Pestañas de una ficha ----------------
+   Todo lo que cuelga de una ficha —la gente de un cuerpo, su plata, sus actas,
+   los documentos de un miembro— iba una tarjeta debajo de la otra. En el
+   teléfono eso obligaba a recorrer la pantalla entera para llegar a lo de más
+   abajo. Acá va la barra que las separa.
+
+   Se corre de lado a propósito y sin barra visible: en un teléfono caben tres
+   o cuatro y las demás se alcanzan arrastrando, que es el gesto que la gente
+   ya hace. El desvanecido del borde derecho es lo que avisa que hay más. */
+.ficha-pestanas {
+  display: flex; gap: 2px; margin: 14px 0 0;
+  overflow-x: auto; scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  /* Un velo al final del borde para que se note que sigue */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.ficha-pestanas::-webkit-scrollbar { display: none; }
+/* Sin nada que correr, el velo estorbaría: solo se pone cuando hace falta */
+@media (min-width: 900px) {
+  .ficha-pestanas { -webkit-mask-image: none; mask-image: none; }
+}
+.ficha-pestanas button {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  border: none; background: transparent; color: var(--muted);
+  padding: 11px 15px; font-size: 14px; font-weight: 650; font-family: inherit;
+  cursor: pointer; white-space: nowrap; min-height: 44px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.ficha-pestanas button .ic { font-size: 15px; line-height: 1; }
+.ficha-pestanas button:hover { color: var(--marca-azul); }
+.ficha-pestanas button.on { color: var(--accent); border-bottom-color: var(--accent); }
+.ficha-pestanas button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 6px; }
+
+/* La primera tarjeta de una pestaña ya tiene el aire de la barra encima */
+.ficha-panel > .card:first-child,
+.ficha-panel > div:first-child > .card:first-child { margin-top: 14px; }
+
+@media (max-width: 700px) {
+  .ficha-pestanas { margin-top: 12px; }
+  .ficha-pestanas button { padding: 11px 13px; font-size: 13.5px; gap: 6px; }
+}
+
 /* Avisos al encabezar una ficha */
 .avisos-ficha { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 .aviso {
@@ -1154,8 +1197,21 @@ table.grid.cuotas td.debe.se-puede:hover::after { content: "✓"; color: var(--a
 .saldos-cuentas .sc-n { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .saldos-cuentas b { font-variant-numeric: tabular-nums; }
 .saldo-negativo { color: var(--danger); }
-ul.mov-list .monto-ingreso { color: #166534; font-variant-numeric: tabular-nums; }
-ul.mov-list .monto-egreso { color: var(--danger); font-variant-numeric: tabular-nums; }
+/* Los últimos movimientos de un cuerpo, al pie de su tesorería.
+   Nunca tuvo estilo propio y salía como una lista con viñetas, con el texto
+   pegado al borde de la tarjeta: se vio al llevar el panel a una pestaña y
+   mirarlo en un teléfono. Va como las demás listas de la ficha —el monto a la
+   derecha, y si no cabe en una línea baja a la siguiente en vez de estirar la
+   tarjeta—. */
+ul.mov-list { list-style: none; padding: 6px 6px 10px; margin: 0; }
+ul.mov-list li {
+  display: flex; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap;
+  padding: 9px 12px; font-size: 13px; border-radius: 8px; cursor: pointer;
+}
+ul.mov-list li:hover { background: #f8fafc; }
+ul.mov-list li > span:first-child { min-width: 0; }
+ul.mov-list .monto-ingreso { color: #166534; font-variant-numeric: tabular-nums; white-space: nowrap; }
+ul.mov-list .monto-egreso { color: var(--danger); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Saldo de la cuenta de origen al traspasar */
 .saldo-origen { margin-top: 5px; font-size: 12.5px; color: var(--muted); }

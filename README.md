@@ -447,7 +447,7 @@ Vale para **miembros, pastores y usuarios**, y se aplica en todas partes: los li
 
 ### La ficha completa, en una sola pantalla 👁️
 
-Al tocar a una persona en el listado se abre su **ficha**: **todos** sus datos, ordenados por las mismas secciones con las que se registran, y debajo sus **cuerpos y grupos**, sus **documentos**, su **historial** y su **acceso al sistema**. Es de solo lectura —para cambiar algo está el botón **✏️ Editar**, que lleva al formulario de siempre— y está pensada para leerla desde el teléfono: una columna, letra grande y lo importante arriba.
+Al tocar a una persona en el listado se abre su **ficha**: **todos** sus datos, ordenados por las mismas secciones con las que se registran, y sus **cuerpos y grupos**, sus **documentos** y su **historial** repartidos en pestañas. Es de solo lectura —para cambiar algo está el botón **✏️ Editar**, que lleva al formulario de siempre— y está pensada para leerla desde el teléfono: una columna, letra grande y lo importante arriba.
 
 En el encabezado van la foto, el **trato con el nombre completo**, la iglesia, la edad, el tipo de miembro y el estado, y tres botones que evitan copiar números a mano: **📞 Llamar**, **💬 WhatsApp** y **✉️ Correo**.
 
@@ -458,6 +458,26 @@ Con **🖨️ Imprimir** la misma ficha sale en papel con el membrete de la igle
 > Lo mismo vale para las **iglesias**, los **pastores / guías** y los **cuerpos y grupos**: se abren para leerlos, y desde ahí se pasa a editarlos.
 
 > Un dato guardado que **no figura en la lista de opciones** —un parentesco escrito a mano, algo que venga de otro sistema— se muestra **tal cual**: el dato está, y esconderlo por no reconocerlo sería peor que mostrarlo.
+
+### Las secciones de una ficha, en pestañas 🗂️
+
+Todo lo que cuelga de una ficha iba **una tarjeta debajo de la otra**. En un computador se notaba poco; en el teléfono, la ficha de un cuerpo con veintiocho integrantes obligaba a recorrer la pantalla entera para llegar a las actas. Ahora cada sección es una **pestaña**, en una barra que se corre de lado:
+
+| Ficha | Pestañas |
+|---|---|
+| **Cuerpo / grupo** | Datos · Integrantes · Cuotas · Tesorería · Directivas · Actas |
+| **Miembro** | Datos · Cuerpos · Documentos · Historial |
+| **Iglesia** y **pastor / guía** | Datos · Documentos · Historial |
+
+Tres cosas que la hacen algo más que un cambio de aspecto:
+
+- **cada una se pide cuando se abre.** Antes se cargaban las seis de una, aunque nadie mirara ninguna;
+- **lo que se pintó se queda.** Volver a una pestaña no la vuelve a pedir ni pierde lo que uno dejó puesto —el año de las cuotas, el filtro de los integrantes—;
+- **la dirección la lleva.** `#/m/cuerpos/ficha/12/tesoreria` abre esa pestaña, así que se puede guardar y mandar. Cambiar de pestaña reemplaza la dirección en vez de apilarla, para que el botón de atrás vuelva de donde se venía.
+
+Las pestañas que esa persona **no puede ver no aparecen**, con los mismos permisos de siempre: sin *Integrantes de Cuerpos* no está la de integrantes, y sin la llave de la *tesorería de los cuerpos* no están ni Cuotas ni Tesorería. Lo chico que habla del propio registro —el estado de cumplimiento de un cuerpo, el acceso al sistema de un miembro— va con sus datos y no en una pestaña aparte: una pestaña que a veces está vacía es peor que no tenerla.
+
+Se maneja también **con el teclado**: las flechas ← → mueven entre pestañas, e Inicio y Fin van a la primera y a la última.
 
 ### El listado en el teléfono 📱
 

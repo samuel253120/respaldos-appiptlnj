@@ -485,7 +485,7 @@ function route() {
     const link = document.querySelector(`.side-link[data-mod="${name}"]`);
     if (link) marcarActivo(link);
     if (parts[2] === 'new') return viewForm(name, null, precarga);
-    if (parts[2] === 'ficha' && parts[3]) return viewFicha(name, parts[3]);
+    if (parts[2] === 'ficha' && parts[3]) return viewFicha(name, parts[3], parts[4]);
     if (parts[2] === 'edit' && parts[3]) return viewForm(name, parts[3]);
     return viewList(name, precarga);
   }
@@ -2020,7 +2020,7 @@ function aplicaEnLaFicha(f, row) {
   return true;
 }
 
-async function viewFicha(name, id) {
+async function viewFicha(name, id, pestana) {
   const m = MOD[name];
   content().innerHTML = `<div class="card"><div class="card-body">Cargando…</div></div>`;
 
@@ -2143,44 +2143,178 @@ async function viewFicha(name, id) {
       </div>
     </div>
 
-    <div class="card" style="margin-top:14px">
-      <div class="toolbar">
-        <b style="font-size:14px">Datos registrados</b>
-        <label class="ver-blancos"${enBlanco ? '' : ' hidden'}>
-          <input type="checkbox" id="verBlancos" /> Ver los ${enBlanco} campo${enBlanco === 1 ? '' : 's'} en blanco
-        </label>
-      </div>
-      <div class="ficha-datos" id="fichaDatos">${cuerpo}</div>
-    </div>`;
+    <div id="fichaPestanas"></div>
+    <div id="fichaPaneles"></div>`;
 
   document.getElementById('btnBack').addEventListener('click', () => (location.hash = `#/m/${name}`));
   const be = document.getElementById('btnEdit');
   if (be) be.addEventListener('click', () => (location.hash = `#/m/${name}/edit/${id}`));
   const bp = document.getElementById('btnPrint');
   if (bp) bp.addEventListener('click', () => (location.hash = `#/print/${name}/${id}`));
-  const vb = document.getElementById('verBlancos');
-  if (vb) {
-    vb.addEventListener('change', () => {
-      document.getElementById('fichaDatos').classList.toggle('con-vacios', vb.checked);
-    });
-  }
 
   // Lo que no se puede pasar por alto de esta persona, antes de sus datos
   if (name === 'miembros') avisosDelMiembro(row);
   avisoDeLoReservado(row, name === 'miembros' ? ['miembros_salud'] : []);
 
-  // Y todo lo que cuelga de la ficha: sus grupos, sus documentos, su historial
-  const zona = (fn, ...args) => {
-    const caja = document.createElement('div');
-    content().appendChild(caja);
-    fn(...args, caja);
+  /** La primera pestaña: los datos de la ficha, más lo chico que va con ellos. */
+  const pintarLosDatos = (caja) => {
+    caja.innerHTML = `
+      <div class="card">
+        <div class="toolbar">
+          <b style="font-size:14px">Datos registrados</b>
+          <label class="ver-blancos"${enBlanco ? '' : ' hidden'}>
+            <input type="checkbox" id="verBlancos" /> Ver los ${enBlanco} campo${enBlanco === 1 ? '' : 's'} en blanco
+          </label>
+        </div>
+        <div class="ficha-datos" id="fichaDatos">${cuerpo}</div>
+      </div>`;
+
+    const vb = document.getElementById('verBlancos');
+    if (vb) {
+      vb.addEventListener('change', () => {
+        document.getElementById('fichaDatos').classList.toggle('con-vacios', vb.checked);
+      });
+    }
+
+    // Lo chico que habla del propio registro va con sus datos y no en una
+    // pestaña aparte: son tres líneas que además pueden no aparecer, y una
+    // pestaña que a veces está vacía es peor que no tenerla.
+    const alPie = (fn, ...args) => {
+      const suya = document.createElement('div');
+      caja.appendChild(suya);
+      fn(...args, suya);
+    };
+    if (name === 'cuerpos') alPie(renderCumplimientoCuerpo, Number(id));
+    if (name === 'pastores') alPie(renderFichaMiembroPastor, Number(id), row);
+    if (name === 'miembros') alPie(renderAccesoMiembro, Number(id));
   };
-  if (name === 'miembros') zona(renderCuerposDelMiembro, Number(id));
-  if (name === 'cuerpos') zona(renderPanelesCuerpo, Number(id));
-  if (name === 'pastores') zona(renderFichaMiembroPastor, Number(id), row);
-  if (PANEL_DOCUMENTOS[name]) zona(renderDocumentos, PANEL_DOCUMENTOS[name], Number(id));
-  if (PANEL_HISTORIAL[name]) zona(renderHistorial, PANEL_HISTORIAL[name], Number(id));
-  if (name === 'miembros') zona(renderAccesoMiembro, Number(id));
+
+  pintarPestanasDeLaFicha(name, Number(id), row, pintarLosDatos, pestana);
+}
+
+/**
+ * Las pestañas de una ficha.
+ *
+ * Todo lo que cuelga de una ficha —la gente del cuerpo, su plata, sus actas,
+ * los documentos de un miembro, su historial— se pintaba una tarjeta debajo de
+ * la otra. En un computador se notaba poco; en el teléfono la ficha de un
+ * cuerpo con veintiocho integrantes obligaba a bajar la pantalla entera para
+ * llegar a las actas, y no había manera de volver arriba sin subir todo de
+ * nuevo. Ahora cada sección es una pestaña, en una barra que se corre de lado.
+ *
+ * Tres cosas que hacen que valga la pena y no sea solo un cambio de aspecto:
+ *
+ *   · **cada una se pide cuando se abre**. Antes se cargaban las seis de una,
+ *     aunque nadie mirara ninguna;
+ *   · **lo que se pintó se queda**. Volver a una pestaña no la vuelve a pedir
+ *     ni pierde lo que uno dejó puesto —el año de las cuotas, el filtro de los
+ *     integrantes—;
+ *   · **la dirección la lleva**. `#/m/cuerpos/ficha/12/tesoreria` abre esa
+ *     pestaña, así que se puede guardar y mandar. Cambiar de pestaña reemplaza
+ *     la dirección en vez de apilarla: el botón de atrás vuelve de donde se
+ *     venía y no obliga a deshacer una por una las pestañas que se miraron.
+ *
+ * Las que esa persona no puede ver no aparecen: la lista se arma con los
+ * mismos permisos que ya decidían si el panel se pintaba (ver LLAVES en
+ * server/permissions.js).
+ */
+function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
+  const suyas = [{ clave: 'datos', titulo: 'Datos', icono: '📋', pinta: pintarLosDatos }];
+  const sumar = (clave, titulo, icono, pinta) => suyas.push({ clave, titulo, icono, pinta });
+
+  if (name === 'cuerpos') {
+    if (MOD['integrantes_cuerpo']) sumar('integrantes', 'Integrantes', '🧑‍🤝‍🧑', (c) => renderIntegrantesCuerpo(id, c));
+    if (MOD['cuotas_cuerpo'] && tieneLlave('tesoreria_cuerpo')) sumar('cuotas', 'Cuotas', '🎟️', (c) => renderCuotasCuerpo(id, c));
+    if (MOD['cuentas_tesoreria'] && tieneLlave('tesoreria_cuerpo')) sumar('tesoreria', 'Tesorería', '💰', (c) => renderTesoreriaCuerpo(id, c));
+    if (MOD['directivas']) sumar('directivas', 'Directivas', '🏅', (c) => renderDirectivasCuerpo(id, c));
+    if (MOD['actas_reuniones']) sumar('actas', 'Actas', '📝', (c) => renderActasCuerpo(id, c));
+  }
+  if (name === 'miembros' && MOD['cuerpos']) sumar('cuerpos', 'Cuerpos', '👥', (c) => renderCuerposDelMiembro(id, c));
+
+  const docs = PANEL_DOCUMENTOS[name];
+  if (docs && MOD[docs.modulo]) sumar('documentos', 'Documentos', '🗂️', (c) => renderDocumentos(docs, id, c));
+  const hist = PANEL_HISTORIAL[name];
+  if (hist && MOD[hist.modulo]) sumar('historial', 'Historial', '🗒️', (c) => renderHistorial(hist, id, c));
+
+  return suyas;
+}
+
+/** Pinta la barra de pestañas y deja abierta la que corresponde. */
+function pintarPestanasDeLaFicha(name, id, row, pintarLosDatos, elegida) {
+  const barra = document.getElementById('fichaPestanas');
+  const zona = document.getElementById('fichaPaneles');
+  if (!barra || !zona) return;
+
+  const suyas = pestanasDeLaFicha(name, id, row, pintarLosDatos);
+
+  // Con una sola no hay nada que elegir: la ficha queda como siempre
+  if (suyas.length === 1) {
+    pintarLosDatos(zona);
+    return;
+  }
+
+  barra.innerHTML = `
+    <div class="ficha-pestanas" role="tablist" aria-label="Secciones de la ficha">
+      ${suyas.map((p) => `
+        <button type="button" role="tab" id="pes_${p.clave}" data-pestana="${p.clave}"
+          aria-controls="pan_${p.clave}" aria-selected="false" tabindex="-1">
+          <span class="ic" aria-hidden="true">${p.icono}</span>${esc(p.titulo)}</button>`).join('')}
+    </div>`;
+  zona.innerHTML = suyas.map((p) => `
+    <section class="ficha-panel" id="pan_${p.clave}" role="tabpanel" aria-labelledby="pes_${p.clave}" hidden></section>`).join('');
+
+  const pintadas = new Set();
+  const abrir = (clave, mover) => {
+    const cual = suyas.find((p) => p.clave === clave) || suyas[0];
+    for (const p of suyas) {
+      const boton = barra.querySelector(`[data-pestana="${p.clave}"]`);
+      const panel = document.getElementById(`pan_${p.clave}`);
+      const activa = p.clave === cual.clave;
+      boton.classList.toggle('on', activa);
+      boton.setAttribute('aria-selected', activa ? 'true' : 'false');
+      boton.tabIndex = activa ? 0 : -1;
+      panel.hidden = !activa;
+    }
+    // Se pide cuando se abre, y una sola vez: volver no la vuelve a cargar ni
+    // pierde lo que uno dejó puesto adentro
+    if (!pintadas.has(cual.clave)) {
+      pintadas.add(cual.clave);
+      cual.pinta(document.getElementById(`pan_${cual.clave}`));
+    }
+    // La barra se corre para dejar la elegida al centro: si no, la que se
+    // acaba de tocar podía quedar debajo del desvanecido del borde y parecer
+    // que no estaba activa.
+    const suBoton = barra.querySelector(`[data-pestana="${cual.clave}"]`);
+    suBoton.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    if (mover) suBoton.focus();
+
+    // La dirección lleva la pestaña, para poder guardarla y mandarla. Se
+    // cambia sin recargar la ficha: volver a pintarla entera para mover una
+    // pestaña sería pedir de nuevo todo lo que ya está en pantalla.
+    const base = `#/m/${name}/ficha/${id}`;
+    const nueva = cual.clave === 'datos' ? base : `${base}/${cual.clave}`;
+    if (location.hash !== nueva) history.replaceState(null, '', nueva);
+  };
+
+  barra.querySelectorAll('[data-pestana]').forEach((b) =>
+    b.addEventListener('click', () => abrir(b.dataset.pestana)));
+
+  // Con el teclado, las flechas mueven entre pestañas: es lo que se espera de
+  // una barra así, y sin esto solo se llega a ellas tabulando una por una.
+  barra.addEventListener('keydown', (e) => {
+    const orden = suyas.map((p) => p.clave);
+    const actual = orden.indexOf(barra.querySelector('.on').dataset.pestana);
+    let destino = null;
+    if (e.key === 'ArrowRight') destino = orden[(actual + 1) % orden.length];
+    if (e.key === 'ArrowLeft') destino = orden[(actual - 1 + orden.length) % orden.length];
+    if (e.key === 'Home') destino = orden[0];
+    if (e.key === 'End') destino = orden[orden.length - 1];
+    if (!destino) return;
+    e.preventDefault();
+    abrir(destino, true);
+  });
+
+  abrir(suyas.some((p) => p.clave === elegida) ? elegida : 'datos');
 }
 
 /** Los cuerpos y grupos en los que participa un miembro, bajo su ficha. */
