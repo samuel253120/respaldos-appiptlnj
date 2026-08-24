@@ -76,6 +76,101 @@ Abra `https://SU-DOMINIO/health`. Responde algo así:
 2. En Railway haga **Redeploy** del servicio.
 3. Vuelva a entrar: si el registro de prueba sigue ahí, el volumen quedó bien y ya puede registrar información real. Si desapareció, el volumen no está montado en `/data`.
 
+### Usar un dominio propio (por ejemplo `gestion.lanuevajerusalen.cl`)
+
+La dirección que da Railway (`…up.railway.app`) funciona perfectamente, pero es
+larga y no es suya. Se le puede poner un subdominio del dominio de la iglesia.
+
+> **⚠️ ANTES DE EMPEZAR: no borre la dirección vieja.** Los códigos QR de las
+> credenciales **ya impresas** llevan grabada la dirección con que se
+> imprimieron. Si esa dirección deja de existir, esos QR dejan de verificar y
+> no hay forma de arreglarlo sin reimprimir las credenciales. Railway deja
+> tener varias direcciones apuntando al mismo servicio: **agregue la nueva y
+> deje la vieja puesta**, para siempre. No cuesta nada tenerla.
+
+**1. En Railway**
+
+1. Entre al proyecto y haga clic en el servicio.
+2. **Settings → Networking → Custom Domain** (botón *+ Custom Domain*).
+3. Escriba el nombre completo: `gestion.lanuevajerusalen.cl` — sin `https://`
+   y sin barra al final.
+4. Si le pregunta por el **Target port**, ponga el mismo que ya usa la
+   dirección `…up.railway.app` que tiene funcionando. Si no aparece ninguno,
+   es `3000`.
+5. Railway le va a mostrar un **destino CNAME**, algo como
+   `abc123xy.up.railway.app`. **Cópielo**: es el dato que se ocupa en el paso
+   siguiente. Mientras tanto la pantalla va a decir que está esperando el DNS;
+   es lo normal.
+
+**2. En el DNS del dominio**
+
+Esto se hace donde estén administrados los DNS de `lanuevajerusalen.cl` —NIC
+Chile, o la empresa que le lleva el dominio—. Agregue **un** registro:
+
+| Campo | Qué poner |
+|---|---|
+| Tipo | `CNAME` |
+| Nombre / Host | `gestion` (solo esa palabra; algunos paneles piden el nombre completo `gestion.lanuevajerusalen.cl`) |
+| Valor / Destino | lo que copió de Railway, por ejemplo `abc123xy.up.railway.app` |
+| TTL | el que venga por omisión, o `300` |
+
+Tres cosas que suelen salir mal:
+
+- **No use un registro `A`** con una dirección IP. Railway cambia de IP y la
+  dirección se le cae sin aviso.
+- **No puede haber otro registro con ese mismo nombre.** Si ya existe un
+  `gestion` apuntando a otra parte, hay que borrarlo: un CNAME no convive con
+  otros registros del mismo nombre.
+- **Si el dominio está en Cloudflare**, deje la nubecita en **gris (DNS only)**.
+  Con la nubecita naranja, Railway no puede emitir el certificado y la página
+  queda dando error de seguridad.
+
+**3. Esperar y comprobar**
+
+El DNS demora entre unos minutos y unas horas. Railway emite solo el
+certificado de seguridad (el candado) apenas el nombre resuelve; no hay que
+comprar ni instalar nada.
+
+Para saber si ya está, desde cualquier computador:
+
+```bash
+nslookup gestion.lanuevajerusalen.cl
+```
+
+Cuando responda con el destino de Railway, abra:
+
+```
+https://gestion.lanuevajerusalen.cl/health
+```
+
+Si contesta `{"ok":true,…}` con el candado cerrado, quedó listo.
+
+**4. Lo que hay que avisarle a la gente**
+
+Cambiar de dirección tiene tres efectos que conviene anticipar, porque si no
+parecen fallas del sistema:
+
+- **Hay que volver a entrar.** La sesión está guardada por dirección, así que
+  todos van a tener que poner su RUT y contraseña de nuevo. Una sola vez.
+- **Los avisos del teléfono hay que reactivarlos.** Se activan por dirección.
+  Cada persona tiene que entrar a **Perfil → Mis avisos → Activar los avisos
+  en este aparato** desde la dirección nueva. Los avisos viejos pueden seguir
+  llegando un tiempo desde la dirección anterior; se apagan igual, desde
+  **Mis avisos → Apagar** en la dirección vieja.
+- **Quien tenga el sistema en la pantalla de inicio del teléfono debe volver a
+  agregarlo** desde la dirección nueva. En iPhone esto además es obligatorio
+  para que le lleguen los avisos.
+
+**5. Las credenciales**
+
+Las que se impriman **de ahora en adelante** van a llevar la dirección nueva
+en su QR, sola: el sistema la toma de la dirección por la que se está
+entrando, no de una configuración. No hay nada que cambiar.
+
+Las **ya impresas** siguen llevando la dirección vieja, y por eso el aviso del
+comienzo: mientras la dirección `…up.railway.app` siga puesta en Railway,
+esas credenciales verifican igual de bien.
+
 ## Opción B — Render (~7 USD/mes con disco persistente)
 
 1. Cree una cuenta en https://render.com e inicie sesión con GitHub.
