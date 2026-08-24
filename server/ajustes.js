@@ -56,9 +56,10 @@ const OPCIONES = [
       {
         clave: 'iglesia_logo', label: 'Logo', tipo: 'imagen', defecto: '', publica: true,
         ayuda:
-          'El emblema que va en la pantalla de acceso, en el menú y arriba de todo lo que se imprime. ' +
-          'Mientras no se suba uno, se usa el que trae el sistema. Conviene una imagen cuadrada y con ' +
-          'fondo transparente (PNG).',
+          'El emblema que va en la pantalla de acceso, en el menú, arriba de todo lo que se imprime y en la ' +
+          'credencial pastoral —ahí sale tres veces: arriba del anverso, arriba del reverso y como marca de ' +
+          'agua detrás de los datos—. Mientras no se suba uno, se usa el que trae el sistema. Conviene una ' +
+          'imagen cuadrada y con fondo transparente (PNG).',
       },
       {
         clave: 'iglesia_rut', label: 'RUT o personalidad jurídica', tipo: 'text', defecto: '',
@@ -177,6 +178,36 @@ const OPCIONES = [
           'La copia de todas las noches queda en el mismo disco que los datos, así que no sirve si se pierde ' +
           'el servidor. Pasado este tiempo sin que nadie baje el respaldo completo, el sistema lo recuerda en ' +
           'la pantalla de configuración.',
+      },
+    ],
+  },
+  {
+    grupo: 'Recursos de la credencial',
+    items: [
+      {
+        clave: 'credencial_sello', label: 'Sello oficial', tipo: 'imagen', defecto: '',
+        ayuda:
+          'El sello de la corporación. Va dos veces en la credencial: completo en el reverso, y cruzando la ' +
+          'fotografía del anverso como marca de seguridad. Conviene un PNG con fondo transparente. Sin él no ' +
+          'se puede emitir ni imprimir.',
+      },
+      {
+        clave: 'credencial_firma', label: 'Firma del Pastor Presidente', tipo: 'imagen', defecto: '',
+        ayuda:
+          'Va sobre la línea de firma del reverso. Conviene un PNG con fondo transparente, recortado justo a ' +
+          'la firma. Sin ella no se puede emitir ni imprimir.',
+      },
+      {
+        clave: 'credencial_qr_modo', label: 'Modo del código QR', tipo: 'select', defecto: 'linea',
+        opciones: [
+          { valor: 'linea', label: 'Verificación en línea (recomendado)' },
+          { valor: 'sinconexion', label: 'Datos sin conexión' },
+        ],
+        ayuda:
+          'En línea: el QR lleva una dirección corta que abre la página de verificación de este sistema y ' +
+          'muestra el estado de la credencial al día. Sin conexión: el QR lleva los datos del titular escritos ' +
+          'adentro, para cuando en el lugar donde se verifica no hay internet; ahí el código no puede saber si ' +
+          'la credencial fue revocada después de imprimirse.',
       },
     ],
   },

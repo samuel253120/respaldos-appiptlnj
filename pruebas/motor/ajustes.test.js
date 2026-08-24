@@ -29,7 +29,7 @@ test('cada opción se puede leer y trae un valor de fábrica', () => {
     for (const o of grupo.items) {
       assert.ok(o.clave, 'una opción sin clave no se puede guardar');
       assert.ok(o.label, `${o.clave} sin etiqueta`);
-      assert.ok(['text', 'textarea', 'number', 'boolean', 'imagen'].includes(o.tipo), `${o.clave}: tipo «${o.tipo}»`);
+      assert.ok(['text', 'textarea', 'number', 'boolean', 'imagen', 'select'].includes(o.tipo), `${o.clave}: tipo «${o.tipo}»`);
       assert.notEqual(ajustes.obtener(o.clave), undefined, `${o.clave} no devuelve nada`);
     }
   }
@@ -42,6 +42,23 @@ test('no hay dos opciones con la misma clave', () => {
     for (const o of grupo.items) {
       assert.ok(!vistas.has(o.clave), `«${o.clave}» está declarada dos veces`);
       vistas.add(o.clave);
+    }
+  }
+});
+
+test('toda opción de lista declara entre qué elegir', () => {
+  // Una lista sin opciones sería una caja vacía; y un valor de fábrica que no
+  // esté entre ellas dejaría el sistema arrancando en un modo que no existe.
+  for (const grupo of ajustes.OPCIONES) {
+    for (const o of grupo.items) {
+      if (o.tipo !== 'select') continue;
+      assert.ok(Array.isArray(o.opciones) && o.opciones.length >= 2, `${o.clave} sin opciones`);
+      for (const x of o.opciones) {
+        assert.ok(x.valor, `${o.clave}: una opción sin valor`);
+        assert.ok(x.label, `${o.clave}: la opción «${x.valor}» sin etiqueta`);
+      }
+      assert.ok(o.opciones.some((x) => x.valor === o.defecto),
+        `${o.clave}: su valor de fábrica «${o.defecto}» no está entre sus opciones`);
     }
   }
 });
@@ -102,6 +119,7 @@ test('los ajustes nuevos existen y traen lo que había escrito en el código', (
   // Los valores de fábrica son exactamente los que estaban antes fijos: al
   // publicar esta versión nadie tiene que notar ningún cambio.
   const comoEstaba = {
+    credencial_qr_modo: 'linea',  // el punto 8.2 dice que (a) es el valor por defecto
     archivo_tope_mb: '15',        // TOPE_ARCHIVO = 15 * 1024 * 1024
     planilla_tope_filas: '20000', // TOPE_PLANILLA
     disco_aviso_mb: '100',        // el aviso de disco apretado

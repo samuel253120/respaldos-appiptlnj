@@ -5242,24 +5242,37 @@ async function viewConfiguracion() {
       </div>`;
     }
     if (o.tipo === 'imagen') {
-      // El logo se ve, se cambia y se quita en el mismo lugar. El valor que
-      // viaja al guardar es el nombre del archivo, igual que en cualquier
-      // campo de archivo; lo que se muestra es la ruta pública que lo entrega.
+      // Se ve, se cambia y se quita en el mismo lugar. El valor que viaja al
+      // guardar es el nombre del archivo, igual que en cualquier campo de
+      // archivo; lo que se muestra es la ruta que lo entrega. El logo tiene la
+      // suya propia porque también se ve sin sesión, en la pantalla de acceso.
+      const verla = o.clave === 'iglesia_logo'
+        ? `/api/configuracion/logo${o.valor ? `?v=${encodeURIComponent(o.valor)}` : ''}`
+        : (o.valor ? `/uploads/${encodeURIComponent(o.valor)}` : '');
       return `<div class="fld full cfg-imagen">
         <label>${esc(o.label)}</label>
         <div class="cfg-imagen-caja">
-          <img id="cfgImagen_${o.clave}" alt=""
-               src="/api/configuracion/logo${o.valor ? `?v=${encodeURIComponent(o.valor)}` : ''}" />
+          <img id="cfgImagen_${o.clave}" alt="" class="${verla ? '' : 'sin-imagen'}" src="${verla}" />
           <input type="hidden" data-clave="${o.clave}" data-tipo="imagen"
                  data-antes="${esc(o.valor || '')}" value="${esc(o.valor || '')}" />
           ${puedeCambiarla ? `
             <div class="cfg-imagen-acciones">
               <button type="button" class="btn secondary sm" data-elegir-imagen="${o.clave}">🖼️ Elegir una imagen</button>
               <button type="button" class="btn secondary sm" data-quitar-imagen="${o.clave}"
-                ${o.valor ? '' : 'disabled'}>Volver al de fábrica</button>
+                ${o.valor ? '' : 'disabled'}>${o.clave === 'iglesia_logo' ? 'Volver al de fábrica' : 'Quitarla'}</button>
               <span class="mut" id="cfgImagenEstado_${o.clave}"></span>
             </div>` : ''}
         </div>
+        ${o.ayuda ? `<div class="help">${esc(o.ayuda)}</div>` : ''}
+      </div>`;
+    }
+    if (o.tipo === 'select') {
+      return `<div class="fld">
+        <label>${esc(o.label)}</label>
+        <select data-clave="${o.clave}" data-tipo="select"${bloqueado}>
+          ${(o.opciones || []).map((x) => `
+            <option value="${esc(x.valor)}" ${String(o.valor) === String(x.valor) ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}
+        </select>
         ${o.ayuda ? `<div class="help">${esc(o.ayuda)}</div>` : ''}
       </div>`;
     }
@@ -5326,6 +5339,7 @@ async function viewConfiguracion() {
           const r = await api('POST', '/upload', fd, true);
           oculto.value = r.filename;
           vista.src = `/uploads/${encodeURIComponent(r.filename)}`;
+          vista.classList.remove('sin-imagen');
           if (quitar) quitar.disabled = false;
           aviso.textContent = 'Listo: guarde los cambios para dejarlo puesto.';
         } catch (e) {
@@ -5339,9 +5353,15 @@ async function viewConfiguracion() {
     if (quitar) {
       quitar.addEventListener('click', () => {
         oculto.value = '';
-        vista.src = '/img/logo.png';
+        if (clave === 'iglesia_logo') {
+          vista.src = '/img/logo.png';
+          aviso.textContent = 'Vuelve el de fábrica: guarde los cambios.';
+        } else {
+          vista.removeAttribute('src');
+          vista.classList.add('sin-imagen');
+          aviso.textContent = 'Queda sin cargar: guarde los cambios.';
+        }
         quitar.disabled = true;
-        aviso.textContent = 'Vuelve el de fábrica: guarde los cambios.';
       });
     }
   });

@@ -21,6 +21,10 @@ const { ejecutarMigraciones } = require('./migraciones');
 const { router: importarRouter } = require('./importar');
 const { router: configuracionRouter } = require('./configuracion');
 const ajustes = require('./ajustes');
+// Se pide al arrancar para que su aviso —si falta la clave secreta de las
+// credenciales— salga junto a los demás, y no la primera vez que alguien
+// intente emitir una.
+require('./credenciales/codigo');
 const alcance = require('./alcance');
 const archivos = require('./archivos');
 const respaldo = require('./respaldo');

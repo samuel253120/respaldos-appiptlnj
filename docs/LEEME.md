@@ -26,3 +26,18 @@ tiene, con el mismo efecto:
 | Guardar en R2 | El volumen de datos, que ya entra en el respaldo |
 | «documento sincronizado» | La base SQLite: nunca se guardan imágenes en base64 dentro de ella |
 | `churchId` | `iglesia_id` y el alcance por iglesia que ya usan los 32 módulos |
+
+## Variables del servidor que pide el módulo de credenciales
+
+| Variable | Para qué | Si falta |
+|---|---|---|
+| `CREDENCIAL_SECRETO` | Firmar el código de autenticidad que va dentro del código QR | El sistema arranca igual, avisa en el registro y usa una clave de reserva que está **escrita en el código y es pública**: cualquiera podría fabricar el código de una credencial falsa |
+
+Para generar una:
+
+```
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+**Se pone una sola vez, al publicar.** Si se cambia después, los códigos de las
+credenciales ya impresas dejan de validar.

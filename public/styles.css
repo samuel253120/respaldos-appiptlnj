@@ -648,6 +648,11 @@ table.grid th.col-mini { font-size: 15px; }
   border: 1px solid var(--border); border-radius: 12px; background: #f8fafc; padding: 6px;
 }
 .cfg-imagen-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Una que todavía no se ha cargado: el recuadro se ve, vacío y punteado */
+.cfg-imagen-caja img.sin-imagen {
+  border-style: dashed; border-color: #cbd5e1;
+  background: repeating-linear-gradient(45deg, #f8fafc, #f8fafc 6px, #eef2f7 6px, #eef2f7 12px);
+}
 .cfg-imagen-acciones .mut { font-size: 12.5px; }
 
 /* Avisos al encabezar una ficha */

@@ -51,6 +51,30 @@ router.get('/logo', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'img', 'logo.png'));
 });
 
+/**
+ * El sello y la firma, para la vista de impresión de la credencial.
+ *
+ * No van por /uploads porque ahí el archivo se busca por la ficha a la que
+ * pertenece, y estos no pertenecen a ninguna: son del sistema entero. Piden
+ * sesión —a diferencia del logo, que tiene que verse en la pantalla de acceso—
+ * y solo entregan lo que está configurado, nunca un archivo cualquiera.
+ */
+const RECURSOS = { sello: 'credencial_sello', firma: 'credencial_firma' };
+
+router.get('/recurso/:cual', authRequired, (req, res) => {
+  const clave = RECURSOS[req.params.cual];
+  if (!clave) return res.status(404).json({ error: 'Ese recurso no existe' });
+  const archivo = obtener(clave);
+  if (!archivo) return res.status(404).json({ error: `Falta cargar el ${req.params.cual} en Configuración del Sistema` });
+  const ruta = path.join(UPLOADS_DIR, path.basename(archivo));
+  if (!fs.existsSync(ruta)) {
+    return res.status(404).json({ error: `El archivo del ${req.params.cual} ya no está en el disco` });
+  }
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.sendFile(ruta);
+});
+
 router.get('/', authRequired, (req, res) => {
   if (!can(req.user, 'sistema_configuracion', 'view')) {
     return res.status(403).json({ error: 'No tiene permiso para ver la configuración del sistema' });
@@ -64,6 +88,7 @@ router.get('/', authRequired, (req, res) => {
         // de mandar; el que manda igual se topa con la misma comprobación acá
         min: o.min === undefined ? null : o.min,
         max: o.max === undefined ? null : o.max,
+        opciones: o.opciones || null,
         valor: obtener(o.clave),
       })),
     })),
@@ -94,6 +119,11 @@ router.put('/', authRequired, (req, res) => {
     // mirar el valor, si no un "0" enviado por la API dejaría la opción activa.
     if (opcion.tipo === 'boolean') {
       v = valor === true || valor === 1 || valor === '1' || valor === 'true' ? '1' : '0';
+    }
+    // Una opción de lista solo admite lo que declara: un valor inventado
+    // dejaría el sistema en un modo que no existe
+    if (opcion.tipo === 'select') {
+      if (!(opcion.opciones || []).some((x) => x.valor === String(valor))) continue;
     }
     if (opcion.tipo === 'number') {
       const n = Number(valor);

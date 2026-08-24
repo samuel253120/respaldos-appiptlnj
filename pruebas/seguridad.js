@@ -979,6 +979,34 @@ async function entrar(rut = RUT, clave = CLAVE) {
     }
   }
 
+  /* 4j-qua · Los recursos de la credencial ------------------------------ */
+  console.log('\n4j-qua · El sello y la firma de la credencial');
+  // El logo se entrega sin sesión porque tiene que verse en la pantalla de
+  // acceso. El sello y la firma, no: con ellos se arma un documento de
+  // identidad ministerial, y quien los tenga puede imitar uno.
+  const selloSinSesion = await fetch(`${URL}/api/configuracion/recurso/sello`).then((r) => r.status);
+  revisar('el sello no se entrega sin sesión', selloSinSesion === 401 || selloSinSesion === 403,
+    `respondió ${selloSinSesion}`);
+  const firmaSinSesion = await fetch(`${URL}/api/configuracion/recurso/firma`).then((r) => r.status);
+  revisar('la firma tampoco', firmaSinSesion === 401 || firmaSinSesion === 403,
+    `respondió ${firmaSinSesion}`);
+
+  const recursoInventado = await fetch(`${URL}/api/configuracion/recurso/inventado`, {
+    headers: { Authorization: token },
+  }).then((r) => r.status);
+  revisar('y esa puerta solo entrega el sello y la firma, no cualquier archivo',
+    recursoInventado === 404, `respondió ${recursoInventado}`);
+
+  const conRuta = await fetch(`${URL}/api/configuracion/recurso/${encodeURIComponent('../../iglesias.db')}`, {
+    headers: { Authorization: token },
+  }).then((r) => r.status);
+  revisar('ni escribiendo una ruta a mano', conRuta === 404, `respondió ${conRuta}`);
+
+  const modoRaro = await api('PUT', '/api/configuracion', { credencial_qr_modo: 'inventado' });
+  revisar('el modo del código QR no acepta un valor que no existe',
+    modoRaro.datos.valores.credencial_qr_modo !== 'inventado',
+    `quedó en ${modoRaro.datos.valores.credencial_qr_modo}`);
+
   /* 4k · Los paneles de la ficha de un cuerpo ---------------------------- */
   console.log('\n4k · Cada panel de la ficha de un cuerpo pide SU permiso');
   // Los paneles se pintan dentro de la ficha del cuerpo y por eso pedían solo
