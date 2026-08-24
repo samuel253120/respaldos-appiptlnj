@@ -976,21 +976,25 @@ async function viewMiPerfil(precarga) {
     </div>
     <div class="tabs" id="perfilTabs">
       <button data-tab="datos" class="${pestana === 'datos' ? 'on' : ''}">📝 Mis datos</button>
+      <button data-tab="avisos" class="${pestana === 'avisos' ? 'on' : ''}">🔔 Mis avisos</button>
       <button data-tab="seguridad" class="${pestana === 'seguridad' ? 'on' : ''}">🔐 Seguridad</button>
     </div>
     <div id="tabDatos" ${pestana === 'datos' ? '' : 'hidden'}></div>
+    <div id="tabAvisos" ${pestana === 'avisos' ? '' : 'hidden'}></div>
     <div id="tabSeguridad" ${pestana === 'seguridad' ? '' : 'hidden'}></div>`;
 
   content().querySelectorAll('#perfilTabs button').forEach((b) => {
     b.addEventListener('click', () => {
       content().querySelectorAll('#perfilTabs button').forEach((x) => x.classList.toggle('on', x === b));
       document.getElementById('tabDatos').hidden = b.dataset.tab !== 'datos';
+      document.getElementById('tabAvisos').hidden = b.dataset.tab !== 'avisos';
       document.getElementById('tabSeguridad').hidden = b.dataset.tab !== 'seguridad';
     });
   });
 
   renderSeguridad(document.getElementById('tabSeguridad'));
   renderMisDatos(document.getElementById('tabDatos'));
+  renderMisAvisos(document.getElementById('tabAvisos'));
 }
 
 /** Los datos propios, con el mismo formulario que usa el resto del sistema. */
@@ -1304,6 +1308,12 @@ function renderShell() {
             <div class="bg-panel" id="bgPanel" role="listbox" aria-label="Resultados de la búsqueda" hidden></div>
           </div>
           <div class="tb-espacio"></div>
+          <div class="campanita" id="campanita">
+            <button type="button" class="cam-boton" id="camAbrir" aria-label="Mis avisos" aria-expanded="false">
+              🔔<span class="cam-cuenta" id="camCuenta" hidden>0</span>
+            </button>
+            <div class="cam-panel" id="camPanel" role="dialog" aria-label="Mis avisos" hidden></div>
+          </div>
           <a class="who" href="#/perfil" title="Mi perfil">${retratoDe(USER, initials)} <span><b>${esc(USER.nombre)}</b><br>${esc(USER.rut ? rutFormatear(USER.rut) : USER.email || '')}</span></a>
           <button class="btn secondary sm" id="logoutBtn">Cerrar sesión</button>
         </header>
@@ -1313,6 +1323,7 @@ function renderShell() {
     </div>`;
   document.getElementById('logoutBtn').addEventListener('click', logout);
   iniciarBuscadorGlobal();
+  iniciarCampanita();
   const btnIglesia = document.getElementById('btnIglesia');
   if (btnIglesia) btnIglesia.addEventListener('click', elegirIglesiaDeTrabajo);
   const sidebar = document.getElementById('sidebar');
@@ -3044,6 +3055,331 @@ async function crearCredencial(pastorId) {
  *     nombre de la iglesia, así que se muestra la lupa y al tocarla se ocupa
  *     la fila entera.
  * ===================================================================== */
+
+/* ---------------- los avisos: qué recibo y por dónde ---------------- */
+/**
+ * Encender los avisos del navegador tiene cuatro pasos que pueden fallar por
+ * separado, y esta pantalla los va diciendo uno por uno:
+ *
+ *   1. que el navegador sepa hacerlo (los muy viejos, no)
+ *   2. que la persona dé permiso —lo pide el navegador, no nosotros—
+ *   3. que se registre el ayudante que recibe los avisos con el sistema cerrado
+ *   4. que el servidor pueda mandarle uno de verdad
+ *
+ * El permiso NO se pide al entrar al sistema. Un sistema que apenas se abre ya
+ * está pidiendo permiso para molestar es un sistema al que se le dice que no
+ * para siempre, y en algunos navegadores el «no» no se puede deshacer sin ir a
+ * buscarlo en la configuración. Se pide cuando la persona toca el botón.
+ */
+
+/** Pasa la llave del servidor al formato que pide el navegador. */
+function llaveParaElNavegador(base64) {
+  const relleno = '='.repeat((4 - (base64.length % 4)) % 4);
+  const limpia = (base64 + relleno).replace(/-/g, '+').replace(/_/g, '/');
+  const crudo = atob(limpia);
+  return Uint8Array.from([...crudo].map((c) => c.charCodeAt(0)));
+}
+
+/** ¿Este navegador puede, y qué le falta? */
+function comoEstaEsteNavegador() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    const esIPhone = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const instalada = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+    return {
+      puede: false,
+      porque: esIPhone && !instalada
+        ? 'En iPhone y iPad los avisos funcionan solo si agrega el sistema a la pantalla de inicio: toque «Compartir» y luego «Agregar a inicio». Después vuelva acá.'
+        : 'Este navegador no sabe recibir avisos. Pruebe con Chrome, Edge, Firefox o Safari al día.',
+    };
+  }
+  if (Notification.permission === 'denied') {
+    return {
+      puede: false,
+      porque: 'Este navegador tiene los avisos bloqueados para el sistema. Hay que permitirlos en la configuración del sitio (el candado junto a la dirección) y volver acá.',
+    };
+  }
+  return { puede: true };
+}
+
+async function renderMisAvisos(caja) {
+  if (!caja) return;
+  caja.innerHTML = '<div class="card"><p style="padding:18px">Cargando…</p></div>';
+
+  let d;
+  try {
+    d = await api('GET', '/avisos/preferencias');
+  } catch (e) {
+    caja.innerHTML = `<div class="card"><p style="padding:18px;color:var(--danger)">${esc(e.message)}</p></div>`;
+    return;
+  }
+
+  const estado = comoEstaEsteNavegador();
+  const yaDioPermiso = estado.puede && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+
+  caja.innerHTML = `
+    <div class="card" style="margin-bottom:18px">
+      <div class="toolbar"><b>🔔 Avisos en este aparato</b></div>
+      <div class="respaldo">
+        ${!estado.puede
+          ? `<div class="aviso importante"><b>Acá no se puede</b><span>${esc(estado.porque)}</span></div>`
+          : `
+            <p>Los avisos llegan como los de cualquier aplicación, aunque tenga el sistema cerrado.
+            Se activan aparato por aparato: si usa el teléfono y el computador, hay que activarlos en los dos.</p>
+            <p class="mut">${d.aparatos
+              ? `Tiene ${d.aparatos} aparato(s) enganchado(s) a su cuenta.`
+              : 'Todavía no tiene ningún aparato enganchado.'}</p>
+            <div class="acciones" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+              <button class="btn" id="avActivar">${yaDioPermiso ? '🔄 Volver a activarlos acá' : '🔔 Activar los avisos en este aparato'}</button>
+              ${d.aparatos ? '<button class="btn secondary" id="avProbar">✉️ Mandarme uno de prueba</button>' : ''}
+              ${d.aparatos ? '<button class="btn secondary" id="avApagar">🔕 Apagarlos en este aparato</button>' : ''}
+            </div>
+            <div id="avEstado" class="mut" style="margin-top:10px"></div>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <b>Qué avisos quiero recibir</b>
+        <span class="spacer"></span>
+        <button class="btn sm" id="avGuardar">💾 Guardar</button>
+      </div>
+      <table class="grid informe">
+        <thead><tr><th>Aviso</th><th style="width:120px">En el sistema</th><th style="width:150px">En este aparato</th></tr></thead>
+        <tbody>
+          ${d.tipos.map((t) => `
+            <tr>
+              <td>
+                <b>${esc(t.label)}</b>
+                ${t.urgente ? '<span class="badge orange" style="margin-left:6px">al momento</span>' : '<span class="badge" style="margin-left:6px">en el resumen</span>'}
+                <div class="mut" style="font-size:12.5px">${esc(t.ayuda)}</div>
+              </td>
+              <td style="text-align:center">
+                <input type="checkbox" data-tipo="${t.clave}" data-canal="sistema"
+                  ${d.preferencias[t.clave] && d.preferencias[t.clave].sistema ? 'checked' : ''} />
+              </td>
+              <td style="text-align:center">
+                <input type="checkbox" data-tipo="${t.clave}" data-canal="navegador"
+                  ${d.preferencias[t.clave] && d.preferencias[t.clave].navegador ? 'checked' : ''} />
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <p class="mut" style="padding:12px 16px;margin:0">
+        Lo marcado como <b>al momento</b> avisa apenas ocurre. Lo demás se junta y llega una vez al día,
+        a la hora que se fije en Configuración.
+      </p>
+    </div>`;
+
+  const decir = (texto, malo) => {
+    const donde = document.getElementById('avEstado');
+    if (donde) donde.innerHTML = `<span style="color:${malo ? 'var(--danger)' : 'var(--exito, #15803d)'}">${esc(texto)}</span>`;
+  };
+
+  const activar = document.getElementById('avActivar');
+  if (activar) {
+    activar.addEventListener('click', async () => {
+      activar.disabled = true;
+      try {
+        decir('Pidiendo permiso…');
+        const permiso = await Notification.requestPermission();
+        if (permiso !== 'granted') {
+          decir('No se dio el permiso. Sin él, el navegador no puede mostrar avisos.', true);
+          return;
+        }
+        decir('Registrando el ayudante…');
+        const reg = await navigator.serviceWorker.register('/avisos-sw.js', { scope: '/' });
+        await navigator.serviceWorker.ready;
+        decir('Enganchando este aparato…');
+        // Si ya había una suscripción de otra llave, se suelta: una llave
+        // distinta hace que el servidor no pueda mandarle nada a esta.
+        const previa = await reg.pushManager.getSubscription();
+        if (previa) await previa.unsubscribe();
+        const sus = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: llaveParaElNavegador(d.llavePublica),
+        });
+        await api('POST', '/avisos/aparato', { suscripcion: sus.toJSON() });
+        toast('Avisos activados en este aparato');
+        renderMisAvisos(caja);
+      } catch (e) {
+        decir(`No se pudo activar: ${e.message}`, true);
+      } finally {
+        activar.disabled = false;
+      }
+    });
+  }
+
+  const probar = document.getElementById('avProbar');
+  if (probar) {
+    probar.addEventListener('click', async () => {
+      try {
+        await api('POST', '/avisos/probar');
+        decir('Mandado. Si no lo ve en unos segundos, revise que el aparato no esté en «no molestar».');
+      } catch (e) {
+        decir(e.message, true);
+      }
+    });
+  }
+
+  const apagar = document.getElementById('avApagar');
+  if (apagar) {
+    apagar.addEventListener('click', async () => {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration('/');
+        const sus = reg && (await reg.pushManager.getSubscription());
+        if (sus) {
+          await api('DELETE', '/avisos/aparato', { endpoint: sus.endpoint });
+          await sus.unsubscribe();
+        }
+        toast('Avisos apagados en este aparato');
+        renderMisAvisos(caja);
+      } catch (e) {
+        decir(`No se pudo apagar: ${e.message}`, true);
+      }
+    });
+  }
+
+  document.getElementById('avGuardar').addEventListener('click', async () => {
+    const preferencias = {};
+    caja.querySelectorAll('input[data-tipo]').forEach((c) => {
+      preferencias[c.dataset.tipo] = preferencias[c.dataset.tipo] || {};
+      preferencias[c.dataset.tipo][c.dataset.canal] = c.checked;
+    });
+    try {
+      await api('PUT', '/avisos/preferencias', { preferencias });
+      toast('Guardado');
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+}
+
+
+/* ---------------- los avisos: la campanita ---------------- */
+/**
+ * La campanita de arriba: cuántos avisos hay sin leer, y cuáles.
+ *
+ * El número se refresca solo cada dos minutos, y además cada vez que se vuelve
+ * a la pestaña: alguien que deja el sistema abierto toda la mañana tiene que
+ * enterarse de que le trasladaron una solicitud sin recargar la página. Se
+ * pregunta solo el número —no la lista— porque es lo único que se ve hasta que
+ * alguien abre el panel.
+ *
+ * Con la pestaña de fondo no se pregunta nada: el sistema abierto en seis
+ * computadores de la oficina no tiene por qué estar golpeando al servidor toda
+ * la tarde para mirar un número que nadie está viendo.
+ */
+let AVISOS_RELOJ = null;
+
+async function refrescarCampanita() {
+  const cuenta = document.getElementById('camCuenta');
+  if (!cuenta || !TOKEN) return;
+  try {
+    const { sinLeer } = await api('GET', '/avisos/cuantos');
+    cuenta.textContent = sinLeer > 99 ? '99+' : String(sinLeer);
+    cuenta.hidden = !sinLeer;
+    const caja = document.getElementById('campanita');
+    if (caja) caja.classList.toggle('con-avisos', !!sinLeer);
+  } catch (e) {
+    /* si no se puede preguntar, la campanita se queda como estaba */
+  }
+}
+
+async function abrirElPanelDeAvisos() {
+  const panel = document.getElementById('camPanel');
+  const boton = document.getElementById('camAbrir');
+  panel.innerHTML = '<div class="cam-vacio">Cargando…</div>';
+  panel.hidden = false;
+  boton.setAttribute('aria-expanded', 'true');
+
+  let d = { sinLeer: 0, ultimos: [] };
+  try {
+    d = await api('GET', '/avisos?limit=20');
+  } catch (e) {
+    panel.innerHTML = `<div class="cam-vacio">${esc(e.message)}</div>`;
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="cam-cabecera">
+      <b>Mis avisos</b>
+      ${d.sinLeer ? '<button type="button" class="enlace-suave" id="camTodos">Marcar todos como leídos</button>' : ''}
+    </div>
+    ${d.ultimos.length ? `<ul class="cam-lista">
+      ${d.ultimos.map((a) => `
+        <li class="${a.leida ? 'leido' : 'sin-leer'}" data-id="${a.id}" data-enlace="${esc(a.enlace || '')}">
+          <div class="cam-t">${esc(a.titulo)}</div>
+          ${a.cuerpo ? `<div class="cam-c">${esc(a.cuerpo)}</div>` : ''}
+          <div class="cam-f">${esc(cuandoFue(a.created_at))}</div>
+        </li>`).join('')}
+    </ul>` : '<div class="cam-vacio">No tiene avisos. Acá van a llegar.</div>'}
+    <div class="cam-pie"><a href="#/perfil">⚙️ Elegir qué avisos recibir</a></div>`;
+
+  const todos = document.getElementById('camTodos');
+  if (todos) {
+    todos.addEventListener('click', async () => {
+      await api('POST', '/avisos/leidos').catch(() => {});
+      refrescarCampanita();
+      abrirElPanelDeAvisos();
+    });
+  }
+  panel.querySelectorAll('.cam-lista li').forEach((li) => {
+    li.addEventListener('click', async () => {
+      await api('POST', `/avisos/${li.dataset.id}/leido`).catch(() => {});
+      refrescarCampanita();
+      cerrarElPanelDeAvisos();
+      if (li.dataset.enlace) location.hash = li.dataset.enlace.replace(/^#/, '');
+    });
+  });
+}
+
+function cerrarElPanelDeAvisos() {
+  const panel = document.getElementById('camPanel');
+  if (!panel) return;
+  panel.hidden = true;
+  const boton = document.getElementById('camAbrir');
+  if (boton) boton.setAttribute('aria-expanded', 'false');
+}
+
+/** «recién», «hace 5 min», «ayer»: el reloj exacto no le importa a nadie acá. */
+function cuandoFue(cuando) {
+  if (!cuando) return '';
+  const t = new Date(String(cuando).replace(' ', 'T'));
+  if (Number.isNaN(t.getTime())) return String(cuando);
+  const minutos = Math.round((Date.now() - t.getTime()) / 60000);
+  if (minutos < 1) return 'recién';
+  if (minutos < 60) return `hace ${minutos} min`;
+  const horas = Math.round(minutos / 60);
+  if (horas < 24) return `hace ${horas} h`;
+  const dias = Math.round(horas / 24);
+  if (dias === 1) return 'ayer';
+  if (dias < 30) return `hace ${dias} días`;
+  return fechaCorta(String(cuando).slice(0, 10));
+}
+
+function iniciarCampanita() {
+  const boton = document.getElementById('camAbrir');
+  const caja = document.getElementById('campanita');
+  if (!boton || !caja) return;
+
+  boton.addEventListener('click', () => {
+    const panel = document.getElementById('camPanel');
+    if (panel.hidden) abrirElPanelDeAvisos();
+    else cerrarElPanelDeAvisos();
+  });
+  document.addEventListener('click', (e) => { if (!caja.contains(e.target)) cerrarElPanelDeAvisos(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarElPanelDeAvisos(); });
+
+  refrescarCampanita();
+  if (AVISOS_RELOJ) clearInterval(AVISOS_RELOJ);
+  AVISOS_RELOJ = setInterval(() => {
+    if (document.visibilityState === 'visible') refrescarCampanita();
+  }, 2 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refrescarCampanita();
+  });
+}
+
 
 /** Lo que se está mostrando, para poder recorrerlo con el teclado. */
 let BG = { abierto: false, pedido: 0, filas: [], marcada: -1 };

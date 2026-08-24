@@ -283,6 +283,30 @@ const OPCIONES = [
       },
     ],
   },
+  {
+    grupo: 'Avisos',
+    items: [
+      {
+        clave: 'avisos_hora', label: 'Hora del resumen del día', tipo: 'number', defecto: '8', min: 0, max: 23,
+        ayuda:
+          'A partir de esta hora el sistema revisa lo de todos los días —credenciales por vencer, cumpleaños, ' +
+          'cuotas al debe— y deja un solo aviso con todo. Lo urgente, como una solicitud que le trasladan, ' +
+          'avisa en el momento y no espera a esta hora.',
+      },
+      {
+        clave: 'avisos_solicitud_dias', label: 'Avisar una solicitud sin respuesta a los tantos días', tipo: 'number',
+        defecto: '7', min: 1, max: 120,
+        ayuda: 'Días que puede llevar abierta una solicitud a cargo de alguien antes de que el sistema se lo recuerde.',
+      },
+      {
+        clave: 'avisos_guardar_dias', label: 'Borrar los avisos leídos a los tantos días', tipo: 'number',
+        defecto: '90', min: 7, max: 730,
+        ayuda:
+          'Un aviso leído ya cumplió: lo que pasó queda en el registro de cambios y en el historial de cada ficha. ' +
+          'Guardarlos para siempre haría crecer la base sin que nadie los mire.',
+      },
+    ],
+  },
 ];
 
 const PLANOS = OPCIONES.flatMap((g) => g.items);

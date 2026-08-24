@@ -853,6 +853,11 @@ app.use('/api/importar', importarRouter);
 // ---------- Traspaso desde el sistema anterior ----------
 app.use('/api/importacion', require('./importacion/web').router);
 
+// ---------- Avisos: la campanita, las preferencias y los aparatos ----------
+// Va ANTES del CRUD genérico: si no, «/api/avisos» lo tomaría el motor como si
+// fuera un módulo llamado «avisos» y respondería que no existe.
+app.use('/api', require('./avisos/rutas'));
+
 // ---------- CRUD genérico de todos los módulos ----------
 app.use('/api', buildRouter());
 
@@ -886,6 +891,15 @@ app.use(
     setHeaders: (res, ruta) => {
       if (ruta.endsWith('.html') || ruta.endsWith('.webmanifest')) {
         res.setHeader('Cache-Control', 'no-cache');
+        return;
+      }
+      // El ayudante de los avisos se pide SIN número de versión detrás —el
+      // navegador lo busca siempre en la misma dirección—, así que si se
+      // guardara una semana, un arreglo suyo no llegaría hasta la otra semana.
+      if (ruta.endsWith('avisos-sw.js')) {
+        res.setHeader('Cache-Control', 'no-cache');
+        // Que pueda controlar todo el sitio y no solo su carpeta
+        res.setHeader('Service-Worker-Allowed', '/');
         return;
       }
       // El programa y los estilos se piden con la versión en la dirección
@@ -943,6 +957,14 @@ function prepararDatos() {
     respaldoAutomatico.programar();
   } catch (e) {
     console.error(`⚠️  El respaldo automático no quedó programado: ${e.message}`);
+  }
+
+  try {
+    require('./avisos/vigia').empezar();
+  } catch (e) {
+    // El sistema tiene que levantar aunque los avisos no anden: sin ellos se
+    // trabaja igual, y quien entra ve todo lo de siempre en el panel.
+    console.error(`⚠️  Los avisos del día no quedaron programados: ${e.message}`);
   }
 }
 

@@ -48,6 +48,36 @@ const ESTADOS = [
 /** Con estos estados la solicitud ya no está en trámite. */
 const CERRADOS = ['Aprobada', 'Rechazada', 'Completada', 'Anulada'];
 
+/**
+ * Le avisa a quien queda a cargo de la solicitud.
+ *
+ * No se avisa a uno mismo: quien acaba de ingresar la solicitud, o quien la
+ * trasladó a otro y se la quedó, ya sabe. Un aviso que dice lo que uno mismo
+ * acaba de hacer es la forma más rápida de que la gente deje de mirarlos.
+ *
+ * En el aviso va el número y el asunto, nunca el detalle: esto puede terminar
+ * en la pantalla bloqueada de un teléfono, y hay solicitudes cuyo asunto no
+ * tiene por qué leer quien pase al lado. Para el resto está entrar al sistema.
+ */
+function avisarAlResponsable(db, fila, quienLoHizo, que, motivo) {
+  const aQuien = Number(fila.responsable_id || 0);
+  if (!aQuien || aQuien === Number(quienLoHizo && quienLoHizo.id)) return;
+  try {
+    require('../avisos/avisos').avisar({
+      usuario_id: aQuien,
+      tipo: 'solicitud_asignada',
+      clave: `solicitud_a_cargo:${fila.id}:${aQuien}`,
+      titulo: `${que} la solicitud ${fila.numero}`,
+      cuerpo: `${fila.asunto || ''}${motivo ? ` · ${motivo}` : ''}`.trim().slice(0, 180),
+      enlace: `#/m/solicitudes/ficha/${fila.id}`,
+      iglesia_id: fila.iglesia_id,
+    });
+  } catch (e) {
+    // Que no se pueda avisar no puede tumbar el guardado de la solicitud
+    console.error(`⚠️  No se pudo avisar de la solicitud ${fila.id}: ${e.message}`);
+  }
+}
+
 module.exports = {
   name: 'solicitudes',
   label: 'Solicitudes',
@@ -194,6 +224,7 @@ module.exports = {
             (fila.responsable_id ? ` Queda a cargo de ${seguimiento.nombreDelUsuario(db, fila.responsable_id)}.` : ''),
           user,
         });
+        avisarAlResponsable(db, fila, user, 'Quedó a su cargo');
         return;
       }
       if (existing && existing.estado !== fila.estado) {
@@ -211,6 +242,7 @@ module.exports = {
             `a ${seguimiento.nombreDelUsuario(db, fila.responsable_id)}.`,
           user,
         });
+        avisarAlResponsable(db, fila, user, 'Le trasladaron');
       }
       if (existing && (existing.respuesta || '') !== (fila.respuesta || '') && fila.respuesta) {
         seguimiento.anotar(db, fila.id, {
@@ -289,6 +321,8 @@ module.exports = {
           user: req.user,
         });
       })();
+
+      avisarAlResponsable(db, { ...fila, responsable_id: hacia }, req.user, 'Le trasladaron', motivo);
 
       res.json({ ok: true, responsable_id: hacia, responsable: destino.nombre });
     });

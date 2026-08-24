@@ -115,6 +115,12 @@ module.exports = {
         'enlazado, así que si se cambia el perfil cambian todos los que lo tienen. En blanco, manda su rol.',
     },
     {
+      // Qué avisos quiere recibir y por dónde. No se edita desde acá sino desde
+      // el propio perfil de cada persona: son SUS avisos, y elegirlos por
+      // otro no tiene sentido. Va declarado para que la columna exista.
+      name: 'avisos', type: 'text', oculto: true, readonly: true,
+    },
+    {
       name: 'permisos', label: 'Excepciones para esta persona', type: 'permisos',
       help:
         'Solo para lo que se salga de su perfil. Lo que se ajuste acá manda sobre el perfil y sobre el rol; ' +
