@@ -135,7 +135,11 @@ module.exports = {
     {
       name: 'estado', label: 'Estado', type: 'select', required: true, default: 'Borrador',
       options: ['Borrador', 'Vigente', 'Revocada', 'Reemplazada'],
-      help: '«Por vencer» y «Vencida» no se ponen a mano: los calcula el sistema a partir de la fecha de vencimiento.',
+      // De solo lectura: cada cambio de estado tiene su botón y su permiso
+      // (ver la comprobación en beforeSave). Ofrecerlo como una lista que se
+      // elige era ofrecer algo que el servidor rechaza.
+      readonly: true,
+      help: 'Se cambia con los botones «Emitir» y «Revocar», no acá. «Por vencer» y «Vencida» los calcula el sistema a partir de la fecha de vencimiento.',
     },
     {
       name: 'motivo_revocacion', label: 'Motivo de la revocación', type: 'textarea',
@@ -190,6 +194,21 @@ module.exports = {
         if (!suyos.iglesia_id) {
           return `${suyos.snap_nombres} ${suyos.snap_apellidos} no tiene iglesia en su ficha, y la credencial lleva impresa la iglesia. Complételo allá y vuelva.`;
         }
+        /**
+         * Y la iglesia del titular tiene que estar entre las suyas.
+         *
+         * Esta comprobación va acá y no puede faltar: el guardado ya revisó
+         * que la iglesia enviada estuviera dentro de lo asignado, pero un
+         * renglón más abajo la credencial toma la iglesia DEL TITULAR, que es
+         * otra. Sin esto, quien tuviera una iglesia asignada podía crear la
+         * credencial de un pastor de cualquier otra mandando su número: la
+         * fila quedaba fuera de su alcance —no la volvía a ver— pero la
+         * respuesta le devolvía el nombre y el RUT de esa persona.
+         */
+        const alcance = require('../alcance');
+        if (!alcance.alcanzaIglesia(user, suyos.iglesia_id)) {
+          return 'Esa persona está fuera de las iglesias que tiene asignadas';
+        }
         Object.assign(data, suyos);
       }
 
@@ -204,10 +223,26 @@ module.exports = {
         }
       }
 
-      // A vigente no se pasa desde el formulario: para eso está «Emitir», que
-      // es lo único que asigna el número de serie (punto 7.8)
-      if (!isNew && estado === 'Vigente' && existing && existing.estado === 'Borrador') {
-        return 'Un borrador se pone en vigencia con el botón «Emitir la credencial», que es lo que le asigna su número de serie';
+      /**
+       * EL ESTADO NO SE CAMBIA DESDE EL FORMULARIO. Ninguno, en ninguna
+       * dirección.
+       *
+       * Cada cambio de estado es un acto con su propia puerta y su propio
+       * permiso: emitir pide la llave `credencial_emitir` y consume un número
+       * de serie; revocar pide `credencial_revocar` y exige el motivo escrito;
+       * el reemplazo lo pone el sistema solo al emitir la siguiente.
+       *
+       * Antes acá solo se frenaba el salto de Borrador a Vigente, y eso dejaba
+       * abierta la puerta de atrás: con el permiso de EDITAR credenciales
+       * —sin ninguna de las dos llaves— se podía mandar `estado: 'Revocada'`
+       * por el guardado corriente y anular la credencial de cualquiera; o al
+       * revés, devolver a «Vigente» una que estaba revocada y que la página
+       * pública volviera a darla por buena. Comprobado que pasaba.
+       */
+      if (!isNew && existing && estado !== undefined && estado !== existing.estado) {
+        return estado === 'Vigente'
+          ? 'Una credencial se pone en vigencia con el botón «Emitir la credencial», que es lo que le asigna su número de serie'
+          : 'El estado de una credencial no se cambia desde el formulario: use «Emitir» o «Revocar», que son los que piden su permiso y dejan constancia';
       }
       if (isNew && estado && estado !== 'Borrador') {
         return 'Una credencial nace como borrador y se emite después, cuando estén todos sus datos';
@@ -345,13 +380,27 @@ module.exports = {
             .run(anterior.id);
         }
         db.prepare(
+          /**
+           * `iglesia_id` se vuelve a fijar acá, igual que lo impreso.
+           *
+           * Los datos se congelan en este momento, tomados de la ficha de hoy.
+           * Si la persona cambió de iglesia entre el día que se creó el
+           * borrador y el día que se emite, la tarjeta sale con la iglesia
+           * nueva —eso está bien— pero la fila quedaba archivada en la vieja,
+           * y de esa columna dependen tres cosas: qué credenciales ve cada
+           * usuario según sus iglesias asignadas, el listado y el aviso de
+           * «por vencer» del panel. La tarjeta decía una iglesia y el sistema
+           * la contaba en otra.
+           */
           `UPDATE credenciales SET serie = ?, serie_dv = ?, correlativo = ?, estado = 'Vigente',
+             iglesia_id = ?,
              snap_nombres = ?, snap_apellidos = ?, snap_rut = ?, snap_grado = ?, snap_funcion = ?,
              snap_categoria = ?, snap_iglesia = ?, snap_comuna = ?, snap_foto = ?,
              reemplaza_a = ?, updated_at = datetime('now','localtime'), updated_by = ?, version = version + 1
            WHERE id = ?`
         ).run(
           numero.serie, numero.dv, numero.correlativo,
+          suyos.iglesia_id,
           suyos.snap_nombres, suyos.snap_apellidos, suyos.snap_rut, suyos.snap_grado, suyos.snap_funcion,
           suyos.snap_categoria, suyos.snap_iglesia, suyos.snap_comuna, suyos.snap_foto,
           anterior ? anterior.id : null, req.user.id, fila.id

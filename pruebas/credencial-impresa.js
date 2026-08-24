@@ -34,7 +34,7 @@ const papel = require('./leer-qr');
 
 const URL = process.env.URL || 'http://localhost:4314';
 const RUT = process.env.RUT || '11.111.111-1';
-const CLAVE = process.env.CLAVE || 'Cordillera47';
+const CLAVE = process.env.CLAVE || 'admin123';
 const CRED = process.env.CRED || '';
 
 /** Milímetros por punto PostScript: el PDF se mide en puntos de 1/72". */

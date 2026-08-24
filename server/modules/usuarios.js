@@ -272,12 +272,30 @@ module.exports = {
      * sistema. En los dos casos la persona tendrá que cambiarla al entrar,
      * porque una contraseña que otro conoce no es suya.
      */
-    async antesDeGuardar(data, { isNew, existing }) {
+    async antesDeGuardar(data, { isNew, existing, db }) {
       const claves = require('../claves');
       if (data.password) {
-        // Se le pasa a quién se le está poniendo: ni su RUT ni su nombre
-        // pueden ser su contraseña (ver server/claves.js).
-        const quien = { rut: data.rut || (existing && existing.rut), nombre: data.nombre || (existing && existing.nombre) };
+        /**
+         * A quién se le está poniendo, con el nombre que la cuenta VA A TENER.
+         *
+         * No basta con mirar el nombre que viene en la petición: si la cuenta
+         * se enlaza con una ficha de miembro, el nombre se toma de allá y el
+         * que se mandó se descarta. Mirando solo el enviado, se podía crear la
+         * cuenta de «Fernanda Isabel Riquelme» mandando cualquier nombre y la
+         * contraseña «Fernanda2026», y la regla que impide que la contraseña
+         * sea el propio nombre no se enteraba. Comprobado que pasaba.
+         */
+        const rut = data.rut !== undefined ? data.rut : existing && existing.rut;
+        let comoSeVaALlamar = data.nombre !== undefined ? data.nombre : existing && existing.nombre;
+        const enlace = data.miembro_id !== undefined
+          ? data.miembro_id
+          : (existing && existing.miembro_id) || (rut ? (db.prepare('SELECT id FROM miembros WHERE rut = ?').get(rut) || {}).id : null);
+        if (enlace) {
+          const miembro = db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(enlace);
+          if (miembro) comoSeVaALlamar = `${miembro.nombres || ''} ${miembro.apellidos || ''}`.trim() || comoSeVaALlamar;
+        }
+
+        const quien = { rut, nombre: comoSeVaALlamar };
         const problema = claves.revisarClave(data.password, quien);
         if (problema) return problema;
         data.password = await cifrado.cifrar(data.password);

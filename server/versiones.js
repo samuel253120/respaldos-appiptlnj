@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.82.0", fecha: "2026-08-24", titulo: "Seis cosas que encontró la revisión del código, y sus arreglos" },
   { version: "1.81.0", fecha: "2026-08-24", titulo: "Cifrar una contraseña ya no deja frenado al resto del sistema" },
   { version: "1.80.0", fecha: "2026-08-24", titulo: "La configuración del sistema, en pestañas" },
   { version: "1.79.0", fecha: "2026-08-24", titulo: "Una imagen con transparencia ya no se sube con el fondo relleno de blanco" },

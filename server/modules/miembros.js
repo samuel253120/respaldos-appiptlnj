@@ -405,29 +405,51 @@ module.exports = {
        * todos los que estén usando el sistema, no solo quien está designando
        * al miembro.
        */
-      let cifrada;
+      let info;
       try {
-        cifrada = await require('../cifrado').cifrar(inicial);
+        const cifrada = await require('../cifrado').cifrar(inicial);
+        info = db
+          .prepare(
+            `INSERT INTO usuarios (rut, nombre, password, password_origen, debe_cambiar_password,
+                                   rol, iglesia_id, email, telefono, activo, miembro_id, created_by)
+             VALUES (?, ?, ?, 'inicial', 1, 'consulta', ?, ?, ?, 1, ?, ?)`
+          )
+          .run(
+            miembro.rut,
+            `${miembro.nombres || ''} ${miembro.apellidos || ''}`.trim(),
+            cifrada,
+            miembro.iglesia_id || null,
+            miembro.email || null,
+            miembro.telefono || null,
+            miembro.id,
+            req.user.id
+          );
       } catch (e) {
-        return next(e);
+        /**
+         * Dos clics seguidos, o dos personas designando al mismo miembro.
+         *
+         * Entre la comprobación de más arriba y este INSERT hay ahora una
+         * espera de verdad —los ochenta milisegundos que cuesta cifrar—, y en
+         * ese rato cabe otra petición idéntica. La primera crea la cuenta; la
+         * segunda choca contra el RUT, que es único.
+         *
+         * No es un error que haya que mostrar: lo que esa persona quería —que
+         * el miembro tenga cuenta— ya está hecho. Se busca la que quedó y se
+         * contesta como si se hubiera encontrado enlazada, que es lo que la
+         * pantalla espera.
+         *
+         * Y si el fallo es otro, va al manejador de errores. Antes no iba a
+         * ninguna parte: la petición se quedaba colgada sin respuesta hasta
+         * que el navegador se cansaba. Comprobado: de tres clics a la vez, dos
+         * no recibían nada nunca.
+         */
+        const laQueGano = db.prepare('SELECT id FROM usuarios WHERE rut = ?').get(miembro.rut);
+        if (!laQueGano) return next(e);
+        db.prepare('UPDATE usuarios SET miembro_id = ? WHERE id = ? AND miembro_id IS NULL')
+          .run(miembro.id, laQueGano.id);
+        return res.json({ ok: true, usuario_id: laQueGano.id, creado: false, enlazado: true });
       }
 
-      const info = db
-        .prepare(
-          `INSERT INTO usuarios (rut, nombre, password, password_origen, debe_cambiar_password,
-                                 rol, iglesia_id, email, telefono, activo, miembro_id, created_by)
-           VALUES (?, ?, ?, 'inicial', 1, 'consulta', ?, ?, ?, 1, ?, ?)`
-        )
-        .run(
-          miembro.rut,
-          `${miembro.nombres || ''} ${miembro.apellidos || ''}`.trim(),
-          cifrada,
-          miembro.iglesia_id || null,
-          miembro.email || null,
-          miembro.telefono || null,
-          miembro.id,
-          req.user.id
-        );
       res.status(201).json({ ok: true, usuario_id: info.lastInsertRowid, creado: true, password: inicial, rut: miembro.rut });
     });
   },

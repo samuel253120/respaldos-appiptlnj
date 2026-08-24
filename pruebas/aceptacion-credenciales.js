@@ -325,6 +325,40 @@ const esperar = (ms) => new Promise((sigue) => setTimeout(sigue, ms));
   }
 
   /* ===================================================================== */
+  console.log('\n15.1 bis · Si cambia de iglesia entre el borrador y la emisión');
+  /* ===================================================================== */
+  /**
+   * Los datos se congelan al emitir, tomados de la ficha de ese día. Si la
+   * persona cambió de iglesia mientras tanto, la tarjeta sale con la iglesia
+   * nueva —eso está bien— y la fila tiene que quedar archivada en esa misma.
+   *
+   * Antes no: la columna con que el sistema decide de qué iglesia es la
+   * credencial se escribía al crear el borrador y no se volvía a tocar. La
+   * tarjeta decía una iglesia y el sistema la contaba en otra, y de esa
+   * columna dependen quién la ve, el listado y el aviso del panel.
+   */
+  const queSeCambia = await api('POST', '/api/pastores', {
+    nombres: 'Cambia De', apellidos: 'Iglesia', rut: rutValido(18181818),
+    cargo: 'Pastor Diácono', iglesia_id: laIglesia.id, foto: fotoDelPastor, estado: 'Activo',
+  });
+  const suBorrador = await api('POST', '/api/credenciales', {
+    pastor_id: queSeCambia.datos.id, fecha_emision: '2026-02-10', fecha_vencimiento: '2028-02-10',
+  });
+  // Se lo pasa a la otra iglesia, con el borrador ya creado
+  await api('PUT', `/api/pastores/${queSeCambia.datos.id}`, {
+    ...(await api('GET', `/api/pastores/${queSeCambia.datos.id}`)).datos,
+    iglesia_id: otraIglesia.datos.id,
+  });
+  const emitidaDespuesDelCambio = await api('POST', `/api/credenciales/${suBorrador.datos.id}/emitir`);
+  const quedo = (emitidaDespuesDelCambio.datos || {}).credencial || {};
+  revisar('15.1', 'la tarjeta sale con la iglesia nueva',
+    quedo.snap_iglesia === 'Iglesia De La Otra Punta',
+    `salió «${quedo.snap_iglesia}»`);
+  revisar('15.1', 'y la credencial queda archivada en esa misma iglesia',
+    Number(quedo.iglesia_id) === Number(otraIglesia.datos.id),
+    `quedó en la iglesia ${quedo.iglesia_id}, y la de la tarjeta es la ${otraIglesia.datos.id}`);
+
+  /* ===================================================================== */
   console.log('\n15.9 · Alterar un carácter del QR y que la verificación lo rechace');
   /* ===================================================================== */
   const impresion = (await api('GET', `/api/credenciales/${CRED.id}/impresion`)).datos;

@@ -481,7 +481,29 @@ window.addEventListener('hashchange', () => {
   if (TOKEN && USER) route();
 });
 
+/**
+ * Lo que hay que soltar al cambiar de pantalla.
+ *
+ * Una pantalla puede colgar oyentes de la ventana entera —el cambio de tamaño,
+ * sobre todo—, y esos NO se los lleva el barrido: la pantalla siguiente
+ * reemplaza el contenido, pero el oyente se queda mirando algo que ya no
+ * existe. Cada visita dejaba uno más.
+ *
+ * Acá se lleva una señal por pantalla: al cambiar de una a otra se corta, y
+ * todo lo que se colgó con `{ signal: alCambiarDePantalla() }` se suelta solo.
+ */
+let mandoDeLaPantalla = null;
+function alCambiarDePantalla() {
+  if (!mandoDeLaPantalla) mandoDeLaPantalla = new AbortController();
+  return mandoDeLaPantalla.signal;
+}
+function barridoDePantalla() {
+  if (mandoDeLaPantalla) mandoDeLaPantalla.abort();
+  mandoDeLaPantalla = new AbortController();
+}
+
 function route() {
+  barridoDePantalla();
   const [ruta, consulta] = location.hash.replace(/^#\/?/, '').split('?');
   const parts = ruta.split('/').filter(Boolean);
   /**
@@ -2414,7 +2436,13 @@ function montarPestanas({ barra, zona, pestanas, elegida, etiqueta, direccionDe 
   };
   barra.mirarLosBordes = mirarLosBordes;
   tira.addEventListener('scroll', mirarLosBordes, { passive: true });
-  window.addEventListener('resize', mirarLosBordes);
+  /**
+   * El oyente de «resize» va colgado de la pantalla entera, no de la barra,
+   * así que no se lo lleva el barrido de la pantalla siguiente: se queda
+   * mirando una barra que ya no existe, y cada visita deja uno más. Con
+   * `signal` se va solo cuando esta barra se va (ver `barridoDePantalla`).
+   */
+  window.addEventListener('resize', mirarLosBordes, { signal: alCambiarDePantalla() });
   mirarLosBordes();
 
   // Con el teclado, las flechas mueven entre pestañas: es lo que se espera de
@@ -2869,7 +2897,7 @@ async function montarEncuadreDeLaFoto(c) {
   // Si la ventana cambia de tamaño, el recuadro también: hay que recalcular
   // cuánto tiene que cubrir la imagen o aparecen bordes blancos
   const alCambiarDeTamano = () => { cubre = cuantoCubre(caja, natural); aplicar(); };
-  window.addEventListener('resize', alCambiarDeTamano);
+  window.addEventListener('resize', alCambiarDeTamano, { signal: alCambiarDePantalla() });
 
   document.getElementById('encRestablecer').addEventListener('click', () => {
     Object.assign(encuadre, { zoom: 1, x: 50, y: 50, brillo: 100, contraste: 100 });
@@ -2891,7 +2919,6 @@ async function montarEncuadreDeLaFoto(c) {
           version: c.version,
         });
         toast('Encuadre guardado');
-        window.removeEventListener('resize', alCambiarDeTamano);
         route();
       } catch (e) {
         guardar.disabled = false;
