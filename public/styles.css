@@ -708,7 +708,20 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
   padding: 12px 16px; border-radius: 10px; font-size: 13.5px; line-height: 1.5;
   background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a;
 }
-.aviso b { white-space: nowrap; }
+/* El título del aviso NO lleva `white-space: nowrap`.
+   Lo llevaba, para que un título corto se quedara en una línea y el texto
+   fluyera al lado, y con títulos cortos funcionaba. Pero «📦 No hay ningún
+   respaldo guardado fuera del servidor» mide 421 px y en un teléfono de 390
+   no cabía: al no poder cortarse, empujaba la página entera a 438 px y había
+   que desplazarse en horizontal para leer el aviso más importante que da el
+   sistema, y justo en el único momento en que aparece —cuando todavía nadie
+   se ha bajado un respaldo—, o sea recién publicado.
+   Sin `nowrap` el resultado es el mismo cuando el título cabe: al ser un
+   elemento flexible, se queda en una línea mientras haya espacio, y solo se
+   parte cuando de verdad no lo hay. `overflow-wrap` es para el caso extremo
+   de una palabra sola más ancha que la pantalla (un nombre de archivo, un
+   correo largo): antes de salirse, se corta. */
+.aviso b { overflow-wrap: anywhere; }
 .aviso span { flex: 1 1 260px; }
 .aviso.importante { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
 .aviso.salud { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
