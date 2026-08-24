@@ -417,4 +417,9 @@ function registrarEliminado(def, fila, user, arrastre) {
   anotarCambio({ def, accion: 'Eliminación', fila, usuario: user, detalle });
 }
 
-module.exports = { anotar, anotarIglesia, anotarPastor, registrarGuardado, registrarEliminado };
+module.exports = {
+  anotar, anotarIglesia, anotarPastor, registrarGuardado, registrarEliminado,
+  // Para los actos que no son «guardar una ficha» y aun así tienen que quedar
+  // anotados: emitir una credencial, revocarla, volver a imprimirla.
+  anotarCambio,
+};

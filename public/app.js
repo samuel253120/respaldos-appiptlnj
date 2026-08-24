@@ -2224,6 +2224,7 @@ async function viewFicha(name, id, pestana) {
       fn(...args, suya);
     };
     if (name === 'cuerpos') alPie(renderCumplimientoCuerpo, Number(id));
+    if (name === 'credenciales') alPie(renderEmisionCredencial, Number(id));
     if (name === 'pastores') alPie(renderFichaMiembroPastor, Number(id), row);
     if (name === 'miembros') alPie(renderAccesoMiembro, Number(id));
   };
@@ -2269,6 +2270,7 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
     if (MOD['actas_reuniones']) sumar('actas', 'Actas', '📝', (c) => renderActasCuerpo(id, c));
   }
   if (name === 'miembros' && MOD['cuerpos']) sumar('cuerpos', 'Cuerpos', '👥', (c) => renderCuerposDelMiembro(id, c));
+  if (name === 'pastores' && MOD['credenciales']) sumar('credenciales', 'Credenciales', '🪪', (c) => renderCredencialesDelPastor(id, c));
 
   const docs = PANEL_DOCUMENTOS[name];
   if (docs && MOD[docs.modulo]) sumar('documentos', 'Documentos', '🗂️', (c) => renderDocumentos(docs, id, c));
@@ -2354,6 +2356,264 @@ function pintarPestanasDeLaFicha(name, id, row, pintarLosDatos, elegida) {
   });
 
   abrir(suyas.some((p) => p.clave === elegida) ? elegida : 'datos');
+}
+
+/* =====================================================================
+ * Credenciales pastorales
+ *
+ * La credencial es el documento de identidad ministerial: la firma el Pastor
+ * Presidente, se imprime, se plastifica y se lleva encima. De ahí que la
+ * pantalla se parezca poco a la de cualquier otro módulo:
+ *
+ *   · NO SE ESCRIBE NADA. Los datos salen de la ficha del titular y de la de
+ *     su iglesia. Lo único que se elige son las dos fechas.
+ *   · SE CREA A MANO. Registrar un pastor no le crea la credencial: se pincha
+ *     «Crear credencial» cuando corresponde (punto 13.2).
+ *   · NACE COMO BORRADOR y se emite en un segundo acto. Emitir es lo que le
+ *     pone el número de serie y congela lo impreso.
+ *   · Y NO SE BORRA. Una credencial emitida se revoca, con motivo escrito; la
+ *     anterior de esa persona queda «reemplazada», nunca eliminada.
+ * ===================================================================== */
+
+/** Las credenciales de un pastor, en su ficha (punto 10.9). */
+async function renderCredencialesDelPastor(pastorId, caja) {
+  const suyas = await api('GET', `/credenciales?f_pastor_id=${pastorId}&limit=50`).catch(() => null);
+  if (!suyas) { caja.innerHTML = ''; return; }
+
+  const puedeCrear = MOD['credenciales'] && MOD['credenciales'].perms.create;
+  const filas = suyas.rows.map((c) => `
+    <li data-ir="#/m/credenciales/ficha/${c.id}">
+      <span>
+        <b class="mono">${esc(c.serie_completa || '(sin número)')}</b>
+        ${insigniaDeCredencial(c.situacion)}
+        ${c.motivo_revocacion ? `<span class="mut nota">${esc(c.motivo_revocacion)}</span>` : ''}
+      </span>
+      <span class="mut">${c.fecha_emision ? fechaCorta(c.fecha_emision) : ''}${c.fecha_vencimiento ? ' → ' + fechaCorta(c.fecha_vencimiento) : ''}</span>
+    </li>`).join('');
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🪪 Credenciales</b>
+        <span class="mut">${fmtNumero(suyas.total)} en total</span>
+        <span class="spacer"></span>
+        ${puedeCrear ? '<button class="btn sm" id="credNueva">➕ Crear credencial</button>' : ''}
+      </div>
+      ${suyas.rows.length
+        ? `<ul class="mini-list">${filas}</ul>`
+        : `<div class="empty-state" style="padding:26px">
+             Todavía no tiene ninguna credencial.<br>
+             <span class="mut">Se crea a mano, cuando corresponde emitirla.</span>
+           </div>`}
+    </div>`;
+
+  const boton = document.getElementById('credNueva');
+  if (boton) boton.addEventListener('click', () => crearCredencial(pastorId));
+}
+
+/**
+ * El panel de emisión, al pie de la ficha de una credencial.
+ *
+ * Es donde se decide el paso que no se puede deshacer: emitirla. Por eso antes
+ * de ofrecerlo se dice qué falta —en la ficha de la persona, en la de su
+ * iglesia o en Configuración— y qué va a pasar con la credencial anterior.
+ */
+async function renderEmisionCredencial(id, caja) {
+  const c = await api('GET', `/credenciales/${id}`).catch(() => null);
+  if (!c) { caja.innerHTML = ''; return; }
+  const puedeEmitir = MOD['credenciales'] && MOD['credenciales'].perms.edit;
+
+  // Lo que falta, preguntado al servidor con los datos de hoy
+  let previo = { falta: [], recursos_que_faltan: [] };
+  if (c.estado === 'Borrador' && c.pastor_id) {
+    previo = await api('GET', `/credenciales/nueva/${c.pastor_id}`).catch(() => previo);
+  }
+  const trabas = [
+    ...previo.falta.map((x) => `falta ${x}`),
+    ...previo.recursos_que_faltan.map((x) => `falta cargar ${x} en Configuración`),
+  ];
+
+  const acciones = [];
+  if (puedeEmitir && c.estado === 'Borrador') {
+    acciones.push(`<button class="btn" id="credEmitir" ${trabas.length ? 'disabled' : ''}>✅ Emitir la credencial</button>`);
+  }
+  if (puedeEmitir && (c.estado === 'Vigente' || c.estado === 'Reemplazada')) {
+    acciones.push('<button class="btn secondary" id="credRevocar">🚫 Revocar</button>');
+  }
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🪪 Emisión</b>
+        ${insigniaDeCredencial(c.situacion)}
+        <span class="spacer"></span>
+        ${acciones.join(' ')}
+      </div>
+      <div class="respaldo">
+        ${c.estado === 'Borrador' ? `
+          <p>
+            Todavía es un <b>borrador</b>: no tiene número de serie y no sirve como documento.
+            Al emitirla, el sistema le asigna su número y <b>congela</b> los datos que salen impresos:
+            desde ese momento, aunque la ficha de la persona cambie, esta credencial seguirá diciendo lo mismo.
+          </p>
+          ${trabas.length ? `<div class="resultado warn">
+            ⚠️ No se puede emitir todavía: ${esc(trabas.join(' · '))}.
+            <span class="mut">Complételo donde corresponda y vuelva a abrir esta pantalla.</span>
+          </div>` : ''}`
+        : `
+          <div class="respaldo-datos">
+            <div><span class="mut">N.º de serie</span><b class="mono">${esc(c.serie_completa || '')}</b></div>
+            <div><span class="mut">Entregada</span><b>${c.fecha_emision ? fechaCorta(c.fecha_emision) : ''}</b></div>
+            <div><span class="mut">Vence</span><b>${c.fecha_vencimiento ? fechaCorta(c.fecha_vencimiento) : ''}</b></div>
+          </div>
+          ${c.motivo_revocacion ? `<div class="resultado warn"><b>🚫 Revocada.</b> ${esc(c.motivo_revocacion)}</div>` : ''}
+          ${c.situacion === 'Por vencer' ? '<div class="resultado warn">⏳ Está por vencer. Conviene emitir la de reemplazo con tiempo.</div>' : ''}
+          ${c.situacion === 'Vencida' ? '<div class="resultado warn">📅 Está vencida. Emita una nueva desde la ficha de su titular.</div>' : ''}
+          ${c.situacion === 'Reemplazada' ? '<div class="resultado">↩️ Fue reemplazada por otra credencial más nueva. Se conserva como parte del historial.</div>' : ''}
+          <p class="mut" style="font-size:12.5px">
+            Lo que dice el papel quedó congelado al emitirla. Para reflejar un cambio —otro grado, otra
+            iglesia— se emite una credencial nueva desde la ficha de la persona; esta no se corrige ni se borra.
+          </p>`}
+      </div>
+    </div>`;
+
+  const emitir = document.getElementById('credEmitir');
+  if (emitir) {
+    emitir.addEventListener('click', async () => {
+      const seguro = await preguntarEnDialogo({
+        titulo: '¿Emitir esta credencial?',
+        cuerpo: `
+          <p>Se le va a asignar el número de serie <b>que sigue</b>, y ese número no se reutiliza nunca:
+          aunque después se anule, queda consumido.</p>
+          <p>Los datos que salen impresos quedan <b>congelados</b> tal como están hoy.</p>
+          ${c.pastor_id ? '<p class="mut">Si esta persona ya tenía una credencial vigente, aquella quedará reemplazada. No se borra.</p>' : ''}`,
+        aceptar: 'Sí, emitirla',
+      });
+      if (!seguro) return;
+      try {
+        await api('POST', `/credenciales/${id}/emitir`);
+        toast('Credencial emitida');
+        route();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+  }
+
+  const revocar = document.getElementById('credRevocar');
+  if (revocar) {
+    revocar.addEventListener('click', async () => {
+      const seguro = await preguntarEnDialogo({
+        titulo: '🚫 Revocar la credencial',
+        cuerpo: `
+          <p>Una credencial revocada deja de valer <b>en el momento</b>: quien escanee su código QR verá
+          que no es válida.</p>
+          <p>El motivo es obligatorio y queda en el registro de cambios.</p>
+          <div class="fld full">
+            <label for="credMotivo">Motivo</label>
+            <textarea id="credMotivo" rows="3" placeholder="Pérdida, robo, cese del cargo…"></textarea>
+          </div>`,
+        aceptar: 'Revocarla',
+        peligro: true,
+      });
+      if (!seguro) return;
+      try {
+        await api('POST', `/credenciales/${id}/revocar`, { motivo: (seguro.credMotivo || '').trim() });
+        toast('Credencial revocada');
+        route();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+  }
+}
+
+/** El estado de una credencial, con su color. */
+function insigniaDeCredencial(situacion) {
+  const colores = {
+    Vigente: 'green', 'Por vencer': 'amber', Vencida: 'gray',
+    Revocada: 'red', Reemplazada: 'gray', Borrador: 'blue',
+  };
+  return `<span class="badge ${colores[situacion] || ''}">${esc(situacion || '')}</span>`;
+}
+
+/**
+ * Crear la credencial de una persona.
+ *
+ * Antes de abrir nada se pregunta al servidor qué datos tiene esa persona y
+ * qué falta: es mejor decirlo acá —«complete la comuna en la ficha de la
+ * iglesia»— que dejar llenar un formulario que después no se va a poder
+ * emitir.
+ */
+async function crearCredencial(pastorId) {
+  let previo;
+  try {
+    previo = await api('GET', `/credenciales/nueva/${pastorId}`);
+  } catch (e) {
+    return toast(e.message, true);
+  }
+
+  const problemas = [];
+  if (previo.falta.length) {
+    problemas.push(`En la ficha de la persona o de su iglesia falta: <b>${previo.falta.map(esc).join(', ')}</b>.`);
+  }
+  if (previo.recursos_que_faltan.length) {
+    problemas.push(`En Configuración del Sistema falta cargar <b>${previo.recursos_que_faltan.map(esc).join(', ')}</b>.`);
+  }
+
+  const d = previo.datos;
+  const hoy = HOY();
+  // Lo corriente es que valga unos años; se propone y se puede cambiar
+  const enTresAnios = new Date();
+  enTresAnios.setFullYear(enTresAnios.getFullYear() + 3);
+
+  const cuerpo = `
+    <p class="mut" style="margin-bottom:12px">
+      Los datos salen de la ficha de la persona y de la de su iglesia. Acá solo se eligen las fechas;
+      el número de serie lo pone el sistema al emitirla.
+    </p>
+    ${previo.ya_tiene_vigente ? `
+      <div class="resultado warn" style="margin-bottom:12px">
+        Ya tiene una credencial vigente, la <b class="mono">${esc(previo.ya_tiene_vigente.serie)}-${esc(previo.ya_tiene_vigente.serie_dv)}</b>.
+        Al emitir esta, aquella quedará <b>reemplazada</b> —no se borra— y esta pasará a ser la que vale.
+      </div>` : ''}
+    ${problemas.length ? `<div class="resultado warn" style="margin-bottom:12px">⚠️ ${problemas.join('<br>')}<br>
+      <span class="mut">Se puede crear el borrador igual, pero no se podrá emitir hasta completarlo.</span></div>` : ''}
+    <div class="ficha-datos" style="padding:0 0 12px">
+      ${[['Nombres', d.snap_nombres], ['Apellidos', d.snap_apellidos], ['RUT', d.snap_rut],
+         ['Grado ministerial', d.snap_grado], ['Cargo o función', d.snap_funcion],
+         ['Iglesia', `${d.snap_categoria || '—'} · ${d.snap_iglesia || ''}`], ['Comuna', d.snap_comuna]]
+        .map(([k, v]) => `<div class="ficha-dato"><span class="dl">${esc(k)}</span><span class="dv">${v ? esc(v) : '<span class="sin">Sin registrar</span>'}</span></div>`).join('')}
+    </div>
+    <div class="form-grid">
+      <div class="fld">
+        <label for="credDesde">Fecha de entrega</label>
+        <input type="date" id="credDesde" value="${hoy}" min="1900-01-01" />
+      </div>
+      <div class="fld">
+        <label for="credHasta">Fecha de vencimiento</label>
+        <input type="date" id="credHasta" value="${enTresAnios.toISOString().slice(0, 10)}" min="1900-01-01" />
+      </div>
+    </div>`;
+
+  const puesto = await preguntarEnDialogo({
+    titulo: `🪪 Crear credencial de ${d.snap_nombres} ${d.snap_apellidos}`.trim(),
+    cuerpo,
+    aceptar: 'Crear el borrador',
+  });
+  if (!puesto) return;
+
+  try {
+    const creada = await api('POST', '/credenciales', {
+      pastor_id: pastorId,
+      fecha_emision: puesto.credDesde || hoy,
+      fecha_vencimiento: puesto.credHasta || '',
+    });
+    toast('Borrador creado. Revise los datos y emítala.');
+    location.hash = `#/m/credenciales/ficha/${creada.id}`;
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
 
 /* =====================================================================
@@ -2849,6 +3109,60 @@ function avisarEdicionSimultanea(err, row, name, id) {
  * de siempre se ofrecen los dos caminos, y el de volver atrás va primero,
  * porque en el caso corriente el número está mal.
  */
+/**
+ * Un cuadro de diálogo para preguntar algo que no cabe en un `confirm`.
+ *
+ * El `confirm` del navegador solo admite una línea de texto y un sí o un no.
+ * Cuando hay que mostrar datos, avisos y un par de campos —crear una
+ * credencial, revocarla— hace falta esto.
+ *
+ * Devuelve `null` si se canceló, y si se aceptó, lo que quedó escrito en los
+ * campos, indexado por su id. Los valores se leen ANTES de sacar el diálogo
+ * del documento: si el que llama intentara leerlos después de esperar la
+ * respuesta, ya no encontraría nada —el nodo se fue— y recibiría un campo
+ * vacío sin enterarse.
+ *
+ * Se usa `<dialog>` del propio navegador y no una caja inventada: trae gratis
+ * el fondo, el foco atrapado adentro, el cierre con Escape y el papel de
+ * diálogo para quien no ve la pantalla.
+ */
+function preguntarEnDialogo({ titulo, cuerpo, aceptar = 'Aceptar', cancelar = 'Cancelar', peligro = false }) {
+  return new Promise((resolver) => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'dlg';
+    dlg.innerHTML = `
+      <form method="dialog">
+        <h3>${esc(titulo)}</h3>
+        <div class="dlg-cuerpo">${cuerpo}</div>
+        <div class="dlg-pie">
+          <button type="button" class="btn secondary" value="no" id="dlgNo">${esc(cancelar)}</button>
+          <button type="button" class="btn${peligro ? ' peligro' : ''}" value="si" id="dlgSi">${esc(aceptar)}</button>
+        </div>
+      </form>`;
+    document.body.appendChild(dlg);
+
+    const cerrar = (acepto) => {
+      let campos = null;
+      if (acepto) {
+        campos = {};
+        dlg.querySelectorAll('input[id], textarea[id], select[id]').forEach((el) => {
+          campos[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+        });
+      }
+      dlg.close();
+      dlg.remove();
+      resolver(campos);
+    };
+    dlg.querySelector('#dlgNo').addEventListener('click', () => cerrar(false));
+    dlg.querySelector('#dlgSi').addEventListener('click', () => cerrar(true));
+    // Escape cuenta como cancelar
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); cerrar(false); });
+    dlg.showModal();
+    const primero = dlg.querySelector('input, textarea, select');
+    if (primero) primero.focus();
+  });
+}
+
 function preguntarSiIgualVa(err, seguir) {
   const errEl = document.getElementById('formError');
   errEl.innerHTML = `

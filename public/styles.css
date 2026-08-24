@@ -641,6 +641,35 @@ table.grid th.col-mini { font-size: 15px; }
   .ficha-pestanas button { padding: 11px 13px; font-size: 13.5px; gap: 6px; }
 }
 
+/* ---------------- Cuadros de diálogo ----------------
+   Para preguntar algo que no cabe en un «confirm»: datos a la vista, un aviso
+   y un par de campos. Se usa el <dialog> del navegador, que trae el fondo, el
+   foco atrapado adentro y el cierre con Escape. */
+dialog.dlg {
+  border: none; border-radius: 14px; padding: 0; max-width: min(560px, calc(100vw - 32px));
+  box-shadow: 0 24px 60px rgba(15, 23, 42, .28); color: var(--text); background: var(--card);
+  /* El navegador centra un diálogo modal con «margin: auto», y el reset de
+     arriba del archivo se lo quita a todo. Sin esto queda pegado al borde
+     izquierdo, que fue exactamente lo que pasó al probarlo. */
+  margin: auto;
+}
+dialog.dlg::backdrop { background: rgba(15, 23, 42, .45); }
+dialog.dlg h3 { font-size: 16px; padding: 18px 20px 0; margin: 0; }
+dialog.dlg .dlg-cuerpo { padding: 14px 20px 4px; font-size: 13.5px; line-height: 1.55; max-height: 62vh; overflow-y: auto; }
+dialog.dlg .dlg-pie {
+  display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;
+  padding: 14px 20px 18px; border-top: 1px solid var(--border); margin-top: 12px;
+}
+dialog.dlg .btn.peligro { background: var(--danger); }
+dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
+@media (max-width: 560px) {
+  dialog.dlg .dlg-pie .btn { flex: 1 1 auto; text-align: center; }
+}
+
+/* Las credenciales de un pastor, en su ficha */
+.mini-list .mono { font-family: "Consolas", "DejaVu Sans Mono", "Courier New", monospace; letter-spacing: .01em; }
+.mini-list li .nota { display: block; margin-top: 2px; font-size: 11.5px; }
+
 /* El logo de la institución, en la pantalla de configuración */
 .cfg-imagen-caja { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .cfg-imagen-caja img {

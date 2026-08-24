@@ -86,7 +86,12 @@ module.exports = {
       seccion: 'Identificación de la credencial',
       help: 'Lo asigna el sistema al emitirla y no se puede escribir ni corregir. Corre de forma continua: no se reinicia con el año y ningún número se reutiliza.',
     },
-    { name: 'serie_dv', label: 'Dígito verificador', type: 'text', readonly: true, oculto: true },
+    {
+      // Se muestra al lado de la serie, como en el diseño impreso: ahí el
+      // número y su dígito van separados por el guion. Verlo suelto evita la
+      // confusión de leer «0012026» en la ficha y «0012026-1» en la tarjeta.
+      name: 'serie_dv', label: 'Dígito verificador', type: 'text', readonly: true,
+    },
     { name: 'correlativo', label: 'Correlativo', type: 'number', readonly: true, oculto: true },
 
     /* ---------------- de quién es ---------------- */
@@ -96,7 +101,10 @@ module.exports = {
       help: 'De su ficha salen la fotografía, el grado, la función, el RUT y la iglesia. Si algo está mal, se corrige allá y se emite de nuevo.',
     },
     {
-      name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true, readonly: true,
+      // No se marca «obligatorio»: no lo escribe nadie, lo pone el sistema
+      // desde la ficha del titular. Que esté es cosa del hook de más abajo,
+      // que no deja crear una credencial de alguien sin iglesia.
+      name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true,
       help: 'Se toma de la ficha del titular.',
     },
 
@@ -149,6 +157,247 @@ module.exports = {
 
     { name: 'notas', label: 'Notas internas', type: 'textarea', seccion: 'Notas' },
   ],
+
+  hooks: {
+    /**
+     * Antes de guardar.
+     *
+     * Mientras es BORRADOR, los datos del titular se refrescan en cada
+     * guardado: el borrador siempre muestra lo que dice la ficha hoy. En
+     * cuanto se emite, se congelan y no se vuelven a tocar —eso es lo que
+     * hace que la credencial impresa y la fila digan lo mismo para siempre—.
+     */
+    beforeSave(data, { isNew, existing, user }) {
+      const datos = require('../credenciales/datos');
+      const estabaEmitida = existing && existing.estado && existing.estado !== 'Borrador';
+
+      if (estabaEmitida) {
+        // Ya salió en papel: ni la serie, ni el titular, ni lo impreso cambian
+        for (const campo of Object.keys(data)) {
+          if (campo === 'estado' || campo === 'motivo_revocacion' || campo === 'notas') continue;
+          if (campo.startsWith('snap_') || campo === 'serie' || campo === 'serie_dv' ||
+              campo === 'correlativo' || campo === 'pastor_id' || campo === 'iglesia_id' ||
+              campo === 'fecha_emision' || campo === 'fecha_vencimiento') {
+            delete data[campo];
+          }
+        }
+      } else {
+        // Borrador: los datos se toman de la ficha, no se escriben
+        const pastorId = data.pastor_id !== undefined ? data.pastor_id : existing && existing.pastor_id;
+        if (!pastorId) return 'Indique de quién es la credencial';
+        const suyos = datos.delTitular(pastorId);
+        if (!suyos) return 'Esa persona no está en el registro de Pastores / Guías';
+        if (!suyos.iglesia_id) {
+          return `${suyos.snap_nombres} ${suyos.snap_apellidos} no tiene iglesia en su ficha, y la credencial lleva impresa la iglesia. Complételo allá y vuelva.`;
+        }
+        Object.assign(data, suyos);
+      }
+
+      // Revocar exige decir por qué, y queda escrito (punto 10.6)
+      const estado = data.estado !== undefined ? data.estado : existing && existing.estado;
+      if (estado === 'Revocada') {
+        const motivo = data.motivo_revocacion !== undefined
+          ? data.motivo_revocacion
+          : existing && existing.motivo_revocacion;
+        if (!motivo || !String(motivo).trim()) {
+          return 'Para revocar una credencial hay que escribir el motivo: se pierde, se roba o cesa el cargo, y eso queda en el registro';
+        }
+      }
+
+      // A vigente no se pasa desde el formulario: para eso está «Emitir», que
+      // es lo único que asigna el número de serie (punto 7.8)
+      if (!isNew && estado === 'Vigente' && existing && existing.estado === 'Borrador') {
+        return 'Un borrador se pone en vigencia con el botón «Emitir la credencial», que es lo que le asigna su número de serie';
+      }
+      if (isNew && estado && estado !== 'Borrador') {
+        return 'Una credencial nace como borrador y se emite después, cuando estén todos sus datos';
+      }
+      return null;
+    },
+  },
+
+  extraRoutes(router, { db, requirePerm, can }) {
+    const datos = require('../credenciales/datos');
+    const serieDe = require('../credenciales/serie');
+    const bitacora = require('../bitacora');
+    const alcance = require('../alcance');
+
+    /** La credencial pedida, comprobando que esté dentro de lo que alcanza. */
+    const suya = (req, res) => {
+      const fila = db.prepare('SELECT * FROM credenciales WHERE id = ?').get(req.params.id);
+      if (!fila) { res.status(404).json({ error: 'Credencial no encontrada' }); return null; }
+      if (!alcance.alcanza(module.exports, fila, req.user)) {
+        res.status(403).json({ error: 'Esa credencial está fuera de lo que tiene asignado' });
+        return null;
+      }
+      return fila;
+    };
+
+    /**
+     * Los datos con que se abre el formulario de una credencial nueva.
+     *
+     * La pantalla no los pide campo por campo: los recibe ya armados desde la
+     * ficha de la persona y la de su iglesia, y de paso se entera de lo que
+     * falta antes de que alguien llene nada.
+     */
+    router.get('/credenciales/nueva/:pastor(\\d+)', requirePerm('credenciales', 'create'), (req, res) => {
+      const suyos = datos.delTitular(req.params.pastor);
+      if (!suyos) return res.status(404).json({ error: 'Esa persona no está en el registro de Pastores / Guías' });
+      if (!alcance.alcanzaIglesia(req.user, suyos.iglesia_id)) {
+        return res.status(403).json({ error: 'Esa persona está fuera de las iglesias que tiene asignadas' });
+      }
+      const vigente = db
+        .prepare("SELECT id, serie, serie_dv, fecha_vencimiento FROM credenciales WHERE pastor_id = ? AND estado = 'Vigente'")
+        .get(suyos.pastor_id);
+      res.json({
+        datos: suyos,
+        falta: datos.loQueFalta({ ...suyos, fecha_emision: 'x', fecha_vencimiento: 'x' }),
+        recursos_que_faltan: datos.recursosQueFaltan(),
+        ya_tiene_vigente: vigente || null,
+      });
+    });
+
+    /**
+     * Emitir: le pone el número, congela lo impreso y la deja vigente.
+     *
+     * Todo en una sola transacción, porque son cosas que no pueden quedar a
+     * medias: una credencial vigente sin número, o dos vigentes de la misma
+     * persona, serían peores que un error.
+     */
+    router.post('/credenciales/:id(\\d+)/emitir', requirePerm('credenciales', 'edit'), (req, res) => {
+      const fila = suya(req, res);
+      if (!fila) return;
+      if (fila.estado !== 'Borrador') {
+        return res.status(400).json({ error: 'Esta credencial ya fue emitida. Para reflejar un cambio se emite una nueva.' });
+      }
+
+      const faltanRecursos = datos.recursosQueFaltan();
+      if (faltanRecursos.length) {
+        return res.status(400).json({
+          error: `Falta cargar ${faltanRecursos.join(', ')} en Configuración del Sistema. Sin eso la credencial no se puede imprimir.`,
+        });
+      }
+
+      // Se vuelven a tomar los datos de la ficha en este momento: lo que se
+      // congela es lo que dice el registro cuando se emite, no lo que decía
+      // cuando alguien creó el borrador hace tres semanas.
+      const suyos = datos.delTitular(fila.pastor_id);
+      if (!suyos) return res.status(400).json({ error: 'La persona de esta credencial ya no está en el registro' });
+      const completa = { ...fila, ...suyos };
+      const falta = datos.loQueFalta(completa);
+      if (falta.length) {
+        return res.status(400).json({
+          error: `No se puede emitir: falta ${falta.join(', ')}. Complételo en la ficha de la persona o de su iglesia y vuelva a intentarlo.`,
+          falta,
+        });
+      }
+
+      const anio = Number(String(fila.fecha_emision || '').slice(0, 4)) || new Date().getFullYear();
+      let numero;
+      const emitir = db.transaction(() => {
+        numero = serieDe.tomarSerie(anio);
+        // La anterior de esta persona queda reemplazada, no se borra (17.6)
+        const anterior = db
+          .prepare("SELECT id FROM credenciales WHERE pastor_id = ? AND estado = 'Vigente' AND id <> ?")
+          .get(fila.pastor_id, fila.id);
+        if (anterior) {
+          db.prepare("UPDATE credenciales SET estado = 'Reemplazada', updated_at = datetime('now','localtime') WHERE id = ?")
+            .run(anterior.id);
+        }
+        db.prepare(
+          `UPDATE credenciales SET serie = ?, serie_dv = ?, correlativo = ?, estado = 'Vigente',
+             snap_nombres = ?, snap_apellidos = ?, snap_rut = ?, snap_grado = ?, snap_funcion = ?,
+             snap_categoria = ?, snap_iglesia = ?, snap_comuna = ?, snap_foto = ?,
+             reemplaza_a = ?, updated_at = datetime('now','localtime'), updated_by = ?, version = version + 1
+           WHERE id = ?`
+        ).run(
+          numero.serie, numero.dv, numero.correlativo,
+          suyos.snap_nombres, suyos.snap_apellidos, suyos.snap_rut, suyos.snap_grado, suyos.snap_funcion,
+          suyos.snap_categoria, suyos.snap_iglesia, suyos.snap_comuna, suyos.snap_foto,
+          anterior ? anterior.id : null, req.user.id, fila.id
+        );
+        return anterior;
+      });
+
+      let anterior = null;
+      try {
+        anterior = emitir();
+      } catch (e) {
+        return res.status(500).json({ error: `No se pudo emitir la credencial: ${e.message}` });
+      }
+
+      const quedo = db.prepare('SELECT * FROM credenciales WHERE id = ?').get(fila.id);
+      bitacora.anotarCambio({
+        def: module.exports, accion: 'Emisión', fila: quedo, usuario: req.user,
+        detalle: `Se emitió la credencial N.º ${serieDe.conDigito(quedo.serie, quedo.serie_dv)} a ${quedo.snap_apellidos} ${quedo.snap_nombres}` +
+          (anterior ? `. La anterior (#${anterior.id}) quedó reemplazada.` : '.'),
+      });
+      res.json({ ok: true, credencial: quedo, reemplazo: anterior ? anterior.id : null });
+    });
+
+    /** Revocar: con motivo escrito, y a la vista en la verificación al instante. */
+    router.post('/credenciales/:id(\\d+)/revocar', requirePerm('credenciales', 'edit'), (req, res) => {
+      const fila = suya(req, res);
+      if (!fila) return;
+      const motivo = String((req.body && req.body.motivo) || '').trim();
+      if (!motivo) {
+        return res.status(400).json({ error: 'Escriba el motivo de la revocación: queda en el registro y es lo que explica por qué esta credencial dejó de valer' });
+      }
+      if (fila.estado === 'Borrador') {
+        return res.status(400).json({ error: 'Un borrador no se revoca: se elimina. Revocar es para una credencial que ya salió en papel.' });
+      }
+      if (fila.estado === 'Revocada') return res.status(400).json({ error: 'Esta credencial ya estaba revocada' });
+
+      db.prepare(
+        `UPDATE credenciales SET estado = 'Revocada', motivo_revocacion = ?,
+           updated_at = datetime('now','localtime'), updated_by = ?, version = version + 1 WHERE id = ?`
+      ).run(motivo, req.user.id, fila.id);
+
+      const quedo = db.prepare('SELECT * FROM credenciales WHERE id = ?').get(fila.id);
+      bitacora.anotarCambio({
+        def: module.exports, accion: 'Revocación', fila: quedo, usuario: req.user,
+        detalle: `Se revocó la credencial N.º ${serieDe.conDigito(quedo.serie, quedo.serie_dv)}. Motivo: ${motivo}`,
+      });
+      res.json({ ok: true, credencial: quedo });
+    });
+
+    /** Los totales del listado: generadas desde el comienzo y por situación. */
+    router.get('/credenciales/resumen', requirePerm('credenciales', 'view'), (req, res) => {
+      const params = [];
+      const donde = alcance.condiciones(module.exports, req.user, params);
+      const filas = db
+        .prepare(`SELECT estado, fecha_vencimiento FROM credenciales ${donde ? 'WHERE ' + donde : ''}`)
+        .all(...params);
+      const cuenta = { Borrador: 0, Vigente: 0, 'Por vencer': 0, Vencida: 0, Revocada: 0, Reemplazada: 0 };
+      for (const f of filas) cuenta[situacionDe(f)] = (cuenta[situacionDe(f)] || 0) + 1;
+      res.json({
+        // Cuántas se han generado en total desde el comienzo (punto 7.12). No
+        // es lo mismo que cuántas hay: los números consumidos no vuelven.
+        generadas: serieDe.cuantasSeHanGenerado(),
+        por_situacion: cuenta,
+      });
+    });
+
+    /** Las que están por vencer, para el aviso del panel (punto 10.4). */
+    router.get('/credenciales/por-vencer', requirePerm('credenciales', 'view'), (req, res) => {
+      const params = [];
+      const donde = alcance.condiciones(module.exports, req.user, params);
+      const filas = db
+        .prepare(`SELECT * FROM credenciales WHERE estado = 'Vigente' ${donde ? 'AND ' + donde : ''} ORDER BY fecha_vencimiento`)
+        .all(...params);
+      res.json(
+        filas
+          .filter((f) => situacionDe(f) === 'Por vencer' || situacionDe(f) === 'Vencida')
+          .map((f) => ({
+            id: f.id,
+            serie: serieDe.conDigito(f.serie, f.serie_dv),
+            titular: `${f.snap_apellidos} ${f.snap_nombres}`.trim(),
+            vence: f.fecha_vencimiento,
+            situacion: situacionDe(f),
+          }))
+      );
+    });
+  },
 
   situacionDe,
   DIAS_POR_VENCER,
