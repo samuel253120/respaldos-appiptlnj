@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.84.0", fecha: "2026-08-24", titulo: "Un registro aparte para las personas que no son de la iglesia y reciben ayuda" },
   { version: "1.83.0", fecha: "2026-08-24", titulo: "El panel abre cuatro veces más rápido cuando la iglesia ya tiene datos" },
   { version: "1.82.0", fecha: "2026-08-24", titulo: "Seis cosas que encontró la revisión del código, y sus arreglos" },
   { version: "1.81.0", fecha: "2026-08-24", titulo: "Cifrar una contraseña ya no deja frenado al resto del sistema" },

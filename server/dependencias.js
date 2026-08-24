@@ -85,6 +85,7 @@ const EXCEPCIONES = {
   'traspasos.cuenta_destino_id':    [FRENA, 'traspaso(s) que llegan a ella', 'Ciérrela en vez de eliminarla.'],
   'cuotas_cuerpo.integrante_id':    [FRENA, 'cuota(s) pagada(s)', 'Márquelo como «Retirado» en vez de eliminarlo, y su historial queda intacto.'],
   'ayudas_sociales.miembro_id':     [FRENA, 'ayuda(s) social(es) registrada(s)', 'Esa ayuda es constancia de dinero entregado: no se borra con la ficha.'],
+  'ayudas_sociales.no_miembro_id':  [FRENA, 'ayuda(s) social(es) registrada(s)', 'Esa ayuda es constancia de dinero entregado: no se borra con la ficha.'],
 
   // ---- Documentos emitidos: llevan número y salieron firmados ----
   'certificados.miembro_id':        [FRENA, 'certificado(s) emitido(s)', 'Un certificado emitido no se borra con la ficha de su titular.'],

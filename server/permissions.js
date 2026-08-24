@@ -292,6 +292,7 @@ const MATRIX = {
     solicitudes: RW,
     inventarios: RW,
     ayudas_sociales: RW,
+    no_miembros: RW,
     tesoreria: [],
     cuentas_tesoreria: [],
     categorias_tesoreria: [],
@@ -311,6 +312,7 @@ const MATRIX = {
     traspasos: ALL,
     cuotas_cuerpo: ALL,
     ayudas_sociales: ALL,
+    no_miembros: ALL,
     inventarios: RW,
     usuarios: [],
     perfiles_permisos: [],
@@ -320,6 +322,10 @@ const MATRIX = {
     '*': RO,
     ...llavesDeFabrica('consulta'),
     credenciales: [], // punto 12.3
+    // Las fichas de No Miembros son de gente en situación vulnerable y las
+    // lleva quien administra las ayudas. Quien solo consulta no entra: le
+    // basta con el nombre que aparece en la ayuda que esté mirando.
+    no_miembros: [],
     tesoreria: [],
     cuentas_tesoreria: [],
     categorias_tesoreria: [],

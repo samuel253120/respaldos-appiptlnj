@@ -1490,6 +1490,7 @@ function ejecutarMigraciones() {
     ['el cuerpo de cada movimiento', movimientosConElCuerpoDeSuCuenta],
     ['credenciales desde cero', credencialesDesdeCero],
     ['contador de credenciales al día', contadorDeCredencialesAlDia],
+    ['ficha del beneficiario de cada ayuda', ayudasConFichaDelBeneficiario],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -1504,4 +1505,96 @@ function ejecutarMigraciones() {
   }
 }
 
-module.exports = { ejecutarMigraciones };
+/**
+ * Le da ficha propia a los beneficiarios de las ayudas que ya estaban
+ * registradas.
+ *
+ * Hasta ahora el beneficiario de una ayuda era un nombre escrito a mano, y
+ * aparte un enlace opcional a un miembro. Al pasar a elegir explícitamente si
+ * es miembro o no, esas ayudas quedarían sin decir de cuál de los dos se
+ * trata. Así que se resuelve mirando lo que ya hay:
+ *
+ *   · la que apunta a un miembro queda marcada como «Miembro»
+ *   · la que solo tiene un nombre escrito se convierte en una ficha de No
+ *     Miembro con ese mismo nombre, y la ayuda queda enlazada a ella
+ *
+ * El mismo nombre repetido en varias ayudas da UNA sola ficha, con todas sus
+ * ayudas colgando: eso es justamente lo que antes no se podía ver. La
+ * comparación ignora mayúsculas y espacios de sobra, y se hace dentro de cada
+ * iglesia, porque dos iglesias distintas pueden atender a dos personas que se
+ * llaman igual y no son la misma.
+ *
+ * El nombre se guarda entero en «nombres» y no se parte en nombre y apellido:
+ * partirlo sería adivinar dónde termina uno y empieza el otro, y en un
+ * registro que existe para constancia vale más el nombre tal como se escribió.
+ */
+function ayudasConFichaDelBeneficiario() {
+  const NOMBRE = 'ayudas_con_ficha_del_beneficiario';
+  if (yaAplicada(NOMBRE)) return;
+
+  const columnas = db.prepare('PRAGMA table_info("ayudas_sociales")').all().map((c) => c.name);
+  if (!columnas.includes('beneficiario_tipo') || !columnas.includes('no_miembro_id')) return;
+
+  let comoMiembro = 0;
+  let fichasNuevas = 0;
+  let comoNoMiembro = 0;
+  let sinNombre = 0;
+
+  db.transaction(() => {
+    // 1) Las que ya apuntaban a un miembro
+    comoMiembro = db
+      .prepare(
+        `UPDATE ayudas_sociales SET beneficiario_tipo = 'Miembro'
+          WHERE (beneficiario_tipo IS NULL OR beneficiario_tipo = '')
+            AND miembro_id IS NOT NULL`
+      )
+      .run().changes;
+
+    // 2) Las que solo traían un nombre escrito a mano
+    const sueltas = db
+      .prepare(
+        `SELECT id, iglesia_id, beneficiario FROM ayudas_sociales
+          WHERE (beneficiario_tipo IS NULL OR beneficiario_tipo = '')
+            AND miembro_id IS NULL`
+      )
+      .all();
+
+    const nuevaFicha = db.prepare(
+      `INSERT INTO no_miembros (iglesia_id, nombres, notas)
+       VALUES (?, ?, 'Ficha creada automáticamente al pasar las ayudas sociales a llevar registro de las personas.')`
+    );
+    const enlazar = db.prepare(
+      `UPDATE ayudas_sociales SET beneficiario_tipo = 'No miembro', no_miembro_id = ? WHERE id = ?`
+    );
+
+    /** Una ficha por nombre y por iglesia, no una por ayuda. */
+    const yaCreadas = new Map();
+    for (const ayuda of sueltas) {
+      const nombre = String(ayuda.beneficiario || '').trim();
+      if (!nombre) { sinNombre++; continue; }
+      const clave = `${ayuda.iglesia_id}|${nombre.toLowerCase().replace(/\s+/g, ' ')}`;
+      let ficha = yaCreadas.get(clave);
+      if (!ficha) {
+        ficha = nuevaFicha.run(ayuda.iglesia_id, nombre).lastInsertRowid;
+        yaCreadas.set(clave, ficha);
+        fichasNuevas++;
+      }
+      enlazar.run(ficha, ayuda.id);
+      comoNoMiembro++;
+    }
+  })();
+
+  if (comoMiembro || comoNoMiembro || sinNombre) {
+    console.log(
+      `🤝 Ayudas sociales: ${comoMiembro} a nombre de un miembro, ` +
+        `${comoNoMiembro} pasadas a ${fichasNuevas} ficha(s) nueva(s) de No Miembros` +
+        (sinNombre ? `, ${sinNombre} sin nombre que quedaron como estaban` : '') + '.'
+    );
+  }
+  marcarAplicada(NOMBRE);
+}
+
+// `ayudasConFichaDelBeneficiario` se expone aparte para poder probarla sola:
+// es la única que crea fichas nuevas a partir de datos escritos a mano, y
+// equivocarse ahí significa duplicar personas o perder ayudas.
+module.exports = { ejecutarMigraciones, ayudasConFichaDelBeneficiario };
