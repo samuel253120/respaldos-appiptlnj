@@ -1,0 +1,510 @@
+ESPECIFICACION DE IMPLEMENTACION
+MODULO DE CREDENCIALES - GENERACION E IMPRESION DE LA CREDENCIAL PASTORAL
+Iglesia Pentecostal Triunfante "La Nueva Jerusalen" - Personalidad Juridica 7217
+
+
+0. COMO USAR ESTA ESPECIFICACION
+
+0.1. Junto a este documento se adjunta el archivo credencial-pastor.html. Ese archivo
+     es el DISENO OFICIAL YA APROBADO de la credencial. No se rediseña, no se
+     reinterpreta y no se "mejora" visualmente. Se reutiliza tal cual y solo se
+     conecta a los datos del sistema.
+0.2. Abrir el archivo adjunto y extraer de el: la hoja de estilos completa, la
+     estructura HTML del anverso y del reverso, el generador de codigos QR
+     incrustado, la logica de ajuste automatico de texto, la logica de impresion
+     plegable y la logica del digito verificador. Todo eso se traslada al sistema.
+0.3. Las unicas partes del archivo que NO se trasladan tal cual son: las imagenes
+     incrustadas en base64 (logo, sello y firma) y los campos editables a mano.
+     Ver secciones 5 y 6.
+0.4. Antes de escribir codigo, leer esta especificacion completa. Implementar en el
+     orden de fases de la seccion 14. Al terminar, entregar el informe de la
+     seccion 16.
+
+
+1. RESPALDO OBLIGATORIO ANTES DE EMPEZAR
+
+1.1. Generar un respaldo completo y descargable de la base de datos antes de
+     cualquier cambio de esquema. No continuar si el respaldo no se completo.
+1.2. Toda migracion debe ser reversible. Entregar el procedimiento de reversion
+     (rollback) junto con el informe final.
+1.3. Ninguna instruccion de esta especificacion autoriza borrar datos existentes,
+     salvo lo indicado expresamente en el punto 13.1.
+
+
+2. OBJETIVO
+
+2.1. Que el sistema genere, almacene, imprima y verifique la credencial de los
+     pastores, pastoras y guias de obra, con el mismo diseno del archivo adjunto.
+2.2. Que los datos de la credencial se tomen automaticamente del registro de la
+     persona y de su iglesia, sin volver a escribirlos a mano.
+2.3. Que la credencial impresa pueda verificarse escaneando su codigo QR.
+
+
+3. INTEGRACION CON LO EXISTENTE
+
+3.1. Se implementa dentro del modulo de Credenciales ya existente. No crear un
+     modulo paralelo.
+3.2. El sistema es multi-iglesia (multi-tenant). Toda credencial pertenece a una
+     iglesia y guarda churchId en su fila. Un pastor solo ve las credenciales de su
+     propia iglesia. La administracion central ve todas.
+3.3. Los datos de la persona se leen del registro de Pastores/Pastoras/Guias de
+     Obra. Los datos de la iglesia se leen del registro de Iglesias. La credencial
+     NO duplica esos datos: los referencia por id y los copia solo al momento de
+     emitir (ver 4.4).
+
+
+4. DATOS DE LA CREDENCIAL
+
+4.1. Datos que se toman del registro de la persona:
+     - Fotografia (la misma foto del registro; ver seccion 6)
+     - Grado ministerial
+     - Cargo o funcion (opcional, ver 4.6)
+     - Nombres
+     - Apellidos
+     - RUT
+
+4.2. Datos que se toman del registro de la iglesia a la que pertenece la persona:
+     - Categoria de la iglesia: CENTRAL, SEDE, FILIAL o ANEXO
+     - Nombre de la iglesia
+     - Comuna
+
+4.3. Datos propios de la credencial, generados o ingresados al emitirla:
+     - Numero de serie (generado por el sistema, ver seccion 7)
+     - Digito verificador del numero de serie (calculado, ver seccion 7)
+     - Fecha de entrega
+     - Fecha de vencimiento
+     - Estado (ver seccion 10)
+
+4.4. INSTANTANEA AL EMITIR: al crear la credencial, el sistema guarda una copia
+     congelada de los datos impresos (nombres, apellidos, RUT, grado, cargo,
+     categoria, nombre de iglesia, comuna y referencia a la foto usada). Si despues
+     la persona cambia de iglesia o de grado, la credencial ya impresa conserva lo
+     que decia el papel. Los cambios posteriores obligan a emitir una credencial
+     nueva, no a modificar la anterior.
+
+4.5. Grados ministeriales validos (lista cerrada, seleccionable, en este orden
+     jerarquico de menor a mayor):
+     - Guia de Obra
+     - Pastor Probando
+     - Pastor Diacono
+     - Pastor Presbitero
+     - Pastor Presidente
+     El grado Pastor Presidente es unico en todo el sistema: validar que no exista
+     mas de una persona activa con ese grado.
+
+4.6. El campo Cargo es OPCIONAL y corresponde a la funcion que ejerce (por ejemplo
+     Pastor Titular o Pastor Supervisor). Si se deja vacio, la fila completa del
+     Cargo NO se imprime y su espacio se reparte entre los demas campos. Esta
+     logica ya esta resuelta en el archivo adjunto (clase campo-opcional y clase
+     sin-cargo): trasladarla tal cual.
+
+4.7. Categorias de iglesia validas (lista cerrada): CENTRAL, SEDE, FILIAL, ANEXO.
+     La categoria CENTRAL es unica en todo el sistema.
+
+
+5. RECURSOS INSTITUCIONALES (LOGO, SELLO, FIRMA)
+
+5.1. El archivo adjunto trae el logo, el sello oficial y la firma del Pastor
+     Presidente incrustados en base64. En el sistema NO deben ir incrustados.
+5.2. Crear en Configuracion del Sistema una seccion "Recursos de la credencial" con
+     tres imagenes cargables, guardadas en el almacenamiento de archivos (R2), no
+     en el documento sincronizado:
+     - Logo de la iglesia (PNG con transparencia)
+     - Sello oficial (PNG con transparencia)
+     - Firma del Pastor Presidente (PNG con transparencia)
+5.3. Estas tres imagenes son unicas para todo el sistema, las carga y reemplaza
+     solo el administrador general, y las usan todas las iglesias.
+5.4. La vista de impresion carga esas tres imagenes por URL. Si alguna falta, la
+     credencial no se puede emitir e imprimir: mostrar el aviso "Falta cargar el
+     logo / sello / firma en Configuracion del Sistema".
+5.5. El sello aparece dos veces en el diseno: completo en el reverso y como marca
+     de seguridad semitransparente cruzando la fotografia en el anverso (30 por
+     ciento del sello sobre la foto). Ambos usan la misma imagen.
+
+
+6. FOTOGRAFIA
+
+6.1. La credencial usa la fotografia ya cargada en el registro de la persona. No se
+     vuelve a subir en el modulo de credenciales.
+6.2. Toda fotografia se reduce automaticamente al subirla a un maximo de
+     812 x 1084 pixeles, respetando la proporcion original y aplicando el limite al
+     lado largo: verticales hasta 812 x 1084, horizontales hasta 1084 x 812.
+6.3. Las fotografias se guardan en el almacenamiento de archivos (R2), nunca en
+     base64 dentro del documento sincronizado.
+6.4. Encuadre: al emitir la credencial debe poder ajustarse el encuadre de la foto
+     dentro del recuadro (arrastrar para mover, rueda o pellizco para acercar) y su
+     brillo y contraste. El resultado del encuadre se guarda con la credencial como
+     tres valores numericos (zoom, posicion horizontal, posicion vertical) mas
+     brillo y contraste, para que al reimprimir salga identica. La logica ya esta
+     resuelta en el archivo adjunto: trasladarla.
+6.5. En el reverso va la "foto fantasma": una segunda copia pequena de la misma
+     fotografia, en escala de grises y semitransparente, sobre un recuadro claro.
+     Se genera sola a partir de la misma imagen.
+
+
+7. NUMERO DE SERIE Y DIGITO VERIFICADOR
+
+7.1. Formato del numero de serie, ya definido y vigente en el sistema:
+     tres digitos correlativos + ano de creacion + guion + digito verificador.
+     Ejemplo: 1232026-3
+
+7.2. EL NUMERO LO ASIGNA SIEMPRE EL SISTEMA. En ninguna pantalla puede escribirse,
+     elegirse ni corregirse a mano. El campo se muestra solo de lectura, tanto al
+     administrador general como a cualquier otro usuario. No existe opcion de
+     "editar numero de serie".
+
+7.3. UNICIDAD GARANTIZADA EN LA BASE DE DATOS. El numero de serie completo
+     (correlativo + ano) debe tener una restriccion de unicidad (UNIQUE) a nivel de
+     la tabla. No basta con validarlo en la aplicacion. Si por cualquier motivo se
+     intentara insertar uno repetido, la base de datos debe rechazarlo.
+
+7.4. ASIGNACION ATOMICA. Si dos usuarios emiten una credencial en el mismo instante,
+     es imposible que reciban el mismo numero. Obtener el correlativo dentro de una
+     transaccion, con un contador atomico o con una lectura bloqueante del ultimo
+     valor. No calcularlo como "contar cuantas credenciales hay y sumar uno", porque
+     eso falla con usuarios simultaneos. Si la insercion falla por unicidad, el
+     sistema reintenta solo con el siguiente numero, sin mostrar error al usuario.
+
+7.5. EL CORRELATIVO NUNCA SE REINICIA. Corre de forma continua a lo largo de todos
+     los anos, de modo que el ultimo numero entregado indique cuantas credenciales
+     ha emitido la iglesia en total desde el comienzo. El ano que acompana al
+     numero es solo el ano en que se emitio esa credencial, no reinicia la cuenta.
+     Ejemplo: si en 2026 se llego a 0122026, la primera credencial de 2027 sera
+     0132027, y NO 0012027.
+
+7.6. Si el correlativo supera 999, se continua con mas digitos (1000, 1001, y asi
+     sucesivamente). Se mantienen tres digitos como minimo, completando con ceros a
+     la izquierda cuando el numero es menor. El sistema no debe detenerse, dar error
+     ni reiniciar la cuenta al llegar a 999.
+
+7.7. EL NUMERO NO SE REUTILIZA NUNCA. Si una credencial se anula, se revoca, se
+     reemplaza o su borrador se elimina, su numero queda consumido y no vuelve a
+     entregarse a otra credencial. Es normal y esperado que queden saltos en la
+     numeracion. En consecuencia, el ultimo correlativo indica cuantas credenciales
+     se han GENERADO en total, no cuantas estan vigentes hoy.
+
+7.8. El numero se asigna en el momento de emitir la credencial, no antes.
+
+7.9. El digito verificador se calcula con el algoritmo de Luhn sobre los digitos del
+     numero de serie (correlativo + ano), exactamente el mismo calculo que usa el
+     archivo adjunto, para que el numero del sistema y el impreso coincidan siempre.
+     Copiar la funcion del archivo adjunto, no reimplementarla de memoria.
+
+7.10. El numero de serie con su digito verificador se imprime dos veces en la
+      credencial: en el reverso, en el campo "N DE SERIE", y en el anverso, repetido
+      en vertical y en letra muy pequena junto a la fotografia, como control cruzado.
+      Ambos deben coincidir siempre. Esa logica ya esta en el archivo adjunto.
+
+7.11. Al reemplazar una credencial vencida o revocada, la nueva recibe un numero de
+      serie nuevo. Nunca se hereda ni se repite el de la credencial anterior.
+
+7.12. En el listado del modulo de Credenciales, mostrar al administrador general un
+      contador con el total de credenciales generadas desde el comienzo, junto al
+      total de vigentes, vencidas y revocadas.
+
+
+8. CODIGO QR
+
+8.1. El codigo QR se genera en el momento, a partir de los datos de la credencial.
+     Usar el generador incrustado en el archivo adjunto o una libreria equivalente,
+     pero respetando obligatoriamente las reglas 8.5 a 8.9.
+
+8.2. Crear en Configuracion del Sistema la opcion "Modo del codigo QR", con dos
+     valores. El valor por defecto es (a).
+
+     (a) VERIFICACION EN LINEA (recomendado ahora que existe el sistema):
+         El QR contiene una direccion corta de verificacion, con este formato:
+         https://<dominio-del-sistema>/v/<numero-de-serie-con-digito>?c=<codigo>
+         Ejemplo: https://ejemplo.cl/v/1232026-3?c=6Q5GG42
+
+     (b) DATOS SIN CONEXION (para usar si no hay internet donde se verifica):
+         El QR contiene los datos del titular separados por barra vertical, en
+         mayusculas, sin tildes ni enes, en este orden exacto:
+         APELLIDOS NOMBRES|GRADO|RUT|CATEGORIA NOMBRE-IGLESIA|SERIE-DV|VIGENCIA|7217|C:CODIGO
+         Ejemplo:
+         SOTO MARTINEZ J.C.|P.PRESBITERO|12345678K|SEDE LA NUEVA JERUSALEN|1232026-3|0326-0328|7217|C:6Q5GG42
+         La vigencia va en formato MMAA-MMAA (mes y ano de entrega, guion, mes y
+         ano de vencimiento).
+
+8.3. CODIGO DE AUTENTICIDAD (el valor "c" o "C:"): es un codigo de 7 caracteres
+     calculado a partir de todos los datos de la credencial mas una clave secreta.
+     IMPORTANTE: en el sistema la clave secreta debe vivir SOLO en el servidor
+     (variable de entorno), nunca en el codigo que se envia al navegador. Usar
+     HMAC-SHA256 sobre la cadena de datos, convertir a base36 en mayusculas y tomar
+     los ultimos 7 caracteres. El archivo adjunto usa una version simplificada
+     porque no tenia servidor; en el sistema se reemplaza por HMAC-SHA256.
+
+8.4. El QR NO se genera si falta cualquiera de estos datos: nombres, apellidos,
+     grado, RUT, categoria de iglesia, nombre de iglesia, numero de serie, fecha de
+     entrega o fecha de vencimiento. En ese caso mostrar en el recuadro del QR el
+     texto "DATOS INCOMPLETOS" y, junto al formulario, el aviso indicando cual dato
+     falta. Una credencial sin QR no se puede marcar como emitida.
+
+8.5. TAMANO MINIMO OBLIGATORIO: el recuadro del QR mide 12,2 mm de lado y cada
+     modulo (cada cuadradito) debe medir 0,25 mm o mas. Si el contenido crece tanto
+     que los modulos bajarian de 0,25 mm, acortar el contenido segun 8.6. NO
+     reducir el tamano del recuadro.
+
+8.6. Acortado automatico por niveles, en este orden, hasta que los modulos vuelvan
+     a medir 0,25 mm o mas:
+     nivel 1: los nombres de pila pasan a iniciales y el grado se abrevia
+              (Pastor Presbitero pasa a P.PRESBITERO, Guia de Obra pasa a G.OBRA)
+     nivel 2: ademas se recortan por palabra los apellidos a 26 caracteres y el
+              nombre de la iglesia a 20 caracteres
+     El modo (a) de 8.2 casi nunca necesitara acortarse por ser corto.
+
+8.7. Nivel de correccion de errores del QR: M. Zona de silencio: 2 modulos.
+
+8.8. Antes de dar por terminado, comprobar que el QR generado se decodifica
+     correctamente al imprimir. Ver prueba 15.6.
+
+8.9. El numero de WhatsApp de la iglesia (+56 9 7172 7872) va impreso como TEXTO en
+     la barra inferior del reverso, no dentro del QR.
+
+
+9. PAGINA PUBLICA DE VERIFICACION
+
+9.1. Solo aplica si el modo del QR es (a). Crear una pagina publica, sin necesidad
+     de iniciar sesion, en la direccion /v/<serie>?c=<codigo>.
+9.2. La pagina valida el codigo de autenticidad contra el servidor. Si no coincide,
+     muestra "CREDENCIAL NO VALIDA" en rojo y no muestra ningun dato.
+9.3. Si coincide, muestra en pantalla, en este orden:
+     - Estado grande y en color: VIGENTE (verde), POR VENCER (amarillo),
+       VENCIDA (gris) o REVOCADA (rojo)
+     - Fotografia oficial de la persona (la misma de la credencial)
+     - Nombres y apellidos
+     - Grado y cargo
+     - Iglesia con su categoria, y comuna
+     - Numero de serie y vigencia
+     - La leyenda: "Datos oficiales de la Iglesia Pentecostal Triunfante La Nueva
+       Jerusalen. Personalidad Juridica 7217."
+9.4. La pagina NO muestra el RUT completo: mostrar solo los ultimos tres digitos y
+     el digito verificador, con el resto oculto. Quien verifica compara ese final
+     con el RUT impreso en la tarjeta.
+9.5. La pagina debe verse bien en telefono, porque se abrira escaneando.
+9.6. Limitar la cantidad de consultas por minuto desde una misma direccion para
+     evitar que alguien pruebe numeros de serie al azar.
+
+
+10. ESTADOS Y CICLO DE VIDA DE LA CREDENCIAL
+
+10.1. Estados posibles: BORRADOR, VIGENTE, POR VENCER, VENCIDA, REVOCADA,
+      REEMPLAZADA.
+10.2. BORRADOR: creada pero aun sin imprimir ni entregar. Se puede editar y borrar.
+10.3. VIGENTE: emitida, con fecha de entrega y vencimiento, y dentro de plazo.
+10.4. POR VENCER: calculado automaticamente cuando faltan 60 dias o menos para el
+      vencimiento. Debe aparecer un aviso en el panel del administrador con la
+      lista de credenciales por vencer.
+10.5. VENCIDA: calculado automaticamente al pasar la fecha de vencimiento.
+10.6. REVOCADA: anulada manualmente (perdida, robo, cese del cargo). Requiere
+      motivo escrito obligatorio y queda en auditoria. Una credencial revocada
+      aparece como no valida en la pagina de verificacion de inmediato.
+10.7. REEMPLAZADA: queda asi automaticamente cuando se emite una credencial nueva
+      a la misma persona. La nueva genera un numero de serie nuevo; la anterior no
+      se borra, se conserva en el historial.
+10.8. Cada persona tiene como maximo UNA credencial vigente a la vez.
+10.9. Historial: en la ficha de la persona debe verse la lista de todas sus
+      credenciales con numero de serie, fechas, estado y motivo de revocacion si
+      corresponde.
+
+
+11. VISTA DE IMPRESION
+
+11.1. La credencial se imprime exactamente como en el archivo adjunto: anverso y
+      reverso salen unidos en UNA SOLA PIEZA PLEGABLE, en UNA SOLA PAGINA tamano
+      Carta, para recortar por la linea exterior, doblar por la linea del centro,
+      pegar ambas caras y plastificar.
+11.2. Medidas obligatorias: cada cara mide exactamente 54 mm de ancho por 86 mm de
+      alto. Las dos mitades de la pieza deben medir 86 mm cada una.
+11.3. El reverso va ARRIBA y girado 180 grados; el anverso va ABAJO. Asi, al doblar
+      hacia atras por el centro, el reverso queda derecho.
+11.4. Debe imprimirse al 100 por ciento (tamano real) y con los graficos de fondo
+      activados. Mostrar esa indicacion en pantalla junto al boton de imprimir.
+11.5. La pieza no debe repartirse en dos paginas bajo ninguna circunstancia.
+11.6. Los textos de ayuda, botones y controles de la pantalla no se imprimen.
+11.7. Los campos que queden vacios no imprimen su texto de ayuda: imprimen vacio.
+11.8. Debe existir tambien la opcion de descargar la credencial en PDF, con las
+      mismas medidas y en una sola pagina.
+
+11.9. ELEMENTOS DE SEGURIDAD DEL DISENO que deben conservarse tal cual estan en el
+      archivo adjunto, sin quitar ninguno:
+      - Fondo guilloche dorado fino y denso
+      - Marca de agua del logo detras de los datos
+      - Microtexto bajo el titulo con el nombre de la iglesia y el numero 7217
+      - Sello de seguridad cruzando la fotografia (30 por ciento sobre la foto)
+      - Numero de serie repetido en vertical junto a la fotografia
+      - Numeracion en fuente monoespaciada en el RUT y el numero de serie
+      - Foto fantasma en el reverso
+      - Firma del Pastor Presidente sobre la linea de firma
+      - Sello oficial en el reverso
+      - Franja de cruces doradas al pie del anverso
+      - Leyendas del reverso: "Emitida en Concepcion, Chile - Valida para el
+        ministerio religioso", "Se anula si presenta enmiendas o adulteraciones",
+        "Devolver a la iglesia si es encontrada"
+      - Linea "Personalidad Juridica N 7217" y linea "Iglesia Central Concepcion"
+
+
+12. PERMISOS
+
+12.1. Administrador general (Super-Admin): crea, emite, revoca, reimprime y ve las
+      credenciales de todas las iglesias. Unico que puede cargar el logo, el sello
+      y la firma.
+12.2. Pastor o guia a cargo de una iglesia: ve las credenciales de su propia
+      iglesia. Si se le habilita el permiso, puede solicitar la emision, pero la
+      emision definitiva y la revocacion quedan reservadas al administrador
+      general, porque la credencial la firma el Pastor Presidente.
+12.3. El resto de los usuarios no accede al modulo.
+12.4. Agregar estos permisos al listado de permisos personalizados existente y
+      dejarlos visibles en la pantalla de configuracion de permisos.
+
+
+13. AJUSTES YA SOLICITADOS QUE DEBEN QUEDAR CUBIERTOS
+
+13.1. Eliminar todas las credenciales actualmente cargadas en el sistema y partir
+      desde cero con el correlativo. Hacerlo despues del respaldo del punto 1.1 y
+      dejar constancia en auditoria.
+13.2. Al registrar un pastor, pastora o guia de obra NO debe crearse la credencial
+      automaticamente. La creacion es manual, al pinchar la opcion "Crear
+      credencial". Corregir el comportamiento actual, que la asigna al instante.
+
+
+14. ORDEN DE IMPLEMENTACION POR FASES
+
+FASE 1 - Base de datos y respaldo
+  - Respaldo completo descargable (punto 1.1)
+  - Tabla de credenciales con churchId, referencia a la persona, instantanea de
+    datos impresos, numero de serie, digito verificador, fechas, estado, motivo de
+    revocacion, ajustes de encuadre de foto y marcas de auditoria
+  - Indices por churchId, por persona y por numero de serie
+  - Correlativo unico de numero de serie
+  - Limpieza del punto 13.1
+
+FASE 2 - Recursos y configuracion
+  - Seccion "Recursos de la credencial" en Configuracion del Sistema (logo, sello,
+    firma) guardados en R2
+  - Opcion "Modo del codigo QR"
+  - Clave secreta del codigo de autenticidad como variable de entorno del servidor
+
+FASE 3 - Emision
+  - Pantalla de creacion de credencial con los datos precargados desde el registro
+    de la persona y de su iglesia
+  - Generacion del numero de serie y del digito verificador
+  - Encuadre de la foto, brillo y contraste
+  - Validacion de datos obligatorios y bloqueo del QR si faltan
+  - Correccion del punto 13.2
+
+FASE 4 - Diseno e impresion
+  - Traslado integro del diseno del archivo adjunto
+  - Generacion del QR segun seccion 8
+  - Vista de impresion plegable y descarga en PDF
+
+FASE 5 - Verificacion y ciclo de vida
+  - Pagina publica de verificacion (si el modo del QR es (a))
+  - Estados, vencimientos, avisos de por vencer, revocacion, reemplazo e historial
+
+FASE 6 - Cierre
+  - Permisos (seccion 12)
+  - Auditoria (seccion 15.7)
+  - Revision de la vista movil de todas las pantallas nuevas
+  - Actualizar el numero de version de la aplicacion y dejar el registro en el
+    modulo de Historial de Versiones
+
+
+15. PRUEBAS DE ACEPTACION (todas deben pasar antes de dar por terminado)
+
+15.1. Emitir una credencial completa y comprobar que los datos impresos coinciden
+      exactamente con el registro de la persona y de su iglesia.
+15.2. Imprimir a 100 por ciento y medir con regla: cada cara debe medir 54 x 86 mm
+      y todo debe caber en UNA sola pagina.
+15.3. Doblar la pieza por el centro y comprobar que el reverso queda derecho y
+      calzado con el anverso.
+15.4. Probar con un nombre muy largo (por ejemplo Jose Miguel Alejandro Fernandez
+      de la Torre Etchegoyen) y con nombres con tildes y ene (Jose Ramon Munoz
+      Pena): ningun texto debe salirse, cortarse ni pisar otro elemento.
+15.5. Dejar el campo Cargo vacio y comprobar que su fila no se imprime y que los
+      demas campos se reparten el espacio.
+15.6. Escanear con un telefono el QR de una credencial REALMENTE IMPRESA en papel
+      (no en pantalla) y comprobar que se lee y lleva a los datos correctos.
+      Repetir con una impresora de inyeccion de tinta.
+15.7. Comprobar que quedan registrados en auditoria: creacion, emision, reimpresion,
+      revocacion (con motivo), reemplazo y cambio de los recursos institucionales,
+      indicando siempre usuario, fecha, hora y valores anterior y nuevo.
+15.8. Comprobar que un pastor de una iglesia NO puede ver ni emitir credenciales de
+      otra iglesia.
+15.9. Alterar a mano un caracter del contenido del QR y comprobar que la
+      verificacion lo rechaza.
+15.10. Revocar una credencial y comprobar que la pagina de verificacion la muestra
+      como revocada de inmediato.
+15.11. Comprobar en telefono que todas las pantallas nuevas se ven y se usan bien.
+15.12. Comprobar que el numero de serie no se puede escribir ni editar a mano en
+      ninguna pantalla, y que se muestra solo de lectura.
+15.13. Emitir dos credenciales de forma simultanea (dos sesiones al mismo tiempo) y
+      comprobar que reciben numeros distintos y correlativos.
+15.14. Intentar insertar directamente en la base de datos un numero de serie ya
+      existente y comprobar que la base lo rechaza por la restriccion de unicidad.
+15.15. Revocar una credencial, emitir otra y comprobar que la nueva NO reutiliza el
+      numero de la revocada.
+15.16. Comprobar que el digito verificador calculado por el sistema coincide con el
+      que calcula el archivo credencial-pastor.html para el mismo numero.
+15.17. Comprobar que el correlativo NO se reinicia al cambiar de ano: simular el
+      cambio de ano y verificar que la credencial siguiente continua la cuenta (por
+      ejemplo, despues de 0122026 debe venir 0132027, no 0012027).
+15.18. Comprobar que al pasar de 999 el correlativo continua con cuatro digitos y el
+      sistema no da error.
+15.19. Comprobar que ningun dato existente de la aplicacion se perdio ni se altero:
+      entregar conteos antes y despues.
+
+
+16. INFORME FINAL OBLIGATORIO
+
+Al terminar, entregar un informe escrito que indique:
+16.1. Que fases quedaron implementadas y cuales no, una por una.
+16.2. El resultado de cada una de las pruebas de la seccion 15, indicando si paso o
+      fallo. No declarar "listo" sin haber ejecutado las pruebas.
+16.3. Los conteos de registros antes y despues de la migracion.
+16.4. El procedimiento de reversion (rollback).
+16.5. Cualquier decision que se haya tomado por cuenta propia y cualquier punto de
+      esta especificacion que no se haya podido cumplir, explicando por que.
+
+
+17. LO QUE NO SE DEBE HACER
+
+17.1. No rediseñar la credencial ni cambiar colores, tipografias, medidas ni
+      posiciones respecto del archivo adjunto.
+17.2. No achicar el codigo QR ni bajar el tamano de sus modulos por debajo de
+      0,25 mm.
+17.3. No guardar imagenes en base64 dentro del documento sincronizado.
+17.4. No dejar la clave secreta del codigo de autenticidad en el codigo del
+      navegador.
+17.5. No permitir la emision con datos incompletos.
+17.6. No borrar credenciales anteriores al emitir una nueva: se marcan como
+      reemplazadas y se conservan.
+17.7. No borrar ningun otro dato de la aplicacion.
+
+
+18. EJECUCION EN CLAUDE CODE
+
+18.1. Ambos archivos (esta especificacion y credencial-pastor.html) estan en el
+      repositorio. Leer credencial-pastor.html completo desde el disco antes de
+      escribir cualquier codigo: es la fuente del diseno, no un ejemplo.
+18.2. Implementar por fases segun la seccion 14, deteniendose al terminar cada fase
+      para informar el resultado antes de continuar con la siguiente.
+18.3. VERIFICACION AUTOMATICA OBLIGATORIA. No declarar ninguna prueba de la seccion
+      15 como aprobada sin haberla ejecutado de verdad. En particular:
+      - Renderizar la vista de impresion con un navegador sin interfaz (headless) y
+        generar el PDF en tamano Carta con graficos de fondo activados.
+      - Comprobar en el PDF, por medicion sobre la imagen renderizada, que el
+        documento tiene UNA sola pagina, que cada cara mide 54 x 86 mm y que las dos
+        mitades de la pieza miden 86 mm cada una.
+      - Rasterizar el PDF a 300 puntos por pulgada y decodificar el codigo QR con
+        una libreria de lectura de QR. Debe decodificarse correctamente.
+      - Repetir la decodificacion aplicando un desenfoque leve a la imagen, para
+        simular el sangrado de tinta de una impresora de inyeccion. Debe seguir
+        decodificandose.
+      - Medir el tamano de cada modulo del QR y confirmar que es de 0,25 mm o mas.
+      - Comprobar por medicion que ningun texto se sale de su recuadro con los casos
+        de nombre largo y con tildes de la prueba 15.4.
+18.4. Adjuntar al informe final las mediciones obtenidas, no solo la conclusion.
+18.5. Si alguna verificacion falla, corregir y volver a ejecutarla. No entregar una
+      fase con verificaciones fallidas ni omitidas.
+18.6. No modificar credencial-pastor.html. Es el original de referencia.

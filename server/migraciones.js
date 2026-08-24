@@ -1375,6 +1375,85 @@ function movimientosConElCuerpoDeSuCuenta() {
 }
 
 
+/**
+ * Credenciales: partir de cero, una sola vez.
+ *
+ * La especificación del módulo de credenciales pide borrar las que había y
+ * empezar el correlativo desde el principio (punto 13.1), porque las que
+ * existían venían del sistema anterior, sin número de serie ni dígito
+ * verificador, y no corresponden al documento que se emite ahora.
+ *
+ * Es la única migración de todo el sistema que borra datos, así que:
+ *
+ *   · corre UNA sola vez y deja la marca puesta. Si mañana se emiten
+ *     credenciales nuevas, un despliegue no vuelve a borrarlas;
+ *   · anota en el Registro de Cambios cuántas borró, con fecha y hora, para
+ *     que quede constancia de qué había antes;
+ *   · y no toca ninguna otra tabla.
+ *
+ * IMPORTANTE PARA QUIEN PUBLIQUE ESTA VERSIÓN: bajar el respaldo completo
+ * desde Configuración ANTES de publicar. Esto no se puede deshacer desde el
+ * sistema; se deshace restaurando ese respaldo.
+ */
+function credencialesDesdeCero() {
+  const columnas = db.prepare('PRAGMA table_info(credenciales)').all().map((c) => c.name);
+  if (!columnas.length) return; // la tabla se crea al arrancar; nada que limpiar
+
+  const hecho = db.prepare("SELECT valor FROM configuracion WHERE clave = 'credenciales_desde_cero'").get();
+  if (hecho && hecho.valor) return; // ya se hizo: no se vuelve a borrar nunca
+
+  const cuantas = db.prepare('SELECT COUNT(*) AS c FROM credenciales').get().c;
+
+  db.transaction(() => {
+    if (cuantas) {
+      db.prepare(
+        `INSERT INTO registro_cambios (fecha, hora, modulo, accion, registro, detalle, usuario)
+         VALUES (date('now','localtime'), strftime('%H:%M','now','localtime'),
+                 'Credenciales', 'Eliminación', 'Limpieza inicial del módulo', ?, 'Sistema')`
+      ).run(
+        `Se eliminaron ${cuantas} credencial(es) anteriores al implementar la credencial pastoral, ` +
+        'según el punto 13.1 de la especificación. El correlativo parte desde el comienzo.'
+      );
+      db.prepare('DELETE FROM credenciales').run();
+    }
+    db.prepare(
+      `INSERT INTO configuracion (clave, valor) VALUES ('credenciales_desde_cero', datetime('now','localtime'))
+       ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor`
+    ).run();
+  })();
+
+  // El contador vuelve a cero: el primer número que se entregue será el 001
+  try { require('./credenciales/serie').fijarContador(0); } catch (e) { /* aún no existe: se crea en cero */ }
+
+  console.log(
+    cuantas
+      ? `🔁 credenciales: se eliminaron ${cuantas} anteriores y el correlativo parte desde el comienzo (punto 13.1). Queda constancia en el Registro de Cambios.`
+      : '🔁 credenciales: no había ninguna cargada; el correlativo parte desde el comienzo.'
+  );
+}
+
+/**
+ * Y si alguna vez el contador quedara por debajo de lo ya emitido, se sube.
+ *
+ * No debería pasar —el contador solo sube—, pero si se restaura un respaldo
+ * viejo junto a credenciales nuevas, el próximo número repetiría uno ya
+ * impreso. Acá se comprueba y se corrige hacia arriba, nunca hacia abajo.
+ */
+function contadorDeCredencialesAlDia() {
+  // Se pregunta siempre, aunque no haya credenciales: así el contador queda
+  // creado desde el primer arranque y no en medio de la primera emisión.
+  const serie = require('./credenciales/serie');
+  const yaVa = serie.cuantasSeHanGenerado();
+  const columnas = db.prepare('PRAGMA table_info(credenciales)').all().map((c) => c.name);
+  if (!columnas.includes('correlativo')) return;
+  const mayor = db.prepare('SELECT MAX(correlativo) AS n FROM credenciales').get().n || 0;
+  if (mayor > yaVa) {
+    serie.fijarContador(mayor);
+    console.log(`🔁 credenciales: el contador se puso al día en ${mayor}, para no repetir un número ya emitido.`);
+  }
+}
+
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -1409,6 +1488,8 @@ function ejecutarMigraciones() {
     ['origen de las contraseñas', origenDeLasContrasenas],
     ['nombre oficial de la iglesia', nombreOficialDeLaIglesia],
     ['el cuerpo de cada movimiento', movimientosConElCuerpoDeSuCuenta],
+    ['credenciales desde cero', credencialesDesdeCero],
+    ['contador de credenciales al día', contadorDeCredencialesAlDia],
   ];
 
   for (const [nombre, paso] of pasos) {

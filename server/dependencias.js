@@ -89,8 +89,7 @@ const EXCEPCIONES = {
   // ---- Documentos emitidos: llevan número y salieron firmados ----
   'certificados.miembro_id':        [FRENA, 'certificado(s) emitido(s)', 'Un certificado emitido no se borra con la ficha de su titular.'],
   'certificados.oficiante_id':      [FRENA, 'certificado(s) que oficia', 'Cambie el oficiante de esos certificados antes de eliminar la ficha.'],
-  'credenciales.miembro_id':        [FRENA, 'credencial(es) emitida(s)', 'Anúlela en vez de borrar la ficha de su titular.'],
-  'credenciales.pastor_id':         [FRENA, 'credencial(es) emitida(s)', 'Anúlela en vez de borrar la ficha de su titular.'],
+  'credenciales.pastor_id':         [FRENA, 'credencial(es) emitida(s)', 'Revóquela en vez de borrar la ficha de su titular: una credencial emitida es un documento y no se borra.'],
 
   // ---- Actas: son constancia de una reunión que ocurrió ----
   'actas_reuniones.cuerpo_id':      [FRENA, 'acta(s) de reunión', 'Las actas son constancia de reuniones que se hicieron. Marque el cuerpo como inactivo.'],

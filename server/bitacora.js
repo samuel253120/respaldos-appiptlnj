@@ -97,6 +97,9 @@ const MODULOS_VIGILADOS = [
   'usuarios', 'perfiles_permisos',
   // Lo que no tiene historial propio
   'cuerpos', 'directivas', 'actas_reuniones', 'actas_asambleas', 'integrantes_cuerpo',
+  // Los documentos de identidad ministerial: quién la creó, la emitió, la
+  // revocó y la volvió a imprimir tiene que poder consultarse después
+  'credenciales',
 ];
 
 /**
@@ -375,7 +378,6 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
     solicitudes: (r) => ({ tipo: 'Solicitud', texto: `Solicitud "${r.asunto || r.tipo}" (${r.estado || 'Pendiente'}).` }),
     ayudas_sociales: (r) => ({ tipo: 'Ayuda social', texto: `Ayuda social: ${r.tipo_ayuda || ''} — ${r.estado || ''}.` }),
     certificados: (r) => ({ tipo: 'Certificado', texto: `Certificado de ${r.tipo || ''} N.º ${r.numero || ''}.` }),
-    credenciales: (r) => ({ tipo: 'Credencial', texto: `Credencial ${r.tipo || ''} N.º ${r.numero || ''}.` }),
     documentos_miembros: (r) => ({ tipo: 'Documento', texto: `Se adjuntó "${r.nombre || r.tipo || 'un documento'}" (${r.tipo || ''}).` }),
   };
   const traductor = relacionados[def.name];
