@@ -607,38 +607,55 @@ table.grid th.col-mini { font-size: 15px; }
    Se corre de lado a propósito y sin barra visible: en un teléfono caben tres
    o cuatro y las demás se alcanzan arrastrando, que es el gesto que la gente
    ya hace. El desvanecido del borde derecho es lo que avisa que hay más. */
-.ficha-pestanas {
+.pestanas {
   display: flex; gap: 2px; margin: 14px 0 0;
   overflow-x: auto; scrollbar-width: none;
   border-bottom: 1px solid var(--border);
-  /* Un velo al final del borde para que se note que sigue */
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
-          mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
-.ficha-pestanas::-webkit-scrollbar { display: none; }
-/* Sin nada que correr, el velo estorbaría: solo se pone cuando hace falta */
-@media (min-width: 900px) {
-  .ficha-pestanas { -webkit-mask-image: none; mask-image: none; }
+.pestanas::-webkit-scrollbar { display: none; }
+/**
+ * Un velo en el borde por el lado que queda barra sin ver.
+ *
+ * Antes se ponía por el ancho de la pantalla: siempre en el teléfono, nunca de
+ * los 900 px para arriba. Eso valía mientras las barras tuvieran seis o siete
+ * pestañas, que en un computador caben. La de Configuración tiene diez y no
+ * cabe en ninguna pantalla, así que la última quedaba cortada por el borde sin
+ * que nada avisara de que seguía.
+ *
+ * Ahora lo decide el propio contenido: las clases las pone montarPestanas
+ * midiendo lo que sobra, y se ponen al día al correr la barra.
+ */
+.pestanas.mas-derecha {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
 }
-.ficha-pestanas button {
+.pestanas.mas-izquierda {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 26px), transparent);
+          mask-image: linear-gradient(to left, #000 calc(100% - 26px), transparent);
+}
+.pestanas.mas-izquierda.mas-derecha {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+          mask-image: linear-gradient(to right, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+}
+.pestanas button {
   display: inline-flex; align-items: center; gap: 7px; flex: none;
   border: none; background: transparent; color: var(--muted);
   padding: 11px 15px; font-size: 14px; font-weight: 650; font-family: inherit;
   cursor: pointer; white-space: nowrap; min-height: 44px;
   border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
-.ficha-pestanas button .ic { font-size: 15px; line-height: 1; }
-.ficha-pestanas button:hover { color: var(--marca-azul); }
-.ficha-pestanas button.on { color: var(--accent); border-bottom-color: var(--accent); }
-.ficha-pestanas button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 6px; }
+.pestanas button .ic { font-size: 15px; line-height: 1; }
+.pestanas button:hover { color: var(--marca-azul); }
+.pestanas button.on { color: var(--accent); border-bottom-color: var(--accent); }
+.pestanas button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 6px; }
 
 /* La primera tarjeta de una pestaña ya tiene el aire de la barra encima */
-.ficha-panel > .card:first-child,
-.ficha-panel > div:first-child > .card:first-child { margin-top: 14px; }
+.panel-pestana > .card:first-child,
+.panel-pestana > div:first-child > .card:first-child { margin-top: 14px; }
 
 @media (max-width: 700px) {
-  .ficha-pestanas { margin-top: 12px; }
-  .ficha-pestanas button { padding: 11px 13px; font-size: 13.5px; gap: 6px; }
+  .pestanas { margin-top: 12px; }
+  .pestanas button { padding: 11px 13px; font-size: 13.5px; gap: 6px; }
 }
 
 /* ---------------- Cuadros de diálogo ----------------

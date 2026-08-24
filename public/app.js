@@ -2327,7 +2327,115 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
   return suyas;
 }
 
-/** Pinta la barra de pestañas y deja abierta la que corresponde. */
+/**
+ * Una barra de pestañas: la misma para la ficha y para la configuración.
+ *
+ * Estaba escrita adentro de la ficha, y cuando la configuración pidió lo mismo
+ * había dos caminos: copiarla o sacarla afuera. Copiada, el día que se
+ * arreglara algo del teclado o del desplazamiento habría que acordarse de
+ * arreglarlo dos veces, y no se acuerda nadie.
+ *
+ * Cada pestaña puede traer su contenido de dos maneras:
+ *
+ *   html   ya escrito, y se pone al armar la barra. Es lo que necesitan los
+ *          grupos de la configuración: sus campos tienen que estar TODOS en la
+ *          pantalla aunque su pestaña no se haya abierto, porque el botón de
+ *          guardar los junta de una sola pasada y lo que no está no se guarda.
+ *   pinta  una función que se llama la PRIMERA vez que se abre esa pestaña.
+ *          Es para lo que cuesta —una consulta al servidor, una lista larga—:
+ *          así abrir la pantalla no pide diez cosas que quizá nadie mire.
+ *
+ * `direccionDe(clave)` dice qué dirección dejar en la barra del navegador al
+ * cambiar de pestaña, o null si esa pantalla no lo necesita. Se cambia sin
+ * recargar: volver a pintarla entera para mover una pestaña sería pedir de
+ * nuevo todo lo que ya está en pantalla.
+ */
+function montarPestanas({ barra, zona, pestanas, elegida, etiqueta, direccionDe }) {
+  if (!barra || !zona || !pestanas.length) return;
+
+  barra.innerHTML = `
+    <div class="pestanas" role="tablist" aria-label="${esc(etiqueta || 'Secciones')}">
+      ${pestanas.map((p) => `
+        <button type="button" role="tab" id="pes_${p.clave}" data-pestana="${p.clave}"
+          aria-controls="pan_${p.clave}" aria-selected="false" tabindex="-1">
+          <span class="ic" aria-hidden="true">${p.icono}</span>${esc(p.titulo)}</button>`).join('')}
+    </div>`;
+  zona.innerHTML = pestanas.map((p) => `
+    <section class="panel-pestana" id="pan_${p.clave}" role="tabpanel" aria-labelledby="pes_${p.clave}" hidden>
+      ${p.html || ''}
+    </section>`).join('');
+
+  const pintadas = new Set();
+  const abrir = (clave, mover) => {
+    const cual = pestanas.find((p) => p.clave === clave) || pestanas[0];
+    for (const p of pestanas) {
+      const boton = barra.querySelector(`[data-pestana="${p.clave}"]`);
+      const panel = document.getElementById(`pan_${p.clave}`);
+      const activa = p.clave === cual.clave;
+      boton.classList.toggle('on', activa);
+      boton.setAttribute('aria-selected', activa ? 'true' : 'false');
+      boton.tabIndex = activa ? 0 : -1;
+      panel.hidden = !activa;
+    }
+    // Lo que cuesta se pide al abrir, y una sola vez: volver no lo vuelve a
+    // cargar ni pierde lo que uno dejó puesto adentro
+    if (cual.pinta && !pintadas.has(cual.clave)) {
+      pintadas.add(cual.clave);
+      cual.pinta(document.getElementById(`pan_${cual.clave}`));
+    }
+    // La barra se corre para dejar la elegida al centro: si no, la que se
+    // acaba de tocar podía quedar debajo del desvanecido del borde y parecer
+    // que no estaba activa.
+    const suBoton = barra.querySelector(`[data-pestana="${cual.clave}"]`);
+    suBoton.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    if (mover) suBoton.focus();
+    // El desplazamiento es suave: se mira cuándo terminó
+    setTimeout(() => barra.mirarLosBordes && barra.mirarLosBordes(), 400);
+
+    const nueva = direccionDe && direccionDe(cual.clave);
+    if (nueva && location.hash !== nueva) history.replaceState(null, '', nueva);
+  };
+
+  barra.querySelectorAll('[data-pestana]').forEach((b) =>
+    b.addEventListener('click', () => abrir(b.dataset.pestana)));
+
+  /**
+   * Y se avisa por qué lado queda barra sin ver.
+   *
+   * Se mide el contenido en vez de suponerlo por el ancho de la pantalla: la
+   * barra de Configuración tiene diez pestañas y no cabe ni en un computador,
+   * así que la última quedaba cortada por el borde como si ahí se acabara.
+   */
+  const tira = barra.querySelector('.pestanas');
+  const mirarLosBordes = () => {
+    const sobra = tira.scrollWidth - tira.clientWidth;
+    tira.classList.toggle('mas-izquierda', tira.scrollLeft > 4);
+    tira.classList.toggle('mas-derecha', sobra > 4 && tira.scrollLeft < sobra - 4);
+  };
+  barra.mirarLosBordes = mirarLosBordes;
+  tira.addEventListener('scroll', mirarLosBordes, { passive: true });
+  window.addEventListener('resize', mirarLosBordes);
+  mirarLosBordes();
+
+  // Con el teclado, las flechas mueven entre pestañas: es lo que se espera de
+  // una barra así, y sin esto solo se llega a ellas tabulando una por una.
+  barra.addEventListener('keydown', (e) => {
+    const orden = pestanas.map((p) => p.clave);
+    const actual = orden.indexOf(barra.querySelector('.on').dataset.pestana);
+    let destino = null;
+    if (e.key === 'ArrowRight') destino = orden[(actual + 1) % orden.length];
+    if (e.key === 'ArrowLeft') destino = orden[(actual - 1 + orden.length) % orden.length];
+    if (e.key === 'Home') destino = orden[0];
+    if (e.key === 'End') destino = orden[orden.length - 1];
+    if (!destino) return;
+    e.preventDefault();
+    abrir(destino, true);
+  });
+
+  abrir(pestanas.some((p) => p.clave === elegida) ? elegida : pestanas[0].clave);
+}
+
+/** Pinta la barra de pestañas de la ficha y deja abierta la que corresponde. */
 function pintarPestanasDeLaFicha(name, id, row, pintarLosDatos, elegida) {
   const barra = document.getElementById('fichaPestanas');
   const zona = document.getElementById('fichaPaneles');
@@ -2341,68 +2449,12 @@ function pintarPestanasDeLaFicha(name, id, row, pintarLosDatos, elegida) {
     return;
   }
 
-  barra.innerHTML = `
-    <div class="ficha-pestanas" role="tablist" aria-label="Secciones de la ficha">
-      ${suyas.map((p) => `
-        <button type="button" role="tab" id="pes_${p.clave}" data-pestana="${p.clave}"
-          aria-controls="pan_${p.clave}" aria-selected="false" tabindex="-1">
-          <span class="ic" aria-hidden="true">${p.icono}</span>${esc(p.titulo)}</button>`).join('')}
-    </div>`;
-  zona.innerHTML = suyas.map((p) => `
-    <section class="ficha-panel" id="pan_${p.clave}" role="tabpanel" aria-labelledby="pes_${p.clave}" hidden></section>`).join('');
-
-  const pintadas = new Set();
-  const abrir = (clave, mover) => {
-    const cual = suyas.find((p) => p.clave === clave) || suyas[0];
-    for (const p of suyas) {
-      const boton = barra.querySelector(`[data-pestana="${p.clave}"]`);
-      const panel = document.getElementById(`pan_${p.clave}`);
-      const activa = p.clave === cual.clave;
-      boton.classList.toggle('on', activa);
-      boton.setAttribute('aria-selected', activa ? 'true' : 'false');
-      boton.tabIndex = activa ? 0 : -1;
-      panel.hidden = !activa;
-    }
-    // Se pide cuando se abre, y una sola vez: volver no la vuelve a cargar ni
-    // pierde lo que uno dejó puesto adentro
-    if (!pintadas.has(cual.clave)) {
-      pintadas.add(cual.clave);
-      cual.pinta(document.getElementById(`pan_${cual.clave}`));
-    }
-    // La barra se corre para dejar la elegida al centro: si no, la que se
-    // acaba de tocar podía quedar debajo del desvanecido del borde y parecer
-    // que no estaba activa.
-    const suBoton = barra.querySelector(`[data-pestana="${cual.clave}"]`);
-    suBoton.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-    if (mover) suBoton.focus();
-
-    // La dirección lleva la pestaña, para poder guardarla y mandarla. Se
-    // cambia sin recargar la ficha: volver a pintarla entera para mover una
-    // pestaña sería pedir de nuevo todo lo que ya está en pantalla.
-    const base = `#/m/${name}/ficha/${id}`;
-    const nueva = cual.clave === 'datos' ? base : `${base}/${cual.clave}`;
-    if (location.hash !== nueva) history.replaceState(null, '', nueva);
-  };
-
-  barra.querySelectorAll('[data-pestana]').forEach((b) =>
-    b.addEventListener('click', () => abrir(b.dataset.pestana)));
-
-  // Con el teclado, las flechas mueven entre pestañas: es lo que se espera de
-  // una barra así, y sin esto solo se llega a ellas tabulando una por una.
-  barra.addEventListener('keydown', (e) => {
-    const orden = suyas.map((p) => p.clave);
-    const actual = orden.indexOf(barra.querySelector('.on').dataset.pestana);
-    let destino = null;
-    if (e.key === 'ArrowRight') destino = orden[(actual + 1) % orden.length];
-    if (e.key === 'ArrowLeft') destino = orden[(actual - 1 + orden.length) % orden.length];
-    if (e.key === 'Home') destino = orden[0];
-    if (e.key === 'End') destino = orden[orden.length - 1];
-    if (!destino) return;
-    e.preventDefault();
-    abrir(destino, true);
+  const base = `#/m/${name}/ficha/${id}`;
+  montarPestanas({
+    barra, zona, pestanas: suyas, elegida,
+    etiqueta: 'Secciones de la ficha',
+    direccionDe: (clave) => (clave === 'datos' ? base : `${base}/${clave}`),
   });
-
-  abrir(suyas.some((p) => p.clave === elegida) ? elegida : 'datos');
 }
 
 /* =====================================================================
@@ -6300,26 +6352,98 @@ async function viewConfiguracion() {
     </div>`;
   };
 
+  /**
+   * La configuración, en pestañas.
+   *
+   * Antes era una sola columna con ocho tarjetas y tres paneles al pie, y para
+   * llegar al último había que pasar por todos los demás. Ahora se reparte en
+   * pestañas, la misma barra de las fichas de Miembros, Cuerpos y Pastores.
+   *
+   * Dos cosas quedan FUERA de las pestañas a propósito:
+   *
+   *   · el botón de guardar, que vale para toda la pantalla y no para la
+   *     pestaña abierta;
+   *   · el aviso de lo que pasó al guardar, para que se lea sin importar en
+   *     qué pestaña estaba quien guardó.
+   *
+   * Y los campos de todos los grupos se escriben de entrada, aunque su pestaña
+   * esté cerrada: el botón de guardar los junta de una sola pasada, y lo que no
+   * está en la pantalla no se guardaría.
+   */
+  const ICONOS = {
+    'Mantenimiento': '🛠️',
+    'Identidad': '⛪',
+    'Organización': '👥',
+    'Acceso': '🔐',
+    'Respaldos': '💾',
+    'Recursos de la credencial': '🪪',
+    'Límites y espacio': '📦',
+    'Preferencias': '🎛️',
+  };
+  /**
+   * En la pestaña, el nombre corto; adentro, el largo.
+   *
+   * «Recursos de la credencial» y «Límites y espacio» son buenos títulos para
+   * la tarjeta, y demasiado largos para una pestaña: con esos dos enteros, las
+   * diez no caben en la pantalla de un computador y las últimas quedan cortadas
+   * por el borde sin que nada avise de que siguen.
+   */
+  const NOMBRE_CORTO = {
+    'Recursos de la credencial': 'Credencial',
+    'Límites y espacio': 'Límites',
+  };
+  const enClave = (t) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-');
+
+  const pestanas = datos.grupos.map((g) => ({
+    clave: enClave(g.grupo),
+    titulo: NOMBRE_CORTO[g.grupo] || g.grupo,
+    icono: ICONOS[g.grupo] || '⚙️',
+    html: `
+      <div class="card" style="margin-bottom:18px">
+        <div class="toolbar"><b>${esc(g.grupo)}</b></div>
+        <div class="form-grid">${g.items.map(campo).join('')}</div>
+      </div>
+      ${g.grupo === 'Respaldos' ? '<div id="cfgRespaldo"></div>' : ''}`,
+    // El panel del respaldo cuelga del grupo que lo configura: sus ajustes y
+    // el botón de bajarlo son la misma cosa y estaban en dos sitios distintos
+    pinta: g.grupo === 'Respaldos'
+      ? () => renderRespaldo(document.getElementById('cfgRespaldo'))
+      : null,
+  }));
+
+  if (tieneLlave('sistema_importacion')) {
+    pestanas.push({
+      clave: 'traspaso', titulo: 'Traspaso', icono: '🚚',
+      html: '<div id="cfgTraspaso"></div>',
+      pinta: () => renderTraspaso(document.getElementById('cfgTraspaso')),
+    });
+  }
+  pestanas.push({
+    clave: 'versiones', titulo: 'Versiones', icono: '🏷️',
+    html: '<div id="cfgVersiones"></div>',
+    pinta: () => renderVersiones(document.getElementById('cfgVersiones')),
+  });
+
   content().innerHTML = `
     <div class="page-head">
       <h2>⚙️ Configuración del sistema</h2>
       <div class="actions">${puedeCambiarla ? '<button class="btn" id="cfgGuardar">💾 Guardar cambios</button>' : ''}</div>
     </div>
     ${puedeCambiarla ? '' : '<div class="resultado warn">👁️ Puede <b>ver</b> la configuración, pero no cambiarla. Para modificar algo de acá, pídale a la oficina que le dé también el permiso de editarla.</div>'}
-    ${datos.grupos.map((g) => `
-      <div class="card" style="margin-bottom:18px">
-        <div class="toolbar"><b>${esc(g.grupo)}</b></div>
-        <div class="form-grid">${g.items.map(campo).join('')}</div>
-      </div>`).join('')}
     <div id="cfgEstado"></div>
-    <div id="cfgRespaldo"></div>
-    <div id="cfgTraspaso"></div>
-    <div id="cfgVersiones"></div>`;
+    <div id="cfgPestanas"></div>
+    <div id="cfgPaneles"></div>`;
 
-  // El respaldo, el traspaso y el historial de versiones, al pie
-  renderRespaldo(document.getElementById('cfgRespaldo'));
-  renderTraspaso(document.getElementById('cfgTraspaso'));
-  renderVersiones(document.getElementById('cfgVersiones'));
+  montarPestanas({
+    barra: document.getElementById('cfgPestanas'),
+    zona: document.getElementById('cfgPaneles'),
+    pestanas,
+    etiqueta: 'Secciones de la configuración',
+    // La pestaña abierta va en la dirección: así se puede guardar el enlace de
+    // «Traspaso» o mandárselo a alguien, en vez de decirle dónde tocar
+    elegida: (location.hash.split('/')[2] || '').split('?')[0],
+    direccionDe: (clave) => (clave === pestanas[0].clave ? '#/config' : `#/config/${clave}`),
+  });
 
   /**
    * Elegir y quitar el logo.
@@ -6565,6 +6689,10 @@ async function renderTraspaso(contenedor, mostrarDespues) {
     if (contenedor) contenedor.innerHTML = '';
     return;
   }
+  // Desde que la configuración va en pestañas, este panel puede no estar en la
+  // pantalla: su pestaña quizá no se abrió nunca. Se llama igual al guardar,
+  // porque el traspaso depende del modo mantenimiento.
+  if (!contenedor) return;
   let estado;
   try {
     estado = await api('GET', '/importacion/estado');

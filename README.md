@@ -487,11 +487,12 @@ Con **🖨️ Imprimir** la misma ficha sale en papel con el membrete de la igle
 
 Todo lo que cuelga de una ficha iba **una tarjeta debajo de la otra**. En un computador se notaba poco; en el teléfono, la ficha de un cuerpo con veintiocho integrantes obligaba a recorrer la pantalla entera para llegar a las actas. Ahora cada sección es una **pestaña**, en una barra que se corre de lado:
 
-| Ficha | Pestañas |
+| Pantalla | Pestañas |
 |---|---|
 | **Cuerpo / grupo** | Datos · Integrantes · Cuotas · Tesorería · Directivas · Actas |
 | **Miembro** | Datos · Cuerpos · Documentos · Historial |
 | **Iglesia** y **pastor / guía** | Datos · Documentos · Historial |
+| **Configuración del sistema** | Mantenimiento · Identidad · Organización · Acceso · Respaldos · Credencial · Límites · Preferencias · Traspaso · Versiones |
 
 Tres cosas que la hacen algo más que un cambio de aspecto:
 
@@ -501,7 +502,9 @@ Tres cosas que la hacen algo más que un cambio de aspecto:
 
 Las pestañas que esa persona **no puede ver no aparecen**, con los mismos permisos de siempre: sin *Integrantes de Cuerpos* no está la de integrantes, y sin la llave de la *tesorería de los cuerpos* no están ni Cuotas ni Tesorería. Lo chico que habla del propio registro —el estado de cumplimiento de un cuerpo, el acceso al sistema de un miembro— va con sus datos y no en una pestaña aparte: una pestaña que a veces está vacía es peor que no tenerla.
 
-Se maneja también **con el teclado**: las flechas ← → mueven entre pestañas, e Inicio y Fin van a la primera y a la última.
+Se maneja también **con el teclado**: las flechas ← → mueven entre pestañas, e Inicio y Fin van a la primera y a la última. Y cuando la barra no cabe entera —la de Configuración tiene diez y no cabe en ninguna pantalla—, el borde por el que queda barra sin ver se **desvanece**, para que se note que sigue en vez de parecer que ahí se acabó.
+
+En **Configuración** hay una diferencia que importa: los campos de todas las pestañas están en la pantalla desde el principio, aunque su pestaña esté cerrada. El botón de **Guardar cambios** vale para toda la pantalla —no para la pestaña abierta— y los junta de una sola pasada; lo que no estuviera no se guardaría. Lo único que se pide al abrir su pestaña son los tres paneles que cuestan: el respaldo, el traspaso y el historial de versiones.
 
 ### El listado en el teléfono 📱
 

@@ -31,7 +31,8 @@ const URL = process.env.URL || 'http://localhost:4314';
 const RUT = process.env.RUT || '11.111.111-1';
 const CLAVE = process.env.CLAVE || 'admin123';
 
-const PANTALLAS_SUELTAS = ['#/', '#/asistencia', '#/asistencia/informes', '#/perfil', '#/config'];
+// «#/config» no está acá: se revisa aparte, pestaña por pestaña, más abajo
+const PANTALLAS_SUELTAS = ['#/', '#/asistencia', '#/asistencia/informes', '#/perfil'];
 
 async function revisarUnMedio(navegador, medio, ancho) {
   const pagina = await navegador.newPage({ viewport: { width: ancho, height: 900 } });
@@ -74,15 +75,15 @@ async function revisarUnMedio(navegador, medio, ancho) {
   const revisarLaFicha = async (nombre, id) => {
     await revisar(`#/m/${nombre}/ficha/${id}`);
     const pestanas = await pagina.evaluate(() =>
-      [...document.querySelectorAll('.ficha-pestanas [data-pestana]')].map((b) => b.dataset.pestana)
+      [...document.querySelectorAll('.pestanas [data-pestana]')].map((b) => b.dataset.pestana)
     );
     for (const cual of pestanas) {
-      await pagina.click(`.ficha-pestanas [data-pestana="${cual}"]`);
+      await pagina.click(`.pestanas [data-pestana="${cual}"]`);
       await pagina.waitForTimeout(600);
       const w = await pagina.evaluate(() => document.documentElement.scrollWidth);
       if (w > ancho) anchos[`#/m/${nombre}/ficha/${id}/${cual}`] = w;
       const vacia = await pagina.evaluate(() => {
-        const panel = document.querySelector('.ficha-panel:not([hidden])');
+        const panel = document.querySelector('.panel-pestana:not([hidden])');
         return !panel || !panel.textContent.trim();
       });
       if (vacia) pegados.push(`#/m/${nombre}/ficha/${id}/${cual} (pestaña en blanco)`);
@@ -102,6 +103,31 @@ async function revisarUnMedio(navegador, medio, ancho) {
     if (id) conPestanas += await revisarLaFicha(nombre, id);
   }
   for (const ruta of PANTALLAS_SUELTAS) await revisar(ruta);
+
+  /**
+   * Y la configuración, pestaña por pestaña.
+   *
+   * Por la misma razón que las de una ficha: sus paneles más pesados —el
+   * respaldo, el traspaso, el historial de versiones— se piden recién al abrir
+   * su pestaña, y uno que reviente al abrirse no se nota entrando a la
+   * pantalla.
+   */
+  await revisar('#/config');
+  const pestanasDeConfig = await pagina.evaluate(() =>
+    [...document.querySelectorAll('.pestanas [data-pestana]')].map((b) => b.dataset.pestana)
+  );
+  for (const cual of pestanasDeConfig) {
+    await pagina.click(`.pestanas [data-pestana="${cual}"]`);
+    await pagina.waitForTimeout(700);
+    const w = await pagina.evaluate(() => document.documentElement.scrollWidth);
+    if (w > ancho) anchos[`#/config/${cual}`] = w;
+    const vacia = await pagina.evaluate(() => {
+      const panel = document.querySelector('.panel-pestana:not([hidden])');
+      return !panel || !panel.textContent.trim();
+    });
+    if (vacia) pegados.push(`#/config/${cual} (pestaña en blanco)`);
+  }
+  conPestanas += pestanasDeConfig.length;
 
   /**
    * Y el buscador general, que vive en la barra de arriba y no tiene dirección
@@ -125,7 +151,7 @@ async function revisarUnMedio(navegador, medio, ancho) {
   const distintos = [...new Set(errores)];
   console.log(
     `${medio.padEnd(6)} · módulos: ${modulos.length}` +
-      ` · pestañas de ficha abiertas: ${conPestanas}` +
+      ` · pestañas abiertas: ${conPestanas}` +
       ` · pegados en "Cargando…": ${pegados.length ? pegados.join(', ') : 'ninguno'}` +
       ` · se salen de lado: ${Object.keys(anchos).length ? JSON.stringify(anchos) : 'ninguna'}` +
       ` · errores: ${distintos.length ? distintos.slice(0, 4).join(' | ') : 'ninguno'}`
