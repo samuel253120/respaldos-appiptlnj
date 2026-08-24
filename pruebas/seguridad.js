@@ -1091,6 +1091,73 @@ async function entrar(rut = RUT, clave = CLAVE) {
       'se hicieron 60 intentos errados y ninguno fue rechazado');
   }
 
+  /* 4j-sex · Quién puede emitir y revocar credenciales -------------------- */
+  console.log('\n4j-sex · Emitir y revocar credenciales (sección 12)');
+  /**
+   * La credencial la firma el Pastor Presidente, no el sistema. Por eso
+   * emitirla y revocarla no van con «editar credenciales»: son dos llaves
+   * aparte que de fábrica solo tiene el administrador (punto 12.2).
+   *
+   * Lo que se comprueba acá es que el servidor lo haga cumplir, no que el
+   * botón no se dibuje: quien sabe la dirección puede llamarla igual.
+   */
+  const cuerpoDelPastor = `31${String(Date.now()).slice(-6)}`;
+  const rutDelPastor = `${cuerpoDelPastor}-${require('../server/rut').digitoVerificador(cuerpoDelPastor)}`;
+  const elPastor = await api('POST', '/api/usuarios', {
+    rut: rutDelPastor, nombre: 'Pastor De Prueba', rol: 'pastor', activo: 1, password: 'Cordillera47',
+  });
+  if (!(elPastor.datos && elPastor.datos.id)) {
+    revisar('se pudo crear el usuario con rol de pastor', false, JSON.stringify(elPastor.datos).slice(0, 140));
+  } else {
+    await api('PUT', `/api/usuarios/${elPastor.datos.id}`, { ...elPastor.datos, debe_cambiar_password: 0 });
+    const comoPastor = await entrar(rutDelPastor, 'Cordillera47');
+
+    // Ve las credenciales: es lo que le toca de fábrica
+    const lasVe = await comoPastor('GET', '/api/credenciales');
+    revisar('un pastor ve las credenciales', lasVe.estado === 200, `respondió ${lasVe.estado}`);
+
+    // Pero no puede emitir ni revocar aunque llame la dirección a mano
+    const algunaSuya = (lasVe.datos.rows || [])[0];
+    if (!algunaSuya) {
+      console.log('   ℹ️  no hay ninguna credencial con la que probar emitir y revocar');
+    } else {
+      const emitir = await comoPastor('POST', `/api/credenciales/${algunaSuya.id}/emitir`);
+      revisar('pero no puede emitir', emitir.estado === 403, `respondió ${emitir.estado}`);
+      const revocar = await comoPastor('POST', `/api/credenciales/${algunaSuya.id}/revocar`, { motivo: 'probando' });
+      revisar('ni revocar', revocar.estado === 403, `respondió ${revocar.estado}`);
+    }
+
+    // Y una credencial ya emitida no se borra ni siendo administrador (punto 10.2)
+    const emitida = (await api('GET', '/api/credenciales?limit=50')).datos.rows
+      .find((c) => c.estado && c.estado !== 'Borrador');
+    if (emitida) {
+      const borrar = await api('DELETE', `/api/credenciales/${emitida.id}`);
+      revisar('una credencial emitida no se puede eliminar', borrar.estado === 400,
+        `respondió ${borrar.estado}: ${JSON.stringify(borrar.datos).slice(0, 120)}`);
+      const sigueAhi = await api('GET', `/api/credenciales/${emitida.id}`);
+      revisar('y sigue estando', sigueAhi.estado === 200, `respondió ${sigueAhi.estado}`);
+    }
+
+    await api('DELETE', `/api/usuarios/${elPastor.datos.id}`);
+  }
+
+  const cuerpoDelSecre = `32${String(Date.now()).slice(-6)}`;
+  const rutDelSecre = `${cuerpoDelSecre}-${require('../server/rut').digitoVerificador(cuerpoDelSecre)}`;
+  const elSecre = await api('POST', '/api/usuarios', {
+    rut: rutDelSecre, nombre: 'Secretario De Prueba', rol: 'secretario', activo: 1, password: 'Cordillera47',
+  });
+  if (elSecre.datos && elSecre.datos.id) {
+    await api('PUT', `/api/usuarios/${elSecre.datos.id}`, { ...elSecre.datos, debe_cambiar_password: 0 });
+    const comoSecre = await entrar(rutDelSecre, 'Cordillera47');
+    const nada = await comoSecre('GET', '/api/credenciales');
+    // El punto 12.3: fuera del administrador y del pastor, nadie entra al módulo
+    revisar('un secretario no entra al módulo de credenciales', nada.estado === 403,
+      `respondió ${nada.estado}`);
+    await api('DELETE', `/api/usuarios/${elSecre.datos.id}`);
+  } else {
+    revisar('se pudo crear el usuario con rol de secretario', false, JSON.stringify(elSecre.datos).slice(0, 140));
+  }
+
   /* 4k · Los paneles de la ficha de un cuerpo ---------------------------- */
   console.log('\n4k · Cada panel de la ficha de un cuerpo pide SU permiso');
   // Los paneles se pintan dentro de la ficha del cuerpo y por eso pedían solo

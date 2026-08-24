@@ -170,6 +170,43 @@ const LLAVES = [
       'integrantes. Quien no la tenga lleva la tesorería de la iglesia sin entrar en la plata de ' +
       'los cuerpos. Sobre cuáles alcanza lo siguen diciendo los cuerpos asignados en su ficha.',
   },
+  /**
+   * La credencial la firma el Pastor Presidente, no el sistema.
+   *
+   * De ahí que emitir y revocar no vayan con el permiso de «editar
+   * credenciales» (punto 12.2). Preparar el borrador de una credencial es
+   * trabajo de oficina y se le puede dar a quien lleva la iglesia; ponerle el
+   * número de serie y entregarla —o anularla después— es una decisión de la
+   * corporación, y esas dos son las que no se deshacen: el número no se
+   * reutiliza nunca, y una credencial revocada deja de valer en el momento
+   * para cualquiera que escanee su código.
+   *
+   * Por eso son dos llaves y no una: hay quien tiene que poder emitir sin
+   * poder anular lo que ya anda circulando.
+   */
+  {
+    name: 'credencial_emitir',
+    label: 'Emitir credenciales pastorales',
+    group: 'Credenciales',
+    acciones: ['view'],
+    defecto: ['admin'],
+    ayuda:
+      'Poner en vigencia una credencial: el sistema le asigna su número de serie —que no se ' +
+      'reutiliza nunca— y congela los datos que salen impresos. Quien no la tenga puede preparar el ' +
+      'borrador y dejarlo listo, pero no entregarlo. De fábrica es solo del administrador, porque la ' +
+      'credencial la firma el Pastor Presidente.',
+  },
+  {
+    name: 'credencial_revocar',
+    label: 'Revocar credenciales pastorales',
+    group: 'Credenciales',
+    acciones: ['view'],
+    defecto: ['admin'],
+    ayuda:
+      'Anular una credencial ya entregada por pérdida, robo o cese del cargo. Desde ese momento, ' +
+      'quien escanee su código QR verá que no es válida. Exige escribir el motivo y queda en el ' +
+      'registro de cambios. De fábrica es solo del administrador.',
+  },
   {
     name: 'usuarios_clave',
     label: 'Restablecer contraseñas de otros',
@@ -220,6 +257,15 @@ const MATRIX = {
     ...llavesDeFabrica('pastor'),
     usuarios: [],
     perfiles_permisos: [],
+    /**
+     * Las credenciales de su iglesia: las ve, y nada más (punto 12.2).
+     *
+     * Preparar el borrador de una credencial se le concede a mano en su ficha
+     * cuando corresponde. No viene de fábrica porque un borrador que después
+     * no se puede emitir es trabajo perdido, y porque la decisión de a quién
+     * se le extiende una credencial es de la corporación.
+     */
+    credenciales: RO,
   },
   secretario: {
     '*': RO,
@@ -240,7 +286,9 @@ const MATRIX = {
     actas_asambleas: RW,
     documentos: RW,
     certificados: RW,
-    credenciales: RW,
+    // El punto 12.3 es explícito: fuera del administrador y del pastor de la
+    // iglesia, nadie entra al módulo de credenciales
+    credenciales: [],
     solicitudes: RW,
     inventarios: RW,
     ayudas_sociales: RW,
@@ -256,6 +304,7 @@ const MATRIX = {
   tesorero: {
     '*': RO,
     ...llavesDeFabrica('tesorero'),
+    credenciales: [], // punto 12.3
     tesoreria: ALL,
     cuentas_tesoreria: ALL,
     categorias_tesoreria: ALL,
@@ -270,6 +319,7 @@ const MATRIX = {
   consulta: {
     '*': RO,
     ...llavesDeFabrica('consulta'),
+    credenciales: [], // punto 12.3
     tesoreria: [],
     cuentas_tesoreria: [],
     categorias_tesoreria: [],

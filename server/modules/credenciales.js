@@ -214,6 +214,31 @@ module.exports = {
       }
       return null;
     },
+
+    /**
+     * Una credencial emitida no se borra. Nunca (puntos 10.2 y 17.6).
+     *
+     * Lo que se borra es un borrador: un papel que no salió, que no tiene
+     * número y que no está en el bolsillo de nadie. Todo lo demás es historia
+     * de un documento de identidad que existió, y borrarla dejaría un hueco en
+     * la cuenta de los números de serie —el correlativo no se reutiliza, así
+     * que faltaría uno sin explicación— y en el registro de qué se le entregó
+     * a quién.
+     *
+     * Una credencial que ya no vale se REVOCA, con su motivo escrito; una que
+     * quedó atrás se marca REEMPLAZADA sola al emitir la siguiente. Las dos
+     * siguen ahí.
+     */
+    beforeDelete(fila) {
+      const estado = fila.estado || 'Borrador';
+      if (estado === 'Borrador') return null;
+      const numero = require('../credenciales/serie').conDigito(fila.serie, fila.serie_dv);
+      return (
+        `La credencial N.º ${numero} ya fue emitida y no se puede eliminar: es el registro de un ` +
+        'documento que se entregó. Si dejó de valer, revóquela con su motivo; si se emitió otra en su ' +
+        'lugar, el sistema ya la marcó como reemplazada.'
+      );
+    },
   },
 
   extraRoutes(router, { db, requirePerm, can }) {
@@ -265,6 +290,21 @@ module.exports = {
      * persona, serían peores que un error.
      */
     router.post('/credenciales/:id(\\d+)/emitir', requirePerm('credenciales', 'edit'), (req, res) => {
+      /**
+       * Emitir no va con «editar credenciales» (punto 12.2).
+       *
+       * Preparar el borrador es trabajo de oficina; ponerle el número de serie
+       * y entregarla es una decisión de la corporación, porque la credencial
+       * la firma el Pastor Presidente. Y no se deshace: el número queda
+       * consumido aunque después se anule.
+       */
+      if (!can(req.user, 'credencial_emitir', 'view')) {
+        return res.status(403).json({
+          error:
+            'No tiene permiso para emitir credenciales. Puede dejar el borrador preparado; la emisión ' +
+            'la hace quien tenga esa llave, porque la credencial la firma el Pastor Presidente.',
+        });
+      }
       const fila = suya(req, res);
       if (!fila) return;
       if (fila.estado !== 'Borrador') {
@@ -332,11 +372,45 @@ module.exports = {
         detalle: `Se emitió la credencial N.º ${serieDe.conDigito(quedo.serie, quedo.serie_dv)} a ${quedo.snap_apellidos} ${quedo.snap_nombres}` +
           (anterior ? `. La anterior (#${anterior.id}) quedó reemplazada.` : '.'),
       });
+
+      /**
+       * Y el reemplazo se anota TAMBIÉN en la credencial que quedó atrás
+       * (punto 15.7).
+       *
+       * Decirlo solo en la nueva no alcanza: quien mira la historia de la
+       * credencial vieja —que es la que alguien tiene en la mano y ya no
+       * vale— tiene que encontrar ahí por qué dejó de valer, sin ir a
+       * buscarlo a la ficha de otra.
+       */
+      if (anterior) {
+        const laVieja = db.prepare('SELECT * FROM credenciales WHERE id = ?').get(anterior.id);
+        bitacora.anotarCambio({
+          def: module.exports, accion: 'Reemplazo', fila: laVieja, usuario: req.user,
+          detalle:
+            `Estado: Vigente → Reemplazada. La reemplaza la credencial N.º ` +
+            `${serieDe.conDigito(quedo.serie, quedo.serie_dv)} (#${quedo.id}), emitida hoy al mismo titular. ` +
+            'Se conserva como parte del historial.',
+        });
+      }
+
       res.json({ ok: true, credencial: quedo, reemplazo: anterior ? anterior.id : null });
     });
 
     /** Revocar: con motivo escrito, y a la vista en la verificación al instante. */
     router.post('/credenciales/:id(\\d+)/revocar', requirePerm('credenciales', 'edit'), (req, res) => {
+      /**
+       * Revocar tampoco (punto 12.2), y por una razón distinta que emitir:
+       * desde el momento en que se revoca, cualquiera que escanee el código de
+       * esa credencial ve que no vale. Es una decisión que sale del sistema
+       * hacia afuera.
+       */
+      if (!can(req.user, 'credencial_revocar', 'view')) {
+        return res.status(403).json({
+          error:
+            'No tiene permiso para revocar credenciales. Avise a quien administre el sistema: una vez ' +
+            'revocada, quien escanee su código verá que no es válida.',
+        });
+      }
       const fila = suya(req, res);
       if (!fila) return;
       const motivo = String((req.body && req.body.motivo) || '').trim();

@@ -111,9 +111,11 @@ router.put('/', authRequired, (req, res) => {
    * lo que hay.
    */
   const ajustados = [];
+  const anotados = [];
   for (const [clave, valor] of Object.entries(cambios)) {
     if (!POR_CLAVE[clave]) continue;
     const opcion = POR_CLAVE[clave];
+    const comoEstaba = obtener(clave);
     let v = valor;
     // Ojo: "0" es una cadena, y toda cadena es verdadera en JavaScript; hay que
     // mirar el valor, si no un "0" enviado por la API dejaría la opción activa.
@@ -136,8 +138,80 @@ router.put('/', authRequired, (req, res) => {
       v = String(dentro);
     }
     guardar(clave, v, req.user.id);
+    if (String(comoEstaba == null ? '' : comoEstaba) !== String(v)) {
+      anotados.push({ opcion, antes: comoEstaba, ahora: v });
+    }
   }
+
+  anotarLosCambios(anotados, req.user);
   res.json({ ok: true, valores: todas(), ajustados });
+});
+
+/**
+ * Lo que se cambió en la configuración, en el Registro de Cambios.
+ *
+ * El punto 15.7 de la especificación de credenciales pide que quede anotado el
+ * cambio de los recursos institucionales —el logo, el sello y la firma—, con
+ * quién, cuándo y qué había antes. Se anota TODA la configuración y no solo
+ * esos tres, por dos razones: hacer una excepción para tres claves obliga a
+ * acordarse de agregar la cuarta el día que exista, y lo demás que se cambia
+ * acá pesa igual o más —el modo mantenimiento, el largo de las contraseñas, el
+ * modo del código QR—.
+ *
+ * De las imágenes se anota el nombre del archivo, no la imagen. Y de la
+ * contraseña inicial no se anota el valor: quedaría escrita en claro en un
+ * registro que puede leer más gente de la que debería saberla.
+ */
+const NO_SE_ANOTA_EL_VALOR = ['password_inicial'];
+
+function anotarLosCambios(anotados, usuario) {
+  if (!anotados.length) return;
+  const bitacora = require('./bitacora');
+  const comoSeLee = (opcion, valor) => {
+    if (NO_SE_ANOTA_EL_VALOR.includes(opcion.clave)) return '(no se anota)';
+    if (valor === null || valor === undefined || valor === '') return '(vacío)';
+    if (opcion.tipo === 'boolean') return valor === '1' ? 'sí' : 'no';
+    if (opcion.tipo === 'select') {
+      const cual = (opcion.opciones || []).find((x) => x.valor === String(valor));
+      return cual ? cual.label : String(valor);
+    }
+    return String(valor).slice(0, 80);
+  };
+
+  // La configuración no es un módulo, así que se le arma la ficha mínima que
+  // el registro necesita para nombrarla
+  const comoModulo = { name: 'configuracion', label: 'Configuración del sistema', display: '{que}' };
+  for (const { opcion, antes, ahora } of anotados) {
+    bitacora.anotarCambio({
+      def: comoModulo,
+      accion: 'Cambio',
+      fila: { id: null, iglesia_id: null, que: opcion.label },
+      usuario,
+      detalle: `${opcion.label}: ${comoSeLee(opcion, antes)} → ${comoSeLee(opcion, ahora)}`,
+    });
+  }
+}
+
+/**
+ * El historial de versiones (fase 6 de la especificación de credenciales).
+ *
+ * Devuelve qué versión está corriendo AHORA MISMO en este servidor y la lista
+ * de lo que trajo cada una. Lo primero es lo que más se usa: después de
+ * publicar, la pregunta es siempre «¿ya se actualizó?», y la respuesta tiene
+ * que salir del servidor que está atendiendo, no de lo que diga un archivo.
+ *
+ * No pide permiso de configuración: saber qué versión está corriendo no le
+ * hace daño a nadie y le sirve a cualquiera que llame por teléfono a avisar
+ * de algo raro.
+ */
+router.get('/versiones', authRequired, (req, res) => {
+  const { VERSIONES } = require('./versiones');
+  const corriendo = require('../package.json').version;
+  res.json({
+    corriendo,
+    anotada: VERSIONES.some((v) => v.version === corriendo),
+    versiones: VERSIONES,
+  });
 });
 
 module.exports = { router };

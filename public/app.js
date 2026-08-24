@@ -2484,11 +2484,21 @@ async function renderEmisionCredencial(id, caja) {
     ...previo.recursos_que_faltan.map((x) => `falta cargar ${x} en Configuración`),
   ];
 
+  /**
+   * Emitir y revocar piden su propia llave (punto 12.2).
+   *
+   * Quien no la tenga deja el borrador preparado y ahí se detiene: el botón no
+   * aparece, y en su lugar se dice quién sigue. Es mejor eso que ofrecer un
+   * botón que el servidor va a rechazar.
+   */
+  const puedeEmitirDeVerdad = puedeEmitir && tieneLlave('credencial_emitir');
+  const puedeRevocar = puedeEmitir && tieneLlave('credencial_revocar');
+
   const acciones = [];
-  if (puedeEmitir && c.estado === 'Borrador') {
+  if (puedeEmitirDeVerdad && c.estado === 'Borrador') {
     acciones.push(`<button class="btn" id="credEmitir" ${trabas.length ? 'disabled' : ''}>✅ Emitir la credencial</button>`);
   }
-  if (puedeEmitir && (c.estado === 'Vigente' || c.estado === 'Reemplazada')) {
+  if (puedeRevocar && (c.estado === 'Vigente' || c.estado === 'Reemplazada')) {
     acciones.push('<button class="btn secondary" id="credRevocar">🚫 Revocar</button>');
   }
 
@@ -2510,6 +2520,10 @@ async function renderEmisionCredencial(id, caja) {
           ${trabas.length ? `<div class="resultado warn">
             ⚠️ No se puede emitir todavía: ${esc(trabas.join(' · '))}.
             <span class="mut">Complételo donde corresponda y vuelva a abrir esta pantalla.</span>
+          </div>` : ''}
+          ${puedeEmitir && !puedeEmitirDeVerdad ? `<div class="resultado">
+            🖊️ El borrador queda preparado. <b>La emisión la hace quien administre el sistema</b>,
+            porque la credencial la firma el Pastor Presidente.
           </div>` : ''}`
         : `
           <div class="respaldo-datos">
@@ -2660,8 +2674,8 @@ function tarjetaDeEncuadre(c) {
       <div class="toolbar">
         <b>🖼️ Encuadre de la fotografía</b>
         <span class="spacer"></span>
-        <button class="btn sm secondary" id="encRestablecer">Restablecer</button>
-        <button class="btn sm" id="encGuardar" disabled>Guardar el encuadre</button>
+        <button class="btn secondary" id="encRestablecer">Restablecer</button>
+        <button class="btn" id="encGuardar" disabled>Guardar el encuadre</button>
       </div>
       <div class="cred-encuadre">
         <div class="enc-marco cred-disenio">
@@ -6263,11 +6277,13 @@ async function viewConfiguracion() {
       </div>`).join('')}
     <div id="cfgEstado"></div>
     <div id="cfgRespaldo"></div>
-    <div id="cfgTraspaso"></div>`;
+    <div id="cfgTraspaso"></div>
+    <div id="cfgVersiones"></div>`;
 
-  // El respaldo y el traspaso, al pie de la configuración
+  // El respaldo, el traspaso y el historial de versiones, al pie
   renderRespaldo(document.getElementById('cfgRespaldo'));
   renderTraspaso(document.getElementById('cfgTraspaso'));
+  renderVersiones(document.getElementById('cfgVersiones'));
 
   /**
    * Elegir y quitar el logo.
@@ -6375,6 +6391,78 @@ async function viewConfiguracion() {
       toast(e.message, true);
     }
   });
+}
+
+/**
+ * El historial de versiones, al pie de la configuración.
+ *
+ * Lo primero que dice es qué versión está corriendo AHORA, preguntándoselo al
+ * servidor que está atendiendo. Después de publicar, esa es siempre la
+ * pregunta —«¿ya se actualizó?»— y hasta ahora había que mirar el número
+ * chiquito de la pantalla de acceso, saliéndose del sistema.
+ *
+ * Y si la versión que corre no está en la lista, lo dice en vez de callarse:
+ * significa que se publicó algo sin dejar su línea, y es mejor enterarse.
+ */
+async function renderVersiones(contenedor) {
+  if (!contenedor) return;
+  let d;
+  try {
+    d = await api('GET', '/configuracion/versiones');
+  } catch (e) {
+    contenedor.innerHTML = '';
+    return;
+  }
+
+  const CUANTAS_DE_ENTRADA = 6;
+  const laDeAhora = d.versiones.find((v) => v.version === d.corriendo);
+
+  const linea = (v) => `
+    <li class="${v.version === d.corriendo ? 'es-la-de-ahora' : ''}">
+      <span><b class="mono">${esc(v.version)}</b> <span class="mut">${fechaCorta(v.fecha)}</span></span>
+      <span>${esc(v.titulo)}${v.version === d.corriendo ? ' <span class="badge green">la que está corriendo</span>' : ''}</span>
+    </li>`;
+
+  contenedor.innerHTML = `
+    <div class="card" style="margin-bottom:18px">
+      <div class="toolbar">
+        <b>🏷️ Historial de versiones</b>
+        <span class="spacer"></span>
+        <span class="mut">Corriendo la <b class="mono">${esc(d.corriendo)}</b></span>
+      </div>
+      <div class="respaldo">
+        ${d.anotada
+          ? `<p class="mut">Este servidor está atendiendo con la versión <b>${esc(d.corriendo)}</b>${
+              laDeAhora ? `, publicada el ${fechaCorta(laDeAhora.fecha)}` : ''}. Si acaba de publicar
+              una versión nueva y acá sigue diciendo la anterior, el servidor todavía no se reinició.</p>`
+          : `<div class="resultado warn">⚠️ Está corriendo la versión <b>${esc(d.corriendo)}</b>, que no está
+              anotada en el historial. Alguien publicó sin dejar su línea en <code>server/versiones.js</code>.</div>`}
+        <ul class="mini-list versiones-lista">
+          ${d.versiones.slice(0, CUANTAS_DE_ENTRADA).map(linea).join('')}
+        </ul>
+        ${d.versiones.length > CUANTAS_DE_ENTRADA ? `
+          <ul class="mini-list versiones-lista" id="versionesResto" hidden>
+            ${d.versiones.slice(CUANTAS_DE_ENTRADA).map(linea).join('')}
+          </ul>
+          <button class="btn sm secondary" id="versionesTodas" style="margin-top:10px">
+            Ver las ${d.versiones.length - CUANTAS_DE_ENTRADA} anteriores
+          </button>` : ''}
+        <p class="mut" style="font-size:12px; margin-top:10px">
+          Las versiones anteriores a la 1.58.0 son de antes de este registro.
+        </p>
+      </div>
+    </div>`;
+
+  const boton = document.getElementById('versionesTodas');
+  if (boton) {
+    boton.addEventListener('click', () => {
+      const resto = document.getElementById('versionesResto');
+      resto.hidden = !resto.hidden;
+      boton.textContent = resto.hidden
+        ? `Ver las ${d.versiones.length - CUANTAS_DE_ENTRADA} anteriores`
+        : 'Ver solo las últimas';
+    });
+  }
 }
 
 /* =====================================================================

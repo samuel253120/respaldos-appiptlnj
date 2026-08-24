@@ -61,3 +61,47 @@ persona a quien no ha entrado. Conviene saber tres cosas de ella:
 Para que funcione hace falta que el sistema esté publicado en internet con un
 dominio: la dirección que va dentro del QR se arma con el dominio por el que se
 entró a emitir la credencial.
+
+## Volver atrás si algo sale mal
+
+La credencial pastoral entró entre las versiones **1.73.0 y 1.78.0**. Volver
+atrás tiene un punto sin retorno y conviene tenerlo claro antes de publicar.
+
+### Antes de publicar la 1.73.0: bájese el respaldo
+
+**Configuración → Respaldo → Bajar el respaldo completo.** No es una formalidad:
+al arrancar por primera vez con la 1.73.0, el sistema **borra todas las
+credenciales que hubiera cargadas** y deja el correlativo en cero. Es lo que se
+pidió (punto 13.1 de la especificación), se hace una sola vez y **no se
+deshace**. Queda constancia en el Registro de Cambios.
+
+Guarde ese respaldo en otra parte —no en el mismo servidor— y anote los conteos
+que muestra `node pruebas/conteos.js`, para poder compararlos después.
+
+### Volver a una versión anterior
+
+1. **Publique la versión anterior** del programa (en el proveedor: volver al
+   despliegue previo, o publicar el commit anterior).
+2. **Restaure el respaldo** que bajó antes de la 1.73.0.
+
+Las columnas y las tablas que agregó la credencial —`credenciales`,
+`credencial_contador`, las opciones nuevas de configuración— **no estorban a una
+versión anterior**: sobran, y una versión que no las conoce sencillamente no las
+mira. Así que si lo único que se quiere es volver el programa atrás sin perder
+lo cargado desde entonces, basta con el paso 1.
+
+### Lo único que no vuelve
+
+Las credenciales que había antes de la 1.73.0. Si se restaura el respaldo, están
+ahí; si no se bajó el respaldo, se perdieron. Por eso el respaldo va primero.
+
+### Volver atrás dentro de la credencial
+
+Entre la 1.73.0 y la 1.78.0 no hay nada que deshacer: cada versión agrega, y
+ninguna borra datos de la anterior. Publicar la 1.75.0 estando en la 1.78.0
+deja de mostrar la página de verificación y los permisos nuevos, pero las
+credenciales emitidas siguen ahí con su número y sus datos.
+
+**Ojo con `CREDENCIAL_SECRETO`:** si se cambia esa clave, los códigos de todas
+las credenciales ya impresas dejan de validar y aparecen como no válidas. No es
+parte de volver atrás; es algo que no se toca nunca después de publicar.

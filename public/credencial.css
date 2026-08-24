@@ -419,6 +419,18 @@
 }
 .cred-encuadre label { display: flex; align-items: center; gap: 7px; }
 .cred-encuadre input[type=range] { width: 130px; accent-color: var(--accent); cursor: pointer; }
+/**
+ * En el teléfono, los mandos se agarran con el dedo y no con el ratón.
+ *
+ * Un deslizador de 20 px de alto es imposible de mover con el pulgar sin
+ * fallar tres veces. Se le dan 34 y se estira a lo ancho, que es donde de
+ * verdad se usa este panel: el encuadre se ajusta mirando la tarjeta.
+ */
+@media (max-width: 620px) {
+  .cred-encuadre label { width: 100%; }
+  .cred-encuadre input[type=range] { flex: 1; width: auto; height: 34px; }
+  .cred-encuadre .badge { min-width: 52px; text-align: right; }
+}
 .cred-encuadre .badge { font-weight: 700; }
 /**
  * El recuadro contra el cual se encuadra es EL MISMO de la tarjeta: la clase

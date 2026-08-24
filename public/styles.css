@@ -944,7 +944,25 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
   /* Acá el nombre de la iglesia es lo único que dice dónde se está parado:
      el adorno cede el espacio para que quepa entero. */
   .iglesia-local .ic { display: none; }
-  .iglesia-local .nm { max-width: none; font-size: 12.5px; }
+  /**
+   * `min-width: 0` no es un adorno: sin él, el nombre de la iglesia —que va en
+   * una sola línea— impone su ancho completo como mínimo, la barra no puede
+   * encogerse y se sale de la pantalla. En un teléfono de 360 px la barra
+   * medía 365 y «Cerrar sesión» quedaba cortado por el borde. Con esto el
+   * nombre se recorta con puntos suspensivos, que es para lo que ya tenía el
+   * `text-overflow`.
+   */
+  .iglesia-local .nm { max-width: none; font-size: 12.5px; min-width: 0; }
+  /**
+   * Y el sitio reservado para el nombre de la iglesia se afloja.
+   *
+   * En pantalla grande el selector tiene 160 px asegurados para que no quede
+   * reducido a la flechita. En un teléfono de 360 px esos 160 px son lo que
+   * hace que la barra pida 377 y se salga: «Cerrar sesión» quedaba cortado por
+   * el borde derecho. Acá se le deja la mitad, que sigue alcanzando para leer
+   * el nombre, y el resto lo resuelven los puntos suspensivos.
+   */
+  .iglesia-local.elegible { min-width: 80px; max-width: 46vw; }
   .page-head h2 { font-size: 18px; }
   .stats { grid-template-columns: 1fr 1fr; gap: 8px; }
   .stat { padding: 10px 12px; }
@@ -1015,6 +1033,18 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
 .lista-errores div { padding: 5px 0; border-bottom: 1px solid rgba(0,0,0,0.06); }
 .lista-errores b { color: inherit; }
 @media (max-width: 700px) { .mapeo { grid-template-columns: 1fr; } }
+
+/* ---------- Historial de versiones ---------- */
+.versiones-lista li { align-items: flex-start; gap: 14px; }
+.versiones-lista li > span:first-child { flex: 0 0 auto; }
+.versiones-lista li > span:last-child { text-align: right; }
+.versiones-lista li.es-la-de-ahora { background: #f0fdf4; border-radius: 8px; }
+/* En el teléfono no hay ancho para dos columnas: el título se pone debajo del
+   número y alineado a la izquierda, que es como se lee una lista. */
+@media (max-width: 620px) {
+  .versiones-lista li { flex-direction: column; gap: 2px; }
+  .versiones-lista li > span:last-child { text-align: left; }
+}
 
 /* ---------- Aviso de credenciales por renovar (punto 10.4) ---------- */
 /* Amarillo como los demás avisos del sistema, para que se lea «esto pide algo»

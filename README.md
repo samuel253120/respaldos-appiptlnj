@@ -954,6 +954,16 @@ La página pública se abre **sin iniciar sesión**, y por eso está cuidada apa
 - La fotografía se entrega por esa misma puerta y con el mismo código: no sale por la de los archivos del sistema, que sí pide sesión.
 - Hay un tope de **intentos errados por minuto** desde una misma conexión. Solo cuentan los que fallan: quien escanea credenciales de verdad puede verificar todas las que quiera.
 
+### Quién puede qué 🔑
+
+- **El administrador** crea, emite, revoca, reimprime y ve las credenciales de todas las iglesias. Es el único que carga el logo, el sello y la firma.
+- **El pastor o guía a cargo de una iglesia** ve las de su iglesia. Preparar borradores se le concede a mano en su ficha; **emitir y revocar no**, porque la credencial la firma el Pastor Presidente. Son dos llaves aparte (*Emitir credenciales pastorales* y *Revocar credenciales pastorales*).
+- **Nadie más entra al módulo**: ni el secretario, ni el tesorero, ni quien solo consulta.
+
+Una credencial **emitida no se elimina**, ni siendo administrador: es el registro de un documento que se entregó, y borrarla dejaría un hueco sin explicación en la cuenta de los números de serie. Lo que se borra es un borrador. Una credencial que dejó de valer se **revoca** con su motivo; una que quedó atrás se marca **reemplazada** sola al emitirse la siguiente.
+
+Todo queda en el **Registro de Cambios** —creación, emisión, reimpresión, revocación con su motivo, reemplazo y cambio del logo, el sello o la firma— con usuario, fecha, hora y lo que decía antes.
+
 ### La impresión 🖨️
 
 Anverso y reverso salen unidos en **una sola pieza plegable, en una sola página tamaño Carta**: se recorta por la línea exterior, se dobla por la del centro, se pegan las dos caras y se plastifica. La tarjeta terminada mide **54 × 86 mm**, y el reverso se imprime girado 180° para que al doblar quede derecho.
@@ -1056,6 +1066,16 @@ Al activarlo, **solo puede ingresar quien tenga permiso para cambiar la configur
 - Si estaban trabajando, la siguiente acción los devuelve a la pantalla de acceso con ese mismo aviso (la restricción se aplica en el servidor, no solo en la interfaz).
 
 Para agregar más opciones, añadirlas al arreglo `OPCIONES` de `server/ajustes.js`: aparecen solas en la pantalla, con su tipo de campo, sus límites y su valor por defecto.
+
+### Todo lo que se cambia acá queda anotado 🧾
+
+Cada opción que se modifica deja su línea en el **Registro de Cambios**, con quién, cuándo y **qué decía antes**: *«Modo del código QR: Datos sin conexión → Verificación en línea»*. De las imágenes se anota el nombre del archivo, no la imagen; de la contraseña inicial no se anota el valor, que quedaría escrito en claro en un registro que puede leer más gente de la que debería saberlo.
+
+### Historial de versiones 🏷️
+
+Al pie de la configuración se ve **qué versión está corriendo ahora mismo en este servidor** y qué trajo cada una. Después de publicar, la pregunta es siempre *«¿ya se actualizó?»*, y hasta ahora había que mirar el número chiquito de la pantalla de acceso, saliéndose del sistema.
+
+Si la versión que está corriendo no aparece en la lista, la pantalla lo dice en vez de callarse: significa que se publicó algo sin dejar su línea en `server/versiones.js`.
 
 ## Mi perfil: cada persona mantiene sus datos 🙋
 
@@ -1160,6 +1180,8 @@ Además de los módulos, el editor muestra **lo que el sistema comprueba y no es
 | **Tesorería de la iglesia y la corporación** | Sus cuentas, sus movimientos y los traspasos entre ellas | Todos |
 | **Tesorería de los cuerpos y grupos** | Las cuentas propias de cada cuerpo, sus movimientos y las cuotas de sus integrantes | Todos |
 | **Restablecer contraseñas de otros** | Devolver una cuenta a su contraseña inicial | Todos |
+| **Emitir credenciales pastorales** | Poner en vigencia una credencial y asignarle su número de serie | Administrador |
+| **Revocar credenciales pastorales** | Anular una credencial ya entregada, con su motivo | Administrador |
 
 Las que vienen **dadas a todos** están para poder **quitarlas**: son cosas que hasta ahora hacía cualquiera que pudiera abrir el listado, y no siempre corresponden. Mientras nadie las quite a propósito, nada cambia.
 
@@ -1168,6 +1190,16 @@ Cada llave admite solo las acciones que tienen sentido para ella —«eliminar l
 **Los datos reservados se reservan de verdad.** A quien no alcance un grupo no le llega por ninguna de las cuatro puertas: no aparece en la ficha, no aparece en el listado, no baja en la planilla —la columna se quita entera, no queda en blanco— y **tampoco puede dar con la persona buscando por ese dato**. Y no puede borrarlo: si abre la ficha y guarda, lo que no vio no se toca. En la ficha se le avisa que hay algo que no está viendo, porque un espacio en blanco se confunde con *«no tiene teléfono»*.
 
 Un módulo reserva un grupo de campos declarándolo en el campo mismo (`reservado: 'miembros_contacto'`). Si la llave no está declarada, el sistema **no arranca**: un permiso que parece estar y no está es peor que no tenerlo.
+
+### Emitir y revocar no van con «editar credenciales» 🪪
+
+Preparar el borrador de una credencial es trabajo de oficina y se le puede dar a quien lleva la iglesia. Ponerle el número de serie y entregarla —o anularla después— es una decisión de la corporación, **porque la credencial la firma el Pastor Presidente**. Por eso son dos llaves aparte, y de fábrica solo las tiene el administrador.
+
+Son dos y no una a propósito: hay quien tiene que poder emitir sin poder anular lo que ya anda circulando. Las dos son de las que no se deshacen —el número de serie no se reutiliza nunca, y una credencial revocada deja de valer en el momento para cualquiera que escanee su código—.
+
+Quien no las tenga ve el borrador preparado y un aviso que dice quién sigue; el botón no aparece. Y si llama la dirección a mano, el servidor la rechaza igual.
+
+Fuera del administrador y del pastor de la iglesia, **nadie entra al módulo**: el secretario, el tesorero y quien solo consulta no lo ven en el menú ni alcanzan sus datos.
 
 ### Las dos tesorerías 💰
 
@@ -1387,6 +1419,9 @@ Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesi
 - `npm run credencial` — **la credencial pastoral, medida sobre el papel**. No mira el HTML: le pide el PDF al navegador, lo rasteriza a 300 puntos por pulgada y mide sobre la imagen. Comprueba que cada cara mida 54 × 86 mm con regla, que la pieza plegable mida 172 mm y el pliegue caiga al centro, que el reverso salga girado 180°, que todo entre en una sola hoja Carta, que la fotografía salga con el encuadre que se guardó y cubriendo su recuadro, que ningún texto se salga ni pise otro —con un nombre larguísimo y con tildes y eñes— y, sobre todo, **que el código QR se decodifique**: primero en limpio y después con la tinta corrida 0,12 mm, que es lo que hace una impresora de inyección cuando el papel absorbe. De ahí sale además la medida de cada módulo del QR, tomada sobre la tinta y no sobre la hoja de estilos; así se descubrió que el servidor anunciaba un módulo un 4 % más grande del que salía impreso, porque no descontaba el relleno del recuadro.
 
   Necesita el sistema andando y una credencial emitida: `URL=http://localhost:3000 RUT=… CLAVE=… CRED=12 npm run credencial`. Sus tres dependencias —`pdfjs-dist` para interpretar el PDF, `@napi-rs/canvas` para dibujarlo y `jsqr` para leerlo— son de desarrollo y no viajan a producción.
+- `npm run aceptacion` — **las pruebas de aceptación de la credencial pastoral**, las diecinueve que pide la especificación. Emite credenciales de verdad, las revoca, las reemplaza, prueba que dos emisiones simultáneas no repitan número, que la base rechace una serie duplicada, que el correlativo no se reinicie al cambiar de año ni se atore al pasar de 999, que un pastor no alcance las de otra iglesia y que alterar un carácter del código lo invalide.
+
+  **Se arma su propio mundo**: carpeta nueva, base recién sembrada y servidor propio en un puerto libre, y al terminar lo borra todo. Tiene que ser así: una credencial emitida no se borra —es el registro de un documento que se entregó— y su número queda consumido, así que correrla sobre los datos de la iglesia dejaría credenciales inventadas en el historial de gente real.
 
 ## API REST
 
@@ -1563,6 +1598,7 @@ Lo que lo hace posible:
 ```bash
 npm run humo            # todas las pantallas abren bien, en computador y en teléfono
 npm run credencial      # la credencial impresa mide lo que tiene que medir y su QR se lee
+npm run aceptacion      # las diecinueve pruebas de aceptación de la credencial pastoral
 npm run concurrencia    # dos personas sobre la misma ficha y sobre la misma lista
 npm run seguridad       # lo que tiene que estar cerrado, está cerrado
 npm run carga           # cuánto demora cada cosa con varios usuarios a la vez
