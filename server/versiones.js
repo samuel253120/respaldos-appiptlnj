@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.79.0", fecha: "2026-08-24", titulo: "Una imagen con transparencia ya no se sube con el fondo relleno de blanco" },
   { version: "1.78.0", fecha: "2026-08-24", titulo: "Credenciales · Fase 6: permisos, auditoría e historial de versiones" },
   { version: "1.77.0", fecha: "2026-08-24", titulo: "Credenciales · Fase 5: la verificación pública y el aviso de vencimiento" },
   { version: "1.76.0", fecha: "2026-08-24", titulo: "Credenciales · Fase 4: el diseño, la impresión y el QR leído del papel" },

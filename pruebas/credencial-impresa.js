@@ -19,7 +19,8 @@
  *     con tildes y eñes (punto 15.4);
  *   · que la fila del Cargo no se imprima cuando va vacía (punto 15.5);
  *   · que la fotografía salga con el encuadre que se guardó, y cubriendo todo
- *     su recuadro (punto 6.4).
+ *     su recuadro (punto 6.4);
+ *   · que el logo, el sello y la firma conserven su transparencia al subirlos.
  *
  * Cómo se corre, con el sistema andando:
  *
@@ -245,6 +246,51 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
       `pintada ${foto.anchoPintado.toFixed(1)} × ${foto.altoPintado.toFixed(1)} px en un recuadro de ${foto.marco.ancho.toFixed(1)} × ${foto.marco.alto.toFixed(1)}`);
     revisar('el reverso lleva la foto fantasma (punto 6.5)', foto.hayFantasma === true);
   }
+
+  /* 4 bis · El logo, el sello y la firma conservan su transparencia -------- */
+  /**
+   * Los tres recursos institucionales se suben por Configuración, y ahí el
+   * sistema achica las imágenes antes de mandarlas. Esa reducción pasaba TODO
+   * a JPEG, y el JPEG no sabe de transparencia: rellenaba lo transparente con
+   * blanco.
+   *
+   * En una foto de un miembro da igual. Acá no: el sello va cruzado sobre la
+   * fotografía del titular y la firma sobre la línea de firma. Con el fondo
+   * relleno, el sello tapaba media cara con un cuadrado blanco.
+   *
+   * Se comprueba sobre la misma función que corre al subir, con una imagen que
+   * tiene un agujero en el medio.
+   */
+  console.log('\n4 bis · La transparencia del logo, el sello y la firma');
+  const transparencia = await pagina.evaluate(async () => {
+    /** Un cuadrado de color con un agujero transparente en el medio. */
+    const conAgujero = async () => {
+      const cv = document.createElement('canvas');
+      cv.width = 2000; cv.height = 2000;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#14204C';
+      ctx.fillRect(0, 0, 2000, 2000);
+      ctx.clearRect(500, 500, 1000, 1000);
+      const blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
+      return new File([blob], 'sello.png', { type: 'image/png' });
+    };
+
+    const sale = await reducirImagen(await conAgujero());
+    const bitmap = await createImageBitmap(sale.file);
+    const cv = document.createElement('canvas');
+    cv.width = bitmap.width; cv.height = bitmap.height;
+    const ctx = cv.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0);
+    const px = ctx.getImageData(0, 0, cv.width, cv.height).data;
+    // El píxel del centro, que era el agujero
+    const medio = ((Math.floor(cv.height / 2) * cv.width) + Math.floor(cv.width / 2)) * 4;
+    return { tipo: sale.file.type, nombre: sale.file.name, alfaDelAgujero: px[medio + 3] };
+  });
+  revisar('una imagen con transparencia no se pasa a JPEG',
+    transparencia.tipo === 'image/png', `salió como ${transparencia.tipo} (${transparencia.nombre})`);
+  revisar('y el agujero sigue siendo transparente después de subirla',
+    transparencia.alfaDelAgujero < 16,
+    `el centro quedó con opacidad ${transparencia.alfaDelAgujero} de 255`);
 
   /* 5 · El PDF de verdad -------------------------------------------------- */
   console.log('\n5 · El PDF, tamaño Carta');

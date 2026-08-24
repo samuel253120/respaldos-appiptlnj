@@ -4522,17 +4522,53 @@ async function reducirImagen(file) {
     const ctx = lienzo.getContext('2d');
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.fillStyle = '#fff'; // el JPEG no tiene transparencia
-    ctx.fillRect(0, 0, ancho, alto);
     ctx.drawImage(bitmap, 0, 0, ancho, alto);
     bitmap.close();
-    const blob = await new Promise((res) => lienzo.toBlob(res, 'image/jpeg', calidad));
+
+    /**
+     * Una imagen con transparencia NO se pasa a JPEG.
+     *
+     * El JPEG no sabe de transparencia: para guardarla hay que rellenar lo
+     * transparente con algo, y ese algo era blanco. En una foto da igual —una
+     * foto no tiene agujeros—, pero acá se suben también el logo, el sello y la
+     * firma de la credencial, y esos tres TIENEN que ser transparentes: el
+     * sello va cruzado sobre la fotografía del titular y la firma sobre la
+     * línea de firma. Con el fondo relleno, el sello tapaba media cara con un
+     * cuadrado blanco y la firma salía dentro de un recuadro.
+     *
+     * Así que primero se mira si la imagen tiene algo transparente, y si lo
+     * tiene se guarda como PNG. Pesa más, pero un logo pesa poco de todos
+     * modos, y una foto —que es lo que de verdad hay que aligerar— nunca trae
+     * transparencia y sigue yendo a JPEG como siempre.
+     */
+    let tieneTransparencia = false;
+    try {
+      const pixeles = ctx.getImageData(0, 0, ancho, alto).data;
+      // De cuatro en cuatro píxeles: alcanza de sobra para saber si hay agujeros
+      for (let i = 3; i < pixeles.length; i += 16) {
+        if (pixeles[i] < 250) { tieneTransparencia = true; break; }
+      }
+    } catch (e) {
+      // Si el navegador no deja leer los píxeles, se supone lo más cuidadoso
+      tieneTransparencia = /png|webp/i.test(file.type);
+    }
+
+    if (!tieneTransparencia) {
+      // Opaca: el fondo blanco no cambia nada y el JPEG pesa mucho menos
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, ancho, alto);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    const formato = tieneTransparencia ? 'image/png' : 'image/jpeg';
+    const blob = await new Promise((res) => lienzo.toBlob(res, formato, calidad));
     if (!blob || blob.size >= file.size) return { file, reducida: false };
-    const nombre = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    const nombre = file.name.replace(/\.[^.]+$/, '') + (tieneTransparencia ? '.png' : '.jpg');
     return {
-      file: new File([blob], nombre, { type: 'image/jpeg' }),
+      file: new File([blob], nombre, { type: formato }),
       reducida: true,
-      antes: file.size, despues: blob.size, ancho, alto,
+      antes: file.size, despues: blob.size, ancho, alto, transparente: tieneTransparencia,
     };
   } catch (e) {
     return { file, reducida: false }; // ante cualquier problema, se sube el original
