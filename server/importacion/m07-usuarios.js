@@ -179,7 +179,19 @@ module.exports = function importarUsuarios(origen, { lote, prueba, iglesiaId }) 
         updated_at: marcaDeTiempo(u._updated_at || u.updatedAt),
       };
 
-      // Nunca se importa una contraseña: entra con la inicial y la cambia
+      /**
+       * Nunca se importa una contraseña: entra con la inicial y la cambia.
+       *
+       * Este es el único lugar del sistema donde el cifrado se hace de
+       * corrido, y es a propósito: el traspaso entero corre dentro de una sola
+       * transacción de base de datos, y una transacción no se puede
+       * interrumpir para esperar nada. En todas las demás partes se cifra
+       * esperando, para no dejar al resto del sistema frenado (ver
+       * server/claves.js).
+       *
+       * Acá se puede: el traspaso se corre una sola vez, a mano, con el
+       * sistema en mantenimiento y nadie más adentro.
+       */
       const existente = equivalencias.resolver('users', u.id)
         || (db.prepare('SELECT id FROM usuarios WHERE rut = ?').get(suRut) || {}).id;
       if (!existente) {

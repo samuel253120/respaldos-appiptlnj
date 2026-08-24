@@ -1,0 +1,103 @@
+/**
+ * Cifrar contraseñas sin dejar frenado al resto del sistema.
+ *
+ * Comprobar una contraseña cuesta unos 85 milisegundos de puro cálculo, a
+ * propósito: una que se comprueba rápido también se adivina rápido. El
+ * problema es que el servidor atiende de a una cosa, así que mientras hace esa
+ * cuenta no atiende a nadie más.
+ *
+ * En el sistema estaba escrito que eso se resolvía usando la forma «asíncrona»
+ * de bcryptjs. No era cierto: bcryptjs está escrito en JavaScript puro y su
+ * forma asíncrona devuelve una promesa, pero hace la cuenta igual en el mismo
+ * hilo. Se midió trabando 82 ms, lo mismo que la de corrido.
+ *
+ * Ahora la cuenta va a un hilo aparte. Estas pruebas comprueban las dos cosas
+ * que importan: que siga cifrando bien —lo primero es la seguridad— y que de
+ * verdad no trabe al hilo que atiende.
+ */
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+
+const { exigirBaseDescartable } = require('./aislada');
+exigirBaseDescartable();
+
+const cifrado = require('../../server/cifrado');
+
+/** Cuánto se traba el hilo que atiende mientras corre `hacer`. */
+async function trabonDelHilo(hacer) {
+  const trabas = [];
+  let ultimo = Date.now();
+  const reloj = setInterval(() => {
+    const n = Date.now();
+    trabas.push(n - ultimo - 5);
+    ultimo = n;
+  }, 5);
+  await new Promise((sigue) => setTimeout(sigue, 60)); // que el reloj tome ritmo
+  await hacer();
+  await new Promise((sigue) => setTimeout(sigue, 60));
+  clearInterval(reloj);
+  return Math.max(...trabas, 0);
+}
+
+test('la huella sirve para volver a reconocer la contraseña', async () => {
+  const huella = await cifrado.cifrar('Cordillera47');
+  assert.match(huella, /^\$2[aby]\$/, `no parece una huella de bcrypt: ${huella}`);
+  assert.equal(await cifrado.coincide('Cordillera47', huella), true);
+});
+
+test('y no reconoce ninguna otra', async () => {
+  const huella = await cifrado.cifrar('Cordillera47');
+  for (const otra of ['cordillera47', 'Cordillera48', 'Cordillera4', '', 'Cordillera47 ']) {
+    assert.equal(await cifrado.coincide(otra, huella), false, `aceptó «${otra}»`);
+  }
+});
+
+test('dos veces la misma contraseña dan huellas distintas', async () => {
+  // Cada una lleva su propia sal: dos personas con la misma contraseña no
+  // tienen la misma huella, y quien vea la base no puede saber que coinciden.
+  const a = await cifrado.cifrar('Cordillera47');
+  const b = await cifrado.cifrar('Cordillera47');
+  assert.notEqual(a, b);
+  assert.equal(await cifrado.coincide('Cordillera47', a), true);
+  assert.equal(await cifrado.coincide('Cordillera47', b), true);
+});
+
+test('sin huella no coincide nada, y no revienta', async () => {
+  assert.equal(await cifrado.coincide('lo que sea', null), false);
+  assert.equal(await cifrado.coincide('lo que sea', ''), false);
+  assert.equal(await cifrado.coincide('lo que sea', undefined), false);
+});
+
+test('el hilo que atiende NO se traba mientras se cifra', async () => {
+  /**
+   * Es la prueba que da sentido a todo este archivo.
+   *
+   * Se despierta el hilo aparte primero: crearlo cuesta unas decenas de
+   * milisegundos y eso pasa una sola vez en la vida del servidor, así que
+   * medirlo acá diría algo que no representa el uso normal.
+   */
+  await cifrado.cifrar('para despertar el hilo');
+
+  const trabon = await trabonDelHilo(async () => {
+    const huella = await cifrado.cifrar('Cordillera47');
+    await cifrado.coincide('Cordillera47', huella);
+  });
+
+  // Cifrar y comprobar cuestan cerca de 170 ms de cálculo entre las dos. Si se
+  // hicieran en este hilo, el trabón sería de ese orden.
+  assert.ok(trabon < 25, `el hilo quedó trabado ${trabon} ms de una vez (antes de esto eran 82)`);
+});
+
+test('veinte ingresos a la vez no traban el sistema', async () => {
+  // Un domingo con veinte personas entrando a la vez. Las comprobaciones se
+  // hacen una tras otra en el hilo aparte —son casi dos segundos de cálculo—
+  // pero el hilo que atiende sigue libre todo ese rato.
+  await cifrado.cifrar('para despertar el hilo');
+  const huella = await cifrado.cifrar('Cordillera47');
+
+  const trabon = await trabonDelHilo(async () => {
+    const todas = await Promise.all(Array.from({ length: 20 }, () => cifrado.coincide('Cordillera47', huella)));
+    assert.ok(todas.every((x) => x === true), 'alguna comprobación falló');
+  });
+  assert.ok(trabon < 25, `el hilo quedó trabado ${trabon} ms de una vez`);
+});

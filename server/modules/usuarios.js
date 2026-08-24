@@ -26,6 +26,7 @@
  * asignados ve todos los de sus iglesias (ver server/alcance.js).
  */
 const bcrypt = require('bcryptjs');
+const cifrado = require('../cifrado');
 const { ROLES } = require('../permissions');
 
 module.exports = {
@@ -163,11 +164,15 @@ module.exports = {
      * administrador se la entregue a su dueño. Al entrar con ella, el sistema
      * le obligará a cambiarla.
      */
-    router.post('/usuarios/:id(\\d+)/restablecer-clave', requirePerm('usuarios', 'edit'), conLlaveDeClaves, (req, res) => {
+    router.post('/usuarios/:id(\\d+)/restablecer-clave', requirePerm('usuarios', 'edit'), conLlaveDeClaves, async (req, res, next) => {
       const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.params.id);
       if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
-      const clave = claves.restablecer(usuario.id);
-      res.json({ ok: true, clave, nombre: usuario.nombre, rut: usuario.rut });
+      try {
+        const clave = await claves.restablecer(usuario.id);
+        res.json({ ok: true, clave, nombre: usuario.nombre, rut: usuario.rut });
+      } catch (e) {
+        next(e);
+      }
     });
 
     /** Vuelve a habilitar la recuperación bloqueada por intentos fallidos. */
@@ -248,9 +253,26 @@ module.exports = {
           .get(data.email, id || 0);
         if (dup) return 'Ya existe un usuario con ese correo electrónico';
       }
-      // La contraseña: la que escriba el administrador, o la inicial del
-      // sistema. En los dos casos la persona tendrá que cambiarla al entrar,
-      // porque una contraseña que otro conoce no es suya.
+      return null;
+    },
+
+    /**
+     * La contraseña, cifrada antes de abrir la transacción.
+     *
+     * Va acá y no en `beforeSave` por una sola razón: cifrarla cuesta cerca de
+     * una décima de segundo de puro cálculo —a propósito, para que adivinarla
+     * también cueste— y el servidor atiende de a una cosa. Hecho dentro del
+     * guardado, ese rato lo pagaban TODOS los que estuvieran usando el sistema
+     * en ese momento. Medido: guardar un usuario demoraba 93 ms contra los 3 ms
+     * de cualquier otro módulo, y esos 93 ms el servidor no atendía a nadie.
+     *
+     * Acá, en cambio, se puede esperar sin frenar al resto.
+     *
+     * La que se pone es la que escriba el administrador, o la inicial del
+     * sistema. En los dos casos la persona tendrá que cambiarla al entrar,
+     * porque una contraseña que otro conoce no es suya.
+     */
+    async antesDeGuardar(data, { isNew, existing }) {
       const claves = require('../claves');
       if (data.password) {
         // Se le pasa a quién se le está poniendo: ni su RUT ni su nombre
@@ -258,11 +280,11 @@ module.exports = {
         const quien = { rut: data.rut || (existing && existing.rut), nombre: data.nombre || (existing && existing.nombre) };
         const problema = claves.revisarClave(data.password, quien);
         if (problema) return problema;
-        data.password = bcrypt.hashSync(String(data.password), 10);
+        data.password = await cifrado.cifrar(data.password);
         data.password_origen = 'definida';
         data.debe_cambiar_password = 1;
       } else if (isNew) {
-        data.password = bcrypt.hashSync(claves.inicial(), 10);
+        data.password = await cifrado.cifrar(claves.inicial());
         data.password_origen = 'inicial';
         data.debe_cambiar_password = 1;
       } else {

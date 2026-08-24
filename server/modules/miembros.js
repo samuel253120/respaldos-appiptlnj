@@ -374,7 +374,7 @@ module.exports = {
      * mismos datos y la contraseña inicial, que tendrá que cambiar al entrar.
      * Si ya existe una cuenta con su RUT, solo se enlaza.
      */
-    router.post('/miembros/:id(\\d+)/usuario', requirePerm('usuarios', 'create'), (req, res) => {
+    router.post('/miembros/:id(\\d+)/usuario', requirePerm('usuarios', 'create'), async (req, res, next) => {
       const bcryptjs = require('bcryptjs');
       const miembro = db.prepare('SELECT * FROM miembros WHERE id = ?').get(req.params.id);
       if (!miembro) return res.status(404).json({ error: 'Miembro no encontrado' });
@@ -397,6 +397,20 @@ module.exports = {
       // Se le entrega la contraseña inicial del sistema, la misma para todos:
       // al entrar con ella, el sistema le obliga a cambiarla por una suya.
       const inicial = require('../claves').inicial();
+      /**
+       * Se cifra ANTES de escribir, y esperando de verdad.
+       *
+       * Cifrar cuesta cerca de una décima de segundo a propósito, y el
+       * servidor atiende de a una cosa: hecho de corrido, ese rato lo pagan
+       * todos los que estén usando el sistema, no solo quien está designando
+       * al miembro.
+       */
+      let cifrada;
+      try {
+        cifrada = await require('../cifrado').cifrar(inicial);
+      } catch (e) {
+        return next(e);
+      }
 
       const info = db
         .prepare(
@@ -407,7 +421,7 @@ module.exports = {
         .run(
           miembro.rut,
           `${miembro.nombres || ''} ${miembro.apellidos || ''}`.trim(),
-          bcryptjs.hashSync(inicial, 10),
+          cifrada,
           miembro.iglesia_id || null,
           miembro.email || null,
           miembro.telefono || null,

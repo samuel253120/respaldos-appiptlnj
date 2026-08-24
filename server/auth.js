@@ -15,6 +15,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const intentos = require('./intentos');
+const cifrado = require('./cifrado');
 const { db } = require('./db');
 const { can } = require('./permissions');
 const rutUtil = require('./rut');
@@ -200,12 +201,17 @@ const atender = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).
 /**
  * Entrar al sistema.
  *
- * La comprobación de la contraseña se hace de forma asíncrona a propósito.
+ * La comprobación de la contraseña se hace en OTRO HILO a propósito.
  * Verificar una clave cifrada cuesta cerca de una décima de segundo de puro
- * cálculo, y el servidor atiende de a una cosa: si se hiciera de corrido, un
- * domingo con veinte personas entrando a la vez, el sistema quedaría trabado
- * casi dos segundos para todos, incluidos los que ya estaban trabajando
- * adentro. Así, ese cálculo se hace por partes y los demás siguen atendidos.
+ * cálculo, y el servidor atiende de a una cosa: si se hiciera acá, un domingo
+ * con veinte personas entrando a la vez, el sistema quedaría trabado casi dos
+ * segundos para todos, incluidos los que ya estaban trabajando adentro.
+ *
+ * Esto antes decía que se resolvía usando la forma «asíncrona» de bcryptjs, y
+ * no era cierto: bcryptjs está escrito en JavaScript puro y su forma asíncrona
+ * devuelve una promesa, pero hace el cálculo igual en el mismo hilo. Medido,
+ * trababa 82 ms —lo mismo que la de corrido—. Ahora va a un hilo aparte y el
+ * trabón bajó a 1 ms (ver server/cifrado.js).
  *
  * Y antes de mirar nada se consulta al portero (server/intentos.js): a los
  * pocos errores seguidos la puerta se cierra un rato, para que no se puedan
@@ -241,7 +247,7 @@ router.post('/login', atender(async (req, res) => {
     user = db.prepare('SELECT * FROM usuarios WHERE lower(email) = lower(?)').get(identificador);
   }
 
-  if (!user || !user.password || !(await bcrypt.compare(String(password), user.password))) {
+  if (!user || !user.password || !(await cifrado.coincide(password, user.password))) {
     intentos.fallo(identificador, desde);
     // No se dice si el RUT existe o no: se responde igual en los dos casos.
     // Lo que sí se dice es cómo va con los intentos, para que quien de verdad
@@ -293,17 +299,17 @@ router.post('/cambiar-password', authRequired, atender(async (req, res) => {
   const { actual, nueva } = req.body || {};
 
   if (!user.debe_cambiar_password) {
-    if (!actual || !(await bcrypt.compare(String(actual), user.password))) {
+    if (!actual || !(await cifrado.coincide(actual, user.password))) {
       return res.status(400).json({ error: 'La contraseña actual no es correcta' });
     }
   }
   const problema = claves.revisarClave(nueva, user);
   if (problema) return res.status(400).json({ error: problema });
-  if (await bcrypt.compare(String(nueva), user.password)) {
+  if (await cifrado.coincide(nueva, user.password)) {
     return res.status(400).json({ error: 'La contraseña nueva tiene que ser distinta de la actual' });
   }
 
-  claves.establecer(user.id, nueva, 'usuario');
+  await claves.establecer(user.id, nueva, 'usuario');
   const actualizado = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(user.id);
 
   // El cambio cerró todas las sesiones de la cuenta, incluida la de quien lo
@@ -357,17 +363,17 @@ router.get('/pregunta-secreta', authRequired, (req, res) => {
 });
 
 /** Definir (o quitar) la pregunta secreta de la propia cuenta. */
-router.post('/pregunta-secreta', authRequired, (req, res) => {
+router.post('/pregunta-secreta', authRequired, atender(async (req, res) => {
   const claves = require('./claves');
   const { pregunta, respuesta, quitar } = req.body || {};
   if (quitar) {
     claves.quitarPregunta(req.user.id);
     return res.json({ ok: true, tiene_pregunta: false });
   }
-  const problema = claves.guardarPregunta(req.user.id, pregunta, respuesta);
+  const problema = await claves.guardarPregunta(req.user.id, pregunta, respuesta);
   if (problema) return res.status(400).json({ error: problema });
   res.json({ ok: true, tiene_pregunta: true });
-});
+}));
 
 /**
  * Recuperar la contraseña olvidada, desde la pantalla de acceso: primero se
@@ -393,7 +399,7 @@ router.post('/recuperar/pregunta', (req, res) => {
   res.json({ pregunta: estado.pregunta, intentos_restantes: estado.maximo - estado.intentos });
 });
 
-router.post('/recuperar', (req, res) => {
+router.post('/recuperar', atender(async (req, res) => {
   const claves = require('./claves');
   const ajustes = require('./ajustes');
   if (!ajustes.activo('recuperacion_activa')) {
@@ -411,7 +417,7 @@ router.post('/recuperar', (req, res) => {
   const problema = claves.revisarClave(nueva, user);
   if (problema) return res.status(400).json({ error: problema });
 
-  if (!claves.respuestaCorrecta(user, respuesta)) {
+  if (!(await claves.respuestaCorrecta(user, respuesta))) {
     const quedan = estado.maximo - (estado.intentos + 1);
     return res.status(401).json({
       error: quedan > 0
@@ -421,8 +427,8 @@ router.post('/recuperar', (req, res) => {
   }
 
   // La eligió su dueño: no hay nada que cambiar en el primer ingreso
-  claves.establecer(user.id, nueva, 'usuario');
+  await claves.establecer(user.id, nueva, 'usuario');
   res.json({ ok: true });
-});
+}));
 
 module.exports = { router, authRequired, requirePerm, JWT_SECRET, conLlavePropia, bloqueoPorMantenimiento };

@@ -965,8 +965,39 @@ function buildRouter() {
       }
     };
 
-    router.post(base, requirePerm(def.name, 'create'), save(true));
-    router.put(`${base}/:id(\\d+)`, requirePerm(def.name, 'edit'), save(false));
+    /**
+     * Lo que hay que hacer ANTES de abrir la transacción.
+     *
+     * El guardado entero corre de corrido: la base es síncrona y una
+     * transacción no se puede interrumpir para esperar nada. Eso está bien
+     * para lo que hace —escribir unas filas cuesta milésimas—, pero deja sin
+     * lugar a lo que cuesta de verdad y no es base de datos.
+     *
+     * El caso concreto es cifrar una contraseña: cerca de una décima de
+     * segundo de puro cálculo, a propósito. Hecho de corrido, guardar un
+     * usuario medía 93 ms y durante esos 93 ms el servidor no atendía a nadie
+     * más. Acá se le da un lugar afuera de la transacción, donde sí se puede
+     * esperar sin frenar al resto.
+     *
+     * El gancho recibe el cuerpo de la petición y puede cambiarlo o devolver
+     * un motivo para rechazarla, igual que `beforeSave`.
+     */
+    const conLoQueVaAntes = (isNew, seguir) => async (req, res, next) => {
+      const gancho = def.hooks && def.hooks.antesDeGuardar;
+      if (!gancho) return seguir(req, res);
+      try {
+        const id = isNew ? null : Number(req.params.id);
+        const existing = id ? db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id) : null;
+        const problema = await gancho(req.body || {}, { isNew, id, existing, user: req.user, db });
+        if (problema) return res.status(400).json({ error: problema });
+      } catch (e) {
+        return next(e);
+      }
+      return seguir(req, res);
+    };
+
+    router.post(base, requirePerm(def.name, 'create'), conLoQueVaAntes(true, save(true)));
+    router.put(`${base}/:id(\\d+)`, requirePerm(def.name, 'edit'), conLoQueVaAntes(false, save(false)));
 
     // ---- eliminar ----
     router.delete(`${base}/:id(\\d+)`, requirePerm(def.name, 'delete'), (req, res) => {

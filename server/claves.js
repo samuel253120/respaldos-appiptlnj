@@ -15,6 +15,7 @@
  *    secreta, o el administrador se la restablece a la inicial.
  */
 const bcrypt = require('bcryptjs');
+const cifrado = require('./cifrado');
 const { db } = require('./db');
 const ajustes = require('./ajustes');
 
@@ -138,8 +139,19 @@ const revisarLargo = revisarClave;
  * la contraseña de alguien es justamente el caso en que hay que echar de la
  * sesión a quien esté usando la cuenta.
  */
-function establecer(usuarioId, clave, origen) {
+/**
+ * Cifrar una contraseña cuesta cerca de una décima de segundo de puro cálculo,
+ * y el servidor atiende de a una cosa: hecho de corrido, ese cálculo deja
+ * esperando a TODOS los que estén usando el sistema en ese momento, no solo a
+ * quien está guardando. Por eso acá se hace de forma asíncrona, igual que la
+ * comprobación al entrar (ver el comentario de `atender` en server/auth.js).
+ *
+ * Lo lento es a propósito y no se toca: una contraseña que se cifra rápido se
+ * adivina rápido. Lo que se arregla es que ese rato no lo pague el resto.
+ */
+async function establecer(usuarioId, clave, origen) {
   const propia = origen === 'usuario';
+  const cifrada = await cifrado.cifrar(clave);
   db.prepare(
     `UPDATE usuarios
         SET password = ?, password_origen = ?, debe_cambiar_password = ?,
@@ -147,7 +159,7 @@ function establecer(usuarioId, clave, origen) {
             updated_at = datetime('now','localtime')
       WHERE id = ?`
   ).run(
-    bcrypt.hashSync(String(clave), 10),
+    cifrada,
     origen,
     propia ? 0 : 1,
     propia ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null,
@@ -157,9 +169,9 @@ function establecer(usuarioId, clave, origen) {
 }
 
 /** Restablece la cuenta a la contraseña inicial y devuelve cuál es. */
-function restablecer(usuarioId) {
+async function restablecer(usuarioId) {
   const clave = inicial();
-  establecer(usuarioId, clave, 'inicial');
+  await establecer(usuarioId, clave, 'inicial');
   return clave;
 }
 
@@ -213,15 +225,16 @@ function estadoRecuperacion(usuario) {
 }
 
 /** Guarda la pregunta y la respuesta de recuperación (la respuesta, cifrada). */
-function guardarPregunta(usuarioId, pregunta, respuesta) {
+async function guardarPregunta(usuarioId, pregunta, respuesta) {
   const limpia = String(respuesta || '').trim();
   if (!String(pregunta || '').trim()) return 'Escriba la pregunta.';
   if (limpia.length < 3) return 'La respuesta es demasiado corta.';
+  const cifrada = await cifrado.cifrar(normalizar(limpia));
   db.prepare(
     `UPDATE usuarios SET pregunta_secreta = ?, respuesta_secreta = ?, recuperacion_intentos = 0,
             updated_at = datetime('now','localtime')
       WHERE id = ?`
-  ).run(String(pregunta).trim(), bcrypt.hashSync(normalizar(limpia), 10), usuarioId);
+  ).run(String(pregunta).trim(), cifrada, usuarioId);
   return null;
 }
 
@@ -247,9 +260,9 @@ function normalizar(texto) {
 }
 
 /** ¿La respuesta es la correcta? Lleva la cuenta de los intentos fallidos. */
-function respuestaCorrecta(usuario, respuesta) {
+async function respuestaCorrecta(usuario, respuesta) {
   if (!usuario.respuesta_secreta) return false;
-  const acierta = bcrypt.compareSync(normalizar(respuesta), usuario.respuesta_secreta);
+  const acierta = await cifrado.coincide(normalizar(respuesta), usuario.respuesta_secreta);
   db.prepare('UPDATE usuarios SET recuperacion_intentos = ? WHERE id = ?')
     .run(acierta ? 0 : Number(usuario.recuperacion_intentos || 0) + 1, usuario.id);
   return acierta;
