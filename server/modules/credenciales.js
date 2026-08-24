@@ -361,6 +361,53 @@ module.exports = {
       res.json({ ok: true, credencial: quedo });
     });
 
+    /**
+     * Todo lo que la vista de impresión necesita, en una sola respuesta.
+     *
+     * El código QR se arma acá y no en la pantalla porque lleva el código de
+     * autenticidad, que se firma con una clave que no puede salir del
+     * servidor (ver credenciales/codigo.js).
+     */
+    router.get('/credenciales/:id(\\d+)/impresion', requirePerm('credenciales', 'view'), (req, res) => {
+      const fila = suya(req, res);
+      if (!fila) return;
+      const ajustes = require('../ajustes');
+      const qr = require('../credenciales/qr');
+
+      // El dominio con que se arma la dirección de verificación sale de la
+      // propia petición: es el que el navegador está usando ahora mismo, así
+      // que no hay una dirección configurada que se pueda quedar vieja.
+      const protocolo = req.get('x-forwarded-proto') || req.protocol;
+      const dominio = `${protocolo}://${req.get('host')}`;
+
+      res.json({
+        credencial: { ...fila, serie_completa: serieDe.conDigito(fila.serie, fila.serie_dv), situacion: situacionDe(fila) },
+        qr: qr.para(fila, { modo: ajustes.obtener('credencial_qr_modo'), dominio }),
+        recursos_que_faltan: datos.recursosQueFaltan(),
+        institucion: {
+          nombre: ajustes.obtener('iglesia_nombre') || '',
+          personalidad_juridica: qr.PERSONALIDAD_JURIDICA,
+        },
+      });
+    });
+
+    /**
+     * Queda anotado que se volvió a imprimir (punto 15.7).
+     *
+     * Se llama desde la pantalla al mandar a la impresora. No devuelve nada
+     * útil: lo que importa es que quede el rastro de quién y cuándo.
+     */
+    router.post('/credenciales/:id(\\d+)/impresa', requirePerm('credenciales', 'view'), (req, res) => {
+      const fila = suya(req, res);
+      if (!fila) return;
+      if (fila.estado === 'Borrador') return res.json({ ok: true, anotado: false });
+      bitacora.anotarCambio({
+        def: module.exports, accion: 'Impresión', fila, usuario: req.user,
+        detalle: `Se imprimió la credencial N.º ${serieDe.conDigito(fila.serie, fila.serie_dv)} de ${fila.snap_apellidos} ${fila.snap_nombres}`,
+      });
+      res.json({ ok: true, anotado: true });
+    });
+
     /** Los totales del listado: generadas desde el comienzo y por situación. */
     router.get('/credenciales/resumen', requirePerm('credenciales', 'view'), (req, res) => {
       const params = [];

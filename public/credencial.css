@@ -1,0 +1,432 @@
+/* =====================================================================
+ * La credencial pastoral: el diseño aprobado, trasladado tal cual.
+ *
+ * Esto NO se rediseña. Sale del archivo docs/credencial-pastor.html, que es el
+ * original aprobado, y se copió sin cambiar colores, tipografías, medidas ni
+ * posiciones (punto 17.1 de la especificación). Las medidas van en milímetros
+ * a propósito: cada cara mide exactamente 54 × 86 mm y tiene que salir así de
+ * la impresora, medida con regla.
+ *
+ * Lo único que se dejó fuera del original son la barra de herramientas de esa
+ * página suelta y sus reglas de `html, body`, que pisarían las del sistema.
+ *
+ * TODO EL DISEÑO VA ACOTADO A `.cred-disenio`
+ *
+ * El original era una página suelta y podía nombrar `.card`, `.titulo` o
+ * `.datos` a secas, porque en su hoja no había nada más. Acá esos nombres son
+ * los del sistema entero. Cargada sin acotar le gana a styles.css por venir
+ * después, y todas las tarjetas del programa pasan a medir 54 × 86 mm con
+ * zoom 1,9: pasó, y el listado de miembros quedó metido dentro de un
+ * rectángulo del tamaño de una tarjeta. El prefijo es lo único que se le
+ * agregó a cada regla; los valores no se tocaron.
+ *
+ * Los elementos de seguridad —el guilloché, la marca de agua, el microtexto,
+ * el sello sobre la fotografía, el número de serie en vertical, la foto
+ * fantasma, la franja de cruces— están todos y no se quitan (punto 11.9).
+ * ===================================================================== */
+
+  :root{
+    --azul:#14204C;
+    --azul-osc:#0E1122;
+    --tinta:#12152A;
+    --oro:#C09B1E;
+    --oro-osc:#8A6A10;
+    --oro-claro:#E5C34A;
+    --linea:#D6CBA0;
+    --ph:#B3B9CC;
+    --sello:#212F6B;
+  }
+  /* El reset y el fondo del archivo suelto no van: los pone el sistema. Lo
+     que sí hace falta es que los colores de fondo se impriman, porque de eso
+     dependen el guilloché, el sello y las franjas doradas. */
+  .cred-disenio .lienzo, .cred-disenio .lienzo *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+  .cred-disenio .lienzo{
+    display:flex; flex-wrap:wrap; justify-content:center; align-items:flex-start;
+    gap:44px; padding:36px 16px 70px;
+  }
+  .cred-disenio .pieza{display:flex; flex-direction:column; align-items:center; gap:12px;}
+  .cred-disenio .plegable{display:contents;}   /* en pantalla no crea caja: las tarjetas van lado a lado */
+  .cred-disenio .etiqueta{font-size:11px; font-weight:700; letter-spacing:.28em; color:#6B7390;}
+
+  /* ---------- Tarjeta vertical (54 × 86 mm) ---------- */
+  .cred-disenio .card{
+    width:54mm; height:86mm;
+    background:#fff;
+    border:0.2mm solid #D9D9DF;
+    border-radius:2.6mm;
+    overflow:hidden;
+    position:relative;
+    display:flex; flex-direction:column;
+    box-shadow:0 12px 30px rgba(18,27,64,.20);
+  }
+  @media screen and (min-width:1050px){ .cred-disenio .card{zoom:1.9;} }
+  @media screen and (min-width:760px) and (max-width:1049px){ .cred-disenio .card{zoom:1.5;} }
+  @media screen and (max-width:759px){ .cred-disenio .card{zoom:1.6;} }
+
+  .cred-disenio svg.ondas{position:absolute; inset:0; width:100%; height:100%; pointer-events:none;}
+
+  /* Logo con halo blanco para que el guilloché se desvanezca detrás */
+  .cred-disenio .logoc{position:relative; z-index:1; margin:2.2mm auto 0; width:22.5mm;}
+  .cred-disenio .logoc::before{
+    content:''; position:absolute; inset:-4mm; border-radius:50%; z-index:-1;
+    background:radial-gradient(closest-side, #fff 60%, rgba(255,255,255,0) 100%);
+  }
+  .cred-disenio .logoc img{width:100%; display:block;}
+  .cred-disenio .reverso .logoc{width:17.5mm; margin-top:1.6mm;}
+  .cred-disenio .reverso .logoc::before{inset:-2.8mm;}
+
+  /* ---------- ANVERSO ---------- */
+  .cred-disenio .titulo{
+    position:relative; z-index:1;
+    margin:1.6mm 3mm 0;
+    text-align:center;
+    border:0.35mm solid var(--oro-claro); border-radius:0.7mm;
+    padding:1mm 1.8mm;
+    background:linear-gradient(90deg, #0F1836, #21326A 50%, #0F1836);
+    font-family:Georgia, "Times New Roman", serif;
+    font-weight:800; font-size:9.2pt; letter-spacing:.03em; color:var(--oro-claro);
+    white-space:nowrap; overflow:hidden;
+    text-shadow:0 0.1mm 0.2mm rgba(0,0,0,.35);
+  }
+
+  /* Marca de agua: logo grande y muy tenue detrás de los datos (identidad + anti-copia) */
+  .cred-disenio .marca-agua{
+    position:absolute; top:53%; left:50%;
+    width:43mm; transform:translate(-50%,-50%);
+    opacity:0.06; z-index:0; pointer-events:none;
+  }
+  /* Microtexto de seguridad: se lee con lupa, se degrada al fotocopiar */
+  .cred-disenio .microtexto{
+    position:relative; z-index:1;
+    margin:0.5mm 3.2mm 0; height:1.5mm; overflow:hidden;
+    font-size:1.9pt; font-weight:700; letter-spacing:.01em;
+    color:var(--azul); opacity:.78;
+    white-space:nowrap; text-align:center; line-height:1.5mm;
+  }
+  /* Sello de seguridad sobre la fotografía (cruza foto y borde) */
+  /* Sello de seguridad cruzando la parte inferior de la fotografía (≈30% sobre ella) */
+  .cred-disenio .sello-foto{
+    position:absolute; z-index:2;
+    width:15mm; height:15mm; object-fit:contain;
+    left:3mm; top:20mm;
+    opacity:.5; transform:rotate(-12deg);
+    pointer-events:none;
+  }
+  /* Números en fuente monoespaciada (RUT, N° de serie) */
+  .cred-disenio .mono{
+    font-family:"Consolas","SF Mono","DejaVu Sans Mono","Courier New",monospace !important;
+    letter-spacing:.01em; font-weight:600;
+  }
+  /* Control cruzado: N° de serie repetido en vertical junto a la foto (anti-alteración) */
+  .cred-disenio .serie-vert{
+    position:absolute; left:-1.35mm; top:0; height:24.5mm; z-index:3;
+    writing-mode:vertical-rl; text-orientation:mixed;
+    font-size:2.5pt; font-weight:700; letter-spacing:.05em;
+    color:var(--azul); opacity:.72;
+    white-space:nowrap; overflow:hidden;
+    display:flex; align-items:center;
+  }
+  /* Jerarquía: nombre y apellidos más presentes */
+  .cred-disenio .campo-destacado .valor{font-size:7.1pt; font-weight:700;}
+
+  .cred-disenio .cuerpo{
+    position:relative; z-index:1;
+    display:flex; gap:2.6mm;
+    margin:2.4mm 3.6mm 0;
+    min-height:0;
+  }
+  /* Columna izquierda: contiene la fotografía */
+  .cred-disenio .col-izq{
+    flex:0 0 18.5mm; width:18.5mm;
+    display:flex; flex-direction:column;
+  }
+  .cred-disenio .foto{
+    flex:0 0 24.5mm; width:18.5mm; height:24.5mm;
+    border:0.55mm solid var(--oro);
+    border-radius:0.7mm;
+    background-color:#F3F3F6;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    overflow:hidden; cursor:pointer; position:relative;
+    touch-action:none;
+  }
+  .cred-disenio .foto-capa{
+    position:absolute; inset:0; z-index:0;
+    background-repeat:no-repeat;
+  }
+  .cred-disenio .foto.con-foto{cursor:grab;}
+  .cred-disenio .foto.con-foto.arrastrando{cursor:grabbing;}
+  .cred-disenio .foto.con-foto .foto-hint{display:none;}
+  .cred-disenio .foto-hint{position:relative; z-index:1; font-size:3.9pt; font-weight:700; letter-spacing:.12em; color:var(--ph); line-height:1.8;}
+  .cred-disenio .foto-quitar{
+    position:absolute; top:0.5mm; right:0.5mm; z-index:3;
+    width:3.6mm; height:3.6mm; border:none; border-radius:50%; padding:0;
+    background:rgba(20,24,43,.72); color:#fff; font-size:2.7mm; line-height:1;
+    cursor:pointer; display:none; align-items:center; justify-content:center;
+  }
+  .cred-disenio .foto.con-foto .foto-quitar{display:flex;}
+  .cred-disenio .foto-ayuda{
+    position:absolute; left:0; right:0; bottom:0; z-index:2;
+    background:rgba(20,24,43,.6); color:#fff;
+    font-size:2pt; line-height:1.3; padding:0.5mm 0.3mm; text-align:center;
+    display:none;
+  }
+  .cred-disenio .foto.con-foto:hover .foto-ayuda{display:block;}
+
+  .cred-disenio .datos{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; row-gap:0.95mm;}
+  /* El Cargo es opcional: cuando coincide con el grado puede dejarse vacío.
+     En pantalla se ve atenuado y al imprimir desaparece, repartiendo su espacio. */
+  .cred-disenio .campo-opcional.vacio .lbl{opacity:.42;}
+  .cred-disenio .campo-opcional.vacio .valor{border-bottom-style:dashed; border-bottom-color:#CDD3E2;}
+  .cred-disenio .datos.sin-cargo{row-gap:2.05mm;}
+  .cred-disenio .lbl{
+    display:block; font-size:3.8pt; font-weight:800;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--oro-osc);
+  }
+  .cred-disenio .valor{
+    display:block;
+    font-family:Georgia, "Times New Roman", serif;
+    font-size:6.4pt; font-weight:600; color:var(--azul);
+    border-bottom:0.28mm solid var(--linea);
+    padding:0.15mm 0 0.35mm; min-height:2.9mm;
+    white-space:nowrap; overflow:hidden; outline:none;
+    line-height:1.12;
+  }
+  /* Iglesia: categoría (CENTRAL / SEDE / FILIAL / ANEXO) junto al nombre, en la misma línea */
+  .cred-disenio .iglesia-fila{display:flex; align-items:stretch; gap:1.1mm; min-width:0;}
+  .cred-disenio .iglesia-fila .valor{flex:1 1 auto; min-width:0;}
+  .cred-disenio .cat-iglesia{
+    flex:0 0 auto; align-self:flex-end;
+    font-family:Arial, Helvetica, sans-serif;
+    font-size:4.3pt; font-weight:800; letter-spacing:.06em;
+    color:#fff; background:var(--azul);
+    border-radius:0.5mm; padding:0.35mm 0.9mm; margin-bottom:0.4mm;
+    text-transform:uppercase; white-space:nowrap; outline:none;
+    min-width:5.5mm; text-align:center;
+  }
+  .cred-disenio .cat-iglesia:empty::before{content:attr(data-ph); color:#C9CEDD;}
+  .cred-disenio .cat-iglesia:focus{background:var(--oro-osc);}
+  /* El texto largo (nombres, apellidos, comuna) se ajusta solo:
+     primero reduce el tamaño de letra en una línea; si aún no cabe, pasa a dos. */
+  .cred-disenio .valor.dos-lineas{white-space:normal; overflow-wrap:break-word; word-break:break-word;}
+  .cred-disenio .valor:focus{border-bottom-color:var(--oro-osc); background:#FFF9E6;}
+  .cred-disenio .valor:empty::before, .cred-disenio .rval:empty::before{content:attr(data-ph); color:var(--ph);}
+
+  .cred-disenio .cruces{
+    margin-top:auto; height:4.3mm;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='16' viewBox='0 0 12 16'%3E%3Cpath d='M6 1.2v13.6M2.2 5.6h7.6' stroke='%23A9871A' stroke-width='2.1' fill='none'/%3E%3C/svg%3E");
+    background-size:3.1mm 4.1mm;
+    background-repeat:repeat-x;
+    background-position:center;
+  }
+  .cred-disenio .base-oro{height:1.7mm; background:linear-gradient(90deg,#B98F16,#E5C34A,#B98F16);}
+
+  /* ---------- REVERSO ---------- */
+  .cred-disenio .tit-rev{
+    position:relative; z-index:1;
+    margin:0.7mm 3mm 0;
+    text-align:center;
+    font-size:8pt; font-weight:800; letter-spacing:.03em; line-height:1.18;
+    color:var(--azul);
+    background:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.88) 15%, rgba(255,255,255,.88) 85%, rgba(255,255,255,0));
+    padding:0.6mm 0;
+  }
+  .cred-disenio .rdatos{
+    position:relative; z-index:1;
+    margin:1.2mm 2.4mm 0;
+    display:flex; flex-direction:column; row-gap:1.1mm; align-items:center;
+  }
+  .cred-disenio .rlinea{display:flex; align-items:baseline; gap:1.1mm; white-space:nowrap;}
+  .cred-disenio .rlbl{font-size:5.4pt; font-weight:700; color:var(--azul); letter-spacing:.02em;}
+  .cred-disenio .rval{
+    font-family:Georgia, "Times New Roman", serif;
+    font-size:7pt; font-weight:600; color:var(--azul-osc);
+    border-bottom:0.28mm solid #C9BE94;
+    min-width:15.5mm; text-align:center;
+    padding:0 1mm 0.3mm; outline:none; white-space:nowrap;
+  }
+  .cred-disenio .rval:focus{border-bottom-color:var(--oro-osc); background:#FFF9E6;}
+  .cred-disenio .rlinea:last-child .rval{min-width:14.5mm;}
+
+  .cred-disenio .ff{
+    position:relative; z-index:1;
+    display:flex; justify-content:space-between; align-items:flex-end;
+    margin:0.7mm 3.4mm 0;
+  }
+  .cred-disenio .firma{width:24.5mm; text-align:center; position:relative;}
+  .cred-disenio .firma-img{
+    position:absolute; left:50%; transform:translateX(-50%);
+    bottom:4mm; width:27mm; height:auto; z-index:2;
+    pointer-events:none;
+  }
+  .cred-disenio .firma .espacio{height:5.6mm;}
+  .cred-disenio .firma .linea{border-top:0.32mm solid #8F6F14; padding-top:0.8mm;}
+  .cred-disenio .firma .l1{font-size:5.1pt; font-weight:700; letter-spacing:.05em; color:#20242E;}
+  .cred-disenio .firma .l2{font-size:4.2pt; font-weight:600; letter-spacing:.08em; color:#5A5F70; margin-top:0.2mm;}
+  .cred-disenio .sello-box{
+    position:relative; width:19.4mm; height:19.4mm; flex:0 0 auto;
+    cursor:pointer;
+  }
+  .cred-disenio .sello-box img{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
+  }
+  .cred-disenio .sello-real{display:block; transform:rotate(-5deg);}
+  .cred-disenio .sello-img{display:none;}
+  .cred-disenio .sello-box.con-sello .sello-real{display:none;}
+  .cred-disenio .sello-box.con-sello .sello-img{display:block;}
+
+  .cred-disenio .pj{
+    position:relative; z-index:1;
+    margin:auto 2.4mm 0.2mm;
+    text-align:center;
+    font-size:4.7pt; font-weight:800; letter-spacing:.04em;
+    color:var(--azul);
+  }
+  .cred-disenio .pj-sub{
+    position:relative; z-index:1;
+    margin:0 2.4mm 0.5mm;
+    text-align:center;
+    font-size:3.7pt; font-weight:700; letter-spacing:.06em;
+    color:var(--azul);
+  }
+  .cred-disenio .leyenda{
+    position:relative; z-index:1;
+    margin:0 2.2mm 0.4mm;
+    text-align:center;
+    font-size:3.7pt; font-weight:700; letter-spacing:.04em; line-height:1.42;
+    color:#181B27;
+  }
+  .cred-disenio .barra{
+    height:13.2mm; background:linear-gradient(90deg,#0C1430,#16224F 50%,#0C1430);
+    display:flex; align-items:center; gap:2mm;
+    padding:0 2.2mm;
+  }
+  /* El QR debe tener módulos ≥0,25 mm para leerse impreso: recuadro amplio */
+  .cred-disenio .qr-holder{
+    width:12.2mm; height:12.2mm; flex:0 0 auto;
+    background:#fff; border-radius:0.5mm; padding:0.25mm;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .cred-disenio .qr-holder svg{width:100%; height:100%; display:block;}
+  /* Sin datos completos no se emite QR: recuadro marcado, nunca un código vacío */
+  .cred-disenio .qr-holder.incompleto{
+    background:repeating-linear-gradient(45deg,#F4F4F6,#F4F4F6 0.6mm,#DCDCE4 0.6mm,#DCDCE4 1.2mm);
+    border:0.3mm dashed #8A8A98;
+  }
+  .cred-disenio .qr-falta{
+    font-size:3.1pt; font-weight:800; letter-spacing:.04em; line-height:1.25;
+    color:#6A6A78; text-align:center;
+  }
+  .cred-disenio .barra-txt{margin-left:auto; text-align:right; display:flex; flex-direction:column; gap:0.5mm;}
+  .cred-disenio .barra .mini{font-size:4pt; font-weight:700; letter-spacing:.04em; color:#E8E8EC; line-height:1.35;}
+  .cred-disenio .barra .mini-cod{font-size:3.4pt; font-weight:600; letter-spacing:.02em; color:#A8AEC0; line-height:1.3;}
+  .cred-disenio .barra .mini-wa{font-size:5.2pt; font-weight:800; letter-spacing:.02em; color:#F2D98A; margin-top:0.2mm;}
+
+  /* Foto fantasma: segunda imagen de control, tenue, en el reverso (anti-sustitución) */
+  .cred-disenio .ghost-marco{
+    position:absolute; top:4.6mm; right:2.8mm;
+    width:10.6mm; height:13.2mm; z-index:1;
+    background:rgba(255,255,255,.86);
+    border:0.3mm solid rgba(20,32,76,.32); border-radius:0.6mm;
+    overflow:hidden; opacity:0; pointer-events:none;
+  }
+  .cred-disenio .ghost-marco.activa{opacity:1;}
+  .cred-disenio .foto-ghost{
+    position:absolute; inset:0;
+    background-size:cover; background-position:center; background-repeat:no-repeat;
+    filter:grayscale(1) contrast(1.12);
+    opacity:.42;
+  }
+  /* Dígito verificador calculado para el N° de serie */
+  .cred-disenio .serie-wrap{display:inline-flex; align-items:baseline; border-bottom:0.28mm solid #C9BE94; padding-bottom:0.3mm;}
+  .cred-disenio .serie-wrap:focus-within{border-bottom-color:var(--oro-osc); background:#FFF9E6;}
+  .cred-disenio .rlinea .serie-wrap .rval{min-width:11mm; text-align:right; border-bottom:none; padding:0 0 0.1mm;}
+  .cred-disenio .dv-serie{font-size:7pt; font-weight:800; color:var(--azul-osc); padding:0 0.4mm 0 0.2mm; white-space:nowrap;}
+
+  .cred-disenio .aviso-datos{
+    display:none; margin:0.6em 0 0; padding:0.5em 0.8em;
+    border-left:3px solid #C08A12; background:#FFF7E2;
+    color:#5A4408; font-size:0.92em; border-radius:3px;
+  }
+  .cred-disenio .aviso-datos.visible{display:block;}
+
+  /* ---------- Impresión: pieza plegable ---------- */
+  @media print{
+    @page{size:Letter portrait; margin:10mm;}
+    body{background:#fff;}
+    .cred-disenio .toolbar, .cred-disenio .etiqueta{display:none !important;}
+    .cred-disenio .card{box-shadow:none;}
+    .cred-disenio .valor:empty::before, .cred-disenio .rval:empty::before{content:"";}
+    .cred-disenio .campo-opcional.vacio{display:none !important;}
+    .cred-disenio .foto, .cred-disenio .sello-box{cursor:default;}
+    .cred-disenio .foto-quitar, .cred-disenio .foto-ayuda{display:none !important;}
+
+    /* la hoja centra la única pieza plegable */
+    .cred-disenio .lienzo{padding:0; margin:0; display:flex; justify-content:center; align-items:flex-start;}
+
+    /* .plegable vuelve a ser una caja: reverso arriba (invertido) + anverso abajo,
+       unidos por el pliegue, rodeados por la línea de recorte */
+    .cred-disenio .plegable{
+      display:inline-flex; flex-direction:column; align-items:center;
+      border:0.3mm dashed #7A7A7A;      /* línea de RECORTE exterior */
+      padding:0;
+    }
+    .cred-disenio .pieza{margin:0; gap:0; display:block;}
+    .cred-disenio .pieza-reverso{order:1;}
+    .cred-disenio .pieza-frente{order:2;}
+
+    /* el reverso se imprime rotado 180°: al doblar hacia atrás por el pliegue
+       superior y girar la tarjeta, queda derecho detrás del anverso */
+    .cred-disenio .pieza-reverso .card{transform:rotate(180deg);}
+
+    /* bordes rectos y sin sombra para recortar; el pliegue queda entre ambas caras */
+    .cred-disenio .card{border:none; border-radius:0;}
+    .cred-disenio .pieza-frente .card{border-top:0.3mm dashed #9A9A9A;}  /* línea de PLIEGUE (doblar aquí) */
+  }
+
+/* =====================================================================
+ * Y lo que agrega el sistema, que el archivo suelto no necesitaba
+ * ===================================================================== */
+
+/* Al imprimir una credencial no se imprime nada del sistema: ni el menú, ni la
+   barra de arriba, ni los botones. Solo la pieza. */
+@media print {
+  body.imprimiendo-credencial .sidebar,
+  body.imprimiendo-credencial .topbar,
+  body.imprimiendo-credencial .print-actions,
+  body.imprimiendo-credencial .cred-ayuda,
+  body.imprimiendo-credencial .no-print { display: none !important; }
+  body.imprimiendo-credencial .layout,
+  body.imprimiendo-credencial .content { display: block !important; margin: 0 !important; padding: 0 !important; }
+}
+
+/* En pantalla, la pieza se muestra sobre un fondo que la despega de la página */
+.cred-disenio .lienzo { background: #EDEFF5; border-radius: 12px; }
+
+/* La ayuda de impresión: qué hay que marcar en el diálogo para que salga bien */
+.cred-ayuda {
+  margin: 0 0 14px; padding: 12px 16px; border-radius: 10px;
+  background: #fffbeb; border: 1px solid #fde68a; color: #7c5b09;
+  font-size: 13px; line-height: 1.55;
+}
+.cred-ayuda b { color: #5a4408; }
+.cred-ayuda ul { margin: 6px 0 0 18px; }
+
+/* Los controles del encuadre de la fotografía */
+.cred-encuadre {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px 22px;
+  padding: 14px 16px 18px; font-size: 13px; color: var(--muted);
+}
+.cred-encuadre label { display: flex; align-items: center; gap: 7px; }
+.cred-encuadre input[type=range] { width: 130px; accent-color: var(--accent); cursor: pointer; }
+.cred-encuadre .badge { font-weight: 700; }
+/**
+ * El recuadro contra el cual se encuadra es EL MISMO de la tarjeta: la clase
+ * `.foto` de más arriba, con sus 18,5 × 24,5 mm y su borde dorado. Solo se
+ * agranda para poder agarrarla con el dedo, y se agranda con `zoom` —igual
+ * que hace el diseño con la tarjeta en pantalla— justamente para que siga
+ * midiendo lo que mide: lo que se ve encuadrando es lo que sale impreso.
+ */
+.enc-marco { zoom: 2.4; flex: 0 0 auto; }
+.enc-mandos { flex: 1 1 280px; min-width: 240px; display: flex; flex-direction: column; gap: 9px; }
+@media (max-width: 560px) { .enc-marco { zoom: 2; } }

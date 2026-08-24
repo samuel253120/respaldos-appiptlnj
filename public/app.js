@@ -484,6 +484,16 @@ window.addEventListener('hashchange', () => {
 function route() {
   const [ruta, consulta] = location.hash.replace(/^#\/?/, '').split('?');
   const parts = ruta.split('/').filter(Boolean);
+  /**
+   * El diseño de la credencial solo vale en las dos pantallas donde se dibuja
+   * —la de impresión y la ficha, que lleva el encuadre de la foto—. Fuera de
+   * ellas se suelta: si se queda puesta, le gana a la hoja del sistema y deja
+   * todas las tarjetas del tamaño de una credencial.
+   */
+  const seDibujaLaCredencial = parts[1] === 'credenciales'
+    && (parts[0] === 'print' || (parts[0] === 'm' && parts[2] === 'ficha'));
+  if (!seDibujaLaCredencial) soltarEstiloDeCredencial();
+
   // Valores para precargar un formulario nuevo: #/m/modulo/new?campo=valor
   const precarga = {};
   if (consulta) new URLSearchParams(consulta).forEach((v, k) => (precarga[k] = v));
@@ -2422,6 +2432,10 @@ async function renderEmisionCredencial(id, caja) {
   const c = await api('GET', `/credenciales/${id}`).catch(() => null);
   if (!c) { caja.innerHTML = ''; return; }
   const puedeEmitir = MOD['credenciales'] && MOD['credenciales'].perms.edit;
+  // El encuadre se ajusta contra el recuadro de verdad, y ese recuadro lo
+  // define la hoja del diseño: hay que tenerla antes de dibujarlo
+  const hayEncuadre = !!c.snap_foto && puedeEmitir;
+  if (hayEncuadre) await estiloDeCredencial();
 
   // Lo que falta, preguntado al servidor con los datos de hoy
   let previo = { falta: [], recursos_que_faltan: [] };
@@ -2475,7 +2489,10 @@ async function renderEmisionCredencial(id, caja) {
             iglesia— se emite una credencial nueva desde la ficha de la persona; esta no se corrige ni se borra.
           </p>`}
       </div>
-    </div>`;
+    </div>
+    ${hayEncuadre ? tarjetaDeEncuadre(c) : ''}`;
+
+  if (hayEncuadre) montarEncuadreDeLaFoto(c);
 
   const emitir = document.getElementById('credEmitir');
   if (emitir) {
@@ -2522,6 +2539,259 @@ async function renderEmisionCredencial(id, caja) {
         toast('Credencial revocada');
         route();
       } catch (e) {
+        toast(e.message, true);
+      }
+    });
+  }
+}
+
+/* ===================================================================
+ * El encuadre de la fotografía (punto 6.4)
+ *
+ * La foto no se sube acá: es la de la ficha de la persona (punto 6.1). Lo que
+ * se ajusta es cómo se ve dentro del recuadro de 18,5 × 24,5 mm de la tarjeta:
+ * se arrastra para moverla, se acerca con la rueda o con dos dedos, y se le
+ * corrige el brillo y el contraste. El resultado son cinco números que se
+ * guardan CON la credencial, para que una reimpresión de aquí a tres años
+ * salga idéntica a la primera.
+ *
+ * La lógica es la del archivo de diseño, trasladada. Se dejó fuera lo que allá
+ * servía para cargar y quitar la foto, que en el sistema no corresponde.
+ * =================================================================== */
+
+/** La dirección de la foto del titular, congelada en la credencial. */
+function urlDeLaFoto(c) {
+  return `/uploads/${encodeURIComponent(c.snap_foto)}`;
+}
+
+/** Los cinco números del encuadre, ya acotados a lo que se puede pintar. */
+function encuadreGuardado(c) {
+  const entre = (v, min, max, porDefecto) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : porDefecto;
+  };
+  return {
+    zoom: entre(c.foto_zoom, 1, 6, 1),
+    x: entre(c.foto_x, 0, 100, 50),
+    y: entre(c.foto_y, 0, 100, 50),
+    brillo: entre(c.foto_brillo, 40, 160, 100),
+    contraste: entre(c.foto_contraste, 40, 160, 100),
+  };
+}
+
+/**
+ * Cuánto hay que agrandar la imagen para que cubra el recuadro sin dejar borde.
+ *
+ * Una foto vertical dentro de un recuadro vertical más angosto sobra por
+ * arriba; una horizontal sobra por los lados. Este número es el ancho —en
+ * porcentaje del recuadro— con el que en ningún caso queda blanco a la vista,
+ * y es el punto de partida sobre el que después actúa el acercamiento.
+ *
+ * Sin esto la foto se pinta al 100 % del ancho y una foto apaisada deja dos
+ * franjas blancas arriba y abajo del recuadro dorado.
+ */
+function cuantoCubre(caja, natural) {
+  const r = caja.getBoundingClientRect();
+  if (!r.width || !r.height || !natural.ancho || !natural.alto) return 100;
+  const proporcionDelRecuadro = r.width / r.height;
+  const proporcionDeLaImagen = natural.ancho / natural.alto;
+  return Math.max(100, 100 * proporcionDeLaImagen / proporcionDelRecuadro);
+}
+
+/** Pintar la foto en su recuadro con el encuadre que se le indique. */
+function pintarLaFoto(capa, encuadre, cubre) {
+  capa.style.backgroundSize = `${cubre * encuadre.zoom}% auto`;
+  capa.style.backgroundPosition = `${encuadre.x}% ${encuadre.y}%`;
+  capa.style.filter = `brightness(${encuadre.brillo}%) contrast(${encuadre.contraste}%)`;
+}
+
+/** El tamaño real de una imagen, para saber cuánto sobra por cada lado. */
+function medirLaImagen(url) {
+  return new Promise((listo) => {
+    const im = new Image();
+    im.onload = () => listo({ ancho: im.naturalWidth, alto: im.naturalHeight });
+    im.onerror = () => listo({ ancho: 0, alto: 0 });
+    im.src = url;
+  });
+}
+
+/** La tarjeta con el recuadro de la foto y sus mandos. */
+function tarjetaDeEncuadre(c) {
+  const e = encuadreGuardado(c);
+  return `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🖼️ Encuadre de la fotografía</b>
+        <span class="spacer"></span>
+        <button class="btn sm secondary" id="encRestablecer">Restablecer</button>
+        <button class="btn sm" id="encGuardar" disabled>Guardar el encuadre</button>
+      </div>
+      <div class="cred-encuadre">
+        <div class="enc-marco cred-disenio">
+          <figure class="foto con-foto" id="encFoto">
+            <div class="foto-capa" id="encCapa"></div>
+          </figure>
+        </div>
+        <div class="enc-mandos">
+          <p class="mut" style="margin:0 0 4px">
+            Así va a salir impresa, al tamaño que va a tener en la tarjeta.
+            <b>Arrastre</b> la foto para moverla y use la <b>rueda</b> —o dos dedos— para acercarla.
+          </p>
+          <label>Acercar <input type="range" id="encZoom" min="100" max="600" step="1" value="${Math.round(e.zoom * 100)}">
+            <span class="badge" id="encZoomVal">${Math.round(e.zoom * 100)} %</span></label>
+          <label>Brillo <input type="range" id="encBrillo" min="40" max="160" step="1" value="${e.brillo}">
+            <span class="badge" id="encBrilloVal">${e.brillo} %</span></label>
+          <label>Contraste <input type="range" id="encContraste" min="40" max="160" step="1" value="${e.contraste}">
+            <span class="badge" id="encContrasteVal">${e.contraste} %</span></label>
+          <p class="mut" style="margin:6px 0 0; font-size:12px">
+            El encuadre se guarda con la credencial: al reimprimirla dentro de unos años sale igual.
+          </p>
+        </div>
+      </div>
+    </div>`;
+}
+
+/**
+ * Los mandos del encuadre, conectados al recuadro.
+ *
+ * Arrastrar, acercar y los tres deslizadores. Lo que se ve acá es exactamente
+ * lo que se va a imprimir, porque el recuadro es el mismo elemento con la
+ * misma hoja de estilos que la tarjeta.
+ */
+async function montarEncuadreDeLaFoto(c) {
+  const caja = document.getElementById('encFoto');
+  const capa = document.getElementById('encCapa');
+  if (!caja || !capa) return;
+
+  const url = urlDeLaFoto(c);
+  const encuadre = encuadreGuardado(c);
+  const comoEstaba = JSON.stringify(encuadre);
+  capa.style.backgroundImage = `url("${url}")`;
+
+  const natural = await medirLaImagen(url);
+  let cubre = cuantoCubre(caja, natural);
+  const guardar = document.getElementById('encGuardar');
+
+  const mandos = {
+    zoom: document.getElementById('encZoom'),
+    brillo: document.getElementById('encBrillo'),
+    contraste: document.getElementById('encContraste'),
+  };
+  const letreros = {
+    zoom: document.getElementById('encZoomVal'),
+    brillo: document.getElementById('encBrilloVal'),
+    contraste: document.getElementById('encContrasteVal'),
+  };
+
+  function aplicar() {
+    encuadre.zoom = Math.min(6, Math.max(1, encuadre.zoom));
+    encuadre.x = Math.min(100, Math.max(0, encuadre.x));
+    encuadre.y = Math.min(100, Math.max(0, encuadre.y));
+    pintarLaFoto(capa, encuadre, cubre);
+    mandos.zoom.value = Math.round(encuadre.zoom * 100);
+    letreros.zoom.textContent = `${Math.round(encuadre.zoom * 100)} %`;
+    letreros.brillo.textContent = `${encuadre.brillo} %`;
+    letreros.contraste.textContent = `${encuadre.contraste} %`;
+    if (guardar) guardar.disabled = JSON.stringify(encuadre) === comoEstaba;
+  }
+  aplicar();
+
+  mandos.zoom.addEventListener('input', () => { encuadre.zoom = mandos.zoom.value / 100; aplicar(); });
+  mandos.brillo.addEventListener('input', () => { encuadre.brillo = +mandos.brillo.value; aplicar(); });
+  mandos.contraste.addEventListener('input', () => { encuadre.contraste = +mandos.contraste.value; aplicar(); });
+
+  // Acercar con la rueda del ratón
+  caja.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    encuadre.zoom *= ev.deltaY < 0 ? 1.08 : 0.92;
+    aplicar();
+  }, { passive: false });
+
+  /**
+   * Arrastrar para mover, y dos dedos para acercar.
+   *
+   * El arrastre se traduce a porcentajes de lo que SOBRA de la imagen fuera
+   * del recuadro: si no sobra nada por un lado, por ese lado no hay nada que
+   * mover y el dedo no la corre. Es la cuenta del archivo de diseño.
+   */
+  const dedos = new Map();
+  let pellizco = 0;
+  let alEmpezarElPellizco = 1;
+  let arrastre = null;
+
+  caja.addEventListener('pointerdown', (ev) => {
+    caja.setPointerCapture(ev.pointerId);
+    dedos.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (dedos.size === 1) {
+      arrastre = { x: ev.clientX, y: ev.clientY, desdeX: encuadre.x, desdeY: encuadre.y };
+      caja.classList.add('arrastrando');
+    } else if (dedos.size === 2) {
+      const p = [...dedos.values()];
+      pellizco = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      alEmpezarElPellizco = encuadre.zoom;
+    }
+  });
+
+  caja.addEventListener('pointermove', (ev) => {
+    if (!dedos.has(ev.pointerId)) return;
+    dedos.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (dedos.size === 2) {
+      const p = [...dedos.values()];
+      const ahora = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      if (pellizco > 0) { encuadre.zoom = alEmpezarElPellizco * ahora / pellizco; aplicar(); }
+      return;
+    }
+    if (!arrastre) return;
+    const r = caja.getBoundingClientRect();
+    const anchoDeLaFoto = (cubre * encuadre.zoom / 100) * r.width;
+    const altoDeLaFoto = natural.ancho ? anchoDeLaFoto * (natural.alto / natural.ancho) : r.height;
+    const sobraAlAncho = anchoDeLaFoto - r.width;
+    const sobraAlAlto = altoDeLaFoto - r.height;
+    const dx = ev.clientX - arrastre.x;
+    const dy = ev.clientY - arrastre.y;
+    encuadre.x = arrastre.desdeX - (sobraAlAncho > 1 ? (dx / sobraAlAncho) * 100 : 0);
+    encuadre.y = arrastre.desdeY - (sobraAlAlto > 1 ? (dy / sobraAlAlto) * 100 : 0);
+    aplicar();
+  });
+
+  const soltar = (ev) => {
+    dedos.delete(ev.pointerId);
+    if (dedos.size < 2) pellizco = 0;
+    if (dedos.size === 0) { arrastre = null; caja.classList.remove('arrastrando'); }
+  };
+  caja.addEventListener('pointerup', soltar);
+  caja.addEventListener('pointercancel', soltar);
+  caja.addEventListener('lostpointercapture', soltar);
+
+  // Si la ventana cambia de tamaño, el recuadro también: hay que recalcular
+  // cuánto tiene que cubrir la imagen o aparecen bordes blancos
+  const alCambiarDeTamano = () => { cubre = cuantoCubre(caja, natural); aplicar(); };
+  window.addEventListener('resize', alCambiarDeTamano);
+
+  document.getElementById('encRestablecer').addEventListener('click', () => {
+    Object.assign(encuadre, { zoom: 1, x: 50, y: 50, brillo: 100, contraste: 100 });
+    mandos.brillo.value = 100;
+    mandos.contraste.value = 100;
+    aplicar();
+  });
+
+  if (guardar) {
+    guardar.addEventListener('click', async () => {
+      guardar.disabled = true;
+      try {
+        await api('PUT', `/credenciales/${c.id}`, {
+          foto_zoom: Number(encuadre.zoom.toFixed(3)),
+          foto_x: Number(encuadre.x.toFixed(2)),
+          foto_y: Number(encuadre.y.toFixed(2)),
+          foto_brillo: encuadre.brillo,
+          foto_contraste: encuadre.contraste,
+          version: c.version,
+        });
+        toast('Encuadre guardado');
+        window.removeEventListener('resize', alCambiarDeTamano);
+        route();
+      } catch (e) {
+        guardar.disabled = false;
         toast(e.message, true);
       }
     });
@@ -4841,9 +5111,12 @@ async function viewPrint(name, id) {
     content().innerHTML = `<p>${esc(e.message)}</p>`;
     return;
   }
+  // La credencial pastoral no se arma con la fila a secas: necesita el código
+  // QR, que se firma en el servidor, y los recursos institucionales.
+  if (name === 'credenciales') return viewImprimirCredencial(id);
+
   let sheet;
   if (name === 'certificados') sheet = printCertificado(row);
-  else if (name === 'credenciales') sheet = printCredencial(row);
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas');
   else if (name === 'servicios') sheet = printServicio(m, row);
   else sheet = printGenerico(m, row);
@@ -4891,36 +5164,368 @@ function printCertificado(row) {
     </div>`;
 }
 
-function printCredencial(row) {
-  const foto = row.foto
-    ? `<img src="/uploads/${esc(row.foto)}" alt="Foto" />`
-    : `<div class="nofoto">👤</div>`;
-  return `
-    <div class="print-sheet" style="padding:30px;background:transparent;border:none;box-shadow:none">
-      <div class="cred-card">
-        <div class="cred-head">
-          <div>
-            <div class="t">${esc(IGLESIA.nombre)}</div>
-            <div class="n">${esc(iglesiaDeTrabajo(row.iglesia_id_label))} · Credencial de ${esc(row.tipo || '')}</div>
-          </div>
-          <img class="cred-logo" src="${IGLESIA.logo}" alt="" />
-        </div>
-        <div class="cred-body">
-          ${foto}
-          <div class="cred-data">
-            <div class="nm">${esc(row.nombre_titular || '')}</div>
-            <div><span class="lbl">Cargo:</span> ${esc(row.cargo || row.tipo || '')}</div>
-            <div><span class="lbl">N.º:</span> ${esc(row.numero || '')}</div>
-            <div><span class="lbl">Emitida:</span> ${fechaCorta(row.fecha_emision)}</div>
-            <div><span class="lbl">Vence:</span> ${fechaCorta(row.fecha_vencimiento) || 'Indefinida'}</div>
-          </div>
-        </div>
-        <div class="cred-foot">
-          <span>Estado: ${esc(row.estado || '')}</span>
-          <span>Firma autorizada: ______________</span>
-        </div>
+/* =====================================================================
+ * La credencial pastoral impresa
+ *
+ * El anverso y el reverso salen UNIDOS EN UNA SOLA PIEZA PLEGABLE, en una sola
+ * página tamaño Carta: se recorta por la línea exterior, se dobla por la del
+ * centro, se pegan las dos caras y se plastifica. Cada cara mide exactamente
+ * 54 × 86 mm.
+ *
+ * El reverso va ARRIBA y girado 180°, y el anverso abajo. Así, al doblar hacia
+ * atrás por el pliegue, el reverso queda derecho detrás del anverso. Parece un
+ * detalle y es lo que hace que la tarjeta se pueda armar.
+ *
+ * La estructura y los estilos son los del archivo de diseño aprobado
+ * (docs/credencial-pastor.html), trasladados sin rediseñar nada. Lo que cambia
+ * respecto de ese archivo es de dónde salen los datos: allá se escribían a
+ * mano en la propia tarjeta; acá vienen de la credencial emitida y no se
+ * pueden tocar.
+ * ===================================================================== */
+
+/** El guilloché dorado del fondo: bandas de ondas finas entrecruzadas. */
+function pintarGuilloche(svg) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const grupos = [
+    { rot: -13, cx: 270, cy: 150, y0: 60, n: 30, sp: 8.2, amp: 46, wl: 300, ph: 0.0 },
+    { rot: 13, cx: 270, cy: 170, y0: 88, n: 30, sp: 8.2, amp: 42, wl: 270, ph: 1.4 },
+    { rot: 0, cx: 270, cy: 430, y0: 250, n: 26, sp: 9, amp: 30, wl: 340, ph: 0.7 },
+  ];
+  grupos.forEach((g) => {
+    const grp = document.createElementNS(NS, 'g');
+    grp.setAttribute('transform', `rotate(${g.rot} ${g.cx} ${g.cy})`);
+    grp.setAttribute('fill', 'none');
+    grp.setAttribute('stroke', '#BF9E1E');
+    grp.setAttribute('stroke-width', '1.5');
+    grp.setAttribute('stroke-opacity', '0.5');
+    for (let i = 0; i < g.n; i++) {
+      let d = '';
+      for (let x = -140; x <= 700; x += 16) {
+        const y = g.y0 + i * g.sp + Math.sin((x / g.wl) * Math.PI * 2 + g.ph + i * 0.1) * g.amp;
+        d += (d ? ' L ' : 'M ') + x + ' ' + y.toFixed(1);
+      }
+      const path = document.createElementNS(NS, 'path');
+      path.setAttribute('d', d);
+      grp.appendChild(path);
+    }
+    svg.appendChild(grp);
+  });
+}
+
+/**
+ * El texto que no cabe se achica antes de partirse en dos líneas.
+ *
+ * Es la misma lógica del archivo de diseño: primero se reduce la letra hasta
+ * un mínimo razonable, y solo si aun así no entra se permiten dos líneas.
+ * Sin esto, un apellido largo se sale del recuadro y pisa lo de al lado.
+ */
+function ajustarAlAncho(el) {
+  el.classList.remove('dos-lineas');
+  el.style.fontSize = '';
+  const base = parseFloat(getComputedStyle(el).fontSize);
+  const min = base * 0.6;
+  let size = base;
+  let guarda = 0;
+  while (el.scrollWidth > el.clientWidth + 1 && size > min && guarda < 120) {
+    size -= 0.5;
+    el.style.fontSize = size + 'px';
+    guarda++;
+  }
+  if (el.scrollWidth > el.clientWidth + 1) el.classList.add('dos-lineas');
+}
+
+/**
+ * El diseño de la credencial se trae solo donde se dibuja, y se suelta al salir.
+ *
+ * public/credencial.css está copiado tal cual del original aprobado, y ese
+ * original era una página suelta: nombra `.card`, `.toolbar` y `@page` a secas,
+ * porque en su hoja no había nada más que la credencial. Cargado junto con el
+ * resto del sistema le gana a styles.css por venir después, y entonces TODAS
+ * las tarjetas del programa pasan a medir 54 × 86 mm con zoom 1,9. Pasó: el
+ * listado de miembros quedó dentro de un rectángulo del tamaño de una tarjeta.
+ *
+ * Antes que retocar el diseño —que no se toca—, se carga solo cuando hace
+ * falta. Devuelve una promesa porque las medidas se toman apenas se pinta la
+ * tarjeta, y medir antes de que llegue la hoja da números que no son.
+ */
+function estiloDeCredencial() {
+  const puesto = document.getElementById('estiloCredencial');
+  if (puesto) return puesto.dataset.listo ? Promise.resolve() : esperarQueCargue(puesto);
+  const hoja = document.createElement('link');
+  hoja.id = 'estiloCredencial';
+  hoja.rel = 'stylesheet';
+  hoja.href = `/credencial.css?v=${VERSION_DEL_SISTEMA}`;
+  document.head.appendChild(hoja);
+  return esperarQueCargue(hoja);
+}
+
+function esperarQueCargue(hoja) {
+  return new Promise((listo) => {
+    const terminar = () => { hoja.dataset.listo = '1'; listo(); };
+    hoja.addEventListener('load', terminar, { once: true });
+    // Si no llega, se sigue igual: mejor la credencial sin estilo que colgada
+    hoja.addEventListener('error', terminar, { once: true });
+    setTimeout(terminar, 4000);
+  });
+}
+
+/** Soltarla al salir, para que deje de pisar al resto del sistema. */
+function soltarEstiloDeCredencial() {
+  const puesto = document.getElementById('estiloCredencial');
+  if (puesto) puesto.remove();
+}
+
+/**
+ * El número de versión, sacado de la dirección con que se pidió este mismo
+ * guion (`/app.js?v=1.76.0`). Lo necesita la hoja de estilos que se carga a
+ * mano, para que al publicar una versión nueva no llegue la guardada.
+ */
+const VERSION_DEL_SISTEMA = (() => {
+  const yo = document.querySelector('script[src*="/app.js"]');
+  const cual = /[?&]v=([^&]+)/.exec((yo && yo.getAttribute('src')) || '');
+  return cual ? cual[1] : '';
+})();
+
+/** La pantalla completa de impresión de una credencial. */
+async function viewImprimirCredencial(id) {
+  await estiloDeCredencial();
+  content().innerHTML = '<div class="card"><div class="card-body">Preparando la credencial…</div></div>';
+  let d;
+  try {
+    d = await api('GET', `/credenciales/${id}/impresion`);
+  } catch (e) {
+    content().innerHTML = `<div class="card"><div class="card-body" style="color:var(--danger)">${esc(e.message)}</div></div>`;
+    return;
+  }
+
+  const c = d.credencial;
+  const logo = IGLESIA.logo;
+  const sello = '/api/configuracion/recurso/sello';
+  const firma = '/api/configuracion/recurso/firma';
+
+  if (d.recursos_que_faltan.length) {
+    content().innerHTML = `
+      <div class="print-actions no-print">
+        <button class="btn secondary" data-ir="#/m/credenciales/ficha/${id}">← Volver</button>
       </div>
+      <div class="cred-ayuda">
+        <b>No se puede imprimir todavía.</b> Falta cargar ${esc(d.recursos_que_faltan.join(', '))}
+        en Configuración del Sistema. La credencial lleva el logo, el sello y la firma del Pastor
+        Presidente: sin ellos no es un documento válido.
+      </div>`;
+    return;
+  }
+
+  // El número de serie repetido en vertical junto a la foto, como control
+  // cruzado con el del reverso (elemento de seguridad del punto 11.9)
+  const serieVertical = c.serie_completa ? `N°${c.serie_completa}  `.repeat(6) : '';
+
+  const qr = d.qr.hay
+    ? `<svg viewBox="0 0 ${d.qr.size} ${d.qr.size}" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+         <rect width="${d.qr.size}" height="${d.qr.size}" fill="#fff"/>
+         <path d="${d.qr.path}" fill="#000"/>
+       </svg>`
+    : '<span class="qr-falta">DATOS<br>INCOMPLETOS</span>';
+
+  const fechaImpresa = (iso) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    if (!m) return '';
+    const MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+    return `${m[3]} / ${MESES[Number(m[2]) - 1]} / ${m[1]}`;
+  };
+
+  content().innerHTML = `
+    <div class="print-actions no-print">
+      <button class="btn secondary" data-ir="#/m/credenciales/ficha/${id}">← Volver</button>
+      <button class="btn" id="credImprimir">🖨️ Imprimir</button>
+    </div>
+
+    <div class="cred-ayuda no-print">
+      <b>Antes de imprimir, en el cuadro de la impresora:</b>
+      <ul>
+        <li>Escala <b>100 %</b> (tamaño real). Si dice «ajustar a la página», cámbielo.</li>
+        <li><b>Gráficos de fondo</b> activados: de eso dependen el guilloché, el sello y las franjas doradas.</li>
+        <li>Tamaño de papel <b>Carta</b>. Todo cabe en una sola página.</li>
+      </ul>
+      Después: <b>recorte</b> por la línea exterior, <b>doble</b> por la del centro, <b>pegue</b> las dos caras
+      entre sí y <b>plastifique</b>. La tarjeta terminada mide 54 × 86 mm.
+      ${!d.qr.hay ? `<br><b>⚠️ Sin código QR:</b> falta ${esc((d.qr.falta || []).join(', '))}.` : ''}
+      <br><span class="mut">Para guardarla como PDF, elija «Guardar como PDF» en el destino de la impresora:
+      sale idéntica, porque la produce el mismo motor que imprime.</span>
+    </div>
+
+    <!-- Todo el diseño va dentro de .cred-disenio: es lo que hace que sus
+         reglas —que se llaman .card, .titulo, .datos— valgan solo acá dentro
+         y no pisen las del sistema. -->
+    <div class="cred-disenio">
+    <main class="lienzo">
+      <div class="plegable">
+
+        <section class="pieza pieza-frente">
+          <div class="etiqueta">ANVERSO</div>
+          <article class="card frente">
+            <svg class="ondas" viewBox="0 0 540 860" preserveAspectRatio="none" aria-hidden="true"></svg>
+            <img class="logo-img marca-agua" src="${logo}" alt="" aria-hidden="true">
+
+            <div class="logoc"><img class="logo-img" src="${logo}" alt="${esc(IGLESIA.nombre)}"></div>
+
+            <div class="titulo">CREDENCIAL PASTORAL</div>
+            <div class="microtexto" aria-hidden="true">${
+              ('IGLESIA&nbsp;PENTECOSTAL&nbsp;TRIUNFANTE·LA&nbsp;NUEVA&nbsp;JERUSAL&Eacute;N·PERS.&nbsp;JUR.&nbsp;' +
+               d.institucion.personalidad_juridica + '·CREDENCIAL&nbsp;PASTORAL·').repeat(3)}</div>
+
+            <div class="cuerpo">
+              <div class="serie-vert" aria-hidden="true">${esc(serieVertical)}</div>
+              <div class="col-izq">
+                <figure class="foto ${c.snap_foto ? 'con-foto' : ''}" id="credFoto">
+                  <div class="foto-capa" id="credFotoCapa"></div>
+                  ${c.snap_foto ? '' : '<figcaption class="foto-hint">FOTOGRAF&Iacute;A<br>3 &times; 4</figcaption>'}
+                </figure>
+              </div>
+              <img class="sello-foto" src="${sello}" alt="" aria-hidden="true">
+
+              <div class="datos ${c.snap_funcion ? '' : 'sin-cargo'}">
+                <div class="campo">
+                  <span class="lbl">Grado:</span>
+                  <span class="valor">${esc(c.snap_grado || '')}</span>
+                </div>
+                <div class="campo campo-opcional ${c.snap_funcion ? '' : 'vacio'}">
+                  <span class="lbl">Cargo:</span>
+                  <span class="valor">${esc(c.snap_funcion || '')}</span>
+                </div>
+                <div class="campo campo-destacado">
+                  <span class="lbl">Nombres:</span>
+                  <span class="valor">${esc(c.snap_nombres || '')}</span>
+                </div>
+                <div class="campo campo-destacado">
+                  <span class="lbl">Apellidos:</span>
+                  <span class="valor">${esc(c.snap_apellidos || '')}</span>
+                </div>
+                <div class="campo">
+                  <span class="lbl">RUT:</span>
+                  <span class="valor mono">${esc(c.snap_rut || '')}</span>
+                </div>
+                <div class="campo campo-iglesia">
+                  <span class="lbl">Iglesia:</span>
+                  <span class="iglesia-fila">
+                    <span class="cat-iglesia">${esc(c.snap_categoria || '')}</span>
+                    <span class="valor">${esc(c.snap_iglesia || '')}</span>
+                  </span>
+                </div>
+                <div class="campo">
+                  <span class="lbl">Comuna:</span>
+                  <span class="valor">${esc(c.snap_comuna || '')}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="cruces"></div>
+            <div class="base-oro"></div>
+          </article>
+        </section>
+
+        <section class="pieza pieza-reverso">
+          <div class="etiqueta">REVERSO</div>
+          <article class="card reverso">
+            <svg class="ondas" viewBox="0 0 540 860" preserveAspectRatio="none" aria-hidden="true"></svg>
+            <div class="ghost-marco ${c.snap_foto ? 'activa' : ''}" aria-hidden="true">
+              <div class="foto-ghost" id="credFotoGhost"></div>
+            </div>
+
+            <div class="logoc"><img class="logo-img" src="${logo}" alt=""></div>
+            <div class="tit-rev">REGISTRO Y VIGENCIA<br>DE CREDENCIAL</div>
+
+            <div class="rdatos">
+              <div class="rlinea">
+                <span class="rlbl">N&deg; DE SERIE:</span>
+                <span class="serie-wrap">
+                  <span class="rval mono">${esc(c.serie || '')}</span>
+                  <span class="dv-serie mono">${c.serie_dv ? '-' + esc(c.serie_dv) : ''}</span>
+                </span>
+              </div>
+              <div class="rlinea">
+                <span class="rlbl">FECHA DE ENTREGA:</span>
+                <span class="rval">${esc(fechaImpresa(c.fecha_emision))}</span>
+              </div>
+              <div class="rlinea">
+                <span class="rlbl">FECHA DE VENCIMIENTO:</span>
+                <span class="rval">${esc(fechaImpresa(c.fecha_vencimiento))}</span>
+              </div>
+            </div>
+
+            <div class="ff">
+              <div class="firma">
+                <img class="firma-img" src="${firma}" alt="Firma del Pastor Presidente">
+                <div class="espacio"></div>
+                <div class="linea">
+                  <div class="l1">FIRMA</div>
+                  <div class="l2">PASTOR PRESIDENTE</div>
+                </div>
+              </div>
+              <figure class="sello-box"><img class="sello-real" src="${sello}" alt="Sello oficial"></figure>
+            </div>
+
+            <div class="pj">PERSONALIDAD JUR&Iacute;DICA N&deg; ${esc(d.institucion.personalidad_juridica)}</div>
+            <div class="pj-sub">IGLESIA CENTRAL CONCEPCI&Oacute;N</div>
+
+            <div class="leyenda">
+              EMITIDA EN CONCEPCI&Oacute;N, CHILE &middot; V&Aacute;LIDA PARA EL MINISTERIO RELIGIOSO.<br>
+              SE ANULA SI PRESENTA ENMIENDAS O ADULTERACIONES.<br>
+              DEVOLVER A LA IGLESIA SI ES ENCONTRADA.
+            </div>
+
+            <div class="barra">
+              <div class="qr-holder ${d.qr.hay ? '' : 'incompleto'}">${qr}</div>
+              <div class="barra-txt">
+                <span class="mini">ESCANEE PARA VERIFICAR LOS DATOS</span>
+                <span class="mini-cod">El c&oacute;digo &laquo;C:&raquo; valida su contenido</span>
+                <span class="mini-wa">WhatsApp&nbsp;+56&nbsp;9&nbsp;7172&nbsp;7872</span>
+              </div>
+            </div>
+          </article>
+        </section>
+
+      </div>
+    </main>
     </div>`;
+
+  // El fondo guilloché de las dos caras
+  content().querySelectorAll('svg.ondas').forEach(pintarGuilloche);
+
+  /**
+   * La fotografía, con el encuadre que quedó guardado al emitirla.
+   *
+   * Se pinta con las mismas tres funciones que usan los mandos del encuadre
+   * —urlDeLaFoto, cuantoCubre y pintarLaFoto—, y no con una cuenta parecida
+   * escrita acá. Si fueran dos cuentas distintas, lo que se encuadró en
+   * pantalla no sería lo que sale impreso, y esa diferencia no se ve hasta
+   * tener el papel en la mano.
+   */
+  if (c.snap_foto) {
+    const caja = document.getElementById('credFoto');
+    const capa = document.getElementById('credFotoCapa');
+    const ghost = document.getElementById('credFotoGhost');
+    const url = urlDeLaFoto(c);
+    capa.style.backgroundImage = `url("${url}")`;
+    if (ghost) ghost.style.backgroundImage = `url("${url}")`;
+    const natural = await medirLaImagen(url);
+    pintarLaFoto(capa, encuadreGuardado(c), cuantoCubre(caja, natural));
+  }
+
+  // Los textos largos se ajustan para no salirse de su recuadro
+  const ajustables = content().querySelectorAll('.valor, .rval, .titulo');
+  ajustables.forEach(ajustarAlAncho);
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => ajustables.forEach(ajustarAlAncho));
+  }
+
+  document.getElementById('credImprimir').addEventListener('click', () => {
+    document.body.classList.add('imprimiendo-credencial');
+    // Queda anotado quién la imprimió y cuándo (punto 15.7)
+    api('POST', `/credenciales/${id}/impresa`).catch(() => {});
+    window.print();
+    setTimeout(() => document.body.classList.remove('imprimiendo-credencial'), 1500);
+  });
 }
 
 function printActa(m, row, esAsamblea) {

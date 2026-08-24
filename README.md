@@ -1322,18 +1322,21 @@ CHROMIUM=/ruta/al/chrome npm run humo                   # si ya hay un Chromium 
 
 Cualquier módulo nuevo queda cubierto solo: la lista de pantallas sale del propio sistema, no de un listado escrito a mano. Playwright es dependencia de desarrollo y **no viaja en la imagen de producción**.
 
-Las otras cuatro pruebas miran lo que la de humo no ve, y ninguna necesita navegador:
+Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesita navegador:
 
 - `npm run concurrencia` — que nadie pierda su trabajo cuando dos trabajan sobre lo mismo, incluida la lista de asistencia que pasan dos (ver *[Varias personas trabajando a la vez](#varias-personas-trabajando-a-la-vez-)*).
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro. Con `PREPARAR=1` llena la base con 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos para que la medición diga algo — y por eso **se niega a hacerlo si la base tiene fichas que no generó ella**: esos datos van directo a la base, sin pasar por el sistema, y una base con datos de una iglesia no se toca. Para medir, use una base aparte: `DATA_DIR=/tmp/carga`.
 
   `LIMPIAR=1 npm run carga` dice cuántos datos de prueba hay en una base y cuántas fichas son de verdad, sin borrar nada; `LIMPIAR=borrar` los borra. Se reconocen por sus señas: los RUT del 30.000.000 en adelante —un tramo que no está en uso—, los cuerpos «Cuerpo de prueba N» y los movimientos «Movimiento de prueba N».
-- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 75 comprobaciones y corren en menos de un segundo. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 265 comprobaciones y corren en poco más de un segundo. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
 
   Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
 
   Varias están escritas alrededor de errores que de verdad ocurrieron: la etiqueta que mostraba solo los apellidos, la iglesia principal que acotaba sin decirlo, la excepción de permisos que tiene que poder **quitar** y no solo dar. Agregar un `algo.test.js` en `pruebas/motor/` lo incorpora solo.
 - `npm run seguridad` — que los archivos no se entreguen sin sesión ni se abran como página, que no se pueda subir una página web —ni disfrazada de foto—, que el pase de sesión no sirva escrito en la dirección, que la entrada se cierre al que insiste, que el respaldo se baje entero y sano, que la copia automática se haga y se pueda volver a ella, que la planilla nunca traiga una fila que la pantalla no muestre, que lo que se borra quede anotado en cualquier módulo y sus archivos se vayan con la ficha, que cambiar la contraseña cierre las sesiones abiertas —incluso cuando la restablece el administrador— sin dejar afuera a quien la cambió, que el navegador reciba sus reglas de seguridad, que el registro de cambios no se pueda maquillar, que el alcance por cuerpo se respete aunque se escriba la dirección a mano —su gente, sus cuotas y su cobro— y que elegir con qué iglesia trabajar nunca amplíe lo asignado. Son cosas que, si un día se rompen, no se rompen a la vista: todo seguiría pareciendo normal.
+- `npm run credencial` — **la credencial pastoral, medida sobre el papel**. No mira el HTML: le pide el PDF al navegador, lo rasteriza a 300 puntos por pulgada y mide sobre la imagen. Comprueba que cada cara mida 54 × 86 mm con regla, que la pieza plegable mida 172 mm y el pliegue caiga al centro, que el reverso salga girado 180°, que todo entre en una sola hoja Carta, que la fotografía salga con el encuadre que se guardó y cubriendo su recuadro, que ningún texto se salga ni pise otro —con un nombre larguísimo y con tildes y eñes— y, sobre todo, **que el código QR se decodifique**: primero en limpio y después con la tinta corrida 0,12 mm, que es lo que hace una impresora de inyección cuando el papel absorbe. De ahí sale además la medida de cada módulo del QR, tomada sobre la tinta y no sobre la hoja de estilos; así se descubrió que el servidor anunciaba un módulo un 4 % más grande del que salía impreso, porque no descontaba el relleno del recuadro.
+
+  Necesita el sistema andando y una credencial emitida: `URL=http://localhost:3000 RUT=… CLAVE=… CRED=12 npm run credencial`. Sus tres dependencias —`pdfjs-dist` para interpretar el PDF, `@napi-rs/canvas` para dibujarlo y `jsqr` para leerlo— son de desarrollo y no viajan a producción.
 
 ## API REST
 
@@ -1509,6 +1512,7 @@ Lo que lo hace posible:
 
 ```bash
 npm run humo            # todas las pantallas abren bien, en computador y en teléfono
+npm run credencial      # la credencial impresa mide lo que tiene que medir y su QR se lee
 npm run concurrencia    # dos personas sobre la misma ficha y sobre la misma lista
 npm run seguridad       # lo que tiene que estar cerrado, está cerrado
 npm run carga           # cuánto demora cada cosa con varios usuarios a la vez

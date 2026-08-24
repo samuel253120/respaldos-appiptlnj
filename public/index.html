@@ -10,6 +10,13 @@
   <meta name="apple-mobile-web-app-title" content="La Nueva Jerusalén" />
   <title>IPT La Nueva Jerusalén — Sistema de Gestión</title>
   <link rel="stylesheet" href="/styles.css?v=__VERSION__" />
+  <!-- El diseño de la credencial —public/credencial.css— NO se carga acá.
+       Está copiado tal cual del original aprobado, y ese original era una
+       página suelta: nombra .card, .toolbar y @page sin acotar, porque en su
+       hoja no había nada más. Cargándolo aquí le gana al sistema por venir
+       después, y todas las tarjetas del programa pasan a medir 54 × 86 mm.
+       Se pide desde app.js solo en las dos pantallas donde se dibuja la
+       credencial, y se suelta al salir. -->
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/icons/icon-180.png" />
   <link rel="icon" href="/favicon.ico" sizes="any" />

@@ -1,6 +1,6 @@
 {
   "name": "sistema-gestion-iglesias",
-  "version": "1.75.0",
+  "version": "1.76.0",
   "description": "Sistema integral para la gestión de múltiples iglesias: miembros, cuerpos, asistencias, tesorería, inventarios, actas, documentos, ayudas sociales, certificados, credenciales, solicitudes y usuarios.",
   "main": "server/index.js",
   "scripts": {
@@ -11,7 +11,8 @@
     "carga": "node pruebas/carga.js",
     "concurrencia": "node pruebas/concurrencia.js",
     "seguridad": "node pruebas/seguridad.js",
-    "motor": "node pruebas/motor.js"
+    "motor": "node pruebas/motor.js",
+    "credencial": "node pruebas/credencial-impresa.js"
   },
   "engines": {
     "node": "22.x"
@@ -26,6 +27,9 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@napi-rs/canvas": "^1.0.7",
+    "jsqr": "^1.4.0",
+    "pdfjs-dist": "^6.2.108",
     "playwright": "^1.62.1"
   }
 }
