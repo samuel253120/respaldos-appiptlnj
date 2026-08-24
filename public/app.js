@@ -966,7 +966,8 @@ function abrirRecuperacion(rutInicial) {
  * su cuenta de usuario queda al día sola.
  */
 async function viewMiPerfil(precarga) {
-  const pestana = (precarga && precarga.tab) === 'seguridad' ? 'seguridad' : 'datos';
+  const pedida = precarga && precarga.tab;
+  const pestana = pedida === 'seguridad' || pedida === 'avisos' ? pedida : 'datos';
   content().innerHTML = `
     <div class="page-head">
       <div>
@@ -3313,7 +3314,7 @@ async function abrirElPanelDeAvisos() {
           <div class="cam-f">${esc(cuandoFue(a.created_at))}</div>
         </li>`).join('')}
     </ul>` : '<div class="cam-vacio">No tiene avisos. Acá van a llegar.</div>'}
-    <div class="cam-pie"><a href="#/perfil">⚙️ Elegir qué avisos recibir</a></div>`;
+    <div class="cam-pie"><a href="#/perfil?tab=avisos">⚙️ Elegir qué avisos recibir</a></div>`;
 
   const todos = document.getElementById('camTodos');
   if (todos) {

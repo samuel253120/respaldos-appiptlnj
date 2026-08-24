@@ -122,22 +122,32 @@ const cuantosAparatos = (usuarioId) =>
  *
  * No se espera a que termine para responderle a nadie: quien crea el aviso ya
  * lo dejó guardado en el sistema, y esto es el extra.
+ *
+ * «comoMandarlo» solo existe para las pruebas: deja apuntar a un servicio de
+ * mentira levantado en la misma máquina. En el sistema andando nadie se lo
+ * pasa, y entonces web-push habla con el servicio de verdad del navegador.
  */
-async function empujar(usuarioId, { titulo, cuerpo, enlace, etiqueta }) {
+async function empujar(usuarioId, { titulo, cuerpo, enlace, etiqueta }, comoMandarlo) {
   const suyas = db.prepare('SELECT * FROM notificacion_suscripciones WHERE usuario_id = ?').all(usuarioId);
-  if (!suyas.length) return { mandados: 0, borrados: 0 };
+  if (!suyas.length) return { mandados: 0, borrados: 0, fallados: 0, porque: null };
   lasLlaves();
 
   const carga = JSON.stringify({ titulo, cuerpo: cuerpo || '', enlace: enlace || '/', etiqueta: etiqueta || 'aviso' });
   let mandados = 0;
   let borrados = 0;
+  // Un envío puede fallar sin que la suscripción esté muerta: el servicio del
+  // navegador caído, sin salida a internet, un cortafuegos. Eso hay que
+  // devolverlo, no confundirlo con «no hay ningún aparato».
+  let fallados = 0;
+  let porque = null;
 
   await Promise.all(
     suyas.map(async (s) => {
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          carga
+          carga,
+          comoMandarlo || undefined
         );
         db.prepare("UPDATE notificacion_suscripciones SET fallos = 0, ultimo_error = NULL, usada_en = datetime('now','localtime') WHERE id = ?").run(s.id);
         mandados++;
@@ -148,12 +158,15 @@ async function empujar(usuarioId, { titulo, cuerpo, enlace, etiqueta }) {
           borrados++;
           return;
         }
+        const razon = String((e && e.message) || e).slice(0, 200);
         db.prepare('UPDATE notificacion_suscripciones SET fallos = fallos + 1, ultimo_error = ? WHERE id = ?')
-          .run(String((e && e.message) || e).slice(0, 200), s.id);
+          .run(razon, s.id);
+        fallados++;
+        porque = porque || razon;
       }
     })
   );
-  return { mandados, borrados };
+  return { mandados, borrados, fallados, porque };
 }
 
 module.exports = { llavePublica, suscribir, desuscribir, cuantosAparatos, empujar };

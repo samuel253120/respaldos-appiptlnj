@@ -95,11 +95,16 @@ router.post('/avisos/probar', authRequired, async (req, res) => {
     etiqueta: 'prueba',
   });
   if (!r.mandados) {
-    return res.status(400).json({
-      error: r.borrados
-        ? 'Este aparato ya no estaba enganchado. Vuelva a activar los avisos.'
-        : 'No hay ningún aparato enganchado a su cuenta todavía.',
-    });
+    // Los tres motivos son distintos y se arreglan distinto: por eso no se
+    // responde lo mismo. Decir «no hay aparato» cuando sí lo hay manda a la
+    // persona a activar de nuevo algo que ya estaba bien.
+    let error = 'No hay ningún aparato enganchado a su cuenta todavía.';
+    if (r.fallados) {
+      error = `El aparato está enganchado, pero el aviso no pudo salir: ${r.porque}`;
+    } else if (r.borrados) {
+      error = 'Este aparato ya no estaba enganchado. Vuelva a activar los avisos.';
+    }
+    return res.status(400).json({ error });
   }
   res.json({ ok: true, ...r });
 });
