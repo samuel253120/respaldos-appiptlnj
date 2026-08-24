@@ -104,8 +104,28 @@ larga y no es suya. Se le puede poner un subdominio del dominio de la iglesia.
 
 **2. En el DNS del dominio**
 
-Esto se hace donde estén administrados los DNS de `lanuevajerusalen.cl` —NIC
-Chile, o la empresa que le lleva el dominio—. Agregue **un** registro:
+**Esto NO se hace en NIC Chile.** Es el error más común y el que hace perder
+más tiempo. NIC Chile solo guarda *cuáles* servidores mandan sobre el dominio;
+los registros en sí viven en esos servidores. Los de `lanuevajerusalen.cl` son:
+
+```
+ns1.dnsmisitio.net
+ns2.dnsmisitio.net
+ns3.dnsmisitio.net
+```
+
+Es decir, los de la empresa que le hospeda la página web. El registro hay que
+crearlo **en el panel de esa empresa** (cPanel → *Dominios* → **Editor de
+Zona**), o pidiéndoselo a su soporte. Lo que se agregue en NIC Chile no hace
+nada.
+
+Para saber en cualquier momento quién manda sobre el dominio:
+
+```bash
+nslookup -type=NS lanuevajerusalen.cl
+```
+
+Ya en el panel correcto, agregue **un** registro:
 
 | Campo | Qué poner |
 |---|---|
@@ -116,6 +136,11 @@ Chile, o la empresa que le lleva el dominio—. Agregue **un** registro:
 
 Tres cosas que suelen salir mal:
 
+- **Ojo con cómo el panel arma el nombre.** Casi todos los cPanel le agregan
+  solos el `.lanuevajerusalen.cl` a lo que usted escriba. Si escribe el nombre
+  completo, queda creado `gestion.lanuevajerusalen.cl.lanuevajerusalen.cl`, que
+  no le sirve a nadie. Escriba solo `gestion` y mire cómo queda en la lista
+  antes de guardar.
 - **No use un registro `A`** con una dirección IP. Railway cambia de IP y la
   dirección se le cae sin aviso.
 - **No puede haber otro registro con ese mismo nombre.** Si ya existe un
