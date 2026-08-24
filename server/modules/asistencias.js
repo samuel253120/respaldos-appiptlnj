@@ -20,6 +20,11 @@
  *   POST /asistencias/:id/lista   guarda todas las marcas de una vez
  *   GET  /asistencias/informe     informes y promedios (general, por cuerpo,
  *                                 por persona)
+ *   GET  /asistencias/hoja-mensual  la planilla mensual de un cuerpo: un día
+ *                                 por columna, para imprimir apaisada.
+ *                                 NO se llama «/planilla»: ese nombre ya lo usa
+ *                                 la bajada a Excel que el motor le da a todos
+ *                                 los módulos, y se lo comía antes de llegar acá
  */
 const nombres = require('../nombres');
 
@@ -475,6 +480,36 @@ module.exports = {
         marcas: marcasVisibles(actividad, db, req.user),
         ...conteo(actividad.id, db, suyos),
       });
+    });
+
+    // ---- La planilla mensual de un cuerpo ----
+    /**
+     * La planilla mensual de un cuerpo: una columna por día del mes, para
+     * imprimir apaisada. El cálculo está en server/planilla-asistencia.js;
+     * acá se comprueba lo que se pide y quién lo pide.
+     */
+    router.get('/asistencias/hoja-mensual', requirePerm('asistencias', 'view'), (req, res) => {
+      const alcance = require('../alcance');
+      const planillaDeAsistencia = require('../planilla-asistencia');
+
+      const cuerpoId = Number(req.query.cuerpo_id);
+      const mes = String(req.query.mes || '').slice(0, 7); // AAAA-MM
+      if (!cuerpoId) return res.status(400).json({ error: 'Falta indicar el cuerpo.' });
+      if (!planillaDeAsistencia.mesValido(mes)) {
+        return res.status(400).json({ error: 'El mes se indica como AAAA-MM (por ejemplo 2026-04).' });
+      }
+
+      const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
+      if (!cuerpo) return res.status(404).json({ error: 'Ese cuerpo no existe.' });
+      // El mismo alcance del resto —iglesia y cuerpo—: no se mira la planilla
+      // de un cuerpo ajeno. `getModule` se pide acá y no arriba para no cerrar
+      // un ciclo con el registro de módulos.
+      const { getModule } = require('../registry'); // tardío: evita ciclo con el registro
+      if (!alcance.alcanza(getModule('cuerpos'), cuerpo, req.user)) {
+        return res.status(403).json({ error: 'No tiene acceso a ese cuerpo.' });
+      }
+
+      res.json(planillaDeAsistencia.armar(db, cuerpo, mes));
     });
 
     // ---- Informes y promedios ----

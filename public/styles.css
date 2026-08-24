@@ -951,6 +951,65 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
   .print-sheet { border: none; box-shadow: none; }
 }
 
+
+/* ---------- La planilla mensual de un cuerpo ----------
+   La hoja de siempre, la que se llevaba a mano: los integrantes en las filas,
+   los treinta y un días del mes en las columnas. Sale apaisada porque de otra
+   forma no cabe, y las columnas de día se hacen angostas a propósito: lo que
+   va dentro es UNA letra. */
+.planilla-tit { text-align: center; letter-spacing: 0.5px; }
+.planilla-scroll { overflow-x: auto; }
+table.planilla-mes {
+  border-collapse: collapse; width: 100%; font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+table.planilla-mes th, table.planilla-mes td {
+  border: 1px solid #cbd2dd; padding: 2px 3px; text-align: center; white-space: nowrap;
+}
+table.planilla-mes thead th { background: #eef2ff; color: var(--marca-azul); font-weight: 700; }
+table.planilla-mes .col-n { width: 26px; color: var(--muted); }
+table.planilla-mes .col-nombre { text-align: left; padding-left: 7px; white-space: nowrap; }
+table.planilla-mes .col-dia { width: 17px; }
+table.planilla-mes .col-tot { width: 30px; font-weight: 600; }
+/* El día sin reunión va en gris y en blanco: no es que nadie fuera, es que no
+   hubo nada a lo que ir, y confundir las dos cosas arruina la planilla. */
+table.planilla-mes .sin-reunion { background: #f4f6f9; }
+table.planilla-mes td.marca { font-weight: 700; }
+table.planilla-mes .si  { color: #15803d; }
+table.planilla-mes .jus { color: #1d4ed8; }
+table.planilla-mes .no  { color: #b91c1c; }
+table.planilla-mes tbody tr:nth-child(even) td { background: #fbfcfe; }
+table.planilla-mes tbody tr:nth-child(even) td.sin-reunion { background: #eef1f6; }
+table.planilla-mes tfoot .pie td { background: #f8fafc; font-weight: 600; font-size: 10.5px; }
+table.planilla-mes tfoot .pie td:first-child { text-align: left; padding-left: 7px; letter-spacing: 0.3px; }
+table.planilla-mes tfoot .pie.si td  { color: #15803d; }
+table.planilla-mes tfoot .pie.jus td { color: #1d4ed8; }
+table.planilla-mes tfoot .pie.no td  { color: #b91c1c; }
+
+/* La planilla se imprime apaisada: treinta y un columnas de día más el nombre
+   no caben a lo alto de ninguna hoja. Se le baja el cuerpo de letra para que
+   entre en Carta, que es lo que hay en cualquier oficina, y se repite el
+   encabezado en cada página cuando el cuerpo tiene mucha gente. */
+@media print {
+  .planilla-hoja { padding: 0; }
+  .planilla-hoja .planilla-scroll { overflow: visible; }
+  table.planilla-mes { font-size: 7.5pt; }
+  table.planilla-mes th, table.planilla-mes td { padding: 1px 2px; }
+  /* El encabezado sí se repite en cada hoja: un cuerpo grande ocupa más de
+     una, y sin los números de los días arriba la segunda hoja no se entiende.
+     El pie se pasa a `table-row-group`, que NO es lo que trae de fábrica: un
+     `tfoot` es `table-footer-group` por defecto, y con eso Chrome lo reserva
+     para el final de la hoja y lo mandaba a una segunda página aunque
+     quedaran noventa milímetros libres debajo de la tabla. Como una fila más,
+     va justo después de la última persona, que es donde tiene que ir. */
+  table.planilla-mes thead { display: table-header-group; }
+  table.planilla-mes tfoot { display: table-row-group; }
+  table.planilla-mes tr { break-inside: avoid; }
+  table.planilla-mes .sin-reunion { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+@page planilla { size: Letter landscape; margin: 8mm; }
+.planilla-hoja { page: planilla; }
+
 /* ---------- Responsive / móvil ---------- */
 .menu-toggle { display: none; background: none; border: none; font-size: 22px; cursor: pointer; }
 .backdrop {

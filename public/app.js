@@ -5008,10 +5008,15 @@ async function renderInformeAsistencia(contenedor, precarga) {
     miembro_id: (precarga && precarga.miembro_id) || '',
     desde: (precarga && precarga.desde) || '',
     hasta: (precarga && precarga.hasta) || '',
+    // La planilla mensual se pide por mes, no por un rango de fechas
+    mes: (precarga && precarga.mes) || new Date().toISOString().slice(0, 7),
   };
 
   contenedor.innerHTML = `
-    <div class="card">
+    <!-- La caja de los filtros no se imprime, y la tarjeta que la envuelve
+         tampoco: si queda en pie, aunque esté vacía, el navegador le reserva
+         una hoja antes del informe. -->
+    <div class="card no-print">
       <div class="toolbar" id="infFiltros"></div>
     </div>
     <div id="infResultado"><p style="padding:18px">Cargando…</p></div>`;
@@ -5025,9 +5030,10 @@ async function renderInformeAsistencia(contenedor, precarga) {
     <select id="infTipo">
       <option value="general" ${st.tipo === 'general' ? 'selected' : ''}>Informe general</option>
       <option value="cuerpo" ${st.tipo === 'cuerpo' ? 'selected' : ''}>Informe por cuerpo</option>
+      <option value="planilla" ${st.tipo === 'planilla' ? 'selected' : ''}>Planilla mensual</option>
       <option value="persona" ${st.tipo === 'persona' ? 'selected' : ''}>Informe por persona</option>
     </select>
-    <select id="infCuerpo" ${st.tipo === 'cuerpo' ? '' : 'hidden'}>
+    <select id="infCuerpo" ${st.tipo === 'cuerpo' || st.tipo === 'planilla' ? '' : 'hidden'}>
       <option value="">— Elija el cuerpo —</option>
       ${cuerpos.map((c) => `<option value="${c.id}" ${String(st.cuerpo_id) === String(c.id) ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
     </select>
@@ -5037,8 +5043,9 @@ async function renderInformeAsistencia(contenedor, precarga) {
       <button type="button" class="rb-x" title="Quitar" hidden>×</button>
       <ul class="rb-lista" hidden></ul>
     </div>
-    <label class="range">Desde <input type="date" id="infDesde" value="${esc(st.desde)}" /></label>
-    <label class="range">Hasta <input type="date" id="infHasta" value="${esc(st.hasta)}" /></label>
+    <label class="range" id="infMesCaja" ${st.tipo === 'planilla' ? '' : 'hidden'}>Mes <input type="month" id="infMes" value="${esc(st.mes)}" /></label>
+    <label class="range rango-fechas" ${st.tipo === 'planilla' ? 'hidden' : ''}>Desde <input type="date" id="infDesde" value="${esc(st.desde)}" /></label>
+    <label class="range rango-fechas" ${st.tipo === 'planilla' ? 'hidden' : ''}>Hasta <input type="date" id="infHasta" value="${esc(st.hasta)}" /></label>
     <span class="spacer"></span>
     <button class="btn sm" id="infVer">Ver informe</button>`;
 
@@ -5046,18 +5053,23 @@ async function renderInformeAsistencia(contenedor, precarga) {
 
   const sincronizar = () => {
     st.tipo = document.getElementById('infTipo').value;
-    document.getElementById('infCuerpo').hidden = st.tipo !== 'cuerpo';
+    // La planilla mensual también se pide por cuerpo, pero por mes y no por rango
+    document.getElementById('infCuerpo').hidden = st.tipo !== 'cuerpo' && st.tipo !== 'planilla';
     document.getElementById('rb_miembro_id').hidden = st.tipo !== 'persona';
+    document.getElementById('infMesCaja').hidden = st.tipo !== 'planilla';
+    filtros.querySelectorAll('.rango-fechas').forEach((l) => { l.hidden = st.tipo === 'planilla'; });
     st.cuerpo_id = document.getElementById('infCuerpo').value;
     st.miembro_id = document.querySelector('#rb_miembro_id input[type=hidden]').value;
     st.desde = document.getElementById('infDesde').value;
     st.hasta = document.getElementById('infHasta').value;
+    st.mes = document.getElementById('infMes').value;
   };
   document.getElementById('infTipo').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infCuerpo').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('rb_miembro_id').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infDesde').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infHasta').addEventListener('change', () => { sincronizar(); cargar(); });
+  document.getElementById('infMes').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infVer').addEventListener('click', () => { sincronizar(); cargar(); });
 
   const pct = (n) => `${String(n).replace('.', ',')}%`;
@@ -5090,8 +5102,123 @@ async function renderInformeAsistencia(contenedor, precarga) {
       </table></div>` : '<div class="empty-state" style="padding:22px">Sin datos en este período.</div>'}
     </div>`;
 
+  /**
+   * La planilla mensual del cuerpo, tal como se llevaba en la hoja de cálculo.
+   *
+   * Una fila por integrante, una columna por día del mes, y en el cruce la
+   * letra: S estuvo, J justificó, N faltó. En blanco los días sin reunión.
+   * A la derecha, cómo le fue a cada uno; al pie, cómo estuvo cada día.
+   *
+   * Sale apaisada: treinta y un columnas no caben de otra forma en una hoja.
+   */
+  function pintarPlanilla(d) {
+    const MESES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+      'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+    const titulo = `REGISTRO DE ASISTENCIAS · ${d.cuerpo.nombre.toUpperCase()} · ${MESES[d.numeroDeMes - 1]} ${d.anio}`;
+    const hubo = new Set(d.diasConReunion);
+    const pct = (n) => `${n}%`;
+
+    /** La celda de un día: con letra si hubo reunión, vacía si no. */
+    const celda = (p, dia) => {
+      if (!hubo.has(dia)) return '<td class="sin-reunion"></td>';
+      const l = p.marcas[dia];
+      return `<td class="marca ${l === 'S' ? 'si' : l === 'J' ? 'jus' : 'no'}">${l}</td>`;
+    };
+
+    /** Una fila del pie, con un número por día. */
+    const pie = (etiqueta, clase, saca) => `
+      <tr class="pie ${clase}">
+        <td colspan="2">${esc(etiqueta)}</td>
+        ${d.dias.map((dia) => hubo.has(dia)
+          ? `<td>${esc(String(saca(d.porDia[dia])))}</td>`
+          : '<td class="sin-reunion"></td>').join('')}
+        <td colspan="7"></td>
+      </tr>`;
+
+    const sinNada = !d.integrantes.length
+      ? '<div class="empty-state" style="padding:26px">Este cuerpo no tiene integrantes vigentes.</div>'
+      : !d.diasConReunion.length
+        ? '<div class="empty-state" style="padding:26px">No se pasó lista a este cuerpo en ese mes.</div>'
+        : '';
+
+    return `
+      <div class="informe-hoja planilla-hoja">
+        <div class="print-only membrete">
+          <img src="${IGLESIA.logo}" alt="" />
+          <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}</div>
+        </div>
+        <h3 class="informe-tit planilla-tit">${esc(titulo)}</h3>
+        ${sinNada || `
+        <div class="planilla-scroll">
+        <table class="planilla-mes">
+          <thead>
+            <tr>
+              <th class="col-n">N°</th>
+              <th class="col-nombre">NOMBRE Y APELLIDOS</th>
+              ${d.dias.map((dia) => `<th class="col-dia ${hubo.has(dia) ? '' : 'sin-reunion'}">${dia}</th>`).join('')}
+              <th class="col-tot" title="Reuniones que hubo en el mes">T.</th>
+              <th class="col-tot si" title="Veces que asistió">S</th>
+              <th class="col-tot si">% S</th>
+              <th class="col-tot jus" title="Veces que justificó">J</th>
+              <th class="col-tot jus">% J</th>
+              <th class="col-tot no" title="Veces que faltó">N</th>
+              <th class="col-tot no">% N</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${d.integrantes.map((p) => `
+              <tr>
+                <td class="col-n">${String(p.n).padStart(2, '0')}</td>
+                <td class="col-nombre">${esc(`${p.trato ? p.trato + ' ' : ''}${p.nombre}`)}</td>
+                ${d.dias.map((dia) => celda(p, dia)).join('')}
+                <td class="col-tot">${p.total}</td>
+                <td class="col-tot si">${p.presentes}</td>
+                <td class="col-tot si">${pct(p.pct_presente)}</td>
+                <td class="col-tot jus">${p.justificados}</td>
+                <td class="col-tot jus">${pct(p.pct_justificado)}</td>
+                <td class="col-tot no">${p.ausentes}</td>
+                <td class="col-tot no">${pct(p.pct_ausente)}</td>
+              </tr>`).join('')}
+          </tbody>
+          <tfoot>
+            ${pie('TOTAL INTEGRANTES', '', (x) => x.integrantes)}
+            ${pie('TOTAL ASISTENCIA', 'si', (x) => x.presentes)}
+            ${pie('PORCENTAJE ASISTENCIA', 'si', (x) => pct(x.pct_presente))}
+            ${pie('TOTAL JUSTIFICADOS', 'jus', (x) => x.justificados)}
+            ${pie('PORCENTAJE JUSTIFICACIÓN', 'jus', (x) => pct(x.pct_justificado))}
+            ${pie('TOTAL INASISTENCIA', 'no', (x) => x.ausentes)}
+            ${pie('PORCENTAJE INASISTENCIA', 'no', (x) => pct(x.pct_ausente))}
+          </tfoot>
+        </table>
+        </div>`}
+        <div class="informe-pie mut">
+          Emitido el ${fechaLarga(new Date().toISOString())} ·
+          <b>S</b> asistió · <b>J</b> justificó · <b>N</b> faltó · en blanco, ese día no hubo reunión del cuerpo.<br>
+          Salen los integrantes vigentes del cuerpo —activos y en período de prueba—. Un día en que hubo dos
+          actividades del cuerpo cuenta como una sola columna, con lo mejor de las dos.
+        </div>
+      </div>`;
+  }
+
   async function cargar() {
     const caja = contenedor.querySelector('#infResultado');
+    if (st.tipo === 'planilla') {
+      if (!st.cuerpo_id) {
+        caja.innerHTML = '<div class="card"><div class="empty-state" style="padding:26px">Elija un cuerpo para ver su planilla.</div></div>';
+        return;
+      }
+      caja.innerHTML = '<p style="padding:18px">Armando la planilla…</p>';
+      let pl;
+      try {
+        pl = await api('GET', `/asistencias/hoja-mensual?cuerpo_id=${encodeURIComponent(st.cuerpo_id)}&mes=${encodeURIComponent(st.mes)}`);
+      } catch (e) {
+        caja.innerHTML = `<p style="padding:18px;color:var(--danger)">${esc(e.message)}</p>`;
+        return;
+      }
+      INFORME = { planilla: pl, titulo: `Planilla mensual — ${pl.cuerpo.nombre}`, periodo: pl.mes };
+      caja.innerHTML = pintarPlanilla(pl);
+      return;
+    }
     if (st.tipo === 'cuerpo' && !st.cuerpo_id) {
       caja.innerHTML = '<div class="card"><div class="empty-state" style="padding:26px">Elija un cuerpo para ver su informe.</div></div>';
       return;
@@ -5225,6 +5352,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
  */
 function exportarInformeCSV() {
   if (!INFORME) return toast('Primero vea un informe.', true);
+  if (INFORME.planilla) return exportarPlanillaCSV(INFORME.planilla);
   const d = INFORME.datos;
   const comilla = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
   // En Chile el decimal se escribe con coma; el separador de columnas es ";"
@@ -5260,6 +5388,59 @@ function exportarInformeCSV() {
   const enlace = document.createElement('a');
   enlace.href = URL.createObjectURL(blob);
   enlace.download = `asistencia-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  setTimeout(() => URL.revokeObjectURL(enlace.href), 1000);
+  toast('Planilla descargada');
+}
+
+/**
+ * Baja la planilla mensual con la misma forma que tiene en pantalla: una
+ * columna por día, los totales de cada persona a la derecha y los del día
+ * abajo. Se abre en Excel y se puede seguir trabajando ahí, que es de donde
+ * venía esta planilla.
+ */
+function exportarPlanillaCSV(pl) {
+  const MESES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+    'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+  const comilla = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const hubo = new Set(pl.diasConReunion);
+  const lineas = [];
+
+  lineas.push([comilla(`REGISTRO DE ASISTENCIAS · ${pl.cuerpo.nombre.toUpperCase()} · ${MESES[pl.numeroDeMes - 1]} ${pl.anio}`)].join(';'));
+  lineas.push('');
+  lineas.push(['N°', 'NOMBRE Y APELLIDOS', ...pl.dias, 'T.', 'S', '% S', 'J', '% J', 'N', '% N'].map(comilla).join(';'));
+
+  for (const p of pl.integrantes) {
+    lineas.push([
+      comilla(String(p.n).padStart(2, '0')),
+      comilla(`${p.trato ? p.trato + ' ' : ''}${p.nombre}`),
+      ...pl.dias.map((dia) => comilla(hubo.has(dia) ? p.marcas[dia] : '')),
+      p.total, p.presentes, comilla(`${p.pct_presente}%`),
+      p.justificados, comilla(`${p.pct_justificado}%`),
+      p.ausentes, comilla(`${p.pct_ausente}%`),
+    ].join(';'));
+  }
+
+  const pie = (etiqueta, saca) => lineas.push([
+    comilla(''), comilla(etiqueta),
+    ...pl.dias.map((dia) => comilla(hubo.has(dia) ? saca(pl.porDia[dia]) : '')),
+  ].join(';'));
+  lineas.push('');
+  pie('TOTAL INTEGRANTES', (x) => x.integrantes);
+  pie('TOTAL ASISTENCIA', (x) => x.presentes);
+  pie('PORCENTAJE ASISTENCIA', (x) => `${x.pct_presente}%`);
+  pie('TOTAL JUSTIFICADOS', (x) => x.justificados);
+  pie('PORCENTAJE JUSTIFICACIÓN', (x) => `${x.pct_justificado}%`);
+  pie('TOTAL INASISTENCIA', (x) => x.ausentes);
+  pie('PORCENTAJE INASISTENCIA', (x) => `${x.pct_ausente}%`);
+
+  // El BOM hace que Excel reconozca las tildes
+  const blob = new Blob(['\ufeff' + lineas.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const enlace = document.createElement('a');
+  enlace.href = URL.createObjectURL(blob);
+  enlace.download = `asistencia-${pl.cuerpo.nombre.replace(/[^\w]+/g, '-').toLowerCase()}-${pl.mes}.csv`;
   document.body.appendChild(enlace);
   enlace.click();
   enlace.remove();
@@ -7552,14 +7733,18 @@ async function viewAsistencia(precarga) {
   }
 
   content().innerHTML = `
-    <div class="page-head">
+    <!-- El encabezado de la pantalla y sus pestañas no se imprimen: lo que se
+         imprime desde acá son los informes, y cada uno lleva su propio membrete
+         y su propio título. Antes se llevaban una hoja entera para decir
+         «Asistencia · Registrar · Informes». -->
+    <div class="page-head no-print">
       <div>
         <h2>📋 Asistencia</h2>
         <p class="sub-iglesia">Actividades, listas e informes</p>
       </div>
       <div class="actions" id="asisAcciones"></div>
     </div>
-    <div class="tabs" id="asisTabs">
+    <div class="tabs no-print" id="asisTabs">
       <button data-tab="registrar" class="${ASIS.tab === 'registrar' ? 'on' : ''}">🖐️ Registrar</button>
       <button data-tab="informes" class="${ASIS.tab === 'informes' ? 'on' : ''}">📈 Informes</button>
     </div>
