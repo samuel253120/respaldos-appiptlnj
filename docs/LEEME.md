@@ -41,3 +41,23 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 **Se pone una sola vez, al publicar.** Si se cambia después, los códigos de las
 credenciales ya impresas dejan de validar.
+
+### La página pública de verificación
+
+Al escanear el código QR de una credencial se abre `…/v/<número de serie>?c=<código>`
+**sin pedir sesión**: es la única dirección del sistema que muestra datos de una
+persona a quien no ha entrado. Conviene saber tres cosas de ella:
+
+- Sin el código correcto no muestra **nada**, y responde exactamente lo mismo
+  ante un número inventado que ante un número real con el código cambiado. Así,
+  probar números no sirve para averiguar qué credenciales existen.
+- Del RUT muestra solo los tres últimos dígitos y el verificador, para que quien
+  verifica los compare con la tarjeta que tiene en la mano.
+- Tiene un tope de intentos errados por minuto desde una misma conexión, que se
+  ajusta en **Configuración → Recursos de la credencial**. Solo cuentan los que
+  fallan: quien escanea credenciales de verdad puede verificar todas las que
+  quiera.
+
+Para que funcione hace falta que el sistema esté publicado en internet con un
+dominio: la dirección que va dentro del QR se arma con el dominio por el que se
+entró a emitir la credencial.

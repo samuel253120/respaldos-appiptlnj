@@ -1016,6 +1016,14 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
 .lista-errores b { color: inherit; }
 @media (max-width: 700px) { .mapeo { grid-template-columns: 1fr; } }
 
+/* ---------- Aviso de credenciales por renovar (punto 10.4) ---------- */
+/* Amarillo como los demás avisos del sistema, para que se lea «esto pide algo»
+   sin gritar: una credencial por vencer no es una emergencia, es una tarea. */
+.aviso-credenciales { border-left: 4px solid #f59e0b; margin-bottom: 18px; }
+.aviso-credenciales h3 { color: #92400e; }
+.aviso-credenciales > p { margin: 0 0 4px; font-size: 13px; line-height: 1.55; }
+.aviso-credenciales .mini-list li { cursor: pointer; }
+
 /* ---------- Aviso de mantenimiento ---------- */
 .aviso-mantenimiento {
   background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 10px;

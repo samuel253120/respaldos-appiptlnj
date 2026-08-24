@@ -158,13 +158,18 @@ function enLinea(fila, dominio) {
 }
 
 /**
- * El código de autenticidad para la verificación en línea.
+ * Qué se firma, exactamente, para la verificación en línea.
  *
- * Firma los datos completos, sin acortar: el servidor los tiene todos, así que
+ * Son los datos completos, sin acortar: el servidor los tiene todos, así que
  * no hay razón para verificar contra una versión recortada. El acortado es
  * cosa del tamaño impreso, no de qué credencial es esta.
+ *
+ * Está aparte del código porque la página pública de verificación necesita
+ * esta misma cadena para comprobar el sello que le llega
+ * (ver credenciales/verificacion.js). Escribirla dos veces sería pedir que un
+ * día dejen de coincidir y que ninguna credencial verifique.
  */
-function queCodigoLeToca(fila) {
+function datosQueSeFirman(fila) {
   const apellidos = limpiar(fila.snap_apellidos);
   const nombres = limpiar(fila.snap_nombres);
   const grado = limpiar(fila.snap_grado);
@@ -172,7 +177,12 @@ function queCodigoLeToca(fila) {
   const rut = limpiar(fila.snap_rut).replace(/[^0-9K]/g, '');
   const numero = serie.conDigito(fila.serie, fila.serie_dv);
   const vigencia = `${mesYAnio(fila.fecha_emision)}-${mesYAnio(fila.fecha_vencimiento)}`;
-  return codigo.firmar(`${apellidos} ${nombres}|${grado}|${rut}|${iglesia}|${numero}|${vigencia}|${PERSONALIDAD_JURIDICA}`);
+  return `${apellidos} ${nombres}|${grado}|${rut}|${iglesia}|${numero}|${vigencia}|${PERSONALIDAD_JURIDICA}`;
+}
+
+/** El código de autenticidad para la verificación en línea. */
+function queCodigoLeToca(fila) {
+  return codigo.firmar(datosQueSeFirman(fila));
 }
 
 /**
@@ -236,7 +246,7 @@ function para(fila, { modo, dominio } = {}) {
 }
 
 module.exports = {
-  para, sinConexion, enLinea, queCodigoLeToca, limpiar, mesYAnio, iniciales, recorta,
+  para, sinConexion, enLinea, queCodigoLeToca, datosQueSeFirman, limpiar, mesYAnio, iniciales, recorta,
   MAX_MODULOS, CORRECCION, SILENCIO, PERSONALIDAD_JURIDICA,
   RECUADRO_MM, RELLENO_MM, LADO_UTIL_MM, MINIMO_POR_MODULO_MM,
 };

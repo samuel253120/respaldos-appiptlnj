@@ -427,25 +427,41 @@ module.exports = {
 
     /** Las que están por vencer, para el aviso del panel (punto 10.4). */
     router.get('/credenciales/por-vencer', requirePerm('credenciales', 'view'), (req, res) => {
-      const params = [];
-      const donde = alcance.condiciones(module.exports, req.user, params);
-      const filas = db
-        .prepare(`SELECT * FROM credenciales WHERE estado = 'Vigente' ${donde ? 'AND ' + donde : ''} ORDER BY fecha_vencimiento`)
-        .all(...params);
-      res.json(
-        filas
-          .filter((f) => situacionDe(f) === 'Por vencer' || situacionDe(f) === 'Vencida')
-          .map((f) => ({
-            id: f.id,
-            serie: serieDe.conDigito(f.serie, f.serie_dv),
-            titular: `${f.snap_apellidos} ${f.snap_nombres}`.trim(),
-            vence: f.fecha_vencimiento,
-            situacion: situacionDe(f),
-          }))
-      );
+      res.json(porVencer(req.user));
     });
   },
 
   situacionDe,
+  porVencer,
   DIAS_POR_VENCER,
 };
+
+/**
+ * Las credenciales que hay que renovar: las que están por vencer y las vencidas.
+ *
+ * Sale de acá y no de la ruta porque la usan dos: la pantalla de credenciales y
+ * el aviso del panel (punto 10.4). Escrita dos veces, un día una de las dos se
+ * olvidaría de acotar por iglesia y el panel mostraría credenciales de otra.
+ *
+ * Vienen ordenadas por lo que vence primero, que es el orden en que hay que
+ * ocuparse de ellas.
+ */
+function porVencer(usuario) {
+  const { db } = require('../db');
+  const alcance = require('../alcance');
+  const serieDe = require('../credenciales/serie');
+
+  const params = [];
+  const donde = alcance.condiciones(module.exports, usuario, params);
+  return db
+    .prepare(`SELECT * FROM credenciales WHERE estado = 'Vigente' ${donde ? 'AND ' + donde : ''} ORDER BY fecha_vencimiento`)
+    .all(...params)
+    .filter((f) => situacionDe(f) === 'Por vencer' || situacionDe(f) === 'Vencida')
+    .map((f) => ({
+      id: f.id,
+      serie: serieDe.conDigito(f.serie, f.serie_dv),
+      titular: `${f.snap_apellidos} ${f.snap_nombres}`.trim(),
+      vence: f.fecha_vencimiento,
+      situacion: situacionDe(f),
+    }));
+}

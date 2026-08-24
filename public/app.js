@@ -1370,10 +1370,47 @@ async function viewDashboard() {
         <ul class="mini-list"><li class="mut">Todavía no hay miembros con fecha de nacimiento registrada</li></ul>
       </div>`;
 
+  /**
+   * Las credenciales que hay que renovar (punto 10.4).
+   *
+   * Va arriba de todo, antes que los números, porque es lo único del panel que
+   * pide hacer algo. Una credencial vencida no se nota: el papel sigue en el
+   * bolsillo y se ve igual de bien el día antes y el día después. Si esto no
+   * estuviera acá, nadie se enteraría hasta que a alguien se la rechazaran.
+   */
+  const porRenovar = d.credencialesPorVencer || [];
+  const yaVencidas = porRenovar.filter((c) => c.situacion === 'Vencida').length;
+  const CUANTAS_SE_MUESTRAN = 6;
+  const avisoCredenciales = porRenovar.length
+    ? `
+      <div class="card aviso-credenciales">
+        <h3>🪪 ${yaVencidas ? 'Credenciales vencidas y por vencer' : 'Credenciales por vencer'}</h3>
+        <p class="mut">
+          ${yaVencidas
+            ? `Hay <b>${yaVencidas}</b> credencial${yaVencidas === 1 ? '' : 'es'} <b>vencida${yaVencidas === 1 ? '' : 's'}</b>`
+            : `Hay <b>${porRenovar.length}</b> credencial${porRenovar.length === 1 ? '' : 'es'} próxima${porRenovar.length === 1 ? '' : 's'} a vencer`}${yaVencidas && yaVencidas < porRenovar.length ? ` y ${porRenovar.length - yaVencidas} por vencer` : ''}.
+          La nueva se emite desde la ficha de la persona; la anterior queda como reemplazada, no se borra.
+        </p>
+        <ul class="mini-list">
+          ${porRenovar.slice(0, CUANTAS_SE_MUESTRAN).map((c) => `
+            <li data-ir="#/m/credenciales/ficha/${c.id}">
+              <span>${esc(c.titular)} <span class="mut mono">— N.º ${esc(c.serie)}</span></span>
+              <span class="badge ${c.situacion === 'Vencida' ? 'gray' : 'amber'}">
+                ${esc(c.situacion)}${c.vence ? ` · ${fechaCorta(c.vence)}` : ''}
+              </span>
+            </li>`).join('')}
+          ${porRenovar.length > CUANTAS_SE_MUESTRAN
+            ? `<li class="mut" data-ir="#/m/credenciales">y ${porRenovar.length - CUANTAS_SE_MUESTRAN} más — ver todas</li>`
+            : ''}
+        </ul>
+      </div>`
+    : '';
+
   content().innerHTML = `
     <div class="page-head">
       <h2>📊 Panel de control</h2>
     </div>
+    ${avisoCredenciales}
     <div class="stats">
       ${statDefs.map(([name, ic, lbl, num]) => `
         <div class="stat" data-ir="#/m/${name}">
@@ -5352,6 +5389,11 @@ async function viewImprimirCredencial(id) {
       ${!d.qr.hay ? `<br><b>⚠️ Sin código QR:</b> falta ${esc((d.qr.falta || []).join(', '))}.` : ''}
       <br><span class="mut">Para guardarla como PDF, elija «Guardar como PDF» en el destino de la impresora:
       sale idéntica, porque la produce el mismo motor que imprime.</span>
+      ${d.qr.hay && /^https?:\/\//.test(d.qr.texto || '')
+        ? `<br><a href="${esc(d.qr.texto)}" target="_blank" rel="noopener">🔎 Ver lo que muestra el código QR</a>
+           <span class="mut">— abre la misma página que verá quien lo escanee. Conviene mirarla antes de
+           entregar la credencial.</span>`
+        : ''}
     </div>
 
     <!-- Todo el diseño va dentro de .cred-disenio: es lo que hace que sus

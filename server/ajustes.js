@@ -209,6 +209,15 @@ const OPCIONES = [
           'adentro, para cuando en el lugar donde se verifica no hay internet; ahí el código no puede saber si ' +
           'la credencial fue revocada después de imprimirse.',
       },
+      {
+        clave: 'credencial_intentos_por_minuto', label: 'Verificaciones erradas por minuto desde una misma conexión',
+        tipo: 'number', defecto: '20', min: 5, max: 300,
+        ayuda:
+          'La página de verificación es pública y no pide sesión. Este tope evita que alguien pruebe números ' +
+          'de serie al azar para averiguar qué credenciales existen. Solo cuentan los intentos que NO calzan: ' +
+          'quien escanea credenciales de verdad puede verificar todas las que quiera, porque no hay nada que ' +
+          'pueda averiguar probando lo que ya tiene en la mano.',
+      },
     ],
   },
   {

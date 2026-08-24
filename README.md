@@ -914,6 +914,56 @@ El sistema **no deja que se descuadren**: no acepta enlazar dos fichas con RUT d
 
 Así el pastor y la pastora aparecen en la membresía, cuentan en los totales de su iglesia, pueden integrar cuerpos, se les toma asistencia y tienen su bitácora, como corresponde a un miembro más.
 
+## Credenciales pastorales 🪪
+
+La credencial es el documento de identidad ministerial de un pastor, una pastora o un guía de obra: la firma el Pastor Presidente, se imprime, se plastifica y se lleva encima. De ahí salen casi todas las reglas del módulo, que a primera vista parecen exageradas para una tarjeta.
+
+### Los datos no se escriben: se toman, y al emitir se congelan 🧊
+
+Nombres, apellidos, RUT, grado, cargo, iglesia, categoría y comuna salen del registro de la persona y del de su iglesia. **No se escriben a mano en ninguna pantalla**, porque escribirlos de nuevo sería pedir que un día no coincidan.
+
+Al **emitir**, el sistema le asigna su número de serie y guarda una copia de lo que salió impreso. Si mañana la persona cambia de iglesia o sube de grado, el papel que anda en su bolsillo sigue diciendo lo que decía: la ficha cambia, la credencial emitida no. Para reflejar el cambio **se emite una nueva**; la anterior queda como *reemplazada* y se conserva en el historial. Nunca se borra.
+
+Y no se puede emitir a medias: si falta un dato imprescindible —o falta cargar el logo, el sello o la firma en Configuración— el sistema dice **qué falta y dónde completarlo**, y no deja seguir.
+
+### El número de serie 🔢
+
+Lo pone el sistema y no se escribe ni se corrige en ninguna pantalla. Lleva un dígito verificador, y **no se reutiliza nunca**: aunque una credencial se anule o se borre, su número queda consumido.
+
+### Estados: los que se deciden y los que decide el calendario 📅
+
+*Borrador*, *Vigente*, *Revocada* y *Reemplazada* los decide alguien. *Por vencer* y *Vencida* los calcula el sistema de las fechas cada vez que se miran, y por eso nunca están desactualizados: no hay ningún proceso nocturno que pueda fallar y dejar diciendo «vigente» a una credencial vencida.
+
+Una credencial **por vencer** —a 60 días o menos— aparece en un aviso arriba del panel de control, junto con las ya vencidas, para que la nueva se alcance a emitir antes de que la vieja deje de servir.
+
+Revocar exige **escribir el motivo**, y queda en el registro de cambios.
+
+### La verificación con el código QR 📱
+
+Cada credencial lleva un código QR con un **código de autenticidad** de siete caracteres, calculado sobre todos sus datos más una clave que vive solo en el servidor (la variable `CREDENCIAL_SECRETO`). Si alguien altera un dato, el código deja de calzar.
+
+Hay dos modos, que se eligen en Configuración:
+
+- **Verificación en línea** (recomendado). El QR lleva una dirección corta que abre una página pública del sistema. Al escanearla se ve el **estado al día**: una credencial revocada esta mañana aparece revocada esta tarde. Eso es lo único que la tarjeta impresa no puede decir por sí sola.
+- **Datos sin conexión.** El QR lleva los datos del titular escritos adentro, para verificar donde no hay internet. A cambio, el código no puede saber si la credencial se revocó después de imprimirse: dice lo que decía el día que se imprimió.
+
+La página pública se abre **sin iniciar sesión**, y por eso está cuidada aparte:
+
+- Sin el código correcto no muestra **nada** —ni el nombre, ni si ese número existe—, y responde exactamente lo mismo ante un número inventado que ante un número real con el código cambiado. Probar números no sirve para averiguar qué credenciales hay emitidas.
+- Del **RUT muestra solo los tres últimos dígitos y el verificador** (`••.•••.678-5`), que es lo justo para compararlo con la tarjeta que se tiene en la mano.
+- La fotografía se entrega por esa misma puerta y con el mismo código: no sale por la de los archivos del sistema, que sí pide sesión.
+- Hay un tope de **intentos errados por minuto** desde una misma conexión. Solo cuentan los que fallan: quien escanea credenciales de verdad puede verificar todas las que quiera.
+
+### La impresión 🖨️
+
+Anverso y reverso salen unidos en **una sola pieza plegable, en una sola página tamaño Carta**: se recorta por la línea exterior, se dobla por la del centro, se pegan las dos caras y se plastifica. La tarjeta terminada mide **54 × 86 mm**, y el reverso se imprime girado 180° para que al doblar quede derecho.
+
+Junto al botón de imprimir aparece lo que hay que marcar en el cuadro de la impresora: escala 100 %, gráficos de fondo activados y papel Carta. Para guardarla en PDF se elige «Guardar como PDF» en el destino de la impresora: sale idéntica, porque la produce el mismo motor que imprime.
+
+El diseño —el guilloché, la marca de agua, el microtexto, el sello sobre la fotografía, el número de serie repetido en vertical, la foto fantasma del reverso, la franja de cruces— está copiado tal cual del original aprobado y **no se rediseña**. La fotografía se encuadra desde la ficha de la credencial —arrastrar para mover, rueda o dos dedos para acercar, más brillo y contraste—, y ese encuadre se guarda con ella: al reimprimirla dentro de unos años sale igual.
+
+Que todo eso salga del tamaño que tiene que salir no se da por supuesto: `npm run credencial` le pide el PDF al navegador, lo rasteriza a 300 puntos por pulgada y lo **mide sobre la imagen**, decodificando además el código QR con un lector de verdad —en limpio y con la tinta corrida, como la deja una impresora de inyección—.
+
 ## Registro de Servicios 🕊️
 
 Deja constancia de cada servicio (culto) realizado: cuándo empezó y terminó, quién coordinó, quién leyó el salmo y cuál fue, quién predicó y sobre qué pasaje, cuánta gente asistió y cuánto se ofrendó.

@@ -16,6 +16,8 @@
  *      quien tiene un cuerpo asignado no alcanza lo de otro —ni su gente, ni
  *      sus cuotas, ni su cobro—.
  *   6. Elegir con qué iglesia trabajar nunca amplía lo asignado.
+ *   7. La página pública de verificación de credenciales no entrega nada sin
+ *      el código de autenticidad, y probando números la puerta se cierra.
  *
  * Cómo se corre, con el sistema andando:
  *
@@ -1006,6 +1008,88 @@ async function entrar(rut = RUT, clave = CLAVE) {
   revisar('el modo del código QR no acepta un valor que no existe',
     modoRaro.datos.valores.credencial_qr_modo !== 'inventado',
     `quedó en ${modoRaro.datos.valores.credencial_qr_modo}`);
+
+  /* 4j-qui · La página pública de verificación --------------------------- */
+  console.log('\n4j-qui · La página pública de verificación de credenciales');
+  /**
+   * Es la única puerta del sistema que muestra datos de una persona SIN pedir
+   * sesión. Todo lo que se comprueba acá apunta a lo mismo: que por esa puerta
+   * no salga nada que no venga sellado con el código de autenticidad.
+   */
+  const unaEmitida = (await api('GET', '/api/credenciales?limit=50')).datos.rows
+    .find((c) => c.serie_completa && c.estado !== 'Borrador');
+
+  if (!unaEmitida) {
+    console.log('   ℹ️  no hay ninguna credencial emitida con la que probar');
+  } else {
+    const laSerie = encodeURIComponent(unaEmitida.serie_completa);
+    const comoLlega = (ruta) => fetch(`${URL}${ruta}`).then(async (r) => ({ estado: r.status, texto: await r.text() }));
+
+    /**
+     * Antes de nada, esperar a que se abra la puerta.
+     *
+     * Esta misma prueba termina gastando el tope de intentos errados a
+     * propósito, así que si se corre dos veces seguidas la segunda arranca
+     * frenada y todo lo demás respondería 429. El tope se cuenta por minuto:
+     * se pregunta cuánto falta y se espera. No hay forma de soltarlo desde
+     * fuera, y así tiene que ser —una puerta trasera para reiniciarlo sería
+     * justo lo que un atacante necesita—.
+     */
+    const frenada = await fetch(`${URL}/v/0-0?c=X`);
+    if (frenada.status === 429) {
+      const faltan = Math.min(65, Number(frenada.headers.get('Retry-After')) || 60);
+      console.log(`   ⏳ la corrida anterior dejó la puerta cerrada; esperando ${faltan} s a que se abra…`);
+      await new Promise((sigue) => setTimeout(sigue, (faltan + 1) * 1000));
+    }
+
+    // Sin código no sale nada, y con uno inventado tampoco
+    const sinCodigo = await comoLlega(`/v/${laSerie}`);
+    revisar('sin el código no se muestra ningún dato',
+      sinCodigo.estado === 404 && !sinCodigo.texto.includes(unaEmitida.snap_apellidos || '\u0000'),
+      `respondió ${sinCodigo.estado}`);
+
+    const codigoInventado = await comoLlega(`/v/${laSerie}?c=AAAAAAA`);
+    revisar('con un código inventado tampoco',
+      codigoInventado.estado === 404 && codigoInventado.texto.includes('NO VÁLIDA'),
+      `respondió ${codigoInventado.estado}`);
+
+    /**
+     * Y la respuesta es LA MISMA para un número que no existe.
+     *
+     * Si se diferenciaran, probar números serviría para armar la lista de
+     * credenciales emitidas sin acertarle nunca a un código.
+     */
+    const inexistente = await comoLlega('/v/9999999-9?c=AAAAAAA');
+    revisar('un número que no existe da exactamente la misma respuesta',
+      inexistente.texto === codigoInventado.texto && inexistente.estado === codigoInventado.estado,
+      `${inexistente.estado} vs ${codigoInventado.estado}, ${inexistente.texto.length} vs ${codigoInventado.texto.length} caracteres`);
+
+    // La fotografía tampoco se entrega sin el código
+    const fotoSinCodigo = await fetch(`${URL}/v/${laSerie}/foto`).then((r) => r.status);
+    revisar('la fotografía no se entrega sin el código', fotoSinCodigo === 404,
+      `respondió ${fotoSinCodigo}`);
+
+    // Y por esa puerta no se puede pedir ningún otro archivo del sistema
+    const conRutaEscrita = await fetch(`${URL}/v/${encodeURIComponent('../../iglesias.db')}/foto?c=AAAAAAA`)
+      .then((r) => r.status).catch(() => 0);
+    revisar('ni escribiendo una ruta a mano en el número de serie',
+      conRutaEscrita === 404, `respondió ${conRutaEscrita}`);
+
+    /**
+     * El tope de intentos errados (punto 9.6).
+     *
+     * Se cobran solo los que fallan: quien escanea credenciales de verdad no
+     * gasta nada. Se prueba desde una serie inventada para no ensuciar la
+     * cuenta de nada más.
+     */
+    let frenoLlego = 0;
+    for (let i = 0; i < 60 && !frenoLlego; i++) {
+      const r = await fetch(`${URL}/v/1234567-8?c=BBBBBBB`).then((x) => x.status);
+      if (r === 429) frenoLlego = i + 1;
+    }
+    revisar('probando números al azar, la puerta se cierra', frenoLlego > 0,
+      'se hicieron 60 intentos errados y ninguno fue rechazado');
+  }
 
   /* 4k · Los paneles de la ficha de un cuerpo ---------------------------- */
   console.log('\n4k · Cada panel de la ficha de un cuerpo pide SU permiso');

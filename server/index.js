@@ -443,7 +443,23 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     .prepare(`SELECT id, fecha, solicitante, asunto, estado FROM solicitudes ${w2} ORDER BY fecha DESC LIMIT 5`)
     .all(...p2);
 
-  res.json({ counts, finanzas, cumpleanos, ultimasAsistencias, solicitudesRecientes });
+  /**
+   * Las credenciales que hay que renovar (punto 10.4).
+   *
+   * Una credencial vencida no avisa sola: el papel sigue en el bolsillo del
+   * pastor y se ve igual de bien el día antes y el día después. Por eso el
+   * aviso va en el panel, que es lo primero que se abre, y con sesenta días de
+   * anticipación: alcanza a emitirse la nueva antes de que la vieja deje de
+   * servir.
+   *
+   * Solo lo ve quien puede ver credenciales, y solo las de las iglesias que
+   * tiene asignadas: el filtro es el mismo de la pantalla de credenciales.
+   */
+  const credencialesPorVencer = can(req.user, 'credenciales', 'view')
+    ? getModule('credenciales').porVencer(req.user)
+    : [];
+
+  res.json({ counts, finanzas, cumpleanos, ultimasAsistencias, solicitudesRecientes, credencialesPorVencer });
 });
 
 /**
@@ -666,6 +682,120 @@ app.get('/uploads/:archivo', authRequired, (req, res) => {
   const cabeceras = { 'Cache-Control': 'private, max-age=86400', ...tiposDeArchivo.comoSeEntrega(nombre) };
   res.sendFile(path.join(UPLOADS_DIR, nombre), { headers: cabeceras }, (err) => {
     if (err && !res.headersSent) res.status(404).json({ error: 'Archivo no encontrado' });
+  });
+});
+
+// ---------- Verificación pública de una credencial (sección 9) ----------
+/**
+ * `/v/<serie>?c=<codigo>`: la página que se abre al escanear el QR.
+ *
+ * Es la única parte del sistema que atiende SIN SESIÓN y muestra datos de una
+ * persona, así que va contada aparte y con sus propias reglas:
+ *
+ *   · el código de autenticidad decide. Sin él —o con uno cambiado— no sale
+ *     ningún dato, ni siquiera si esa serie existe (punto 9.2);
+ *   · el RUT no sale entero (punto 9.4);
+ *   · hay tope de consultas por minuto desde una misma dirección, para que
+ *     probar números al azar no lleve a ninguna parte (punto 9.6);
+ *   · y no la indexa ningún buscador: la página lleva `noindex` y acá va la
+ *     cabecera que dice lo mismo, por si alguien se salta el HTML.
+ *
+ * Va antes de la carpeta pública y del comodín final: `/v/...` no es una
+ * pantalla del programa, es una página aparte que se arma en el servidor.
+ *
+ * Y sigue atendiendo con el sistema en mantenimiento, a propósito: el
+ * mantenimiento frena a quien entra a trabajar, no a quien está parado en la
+ * puerta de una iglesia con una credencial en la mano. Si se cortara, una
+ * credencial buena aparecería como no verificable mientras dure el arreglo,
+ * que es peor que cualquier cosa que el mantenimiento vaya a resolver.
+ */
+const credencialesDef = getModule('credenciales');
+const verificacion = require('./credenciales/verificacion');
+const paginaDeVerificacion = require('./credenciales/pagina');
+const limiteDeVerificacion = require('./credenciales/limite');
+
+/** La credencial de un número de serie, sin mirar de quién es ni de qué iglesia. */
+const credencialPorSerie = (numero) =>
+  db.prepare('SELECT * FROM credenciales WHERE serie = ?').get(String(numero));
+
+/**
+ * Lo mismo que hace la página, para poder usarlo también en la foto.
+ *
+ * Devuelve `null` cuando hay que cortar —y ya dejó contestado el porqué en la
+ * respuesta— o el resultado de la verificación cuando se puede seguir.
+ *
+ * El orden importa: primero se mira si la dirección está frenada, y recién
+ * después se busca en la base. A quien está probando números no se le hace ni
+ * una consulta.
+ */
+function verificarLaDeLaUrl(req, res, comoContestar) {
+  const espera = limiteDeVerificacion.cuantoLeFalta(req.ip);
+  if (espera) {
+    res.status(429).setHeader('Retry-After', String(espera));
+    comoContestar.demasiadas(espera);
+    return null;
+  }
+  const resultado = verificacion.verificar(req.params.serie, req.query.c, {
+    buscar: credencialPorSerie,
+    situacionDe: credencialesDef.situacionDe,
+  });
+  if (!resultado.valida) {
+    // Solo se cobran los errores: verificar credenciales de verdad no gasta
+    limiteDeVerificacion.anotarFallo(req.ip);
+    comoContestar.noValida();
+    return null;
+  }
+  return resultado;
+}
+
+/** Cabeceras comunes: no se guarda en ningún lado y no la indexa nadie. */
+function sinRastro(res) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+}
+
+app.get('/v/:serie', (req, res) => {
+  sinRastro(res);
+  const institucion = ajustes.obtener('iglesia_nombre') || '';
+  const paginaNoValida = () => res.status(404).type('html').send(paginaDeVerificacion.noValida(institucion));
+
+  const resultado = verificarLaDeLaUrl(req, res, {
+    noValida: paginaNoValida,
+    demasiadas: (segundos) => res.type('html').send(paginaDeVerificacion.demasiadas(segundos, institucion)),
+  });
+  if (!resultado) return;
+
+  // La foto se pide aparte y con el mismo código: no viaja dentro de la página
+  const direccionDeLaFoto =
+    `/v/${encodeURIComponent(req.params.serie)}/foto?c=${encodeURIComponent(String(req.query.c || ''))}`;
+  res.type('html').send(paginaDeVerificacion.valida(resultado, { institucion, direccionDeLaFoto }));
+});
+
+/**
+ * La fotografía del titular, para la página de verificación.
+ *
+ * No puede ir por `/uploads`, que pide sesión y con razón. Va por acá, y acá
+ * el permiso lo da el mismo código de autenticidad que abrió la página: quien
+ * no lo tiene no ve la foto, y quien lo tiene ya vio la credencial entera.
+ *
+ * Se entrega SOLO el archivo que esa credencial tiene anotado como suyo. No se
+ * acepta un nombre de archivo por la dirección, así que no hay forma de pedir
+ * por acá ningún otro documento del sistema.
+ */
+app.get('/v/:serie/foto', (req, res) => {
+  sinRastro(res);
+  const cortar = (estado) => res.status(estado).type('txt').send('');
+  const resultado = verificarLaDeLaUrl(req, res, {
+    noValida: () => cortar(404),
+    demasiadas: () => cortar(429),
+  });
+  if (!resultado) return;
+  if (!resultado.foto) return cortar(404);
+
+  const nombre = path.basename(String(resultado.foto));
+  const cabeceras = { 'Cache-Control': 'no-store', ...tiposDeArchivo.comoSeEntrega(nombre) };
+  res.sendFile(path.join(UPLOADS_DIR, nombre), { headers: cabeceras }, (err) => {
+    if (err && !res.headersSent) cortar(404);
   });
 });
 
