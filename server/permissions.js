@@ -290,6 +290,9 @@ const MATRIX = {
     // iglesia, nadie entra al módulo de credenciales
     credenciales: [],
     solicitudes: RW,
+    personas_solicitud: RW,
+    documentos_solicitudes: RW,
+    historial_solicitudes: RW,
     inventarios: RW,
     ayudas_sociales: RW,
     no_miembros: RW,

@@ -86,6 +86,10 @@ const EXCEPCIONES = {
   'cuotas_cuerpo.integrante_id':    [FRENA, 'cuota(s) pagada(s)', 'Márquelo como «Retirado» en vez de eliminarlo, y su historial queda intacto.'],
   'ayudas_sociales.miembro_id':     [FRENA, 'ayuda(s) social(es) registrada(s)', 'Esa ayuda es constancia de dinero entregado: no se borra con la ficha.'],
   'ayudas_sociales.no_miembro_id':  [FRENA, 'ayuda(s) social(es) registrada(s)', 'Esa ayuda es constancia de dinero entregado: no se borra con la ficha.'],
+  // Una solicitud es un trámite que la iglesia recibió y respondió: borrar la
+  // ficha de quien la presentó no puede llevarse el trámite por delante.
+  'solicitudes.miembro_id':         [FRENA, 'solicitud(es) presentada(s)', 'La solicitud es constancia de un trámite: no se borra con la ficha de quien la presentó.'],
+  'solicitudes.no_miembro_id':      [FRENA, 'solicitud(es) presentada(s)', 'La solicitud es constancia de un trámite: no se borra con la ficha de quien la presentó.'],
 
   // ---- Documentos emitidos: llevan número y salieron firmados ----
   'certificados.miembro_id':        [FRENA, 'certificado(s) emitido(s)', 'Un certificado emitido no se borra con la ficha de su titular.'],

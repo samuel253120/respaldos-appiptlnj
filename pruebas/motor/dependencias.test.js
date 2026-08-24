@@ -173,11 +173,16 @@ test('la regla por defecto sale de si la referencia es obligatoria', () => {
   assert.equal(seVa.arrastrar.length, 1);
 
   // Opcional: la fila vive igual sin ella, así que solo pierde el enlace.
+  // El ejemplo era «solicitudes.miembro_id» y dejó de servir: una solicitud
+  // pasó a decir de qué registro salió quien la presentó, así que soltarle el
+  // enlace la dejaría diciendo «Miembro» y apuntando a nadie. Ahora frena, y
+  // el ejemplo de referencia opcional es el líder de un cuerpo, que sí puede
+  // quedarse sin nadie: el cuerpo sigue existiendo mientras se nombra a otro.
   const seQueda = plan('miembros', { id: 3, nombres: 'A', apellidos: 'B' }, {
-    solicitudes: [{ id: 1, miembro_id: 3 }],
+    cuerpos: [{ id: 1, lider_id: 3, nombre: 'Coro' }],
   });
   assert.equal(seQueda.arrastrar.length, 0);
-  assert.ok(seQueda.soltar.some((s) => s.campo.clave === 'solicitudes.miembro_id'));
+  assert.ok(seQueda.soltar.some((s) => s.campo.clave === 'cuerpos.lider_id'));
 });
 
 test('un cónyuge que se apunta a su propio módulo no da vueltas para siempre', () => {

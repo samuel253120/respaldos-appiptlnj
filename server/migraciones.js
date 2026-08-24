@@ -1491,6 +1491,7 @@ function ejecutarMigraciones() {
     ['credenciales desde cero', credencialesDesdeCero],
     ['contador de credenciales al día', contadorDeCredencialesAlDia],
     ['ficha del beneficiario de cada ayuda', ayudasConFichaDelBeneficiario],
+    ['seguimiento de las solicitudes', solicitudesConSeguimiento],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -1594,7 +1595,132 @@ function ayudasConFichaDelBeneficiario() {
   marcarAplicada(NOMBRE);
 }
 
-// `ayudasConFichaDelBeneficiario` se expone aparte para poder probarla sola:
-// es la única que crea fichas nuevas a partir de datos escritos a mano, y
-// equivocarse ahí significa duplicar personas o perder ayudas.
-module.exports = { ejecutarMigraciones, ayudasConFichaDelBeneficiario };
+/**
+ * Pone al día las solicitudes que ya estaban ingresadas.
+ *
+ * El módulo pasó de ser una ficha que se llena y se archiva a un trámite con
+ * seguimiento, y las solicitudes de antes se quedarían sin lo nuevo: sin
+ * número con el que nombrarlas, sin ficha de quién las presentó y con su
+ * historial en blanco. Se resuelve mirando lo que ya hay:
+ *
+ *   · SU NÚMERO. Se numeran por orden de fecha, dentro de cada año, y el
+ *     contador de cada año queda donde corresponde: la próxima solicitud de
+ *     2026 sigue después de la última de 2026, no repite el 0001.
+ *
+ *   · QUIÉN LA PRESENTÓ. La que ya apuntaba a un miembro queda marcada como
+ *     «Miembro». La que solo traía un nombre escrito se convierte en una ficha
+ *     de No Miembro con ese mismo nombre —una por persona y por iglesia, no
+ *     una por solicitud—, igual que se hizo con las ayudas sociales.
+ *
+ *   · SU ADJUNTO. El archivo que colgaba del campo `adjunto` pasa a ser un
+ *     documento de la solicitud, que es donde viven ahora. La columna vieja no
+ *     se toca: el archivo queda referido en los dos sitios y no se pierde.
+ *
+ *   · SU HISTORIAL. Se le deja la primera anotación, con la fecha en que
+ *     entró, y si figuraba atendida por alguien, eso también queda dicho.
+ */
+function solicitudesConSeguimiento() {
+  const NOMBRE = 'solicitudes_con_seguimiento';
+  if (yaAplicada(NOMBRE)) return;
+
+  const columnas = db.prepare('PRAGMA table_info("solicitudes")').all().map((c) => c.name);
+  if (!columnas.includes('numero') || !columnas.includes('solicitante_tipo')) return;
+
+  /**
+   * `adjunto` y `atendida_por` son columnas del módulo VIEJO.
+   *
+   * En una iglesia que ya venía usando el sistema están, porque las columnas no
+   * se borran nunca. En una instalación nueva no existen: el módulo ya no las
+   * declara y nadie las creó. Pedirlas sin mirar hacía fallar la migración
+   * entera en cada arranque de un sistema recién instalado.
+   */
+  const traeAdjunto = columnas.includes('adjunto');
+  const traeAtendida = columnas.includes('atendida_por');
+
+  const numero = require('./solicitudes/numero');
+  const seguimiento = require('./solicitudes/seguimiento');
+
+  let numeradas = 0, comoMiembro = 0, fichasNuevas = 0, comoNoMiembro = 0, adjuntos = 0;
+
+  db.transaction(() => {
+    // 1) El número, por orden de fecha dentro de cada año
+    const sinNumero = db
+      .prepare(`SELECT id, fecha, iglesia_id, solicitante, miembro_id, estado
+                     ${traeAdjunto ? ', adjunto' : ''}${traeAtendida ? ', atendida_por' : ''}
+                  FROM solicitudes WHERE numero IS NULL OR numero = ''
+                 ORDER BY fecha, id`)
+      .all();
+    const porAnio = new Map();
+    const ponerNumero = db.prepare('UPDATE solicitudes SET numero = ? WHERE id = ?');
+    for (const s of sinNumero) {
+      const anio = Number(String(s.fecha || '').slice(0, 4)) || new Date().getFullYear();
+      const cuantas = (porAnio.get(anio) || 0) + 1;
+      porAnio.set(anio, cuantas);
+      ponerNumero.run(numero.comoSeEscribe(cuantas, anio), s.id);
+      numeradas++;
+    }
+    // El contador de cada año queda donde llegó la numeración
+    for (const [anio, cuantas] of porAnio) numero.alMenos(anio, cuantas);
+
+    // 2) Quién la presentó
+    const nuevaFicha = db.prepare(
+      `INSERT INTO no_miembros (iglesia_id, nombres, notas)
+       VALUES (?, ?, 'Ficha creada automáticamente al pasar las solicitudes a llevar seguimiento.')`
+    );
+    const comoMiembroSql = db.prepare("UPDATE solicitudes SET solicitante_tipo = 'Miembro' WHERE id = ?");
+    const comoNoMiembroSql = db.prepare("UPDATE solicitudes SET solicitante_tipo = 'No miembro', no_miembro_id = ? WHERE id = ?");
+    const yaCreadas = new Map();
+    for (const s of sinNumero) {
+      if (s.miembro_id) { comoMiembroSql.run(s.id); comoMiembro++; continue; }
+      const nombre = String(s.solicitante || '').trim();
+      if (!nombre) continue;
+      const clave = `${s.iglesia_id}|${nombre.toLowerCase().replace(/\s+/g, ' ')}`;
+      let ficha = yaCreadas.get(clave);
+      if (!ficha) {
+        ficha = nuevaFicha.run(s.iglesia_id, nombre).lastInsertRowid;
+        yaCreadas.set(clave, ficha);
+        fichasNuevas++;
+      }
+      comoNoMiembroSql.run(ficha, s.id);
+      comoNoMiembro++;
+    }
+
+    // 3) El adjunto que colgaba del formulario pasa a ser un documento
+    const nuevoDoc = db.prepare(
+      `INSERT INTO documentos_solicitudes (solicitud_id, tipo, nombre, archivo, fecha, iglesia_id)
+       VALUES (?, 'Antecedente', 'Documento adjunto al ingresar', ?, ?, ?)`
+    );
+    for (const s of sinNumero) {
+      if (!s.adjunto) continue;
+      nuevoDoc.run(s.id, s.adjunto, s.fecha, s.iglesia_id);
+      adjuntos++;
+    }
+
+    // 4) La primera anotación del historial
+    for (const s of sinNumero) {
+      const suNumero = db.prepare('SELECT numero FROM solicitudes WHERE id = ?').get(s.id).numero;
+      seguimiento.anotar(db, s.id, {
+        tipo: 'Ingreso',
+        fecha: s.fecha,
+        descripcion: `Solicitud ${suNumero} ingresada a nombre de ${s.solicitante || 'quien corresponda'}.` +
+          (s.atendida_por ? ` Figuraba atendida por ${s.atendida_por}.` : '') +
+          ' (Anotación creada al pasar el módulo a llevar seguimiento; lo anterior no quedaba registrado.)',
+        user: null,
+      });
+    }
+  })();
+
+  if (numeradas) {
+    console.log(
+      `📨 Solicitudes: ${numeradas} numerada(s) · ${comoMiembro} a nombre de un miembro, ` +
+        `${comoNoMiembro} pasadas a ${fichasNuevas} ficha(s) de No Miembros` +
+        (adjuntos ? ` · ${adjuntos} adjunto(s) pasados a documentos` : '') + '.'
+    );
+  }
+  marcarAplicada(NOMBRE);
+}
+
+// Estas dos se exponen aparte para poder probarlas solas: son las únicas que
+// crean fichas nuevas a partir de datos escritos a mano, y equivocarse ahí
+// significa duplicar personas, perder ayudas o repetir un número de solicitud.
+module.exports = { ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento };

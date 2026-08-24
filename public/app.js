@@ -2340,6 +2340,10 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
   }
   if (name === 'miembros' && MOD['cuerpos']) sumar('cuerpos', 'Cuerpos', '👥', (c) => renderCuerposDelMiembro(id, c));
   if (name === 'pastores' && MOD['credenciales']) sumar('credenciales', 'Credenciales', '🪪', (c) => renderCredencialesDelPastor(id, c));
+  if (name === 'solicitudes') {
+    sumar('tramitacion', 'Tramitación', '🔁', (c) => renderTramitacionSolicitud(id, row, c));
+    if (MOD['personas_solicitud']) sumar('personas', 'Personas', '🧑‍🤝‍🧑', (c) => renderPersonasSolicitud(id, c));
+  }
 
   const docs = PANEL_DOCUMENTOS[name];
   if (docs && MOD[docs.modulo]) sumar('documentos', 'Documentos', '🗂️', (c) => renderDocumentos(docs, id, c));
@@ -8700,11 +8704,23 @@ const PANEL_DOCUMENTOS = {
   miembros: { modulo: 'documentos_miembros', campo: 'miembro_id', titulo: '🗂️ Documentos del miembro' },
   iglesias: { modulo: 'documentos_iglesias', campo: 'iglesia_id', titulo: '🗂️ Documentos de la iglesia' },
   pastores: { modulo: 'documentos_pastores', campo: 'pastor_id', titulo: '🗂️ Documentos del pastor / guía' },
+  solicitudes: { modulo: 'documentos_solicitudes', campo: 'solicitud_id', titulo: '🗂️ Documentos de la solicitud' },
 };
 const PANEL_HISTORIAL = {
   miembros: { modulo: 'bitacora', campo: 'miembro_id', titulo: '🗒️ Historial del miembro' },
   iglesias: { modulo: 'historial_iglesias', campo: 'iglesia_id', titulo: '🗒️ Historial de la iglesia' },
   pastores: { modulo: 'historial_pastores', campo: 'pastor_id', titulo: '🗒️ Historial del pastor / guía' },
+  // El historial de una solicitud es su seguimiento: se ordena de lo más
+  // reciente a lo más antiguo por `id` y no por fecha, porque en un mismo día
+  // pasan varias cosas y lo que importa es en qué orden pasaron.
+  // `automaticasFijas` dice que lo que anotó el sistema no se toca. En el
+  // seguimiento de una solicitud es así, y el servidor lo rechaza; ofrecer los
+  // botones sería ofrecer algo que no va a funcionar. Los otros historiales no
+  // lo declaran porque ahí sí se pueden corregir.
+  solicitudes: {
+    modulo: 'historial_solicitudes', campo: 'solicitud_id',
+    titulo: '🗒️ Seguimiento de la solicitud', ordenPor: 'id', automaticasFijas: true,
+  },
 };
 
 /** Documentos adjuntos a una ficha (de un miembro, de una iglesia, de un pastor). */
@@ -8753,12 +8769,156 @@ async function renderDocumentos(panel, id, contenedor) {
   }
 }
 
+/**
+ * La tramitación de una solicitud: quién la tiene y a quién se le pasa.
+ *
+ * El traslado no es un campo que se edita: es un acto. Por eso va acá, con su
+ * botón y su motivo, y no como un desplegable más del formulario. Quien lo usa
+ * está diciendo «esto ya no me toca a mí, le toca a fulano, por esto», y eso es
+ * lo que queda escrito en el seguimiento.
+ *
+ * Solo lo ve quien puede hacerlo: el responsable actual y el administrador. A
+ * los demás se les dice quién la tiene, que es lo que necesitan saber.
+ */
+async function renderTramitacionSolicitud(id, row, contenedor) {
+  const mod = MOD['solicitudes'];
+  const cerradas = ['Aprobada', 'Rechazada', 'Completada', 'Anulada'];
+  const estaCerrada = cerradas.includes(row.estado);
+  const suya = Number(row.responsable_id) === Number(USER.id);
+  const esAdmin = USER.rol === 'admin';
+  const puedeTrasladar = mod.perms.edit && !estaCerrada && (suya || esAdmin);
+
+  const quien = row.responsable_id_label || (row.responsable_id ? `usuario ${row.responsable_id}` : null);
+
+  contenedor.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🔁 Tramitación</b>
+        <span class="badge ${badgeClass(row.estado)}">${esc(row.estado || '')}</span>
+        <span class="spacer"></span>
+        ${puedeTrasladar ? '<button class="btn" id="solTrasladar">↪️ Trasladar a otro usuario</button>' : ''}
+      </div>
+      <div class="respaldo">
+        <p><b>N.º ${esc(row.numero || 'sin número')}</b> · ingresada el ${row.fecha ? fechaLarga(row.fecha) : '—'}</p>
+        <p>${quien
+          ? `A cargo de <b>${esc(quien)}</b>${suya ? ' — es usted' : ''}.`
+          : 'Nadie figura a cargo de esta solicitud.'}</p>
+        ${estaCerrada
+          ? `<p class="mut">La solicitud está <b>${esc(row.estado.toLowerCase())}</b>${row.fecha_respuesta ? ` desde el ${fechaLarga(row.fecha_respuesta)}` : ''}: ya no se traslada.</p>`
+          : puedeTrasladar
+            ? '<p class="mut">Al trasladarla, el motivo queda escrito en el seguimiento junto con quién la pasó y a quién.</p>'
+            : '<p class="mut">Solo puede trasladarla quien la tiene a cargo, o el administrador.</p>'}
+        ${row.respuesta ? `<p><b>Respuesta:</b> ${esc(row.respuesta)}</p>` : ''}
+      </div>
+    </div>`;
+
+  const btn = document.getElementById('solTrasladar');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    // La misma lista que el campo Responsable: solo nombres, sin el RUT ni
+    // el correo que entrega /usuarios/options.
+    const usuarios = await getOptions('/solicitudes/responsables').catch(() => []);
+    const seguro = await preguntarEnDialogo({
+      titulo: '↪️ Trasladar la solicitud',
+      cuerpo: `
+        <p>La solicitud pasa a manos de otro usuario, que queda a cargo de responderla.
+        No cambia de estado: sigue donde está.</p>
+        <div class="fld full">
+          <label for="solDestino">Pasa a</label>
+          <select id="solDestino">
+            <option value="">— Elija al usuario —</option>
+            ${usuarios
+              .filter((u) => Number(u.id) !== Number(row.responsable_id))
+              .map((u) => `<option value="${u.id}">${esc(u.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="fld full">
+          <label for="solMotivo">Por qué se traslada</label>
+          <textarea id="solMotivo" rows="3" placeholder="Le corresponde a tesorería, es un tema de su cuerpo, me pidieron que lo viera…"></textarea>
+        </div>`,
+      aceptar: 'Trasladarla',
+    });
+    if (!seguro) return;
+    try {
+      const r = await api('POST', `/solicitudes/${id}/trasladar`, {
+        responsable_id: Number(seguro.solDestino),
+        motivo: (seguro.solMotivo || '').trim(),
+      });
+      toast(`Solicitud trasladada a ${r.responsable}`);
+      route();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+}
+
+/**
+ * Las personas que involucra una solicitud.
+ *
+ * Una solicitud rara vez es de una sola persona: un traslado involucra al que
+ * se va y a quien lo recibe, una ayuda social al que la pide y a su grupo
+ * familiar. Cada una sale del registro de Miembros o del de No Miembros, y
+ * desde acá se abre su ficha.
+ */
+async function renderPersonasSolicitud(id, contenedor) {
+  const mod = MOD['personas_solicitud'];
+  if (!mod) return;
+  try {
+    const datos = await api('GET', `/personas_solicitud?f_solicitud_id=${id}&limit=200&sort=id&dir=asc`);
+    contenedor.innerHTML = `
+      <div class="card" style="margin-top:18px">
+        <div class="toolbar">
+          <b>🧑‍🤝‍🧑 Personas que involucra</b>
+          <span style="color:var(--muted);font-size:13px">${datos.total} persona(s)</span>
+          <span class="spacer"></span>
+          ${mod.perms.create ? '<button class="btn sm" id="btnPersonaSol">➕ Sumar una persona</button>' : ''}
+        </div>
+        ${datos.rows.length ? `<ul class="documentos personas-solicitud">
+          ${datos.rows.map((r) => `
+            <li data-id="${r.id}" data-ficha="${r.miembro_id ? `miembros/${r.miembro_id}` : r.no_miembro_id ? `no_miembros/${r.no_miembro_id}` : ''}">
+              <div class="dm"><span class="dico">${r.persona_tipo === 'Miembro' ? '🧍' : '👤'}</span></div>
+              <div class="dd">
+                <b>${esc(r.persona || '')}</b>
+                <span class="badge ${r.persona_tipo === 'Miembro' ? 'green' : 'blue'}">${esc(r.persona_tipo || '')}</span>
+                <div class="dfe">${esc(r.relacion || '')}${r.observaciones ? ' — ' + esc(r.observaciones) : ''}</div>
+              </div>
+              <div class="da">
+                <button class="btn sm secondary" data-abrir="1">Ver su ficha</button>
+              </div>
+            </li>`).join('')}
+        </ul>` : '<div class="empty-state" style="padding:26px">Todavía no se ha sumado a nadie. El solicitante sale arriba, en la pestaña de datos.</div>'}
+      </div>`;
+
+    const btn = document.getElementById('btnPersonaSol');
+    if (btn) btn.addEventListener('click', () => (location.hash = `#/m/personas_solicitud/new?solicitud_id=${id}`));
+    contenedor.querySelectorAll('ul.personas-solicitud li').forEach((li) => {
+      li.addEventListener('click', (ev) => {
+        // El botón abre la ficha de la persona; el resto de la fila, la de su
+        // participación en esta solicitud, que es lo que se corrige más seguido.
+        if (ev.target.closest('[data-abrir]')) {
+          if (li.dataset.ficha) location.hash = `#/m/${li.dataset.ficha.replace('/', '/ficha/')}`;
+          return;
+        }
+        location.hash = `#/m/personas_solicitud/edit/${li.dataset.id}`;
+      });
+    });
+  } catch (e) {
+    contenedor.innerHTML = '';
+  }
+}
+
 /** Historial de una ficha (de un miembro, de una iglesia, de un pastor). */
 async function renderHistorial(panel, id, contenedor) {
   const modHist = MOD[panel.modulo];
   if (!modHist) return;
   try {
-    const datos = await api('GET', `/${panel.modulo}?f_${panel.campo}=${id}&limit=100&sort=fecha&dir=desc`);
+    // Casi todos los historiales se leen por fecha; el de una solicitud, por
+    // orden de anotación: en un mismo día pasan varias cosas y lo que importa
+    // es en qué orden pasaron.
+    const orden = panel.ordenPor || 'fecha';
+    /** ¿Esta anotación la dejó el sistema y no se puede corregir? */
+    const intocable = (r) => !!panel.automaticasFijas && r.origen === 'Automático';
+    const datos = await api('GET', `/${panel.modulo}?f_${panel.campo}=${id}&limit=200&sort=${orden}&dir=desc`);
     contenedor.innerHTML = `
       <div class="card" style="margin-top:18px">
         <div class="toolbar">
@@ -8780,8 +8940,9 @@ async function renderHistorial(panel, id, contenedor) {
                   <div class="hm">${r.origen === 'Automático' ? '⚙️ automático' : '✍️ ' + esc(r.registrado_por || '')}${editado ? ' · ✏️ editado' : ''}</div>
                 </div>
                 <div class="ha">
-                  ${modHist.perms.edit ? `<button class="ico" data-editar="${r.id}" title="Editar este registro">✏️</button>` : ''}
-                  ${modHist.perms.delete ? `<button class="ico" data-borrar="${r.id}" title="Eliminar este registro">🗑️</button>` : ''}
+                  ${intocable(r) ? '<span class="ico mut" title="Lo anotó el sistema: es la constancia de lo que pasó">🔒</span>' : `
+                    ${modHist.perms.edit ? `<button class="ico" data-editar="${r.id}" title="Editar este registro">✏️</button>` : ''}
+                    ${modHist.perms.delete ? `<button class="ico" data-borrar="${r.id}" title="Eliminar este registro">🗑️</button>` : ''}`}
                 </div>
               </li>`;
             }).join('')}

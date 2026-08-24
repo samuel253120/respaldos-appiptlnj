@@ -19,8 +19,9 @@
  *   como arreglo, con `<campo>_labels`.
  * - Hooks por módulo: beforeSave(data, { user, isNew, id }) permite validar o
  *   transformar (p. ej. usuarios cifra la contraseña); afterSave(fila, { user,
- *   isNew, db }) actúa con el registro ya guardado (p. ej. un traspaso deja al
- *   día sus dos movimientos).
+ *   isNew, existing, db }) actúa con el registro ya guardado y con el que había
+ *   antes (p. ej. un traspaso deja al día sus dos movimientos, y una solicitud
+ *   anota en su historial qué cambió).
  */
 const express = require('express');
 const { db } = require('./db');
@@ -948,7 +949,11 @@ function buildRouter() {
           }
 
           if (def.hooks && def.hooks.afterSave) {
-            def.hooks.afterSave(row, { user: req.user, isNew, db });
+            // `existing` va también: hay módulos que necesitan saber no solo
+            // cómo quedó la ficha, sino qué cambió. Una solicitud anota en su
+            // historial que el estado pasó de uno a otro, y eso no se puede
+            // deducir mirando únicamente cómo quedó.
+            def.hooks.afterSave(row, { user: req.user, isNew, existing, db });
             row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(row.id);
           }
           bitacora.registrarGuardado(def, { isNew, antes: isNew ? {} : existing, despues: row, datos: data, user: req.user });
