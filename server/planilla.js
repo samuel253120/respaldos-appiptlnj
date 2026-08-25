@@ -74,6 +74,28 @@ function numero(valor) {
   return String(n).replace('.', ',');
 }
 
+/**
+ * Un teléfono, sin el «+».
+ *
+ * En la ficha y en lo que se imprime el número va como se escribió,
+ * «+56 9 8765 4321», que es la forma internacional y la correcta. En una
+ * planilla estorba: Excel ve un «+» al principio de la celda y lo toma por el
+ * comienzo de una cuenta, así que según la versión y el idioma puede
+ * comérselo, dejar el número corrido o mostrar un error donde iba un
+ * teléfono. Y no hay una sola manera de arreglarlo por el lado del archivo: el
+ * apóstrofo que marca «esto es texto» funciona, pero en algunos programas se
+ * ve.
+ *
+ * Así que se saca, y solo acá. El «+» no lleva información que no esté en el
+ * resto: el código de país sigue estando en el 56. Lo guardado no se toca —el
+ * sistema sigue mostrando y llamando con el número completo—; lo que cambia es
+ * cómo sale en la planilla, que es donde molestaba.
+ */
+function telefonoParaLaPlanilla(valor) {
+  if (valor === null || valor === undefined) return valor;
+  return String(valor).replace(/\+/g, '').trim();
+}
+
 /** El texto con formato, en plano: en una celda las etiquetas solo estorban. */
 function sinFormato(html) {
   return require('./textorico').enPlano(html);
@@ -99,6 +121,8 @@ function valorDe(campo, fila) {
     case 'money':
     case 'number':
       return numero(bruto);
+    case 'tel':
+      return celda(telefonoParaLaPlanilla(bruto));
     default:
       return celda(bruto);
   }
@@ -134,4 +158,4 @@ function enviar(res, def, filas, usuario) {
   res.send(Buffer.from(cuerpo, 'utf8'));
 }
 
-module.exports = { enviar, columnasDe, celda, numero, nombreDelArchivo };
+module.exports = { enviar, columnasDe, celda, numero, valorDe, telefonoParaLaPlanilla, nombreDelArchivo };

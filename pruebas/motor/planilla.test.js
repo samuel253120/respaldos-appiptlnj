@@ -93,3 +93,51 @@ test('el archivo se llama por su módulo y por el día', () => {
   const nombre = planilla.nombreDelArchivo({ name: 'miembros' });
   assert.match(nombre, /^miembros-\d{4}-\d{2}-\d{2}\.csv$/);
 });
+
+// ───────────────────────────── el teléfono en la planilla (1.97.4) ───
+/*
+ * En la ficha y en lo que se imprime el teléfono va como se escribió,
+ * «+56 9 8765 4321», que es la forma internacional. En la planilla estorba:
+ * Excel ve un «+» al principio de la celda y lo toma por el comienzo de una
+ * cuenta, así que según la versión y el idioma puede comérselo, dejar el
+ * número corrido o mostrar un error donde iba un teléfono.
+ *
+ * Se saca SOLO en la planilla. El «+» no lleva información que no esté en el
+ * resto —el código de país sigue en el 56— y lo guardado no se toca.
+ */
+
+test('el teléfono baja a la planilla sin el «+»', () => {
+  const campo = { name: 'telefono', label: 'Teléfono', type: 'tel' };
+  assert.equal(planilla.valorDe(campo, { telefono: '+56 9 8765 4321' }), '"56 9 8765 4321"');
+  assert.equal(planilla.valorDe(campo, { telefono: '+56969089784' }), '"56969089784"');
+  assert.equal(planilla.valorDe(campo, { telefono: '(+56) 2 2345 6789' }), '"(56) 2 2345 6789"');
+});
+
+test('y sin el «+» ya no hace falta marcarlo como texto', () => {
+  // Antes empezaba con «+», y por eso el marcador de fórmulas lo miraba. Ahora
+  // empieza con un número y no hay nada que marcar: la celda queda limpia.
+  const campo = { name: 'telefono', label: 'Teléfono', type: 'tel' };
+  assert.doesNotMatch(planilla.valorDe(campo, { telefono: '+56 9 8765 4321' }), /'/);
+});
+
+test('un teléfono que ya venía sin «+» no cambia', () => {
+  const campo = { name: 'telefono', label: 'Teléfono', type: 'tel' };
+  assert.equal(planilla.valorDe(campo, { telefono: '9 8765 4321' }), '"9 8765 4321"');
+  assert.equal(planilla.valorDe(campo, { telefono: '41 222 3344' }), '"41 222 3344"');
+});
+
+test('lo vacío sigue vacío', () => {
+  const campo = { name: 'telefono', label: 'Teléfono', type: 'tel' };
+  assert.equal(planilla.valorDe(campo, { telefono: '' }), '""');
+  assert.equal(planilla.valorDe(campo, { telefono: null }), '""');
+  assert.equal(planilla.valorDe(campo, {}), '""');
+});
+
+test('el «+» solo se saca de los teléfonos, no de cualquier campo', () => {
+  // Un «+» en una nota o en un nombre es texto de la persona y se respeta.
+  // Y si ese texto empieza con «+», el marcador de fórmulas sigue haciendo lo
+  // suyo, que es lo que impide que Excel lo ejecute.
+  const nota = { name: 'notas', label: 'Notas', type: 'text' };
+  assert.equal(planilla.valorDe(nota, { notas: 'Vino con +2 personas' }), '"Vino con +2 personas"');
+  assert.equal(planilla.valorDe(nota, { notas: '+HYPERLINK("x")' }), `"'+HYPERLINK(""x"")"`);
+});

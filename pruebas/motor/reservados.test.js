@@ -185,7 +185,10 @@ test('la planilla no trae la columna que esa persona no alcanza', () => {
   const csv = escrito.join('');
   assert.ok(csv.includes('Nombres'), 'lo que sí alcanza tiene que estar');
   assert.ok(!csv.includes('Teléfono'), 'la columna del teléfono no tendría que existir');
-  assert.ok(!csv.includes('+56911112222'), 'y menos el número');
+  // Sin el «+», que es como el teléfono baja a la planilla desde la 1.97.4
+  // (ver telefonoParaLaPlanilla en server/planilla.js): si se buscara con el
+  // «+», esta comprobación pasaría sin haber mirado el número.
+  assert.ok(!csv.includes('56911112222'), 'y menos el número');
   // La columna se quita entera y no se deja vacía: una casilla en blanco se
   // lee como «esta persona no tiene teléfono», que es peor que no traerla.
   assert.ok(!csv.includes('Correo'));
@@ -198,7 +201,12 @@ test('y sí la trae para quien la alcanza', () => {
   planilla.enviar(res, MIEMBROS, [ficha()], { rol: 'secretario' });
   const csv = escrito.join('');
   assert.ok(csv.includes('Teléfono'));
-  assert.ok(csv.includes('+56911112222'));
+  // El número, tal como baja a la planilla: sin el «+», que Excel podría tomar
+  // por el comienzo de una cuenta (ver server/planilla.js). Lo que se prueba
+  // acá es el permiso, no el formato, pero el formato tiene que estar bien
+  // escrito o la comprobación no mira nada.
+  assert.ok(csv.includes('56911112222'));
+  assert.ok(!csv.includes('+56911112222'), 'el «+» se saca en la planilla');
 });
 
 // ------------------------------------------------------------ el mecanismo ----
