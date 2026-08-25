@@ -25,6 +25,11 @@
  *      muestra la pantalla: se mira lo que entrega el servidor.
  *   2. LO AJENO NO SE TOCA. Restablecer contraseñas, cambiar permisos, escribir
  *      en la ficha de otro. Leer lo ajeno es grave; cambiarlo lo es más.
+ *   2b. NI SE PUEDE APUNTAR A ÉL. Un registro no es solo su iglesia: es también
+ *      aquello a lo que apunta. Se podía crear una ficha de integrante que
+ *      metiera a una persona de otra iglesia en un cuerpo propio —y, peor, a
+ *      alguien de otro cuerpo de la misma iglesia, con lo que se pasaba a ver
+ *      su ficha completa: la escritura descuidada era una llave para leer.
  *   3. LO PROPIO SIGUE ABIERTO. Un arreglo que cierra de más rompe el sistema
  *      sin que nadie lo note hasta que alguien no puede trabajar. Y el
  *      administrador general, que no tiene ninguna iglesia asignada, tiene que
@@ -421,6 +426,84 @@ async function loAjenoNoSeToca(E) {
 }
 
 /* ------------------------------------------------------------------ *
+ * 2b · Ni se puede apuntar a lo ajeno
+ * ------------------------------------------------------------------ */
+
+/**
+ * Las escrituras que cruzan el alcance, que el punto 1 no puede ver.
+ *
+ * El punto 1 recorre lo que se LEE. Esto recorre lo que se ESCRIBE: crear en
+ * otra iglesia, editar y borrar lo ajeno, mudar lo propio hacia allá, y —lo
+ * que se descubrió al final de la auditoría— nombrar por su número un cuerpo o
+ * una persona que no se alcanzan.
+ */
+async function niSePuedeApuntarALoAjeno(E, admin) {
+  console.log('\n2b · Ni se puede apuntar a lo ajeno');
+  const norte = sesion(E.adminNorte.token);
+  const secre = sesion(E.secretaria.token);
+
+  // Algunas se frenan con 400 y su explicación en vez de 403; las dos sirven,
+  // lo que no puede pasar es que el registro quede guardado.
+  const noSeGuarda = (que, r) => {
+    const ok = [400, 403, 404].includes(r.estado);
+    revisar(que, ok, ok ? null : `respondió ${r.estado}: ${r.texto.slice(0, 160).replace(/\s+/g, ' ')}`);
+    return ok;
+  };
+
+  noSeGuarda('no se crea un miembro en la iglesia ajena',
+    await norte('POST', '/api/miembros', {
+      nombres: 'Intruso', apellidos: `Metido${MARCA}`, iglesia_id: E.sur.id, estado: 'Activo',
+    }));
+  noSeGuarda('ni se edita la ficha de una miembro de allá',
+    await norte('PUT', `/api/miembros/${E.delSur.id}`, { telefono: '+56900000000' }));
+  noSeGuarda('ni se borra',
+    await norte('DELETE', `/api/miembros/${E.delSur.id}`));
+  noSeGuarda('ni se le carga un movimiento a una cuenta de allá',
+    await norte('POST', '/api/tesoreria', {
+      fecha: '2026-08-20', tipo: 'Egreso', monto: 50000, concepto: 'Metido',
+      cuenta_id: E.cuentaSur.id, iglesia_id: E.sur.id, categoria: 'Otros',
+    }));
+
+  // La puerta de atrás: llevarse lo propio hacia la iglesia del otro
+  const mudanza = await norte('PUT', `/api/miembros/${E.deDamas.id}`, { iglesia_id: E.sur.id });
+  revisar('ni se muda una ficha propia a la iglesia ajena', mudanza.estado !== 200,
+    mudanza.estado === 200 ? 'la ficha se fue a la otra iglesia' : null);
+
+  /*
+   * Y las dos que cierran la escalada. Se comprueba la CONSECUENCIA, no solo
+   * la respuesta: que después de intentarlo, la ficha ajena siga sin verse.
+   */
+  const metida = await norte('POST', '/api/integrantes_cuerpo', {
+    cuerpo_id: E.damas.id, miembro_id: E.delSur.id, iglesia_id: E.norte.id,
+    estado: 'Activo', fecha_ingreso: '2026-01-01',
+  });
+  noSeGuarda('no se mete a una persona de otra iglesia en un cuerpo propio', metida);
+  if (metida.json && metida.json.id) await admin('DELETE', `/api/integrantes_cuerpo/${metida.json.id}`);
+
+  const laOtra = await secre('POST', '/api/integrantes_cuerpo', {
+    cuerpo_id: E.damas.id, miembro_id: E.deJovenes.id, iglesia_id: E.norte.id,
+    estado: 'Activo', fecha_ingreso: '2026-01-01',
+  });
+  noSeGuarda('ni a alguien de otro cuerpo, que era la manera de ampliarse el alcance', laOtra);
+  /*
+   * La consecuencia se mira ANTES de limpiar. Puesto al revés —limpiando y
+   * después preguntando— este control pasaba aunque la escritura se hubiera
+   * guardado, porque la fila ya no estaba: comprobaba la limpieza, no el
+   * alcance. Se vio al desactivar a propósito la comprobación del motor.
+   */
+  const sigueCerrada = await secre('GET', `/api/miembros/${E.deJovenes.id}`);
+  revisar('y su ficha sigue cerrada después de intentarlo', sigueCerrada.estado === 403,
+    sigueCerrada.estado === 200 ? 'la escalada funcionó: pasó a ver a alguien de otro cuerpo' : null);
+  if (laOtra.json && laOtra.json.id) await admin('DELETE', `/api/integrantes_cuerpo/${laOtra.json.id}`);
+
+  noSeGuarda('no se escribe en un cuerpo que no se tiene asignado',
+    await secre('POST', '/api/actas_reuniones', {
+      cuerpo_id: E.jovenes.id, iglesia_id: E.norte.id, fecha: '2026-08-20',
+      numero_acta: `X-${MARCA}`, tipo: 'Ordinaria', desarrollo: 'Metida',
+    }));
+}
+
+/* ------------------------------------------------------------------ *
  * 3 · Lo propio sigue abierto
  * ------------------------------------------------------------------ */
 
@@ -467,6 +550,17 @@ async function loPropioSigueAbierto(E, admin) {
     await secre('GET', `/api/buscar?q=${encodeURIComponent(E.deDamas.apellidos)}`), E.deDamas.apellidos);
   abre('y ve su panel', await secre('GET', '/api/dashboard'));
 
+  // Escribir lo propio, que es la otra mitad de la mitad que se olvida
+  abre('y edita la ficha de alguien de SU cuerpo',
+    await secre('PUT', `/api/miembros/${E.deDamas.id}`, { telefono: '+56911112233' }));
+  const actaPropia = await secre('POST', '/api/actas_reuniones', {
+    cuerpo_id: E.damas.id, iglesia_id: E.norte.id, fecha: '2026-08-20',
+    numero_acta: `P-${Date.now()}`, tipo: 'Ordinaria', desarrollo: 'La propia',
+  });
+  revisar('y levanta un acta en SU cuerpo', [200, 201].includes(actaPropia.estado),
+    `respondió ${actaPropia.estado}: ${actaPropia.texto.slice(0, 150)}`);
+  if (actaPropia.json && actaPropia.json.id) await admin('DELETE', `/api/actas_reuniones/${actaPropia.json.id}`);
+
   /*
    * El control que más importa de los tres. El administrador general no tiene
    * ninguna iglesia asignada, y eso significa «todas». Si el aislamiento lo
@@ -509,6 +603,7 @@ async function loPropioSigueAbierto(E, admin) {
 
   await loAjenoNoSeVe(E, modulos);
   await loAjenoNoSeToca(E);
+  await niSePuedeApuntarALoAjeno(E, admin);
   await loPropioSigueAbierto(E, admin);
 
   console.log(fallas

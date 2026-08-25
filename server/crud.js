@@ -214,6 +214,71 @@ function referenciasRotas(def, data) {
   return rotas;
 }
 
+/**
+ * Referencias que apuntan a algo que quien guarda NO alcanza.
+ *
+ * POR QUÉ HACE FALTA, ADEMÁS DE COMPROBAR QUE EXISTA. Al guardar se revisa que
+ * la iglesia del registro sea una de las suyas, y eso deja fuera lo evidente.
+ * Pero un registro no es solo su iglesia: es también aquello a lo que APUNTA.
+ * Y hasta la 1.98.1 los campos de referencia no se miraban.
+ *
+ * Con eso pasaban dos cosas, comprobadas en vivo:
+ *
+ *   · el administrador de una iglesia podía crear una ficha de integrante que
+ *     metiera a una persona de OTRA iglesia en un cuerpo de la suya; y
+ *   · la secretaria de un cuerpo podía crear registros en OTRO cuerpo de su
+ *     iglesia —uno que no tiene asignado— nombrándolo por su número.
+ *
+ * Lo segundo, además, se ampliaba solo: quien tiene un cuerpo asignado ve a la
+ * gente de ESE cuerpo, así que metiendo a alguien en él pasaba a ver su ficha
+ * completa, con su RUT. Una escritura descuidada terminaba siendo una llave
+ * para leer. Se comprobó: antes de meterla, su ficha respondía 403; después,
+ * 200.
+ *
+ * La regla es la que la pantalla ya aplicaba sin decirlo: NO SE PUEDE
+ * REFERENCIAR LO QUE NO SE PUEDE VER. Los selectores del formulario ofrecen
+ * únicamente lo que esa persona alcanza —a la secretaria del cuerpo le ofrecen
+ * la gente de su cuerpo y nada más—, así que esto no cierra ningún camino que
+ * hoy funcione: cierra el de escribir el número a mano.
+ *
+ * Como en la comprobación hermana, solo se miran los campos que este guardado
+ * TOCA. Una ficha que ya venía apuntando a algo ajeno se puede seguir guardando
+ * para corregirle el teléfono; lo que se frena es el guardado que lo empeora.
+ */
+function referenciasFueraDeAlcance(def, data, usuario) {
+  const alcance = require('./alcance');
+  if (!alcance.iglesiasDe(usuario).length && !alcance.cuerposDe(usuario).length) return [];
+
+  const fuera = [];
+  for (const f of def.fields) {
+    if ((f.type !== 'ref' && f.type !== 'multiref') || !f.ref) continue;
+    const valor = data[f.name];
+    if (valor === undefined || valor === null || valor === '') continue; // no se está tocando
+    const destino = getModule(f.ref);
+    if (!destino) continue;
+
+    const ids = f.type === 'ref'
+      ? [Number(valor)].filter((n) => Number.isInteger(n) && n > 0)
+      : idsDe(valor);
+    if (!ids.length) continue;
+
+    let filas;
+    try {
+      filas = db
+        .prepare(`SELECT * FROM "${destino.name}" WHERE id IN (${ids.map(() => '?').join(',')})`)
+        .all(...ids);
+    } catch (e) {
+      continue; // si la tabla todavía no está, no se inventa un error de dato
+    }
+    for (const fila of filas) {
+      if (alcance.alcanza(destino, fila, usuario)) continue;
+      const queEs = destino.labelSingular ? destino.labelSingular.toLowerCase() : 'el registro';
+      fuera.push(`${f.label}: ${queEs} n.º ${fila.id} está fuera de lo que tiene asignado`);
+    }
+  }
+  return fuera;
+}
+
 /** Convierte el valor recibido al tipo de almacenamiento del campo. */
 function coerce(field, value) {
   if (value === undefined) return undefined;
@@ -964,6 +1029,14 @@ function buildRouter() {
           }
         }
 
+        // Alcance: y aquello a lo que el registro APUNTA. La iglesia de arriba
+        // no basta: el cuerpo, la persona y la cuenta que se nombran tienen que
+        // ser de los suyos (ver referenciasFueraDeAlcance).
+        const ajenas = referenciasFueraDeAlcance(def, data, req.user);
+        if (ajenas.length) {
+          return res.status(403).json({ error: ajenas.join('. ') });
+        }
+
         // Alcance: y el nivel de tesorería. Sin esto, quien no ve la plata de
         // los cuerpos podría registrarle un movimiento escribiendo la cuenta a
         // mano, y después no vería lo que acaba de anotar
@@ -1227,7 +1300,8 @@ function buildRouter() {
 
 module.exports = {
   buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara,
-  revisarLimites, buscarDuplicado, avisoDeDuplicado, TECHO, referenciasRotas,
+  revisarLimites, buscarDuplicado, avisoDeDuplicado, TECHO,
+  referenciasRotas, referenciasFueraDeAlcance,
   // Se exporta para que las pruebas puedan exigir que un dato mal escrito se
   // le explique a la persona (400) en vez de salir como avería del sistema.
   ErrorDeDatos,

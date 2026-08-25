@@ -206,10 +206,24 @@ function alcanza(def, fila, usuario) {
       const administraAlguna = lista(fila.iglesias).some((id) => iglesias.includes(id));
       const suPrincipal = fila.iglesia_id && iglesias.includes(Number(fila.iglesia_id));
       if (!esUnoMismo && !administraAlguna && !suPrincipal) return false;
-    } else {
+    } else if (def.name === 'iglesias' || def.fields.some((f) => f.name === 'iglesia_id')) {
+      /*
+       * Solo se acota por iglesia lo que TIENE iglesia. Hay tres módulos que
+       * no: las propias iglesias —que se resuelven por su id, acá al lado—,
+       * los perfiles de permisos y las categorías de tesorería. Esos son de
+       * toda la organización, uno solo para todos, y no pertenecen a ninguna
+       * congregación en particular.
+       *
+       * Hasta la 1.98.1 esta comprobación no hacía la distinción: miraba
+       * `fila.iglesia_id` en cualquier módulo, y en uno que no tiene esa
+       * columna el valor es «no hay», así que respondía que NADIE lo alcanza.
+       * El listado sí hacía la distinción —ver condiciones()—, de modo que un
+       * perfil de permisos salía en la lista y después no se dejaba abrir.
+       */
       const suya = def.name === 'iglesias' ? fila.id : fila.iglesia_id;
-      // Los registros sin iglesia (p. ej. las cuentas de la corporación) no son
-      // de nadie en particular: quedan fuera del alcance de un usuario acotado.
+      // Un registro de un módulo que sí lleva iglesia pero lo tiene en blanco
+      // no es de nadie en particular: queda fuera del alcance de quien está
+      // acotado a las suyas.
       if (!suya || !iglesias.includes(Number(suya))) return false;
     }
   }
