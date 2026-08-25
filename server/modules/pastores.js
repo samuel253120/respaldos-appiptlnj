@@ -62,7 +62,7 @@ module.exports = {
   labelSingular: 'Pastor / Guía',
   icon: '🧑‍💼',
   group: 'Organización',
-  order: 11,
+  order: 51,
   display: '{nombres:primero} {apellidos}',
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono'],
   listFields: ['foto', 'rut', 'nombres', 'apellidos', 'cargo', 'iglesia_id', 'ficha_miembro', 'estado'],

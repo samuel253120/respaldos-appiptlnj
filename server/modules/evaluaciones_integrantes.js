@@ -31,7 +31,7 @@ module.exports = {
   labelSingular: 'Evaluación',
   icon: '📋',
   group: 'Organización',
-  order: 12.2,
+  order: 59,
   menu: false,
   display: '{fecha} — {resultado}',
   dateField: 'fecha',

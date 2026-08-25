@@ -59,7 +59,7 @@ module.exports = {
   genero: 'f', // «una credencial»: la regla por la terminación no lo acierta
   icon: '🪪',
   group: 'Documentación',
-  order: 44,
+  order: 64,
   display: '{serie_completa} — {snap_apellidos} {snap_nombres}',
   dateField: 'fecha_emision',
   printable: true,

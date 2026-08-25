@@ -14,7 +14,7 @@ module.exports = {
   labelSingular: 'Registro del historial',
   icon: '🗒️',
   group: 'Organización',
-  order: 11.1,
+  order: 57,
   menu: false,
   display: '{tipo} — {descripcion}',
   dateField: 'fecha',

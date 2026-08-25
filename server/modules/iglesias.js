@@ -26,7 +26,7 @@ module.exports = {
   labelSingular: 'Iglesia',
   icon: '⛪',
   group: 'Organización',
-  order: 10,
+  order: 50,
   display: '{nombre}',
   searchFields: ['nombre', 'codigo', 'ciudad', 'direccion'],
   listFields: ['foto', 'nombre', 'tipo', 'codigo', 'ciudad', 'telefono', 'pastor_id', 'estado'],

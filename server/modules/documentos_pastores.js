@@ -35,7 +35,7 @@ module.exports = {
   labelSingular: 'Documento del pastor',
   icon: '🗂️',
   group: 'Organización',
-  order: 11.2,
+  order: 56,
   menu: false,
   display: '{nombre}',
   dateField: 'fecha',

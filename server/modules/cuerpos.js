@@ -72,7 +72,7 @@ module.exports = {
   labelSingular: 'Cuerpo / Grupo',
   icon: '👥',
   group: 'Organización',
-  order: 12,
+  order: 52,
   display: '{nombre}',
   searchFields: ['nombre', 'descripcion'],
   listFields: ['foto', 'nombre', 'tipo', 'iglesia_id', 'lider_id', 'estado', 'cumplimiento'],

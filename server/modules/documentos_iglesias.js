@@ -15,7 +15,7 @@ module.exports = {
   labelSingular: 'Documento de la iglesia',
   icon: '🗂️',
   group: 'Organización',
-  order: 10.2,
+  order: 54,
   menu: false,
   display: '{nombre}',
   dateField: 'fecha',

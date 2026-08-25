@@ -20,7 +20,7 @@ module.exports = {
   labelSingular: 'Integrante del cuerpo',
   icon: '🧑‍🤝‍🧑',
   group: 'Organización',
-  order: 12.1,
+  order: 58,
   menu: false,
   display: '{miembro_id} — {cuerpo_id}',
   dateField: 'fecha_ingreso',

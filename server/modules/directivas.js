@@ -85,7 +85,7 @@ module.exports = {
   labelSingular: 'Directiva',
   icon: '🏅',
   group: 'Organización',
-  order: 13,
+  order: 53,
   display: '{periodo}',
   dateField: 'fecha_inicio',
   printable: true,

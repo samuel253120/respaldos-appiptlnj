@@ -38,7 +38,7 @@ module.exports = {
   labelSingular: 'Cuenta de tesorería',
   icon: '🏦',
   group: 'Finanzas',
-  order: 29,
+  order: 41,
   display: '{nombre}',
   searchFields: ['nombre', 'descripcion', 'responsable'],
   listFields: ['nombre', 'ambito', 'iglesia_id', 'cuerpo_id', 'tipo', 'saldo', 'estado'],

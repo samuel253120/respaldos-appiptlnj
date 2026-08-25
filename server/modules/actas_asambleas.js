@@ -5,7 +5,7 @@ module.exports = {
   labelSingular: 'Acta de Asamblea',
   icon: '🏛️',
   group: 'Documentación',
-  order: 41,
+  order: 61,
   display: 'Asamblea {numero_acta} — {fecha}',
   dateField: 'fecha',
   printable: true,

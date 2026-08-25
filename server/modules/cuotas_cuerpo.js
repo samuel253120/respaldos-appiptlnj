@@ -27,7 +27,7 @@ module.exports = {
   labelSingular: 'Cuota',
   icon: '🎟️',
   group: 'Finanzas',
-  order: 32,
+  order: 44,
   menu: false,
   display: '{mes}/{anio} — {miembro_id}',
   dateField: 'fecha_pago',

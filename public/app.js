@@ -133,6 +133,21 @@ function etiquetaDeRef(f, texto) {
 function marcarActivo(link) {
   link.classList.add('active');
   link.setAttribute('aria-current', 'page');
+
+  /*
+   * Y si su grupo estaba plegado, se abre.
+   *
+   * Va acá y no al armar el menú porque esta marca se pone al enrutar, que
+   * pasa mucho después y muchas veces más. Sin esto, alguien que cerró
+   * «Documentación» y llega a Certificados por un enlace o por el buscador se
+   * queda sin ninguna señal de dónde está parado: el menú no le muestra nada
+   * marcado.
+   */
+  const grupo = link.closest('.side-group.cerrado');
+  if (grupo) {
+    const titulo = grupo.querySelector('.group-title');
+    if (titulo) titulo.click(); // así también se guarda que quedó abierto
+  }
 }
 
 /** El día de hoy como lo escribe un campo de fecha: 2026-08-23. */
@@ -449,6 +464,7 @@ async function boot() {
     PERMISOS_CATALOGO = meta.permisosCatalogo || null;
     ROLES = meta.roles || [];
     if (meta.ajustes) AJUSTES = { ...AJUSTES, ...meta.ajustes };
+    window.GRUPOS_DEL_MENU = meta.gruposDelMenu || [];
     renderShell();
     route();
   } catch (e) {
@@ -1276,21 +1292,72 @@ async function renderClaveUsuario(usuarioId, contenedor) {
   }
 }
 
+/**
+ * Los enlaces del menú que NO son un módulo.
+ *
+ * Pasar lista, el perfil y la configuración son pantallas propias, no listados
+ * genéricos, así que no salen de MODULES. Antes se pegaban al final del menú,
+ * cada uno con su propio título de grupo: «Asistencia» era un grupo de un solo
+ * elemento, y quedaba debajo de todo, cuando es lo que más se usa. Acá se
+ * declaran con el grupo y el número que les toca, y se mezclan con los módulos
+ * como uno más.
+ */
+const ENLACES_PROPIOS = [
+  { name: '_asistencia', grupo: 'Reuniones', order: 10, icon: '📋', label: 'Asistencia',
+    href: '#/asistencia', si: () => !!MOD['asistencias'] },
+  { name: '_cuenta', grupo: 'Sistema', order: 70, icon: '🙋', label: 'Mi perfil', href: '#/perfil' },
+  { name: '_config', grupo: 'Sistema', order: 71, icon: '⚙️', label: 'Configuración',
+    href: '#/config', si: () => tieneLlave('sistema_configuracion') },
+];
+
+/** Qué grupos deja cerrados esta persona. Se recuerda en este navegador. */
+const GRUPOS_CERRADOS = 'menu.gruposCerrados';
+function gruposCerrados() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(GRUPOS_CERRADOS) || '[]'));
+  } catch (e) {
+    return new Set();
+  }
+}
+
 function renderShell() {
   const groups = {};
   // Los módulos que se manejan dentro de la ficha de otro (los documentos y
   // el historial de cada iglesia o pastor) no ocupan lugar en el menú.
   for (const m of MODULES.filter((x) => x.menu !== false)) {
-    (groups[m.group] = groups[m.group] || []).push(m);
+    (groups[m.group] = groups[m.group] || []).push({
+      name: m.name, icon: m.icon, label: m.label, order: m.order, href: `#/m/${m.name}`,
+    });
   }
-  const groupsHtml = Object.entries(groups)
-    .map(
-      ([g, mods]) => `
-      <div class="side-group">
-        <div class="group-title">${esc(g)}</div>
-        ${mods.map((m) => `<a class="side-link" data-mod="${m.name}" href="#/m/${m.name}"><span class="ic">${m.icon}</span> ${esc(m.label)}</a>`).join('')}
-      </div>`
-    )
+  for (const e of ENLACES_PROPIOS) {
+    if (e.si && !e.si()) continue;
+    (groups[e.grupo] = groups[e.grupo] || []).push(e);
+  }
+
+  /*
+   * El orden lo manda el servidor (server/grupos-del-menu.js). Un grupo que no
+   * venga en esa lista se muestra igual, al final: es preferible que un módulo
+   * nuevo salga en un lugar poco feliz a que desaparezca porque alguien olvidó
+   * anotarlo.
+   */
+  const declarados = (window.GRUPOS_DEL_MENU || []).filter((g) => groups[g]);
+  const elResto = Object.keys(groups).filter((g) => !declarados.includes(g)).sort();
+  const cerrados = gruposCerrados();
+
+  const groupsHtml = [...declarados, ...elResto]
+    .map((g) => {
+      const items = groups[g].slice().sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+      const cerrado = cerrados.has(g);
+      return `
+      <div class="side-group${cerrado ? ' cerrado' : ''}" data-grupo="${esc(g)}">
+        <button type="button" class="group-title" aria-expanded="${cerrado ? 'false' : 'true'}">
+          <span>${esc(g)}</span><span class="flecha" aria-hidden="true">▾</span>
+        </button>
+        <div class="group-items">
+          ${items.map((m) => `<a class="side-link" data-mod="${m.name}" href="${m.href}"><span class="ic">${m.icon}</span> ${esc(m.label)}</a>`).join('')}
+        </div>
+      </div>`;
+    })
     .join('');
 
   const initials = (USER.nombre || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
@@ -1310,18 +1377,6 @@ function renderShell() {
           <a class="side-link" data-mod="_dash" href="#/"><span class="ic">📊</span> Panel de control</a>
         </div>
         ${groupsHtml}
-        ${MOD['asistencias'] ? `
-        <div class="side-group">
-          <div class="group-title">Asistencia</div>
-          <a class="side-link" data-mod="_asistencia" href="#/asistencia"><span class="ic">📋</span> Asistencia</a>
-        </div>` : ''}
-        <div class="side-group">
-          <div class="group-title">Sistema</div>
-          <a class="side-link" data-mod="_cuenta" href="#/perfil"><span class="ic">🙋</span> Mi perfil</a>
-          ${tieneLlave('sistema_configuracion')
-            ? '<a class="side-link" data-mod="_config" href="#/config"><span class="ic">⚙️</span> Configuración</a>'
-            : ''}
-        </div>
         <div class="side-footer">Conectado como <b>${esc(USER.nombre)}</b><br>Rol: ${esc(USER.rol)}</div>
       </nav>
       <div class="main">
@@ -1364,6 +1419,7 @@ function renderShell() {
   document.getElementById('logoutBtn').addEventListener('click', logout);
   iniciarBuscadorGlobal();
   iniciarCampanita();
+  iniciarGruposDelMenu();
   const btnIglesia = document.getElementById('btnIglesia');
   if (btnIglesia) btnIglesia.addEventListener('click', elegirIglesiaDeTrabajo);
   const sidebar = document.getElementById('sidebar');
@@ -3358,6 +3414,38 @@ async function renderMisAvisos(caja) {
   });
 }
 
+
+/**
+ * Los grupos del menú se pliegan, y se quedan como uno los dejó.
+ *
+ * Con veintiocho enlaces el menú mide casi dos pantallas en un teléfono, y
+ * nadie usa los veintiocho: quien pasa lista los domingos no abre Credenciales
+ * nunca. Cerrando lo que no usa, el menú le cabe entero y deja de desplazar.
+ *
+ * Lo cerrado se guarda en este navegador y no en la cuenta, a propósito: la
+ * misma persona puede querer el teléfono con casi todo cerrado —donde el
+ * espacio es poco— y el computador de la oficina con todo abierto.
+ */
+function iniciarGruposDelMenu() {
+  const barra = document.querySelector('.sidebar');
+  if (!barra) return;
+
+  barra.querySelectorAll('.side-group[data-grupo] .group-title').forEach((titulo) => {
+    titulo.addEventListener('click', () => {
+      const grupo = titulo.closest('.side-group');
+      const cerrado = grupo.classList.toggle('cerrado');
+      titulo.setAttribute('aria-expanded', cerrado ? 'false' : 'true');
+
+      const guardados = gruposCerrados();
+      cerrado ? guardados.add(grupo.dataset.grupo) : guardados.delete(grupo.dataset.grupo);
+      try {
+        localStorage.setItem(GRUPOS_CERRADOS, JSON.stringify([...guardados]));
+      } catch (e) {
+        // Sin dónde guardarlo, el plegado igual funciona hasta recargar.
+      }
+    });
+  });
+}
 
 /* ---------------- los avisos: la campanita ---------------- */
 /**

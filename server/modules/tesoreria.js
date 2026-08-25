@@ -15,7 +15,7 @@ module.exports = {
   labelSingular: 'Movimiento',
   icon: '💰',
   group: 'Finanzas',
-  order: 30,
+  order: 40,
   display: '{tipo}: {concepto}',
   dateField: 'fecha',
   searchFields: ['concepto', 'categoria', 'notas'],

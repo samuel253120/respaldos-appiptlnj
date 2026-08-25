@@ -311,6 +311,9 @@ app.get('/api/meta', authRequired, (req, res) => {
     modules: mods,
     roles: ROLES,
     permisosCatalogo,
+    // En qué orden van los grupos del menú. Se manda desde acá y no se deduce
+    // en la pantalla: ver server/grupos-del-menu.js.
+    gruposDelMenu: require('./grupos-del-menu').GRUPOS_DEL_MENU,
     // La identidad de la institución: el nombre y el lema que se configuran
     institucion: {
       nombre: ajustes.obtener('iglesia_nombre') || '',

@@ -110,8 +110,8 @@ module.exports = {
   label: 'Asistencias',
   labelSingular: 'Actividad',
   icon: '📋',
-  group: 'Personas',
-  order: 22,
+  group: 'Reuniones',
+  order: 10,
   // Todo lo de asistencia —crear actividades, pasar lista e informes— vive en
   // una sola pantalla, la de Asistencia, así que este módulo no ocupa además
   // un lugar propio en el menú.

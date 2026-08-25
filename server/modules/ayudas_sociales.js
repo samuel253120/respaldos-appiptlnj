@@ -30,7 +30,7 @@ module.exports = {
   label: 'Ayudas Sociales',
   labelSingular: 'Ayuda Social',
   icon: '🤝',
-  group: 'Finanzas',
+  group: 'Atención y ayuda',
   order: 31,
   display: '{tipo_ayuda} — {beneficiario}',
   dateField: 'fecha',

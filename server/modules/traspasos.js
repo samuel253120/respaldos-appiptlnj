@@ -20,7 +20,7 @@ module.exports = {
   labelSingular: 'Traspaso',
   icon: '🔄',
   group: 'Finanzas',
-  order: 31,
+  order: 42,
   display: '{fecha} — {concepto}',
   dateField: 'fecha',
   printable: true,

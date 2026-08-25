@@ -14,7 +14,7 @@ module.exports = {
   labelSingular: 'Acta de Reunión',
   icon: '📝',
   group: 'Documentación',
-  order: 40,
+  order: 60,
   display: 'Acta {numero_acta} — {fecha}',
   dateField: 'fecha',
   printable: true,

@@ -5,7 +5,7 @@ module.exports = {
   labelSingular: 'Artículo de inventario',
   icon: '📦',
   group: 'Finanzas',
-  order: 32,
+  order: 43,
   display: '{articulo}',
   searchFields: ['articulo', 'categoria', 'ubicacion', 'notas'],
   listFields: ['articulo', 'categoria', 'cantidad', 'estado', 'iglesia_id', 'cuerpo_id'],

@@ -5,7 +5,7 @@ module.exports = {
   labelSingular: 'Documento',
   icon: '📁',
   group: 'Documentación',
-  order: 42,
+  order: 62,
   display: '{titulo}',
   dateField: 'fecha',
   searchFields: ['titulo', 'descripcion', 'etiquetas'],

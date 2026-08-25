@@ -5,7 +5,7 @@ module.exports = {
   labelSingular: 'Certificado',
   icon: '📜',
   group: 'Documentación',
-  order: 43,
+  order: 63,
   display: '{tipo} — {numero}',
   dateField: 'fecha_emision',
   printable: true,

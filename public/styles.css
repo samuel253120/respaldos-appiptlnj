@@ -120,10 +120,22 @@ a:hover { text-decoration: underline; }
 .sidebar .brand .txt b { font-size: 13px; font-weight: 700; letter-spacing: .1px; }
 .sidebar .brand .txt i { font-size: 11.5px; font-style: normal; color: var(--marca-oro); }
 .side-group { margin-top: 14px; }
+/* El título es un botón: se toca para plegar el grupo. Se mantiene su aspecto
+   de rótulo —no parece un botón— porque no lo es del todo: lo que hace es
+   esconder lo de abajo, y anunciarlo con un borde y un fondo sería darle una
+   importancia que no tiene al lado de los enlaces de verdad. El área táctil,
+   en cambio, sí es de botón: toda la línea. */
 .side-group .group-title {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; background: none; border: 0; text-align: left;
   font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.2px; color: #94a3b8;
-  padding: 4px 16px 6px; font-weight: 600;
+  padding: 6px 16px; font-weight: 600; cursor: pointer;
+  font-family: inherit;
 }
+.side-group .group-title:hover { color: #cbd5e1; background: rgba(255,255,255,0.04); }
+.side-group .group-title .flecha { font-size: 11px; transition: transform 0.15s; opacity: .7; }
+.side-group.cerrado .group-title .flecha { transform: rotate(-90deg); }
+.side-group.cerrado .group-items { display: none; }
 .side-link {
   display: flex; align-items: center; gap: 10px; padding: 8px 16px; color: var(--sidebar-fg);
   cursor: pointer; font-size: 13.5px; border-left: 3px solid transparent;
