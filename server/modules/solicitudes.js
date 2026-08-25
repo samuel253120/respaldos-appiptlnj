@@ -35,6 +35,8 @@
  * estando donde estaba —en revisión, en espera— y lo que cambió es quién la
  * tiene. Mezclarlo perdería justamente lo que interesa saber.
  */
+const { TIPOS_DE_AYUDA } = require('../tipos-de-ayuda');
+
 const ESTADOS = [
   'Pendiente',
   'En revisión',
@@ -135,6 +137,27 @@ module.exports = {
     { name: 'asunto', label: 'Asunto', type: 'text', required: true },
     { name: 'descripcion', label: 'Descripción detallada', type: 'textarea' },
 
+    /*
+     * Lo que hace falta para que, al aprobarla, la ayuda se registre sola.
+     *
+     * Solo aparecen en las solicitudes de ayuda social, y el tipo se exige
+     * únicamente ahí: el motor no reclama un campo obligatorio que su «showIf»
+     * tiene escondido. Sin el tipo, la ayuda nacería como «Otro» —que no dice
+     * nada— y habría que ir a corregirla a mano, que es justo el trabajo que
+     * esto viene a ahorrar.
+     */
+    {
+      name: 'ayuda_tipo', label: 'Tipo de ayuda que se pide', type: 'select',
+      options: TIPOS_DE_AYUDA, required: true,
+      showIf: { field: 'tipo', equals: 'Ayuda social' },
+      help: 'Al aprobar la solicitud, la ficha en Ayudas Sociales se crea sola con este tipo.',
+    },
+    {
+      name: 'ayuda_monto', label: 'Valor estimado de la ayuda', type: 'money', min: 0,
+      showIf: { field: 'tipo', equals: 'Ayuda social' },
+      help: 'Opcional. Pasa tal cual a la ayuda cuando se apruebe.',
+    },
+
     // ---------------- Cómo va ----------------
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Pendiente',
@@ -156,6 +179,10 @@ module.exports = {
     },
     { name: 'fecha_respuesta', label: 'Fecha de respuesta', type: 'date', noAntesDe: 'fecha', readonly: true,
       help: 'La pone el sistema el día en que la solicitud se cierra.' },
+
+    // La ayuda que generó esta solicitud, si generó alguna. La escribe el
+    // sistema y es lo que impide que se cree una segunda al volver a guardar.
+    { name: 'ayuda_social_id', label: 'Ayuda social generada', type: 'ref', ref: 'ayudas_sociales', readonly: true },
   ],
 
   hooks: {
@@ -248,6 +275,23 @@ module.exports = {
         seguimiento.anotar(db, fila.id, {
           tipo: 'Respuesta',
           descripcion: fila.respuesta,
+          user,
+        });
+      }
+
+      /*
+       * Y si es una ayuda social que se acaba de conceder, se registra sola en
+       * Ayudas Sociales. El porqué y las tres decisiones que lo rodean —se
+       * crea una vez, no se borra sola, queda anotada— están en
+       * server/solicitud-ayuda.js.
+       */
+      const ayudaId = require('../solicitud-ayuda').generarSiCorresponde(fila, { db, user, existing });
+      if (ayudaId) {
+        seguimiento.anotar(db, fila.id, {
+          tipo: 'Cambio de estado',
+          descripcion:
+            `Se registró la ayuda social n.º ${ayudaId} con lo que dice esta solicitud. ` +
+            'Si algo cambia, se corrige allá: esta solicitud ya no la vuelve a generar.',
           user,
         });
       }

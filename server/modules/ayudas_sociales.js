@@ -20,6 +20,8 @@
  * entregó, aunque después la ficha se corrija.
  */
 
+const { TIPOS_DE_AYUDA } = require('../tipos-de-ayuda');
+
 /** De qué registro sale el beneficiario de esta ayuda. */
 const DE_QUIEN = ['Miembro', 'No miembro'];
 
@@ -64,7 +66,7 @@ module.exports = {
     {
       name: 'tipo_ayuda', label: 'Tipo de ayuda', type: 'select', required: true, default: 'Alimentos',
       seccion: 'La ayuda',
-      options: ['Alimentos', 'Económica', 'Medicamentos / Salud', 'Ropa', 'Vivienda', 'Funeraria', 'Educación', 'Otro'],
+      options: TIPOS_DE_AYUDA,
     },
     { name: 'descripcion', label: 'Descripción de la ayuda', type: 'textarea' },
     { name: 'valor_estimado', label: 'Valor estimado', type: 'money', min: 0 },
@@ -73,6 +75,9 @@ module.exports = {
       name: 'estado', label: 'Estado', type: 'select', default: 'Solicitada',
       options: ['Solicitada', 'Aprobada', 'Entregada', 'Rechazada'],
     },
+    // De qué solicitud salió, cuando salió de una. Lo escribe el sistema al
+    // aprobarla; queda a la vista para poder ir a leer lo que se pidió.
+    { name: 'solicitud_id', label: 'Solicitud de origen', type: 'ref', ref: 'solicitudes', readonly: true },
     { name: 'soporte', label: 'Soporte / Evidencia', type: 'file' },
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],
