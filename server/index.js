@@ -34,6 +34,11 @@ const pendientes = require('./pendientes');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de un proxy inverso (Railway, Render, Nginx…)
+
+// Cada dato de la dirección llega como UN texto, siempre: la misma clave
+// repetida ya no entrega una lista donde el sistema espera un valor, que era un
+// error 500 en todos los listados (ver server/consulta.js).
+app.set('query parser', require('./consulta').leerLaConsulta);
 // Todo viaja comprimido. La pantalla del sistema son unos 300 KB de programa y
 // los listados vienen en texto: comprimidos pesan como la cuarta parte, que en
 // un teléfono con datos móviles es la diferencia entre entrar y quedarse

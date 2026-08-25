@@ -756,7 +756,23 @@ function buildRouter() {
     router.get(base, requirePerm(def.name, 'view'), (req, res) => {
       const { params, whereSql, ordenSql } = consultaDelListado(req);
 
-      const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+      /*
+       * El número de página tiene tope, y no es un capricho.
+       *
+       * `?page=9999999999999999999` daba un desplazamiento tan grande que
+       * dejaba de ser un número entero de los que JavaScript sabe representar
+       * exactos, y SQLite se negaba a recibirlo: «datatype mismatch», o sea un
+       * error 500 en todos los listados del sistema. Lo encontró el barrido de
+       * la 1.96.3; el primero, con la clave repetida, era otro camino al mismo
+       * sitio.
+       *
+       * Un millón de páginas por doscientos registros son doscientos millones
+       * de fichas. Ninguna iglesia va a llegar ahí, y pedir más allá del final
+       * devuelve una página vacía, que es lo que corresponde: quien escribe un
+       * número absurdo en la dirección no rompe nada, simplemente no ve nada.
+       */
+      const TOPE_DE_PAGINA = 1000000;
+      const page = Math.min(TOPE_DE_PAGINA, Math.max(1, parseInt(req.query.page, 10) || 1));
       const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 25));
       const offset = (page - 1) * limit;
 

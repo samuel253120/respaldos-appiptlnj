@@ -1397,6 +1397,53 @@ async function entrar(rut = RUT, clave = CLAVE) {
     revisar('se pudo crear el usuario de solo consulta', false, JSON.stringify(mirón.datos).slice(0, 140));
   }
 
+  /* 10 · Una dirección rara no tumba el sistema ---------------------------- */
+  console.log('\n10 · Direcciones raras');
+  /*
+   * Lo que va después del «?» lo escribe cualquiera. Hasta la 1.96.3, dos
+   * formas de escribirlo mal daban error 500 en TODOS los listados:
+   *
+   *   ?q=a&q=b                      la misma clave repetida llegaba como lista
+   *   ?page=9999999999999999999     el desplazamiento dejaba de ser un entero
+   *                                 exacto y la base lo rechazaba
+   *
+   * No filtraban nada, pero cualquiera con sesión dejaba a los demás sin
+   * listados escribiendo una dirección a mano. Acá se comprueba que ahora
+   * responden como corresponde, y que la repetida vale la PRIMERA: si valiera
+   * la última, la pantalla y el servidor entenderían distinto la misma
+   * dirección.
+   */
+  const RAREZAS = [
+    ['la misma clave repetida', '/api/miembros?q=a&q=b'],
+    ['un filtro repetido', '/api/miembros?f_estado=Activo&f_estado=X'],
+    ['corchetes en la clave', '/api/miembros?f_estado%5Bx%5D=1'],
+    ['fechas repetidas', '/api/miembros?desde=2020-01-01&desde=2021-01-01'],
+    ['un número de página imposible', '/api/miembros?page=9999999999999999999'],
+    ['una página negativa', '/api/miembros?page=-5'],
+    ['un límite imposible', '/api/miembros?limit=9999999999999999999'],
+    ['orden y sentido repetidos', '/api/miembros?sort=nombres&sort=x&dir=asc&dir=x'],
+    ['una clave llamada __proto__', '/api/miembros?__proto__=roto'],
+    ['la planilla con la clave repetida', '/api/miembros/planilla?q=a&q=b'],
+    ['el buscador con la clave repetida', '/api/buscar?q=a&q=b'],
+    ['el resumen de tesorería repetido', '/api/tesoreria/resumen?desde=a&desde=b'],
+  ];
+  let seCayo = 0;
+  for (const [queEs, ruta] of RAREZAS) {
+    // `token` ya viene con el «Bearer» puesto (ver tokenDe): agregárselo otra
+    // vez daba un 401, y la comprobación pasaba sin haber probado nada.
+    const r = await fetch(`${URL}${ruta}`, { headers: { Authorization: token } });
+    if (r.status >= 500) { seCayo++; console.log(`      ${queEs}: respondió ${r.status}`); }
+  }
+  revisar('ninguna dirección rara deja al sistema con avería', seCayo === 0,
+    `${seCayo} de ${RAREZAS.length} respondieron con error del servidor`);
+
+  // Y que la repetida signifique lo mismo que la simple, no otra cosa
+  const conUna = await api('GET', '/api/miembros?q=Muñoz');
+  const conDos = await api('GET', '/api/miembros?q=Muñoz&q=Zúñiga');
+  revisar('una clave repetida vale la primera, como en el navegador',
+    conUna.datos && conDos.datos && conUna.datos.total === conDos.datos.total,
+    `sola dio ${conUna.datos && conUna.datos.total} y repetida ${conDos.datos && conDos.datos.total}`);
+
   console.log(fallas ? `\n❌ ${fallas} comprobación(es) fallaron.` : '\n✅ Lo que tiene que estar cerrado, está cerrado.');
   process.exit(fallas ? 1 : 0);
 })();
