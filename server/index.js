@@ -315,11 +315,15 @@ app.get('/api/meta', authRequired, (req, res) => {
       telefono: ajustes.obtener('iglesia_telefono') || '',
       email: ajustes.obtener('iglesia_email') || '',
       web: ajustes.obtener('iglesia_web') || '',
+      pie_texto: ajustes.obtener('documento_pie_texto') || '',
     },
     // Ajustes que la interfaz necesita para trabajar (no son públicos)
     ajustes: {
       imagen_lado_maximo: Math.min(4000, Math.max(600, Number(ajustes.obtener('imagen_lado_maximo')) || 1600)),
       imagen_calidad: Math.min(100, Math.max(40, Number(ajustes.obtener('imagen_calidad')) || 88)),
+      // Para proponer el vencimiento al escribir la fecha de entrega de una credencial
+      credencial_vigencia_anios: ajustes.numero('credencial_vigencia_anios', 1, 20),
+      asistencia_marca_inicial: ajustes.obtener('asistencia_marca_inicial') || 'Sin marcar',
     },
     user: {
       ...req.user,

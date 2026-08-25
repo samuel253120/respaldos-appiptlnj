@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.90.0", fecha: "2026-08-25", titulo: "Siete ajustes nuevos: plazos, vigencia de credenciales y valores por defecto al pasar lista" },
   { version: "1.89.0", fecha: "2026-08-25", titulo: "El sistema anotaba con la hora del servidor, no con la de Chile: ahora la zona horaria se elige" },
   { version: "1.88.0", fecha: "2026-08-25", titulo: "La aplicación ahora abre aunque no haya señal, y avisa que no la hay" },
   { version: "1.87.3", fecha: "2026-08-25", titulo: "Apagar los avisos de un aparato ya no falla, y se pueden apagar los huérfanos" },

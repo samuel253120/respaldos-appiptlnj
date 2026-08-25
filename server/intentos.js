@@ -50,15 +50,37 @@
 function escalaDe(llave) {
   const base = require('./ajustes').numero('acceso_intentos', 3, 20);
   const cuantos = llave.startsWith('rut:') ? base : base * 4;
+  const espera = esperaMaxima();
   return [
-    { fallos: cuantos * 3, minutos: 15 },
-    { fallos: cuantos * 2, minutos: 5 },
-    { fallos: cuantos, minutos: 1 },
+    { fallos: cuantos * 3, minutos: espera },
+    { fallos: cuantos * 2, minutos: Math.max(1, Math.round(espera / 3)) },
+    { fallos: cuantos, minutos: Math.max(1, Math.round(espera / 15)) },
   ];
 }
 
-/** Cuánto se recuerda un intento fallido suelto. */
-const MEMORIA_MS = 30 * 60 * 1000;
+/**
+ * La espera más larga, que también se fija en la configuración.
+ *
+ * Igual que con la cantidad de errores, se pide UN número y los peldaños de
+ * abajo salen de él. Con el valor de fábrica (15) queda exactamente la escala
+ * de siempre: 1, 5 y 15 minutos. Pedir tres números por separado invitaría a
+ * dejarlos incoherentes —la espera corta más larga que la larga— sin que nada
+ * lo impida.
+ */
+function esperaMaxima() {
+  return require('./ajustes').numero('acceso_espera_minutos', 1, 120);
+}
+
+/**
+ * Cuánto se recuerda un intento fallido suelto: el doble de la espera larga.
+ *
+ * Va atado a lo mismo y no aparte porque son la misma idea vista de dos
+ * lados. Si se olvidara antes de que termine la espera, quien insiste podría
+ * limpiar su cuenta simplemente esperando un poco menos de lo que le tocaba.
+ */
+function memoriaMs() {
+  return esperaMaxima() * 2 * 60 * 1000;
+}
 
 const registro = new Map(); // llave → { fallos, ultimo, hasta }
 
@@ -68,7 +90,7 @@ function ahora() {
 
 function ficha(llave) {
   let f = registro.get(llave);
-  if (f && ahora() - f.ultimo > MEMORIA_MS) {
+  if (f && ahora() - f.ultimo > memoriaMs()) {
     registro.delete(llave); // hace rato que no lo intenta: se le olvida
     f = null;
   }
@@ -126,7 +148,7 @@ function intentosQueLeQuedan(rut, ip) {
 // no crezca sola con el tiempo.
 try {
   setInterval(() => {
-    const limite = ahora() - MEMORIA_MS;
+    const limite = ahora() - memoriaMs();
     for (const [llave, f] of registro) {
       if (f.ultimo < limite && (!f.hasta || f.hasta < ahora())) registro.delete(llave);
     }

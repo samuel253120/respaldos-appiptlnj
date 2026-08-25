@@ -30,7 +30,7 @@
 const serie = require('../credenciales/serie');
 
 /** Con cuánta anticipación se avisa que una credencial está por vencer. */
-const DIAS_POR_VENCER = 60;
+const diasPorVencer = () => require('../ajustes').numero('credencial_aviso_dias', 7, 365);
 
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 
@@ -49,7 +49,7 @@ function situacionDe(fila) {
   if (!vence) return 'Vigente'; // sin vencimiento no caduca sola
   if (vence < hoy) return 'Vencida';
   const faltan = Math.round((new Date(vence) - new Date(hoy)) / 86400000);
-  return faltan <= DIAS_POR_VENCER ? 'Por vencer' : 'Vigente';
+  return faltan <= diasPorVencer() ? 'Por vencer' : 'Vigente';
 }
 
 module.exports = {
@@ -556,7 +556,7 @@ module.exports = {
 
   situacionDe,
   porVencer,
-  DIAS_POR_VENCER,
+  diasPorVencer,
 };
 
 /**

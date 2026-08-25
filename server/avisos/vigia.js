@@ -26,7 +26,13 @@ const { db } = require('../db');
 const ajustes = require('../ajustes');
 const avisos = require('./avisos');
 
-const CADA_CUANTO_MIRA = 30 * 60 * 1000; // media hora
+/**
+ * Cada cuánto se asoma, en milisegundos. Se lee en cada vuelta y no una sola
+ * vez al arrancar: si no, cambiarlo en la configuración no serviría de nada
+ * hasta el próximo reinicio, y la pantalla diría una cosa mientras el sistema
+ * hace otra.
+ */
+const cadaCuantoMira = () => ajustes.numero('avisos_revisar_minutos', 5, 180) * 60 * 1000;
 const CLAVE_ULTIMA = 'avisos_ultimo_dia';
 
 /** El día de hoy como 2026-08-24, en la hora de acá. */
@@ -273,7 +279,16 @@ function mirar() {
 /** Se pone a mirar. Lo llama el arranque del servidor. */
 function empezar() {
   setTimeout(mirar, 20 * 1000).unref?.(); // una primera mirada al arrancar, sin apurar el arranque
-  setInterval(mirar, CADA_CUANTO_MIRA).unref?.();
+  // Se reprograma sola en cada vuelta —en vez de un setInterval fijo— para
+  // poder tomar el intervalo nuevo si lo cambian en la configuración.
+  const otraVuelta = () => {
+    const t = setTimeout(() => {
+      mirar();
+      otraVuelta();
+    }, cadaCuantoMira());
+    t.unref?.();
+  };
+  otraVuelta();
 }
 
 module.exports = { empezar, mirar, pasada, leToca, REVISIONES };

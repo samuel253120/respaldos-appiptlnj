@@ -94,14 +94,28 @@ test('el hilo que atiende NO se traba mientras se cifra', async () => {
    */
   await cifrado.cifrar('para despertar el hilo');
 
+  const fondo = await trabonDeFondo();
   const trabon = await trabonDelHilo(async () => {
     const huella = await cifrado.cifrar('Cordillera47');
     await cifrado.coincide('Cordillera47', huella);
   });
 
-  // Cifrar y comprobar cuestan cerca de 170 ms de cálculo entre las dos. Si se
-  // hicieran en este hilo, el trabón sería de ese orden.
-  assert.ok(trabon < 25, `el hilo quedó trabado ${trabon} ms de una vez (antes de esto eran 82)`);
+  /*
+   * Se compara contra el ruido de la máquina, igual que la prueba de más
+   * abajo, y no contra un número fijo.
+   *
+   * Antes decía «menos de 25 ms» y fallaba de vez en cuando sin que nada
+   * estuviera mal: las pruebas del motor corren veinticinco procesos a la vez
+   * y ahí el reloj del hilo salta más de 25 ms sin que nadie lo trabe. Una
+   * prueba que falla sola enseña a ignorar las fallas, que es peor que no
+   * tenerla.
+   *
+   * Cifrar y comprobar cuestan cerca de 170 ms de cálculo entre las dos. Si se
+   * hicieran en este hilo, la diferencia contra el fondo sería de ese orden.
+   */
+  assert.ok(trabon - fondo < 100,
+    `el hilo quedó trabado ${trabon} ms mientras se cifraba, y ${fondo} ms sin hacer nada: ` +
+    `el cifrado agregó ${trabon - fondo} ms (antes de tener hilo aparte eran 82 de una vez)`);
 });
 
 test('veinte ingresos a la vez no traban el sistema', async () => {

@@ -80,10 +80,14 @@ const IGLESIA = {
 
 /** Lo de la institución que se imprime al pie: contacto y personalidad jurídica. */
 function pieDeLaInstitucion() {
-  return [IGLESIA.rut, IGLESIA.direccion, IGLESIA.telefono, IGLESIA.email, IGLESIA.web]
+  const contacto = [IGLESIA.rut, IGLESIA.direccion, IGLESIA.telefono, IGLESIA.email, IGLESIA.web]
     .map((x) => (x || '').trim())
     .filter(Boolean)
     .join(' · ');
+  // La línea extra va aparte y debajo: una leyenda legal no es un dato de
+  // contacto, y mezclarla con puntos en el medio la volvería ilegible.
+  const extra = (IGLESIA.pie_texto || '').trim();
+  return [contacto, extra].filter(Boolean).join('\n');
 }
 
 /**
@@ -434,7 +438,7 @@ async function boot() {
       if (meta.institucion.nombre) IGLESIA.nombre = meta.institucion.nombre;
       IGLESIA.lema = meta.institucion.lema || '';
       if (meta.institucion.logo) IGLESIA.logo = `/api/configuracion/logo?v=${encodeURIComponent(meta.institucion.logo)}`;
-      for (const dato of ['rut', 'direccion', 'telefono', 'email', 'web']) {
+      for (const dato of ['rut', 'direccion', 'telefono', 'email', 'web', 'pie_texto']) {
         IGLESIA[dato] = meta.institucion[dato] || '';
       }
     }
@@ -2577,6 +2581,37 @@ async function renderCredencialesDelPastor(pastorId, caja) {
 }
 
 /**
+ * Al escribir la fecha de entrega de una credencial, propone el vencimiento.
+ *
+ * PROPONE, no lo pone. La fecha queda escrita en el campo, a la vista y
+ * editable antes de guardar. El servidor no la rellena por su cuenta a
+ * propósito: el punto 17.5 prohíbe emitir con datos incompletos, y una fecha
+ * que aparece sola en un documento que alguien firma es exactamente eso —nadie
+ * la decidió—. Así se ahorra escribirla sin que el sistema decida por nadie.
+ *
+ * Solo se propone si el vencimiento está vacío: corregir la entrega de una
+ * credencial ya fechada no puede pisarle el vencimiento que le pusieron.
+ */
+function proponerElVencimiento() {
+  const entrega = document.querySelector('#recForm [name="fecha_emision"]');
+  const vence = document.querySelector('#recForm [name="fecha_vencimiento"]');
+  if (!entrega || !vence) return;
+
+  const anios = Number((AJUSTES || {}).credencial_vigencia_anios) || 2;
+  entrega.addEventListener('change', () => {
+    if (!entrega.value || vence.value) return;
+    // Se suma con el calendario, no con días: así un 29 de febrero cae en el
+    // 28 del año que corresponda y no se corre solo.
+    const d = new Date(`${entrega.value}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return;
+    d.setFullYear(d.getFullYear() + anios);
+    vence.value = d.toISOString().slice(0, 10);
+    vence.dispatchEvent(new Event('change', { bubbles: true }));
+    toast(`Vencimiento propuesto a ${anios} año(s). Puede cambiarlo.`);
+  });
+}
+
+/**
  * El panel de emisión, al pie de la ficha de una credencial.
  *
  * Es donde se decide el paso que no se puede deshacer: emitirla. Por eso antes
@@ -3722,6 +3757,9 @@ async function viewForm(name, id, precarga) {
 
   // Al traspasar, se muestra cuánto hay en la cuenta de origen
   if (name === 'traspasos') mostrarSaldoOrigen();
+
+  // Al escribir la fecha de entrega de una credencial, se propone el vencimiento
+  if (name === 'credenciales') proponerElVencimiento();
 
   // El perfil muestra a quiénes se les puso, y deja ponérselo a más
   if (name === 'perfiles_permisos' && !isNew) {
@@ -8625,6 +8663,26 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   }
 
   /**
+   * Si la iglesia lo pidió, una lista nueva se abre con todos presentes.
+   *
+   * PROPUESTO, NO GUARDADO. Nada de esto llega a la base hasta que alguien
+   * aprieta Guardar; lo que cambia es por dónde se empieza. Donde casi nadie
+   * falta, marcar solo las ausencias es mucho más rápido que marcar a los
+   * ciento setenta y nueve que sí vinieron.
+   *
+   * Solo pasa en listas VÍRGENES: si ya hay aunque sea una marca puesta,
+   * alguien empezó a pasar lista y proponer encima le pisaría el trabajo —o
+   * peor, daría por presente a quien esa persona todavía no había mirado—.
+   */
+  const propuestas = (() => {
+    if ((AJUSTES || {}).asistencia_marca_inicial !== 'Presente') return 0;
+    if (!puedeEditar) return 0;
+    if (datos.personas.some((p) => p.estado)) return 0;
+    for (const p of datos.personas) p.estado = 'Presente';
+    return datos.personas.length;
+  })();
+
+  /**
    * Los cuerpos que aparecen en esta lista, con cuánta gente trae cada uno.
    *
    * A una actividad la pueden convocar varios cuerpos y la lista viene toda
@@ -8696,6 +8754,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
       </div>
       ${datos.personas.length ? `
         ${recuperadas ? `<div class="pl-recuperado">📵 Se recuperaron ${recuperadas} marca(s) que habían quedado sin guardar en este teléfono. Revíselas y guarde.</div>` : ''}
+        ${propuestas ? `<div class="pl-recuperado">✅ La lista se abrió con las ${fmtNumero(propuestas)} personas marcadas como presentes, según lo configurado. <b>Todavía no se ha guardado nada</b>: marque a quienes faltaron y después guarde.</div>` : ''}
         <div class="pl-filtros">
           <input type="search" id="plBuscar" placeholder="🔎 Buscar miembro por nombre o RUT…" autocomplete="off" />
           ${cuerposDeLaLista.length > 1 ? `
@@ -8766,7 +8825,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     (m) => m.estado === 'Justificado' && (!m.motivo || (CON_DETALLE.includes(m.motivo) && !String(m.detalle || '').trim()))
   ).length;
 
-  let sinGuardar = recuperadas > 0;
+  let sinGuardar = recuperadas > 0 || propuestas > 0;
   let reloj = null;
 
   const pintarEstado = (texto, clase) => {
@@ -8987,7 +9046,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   filas().forEach(pintarFila);
   if (cuerpoElegido) filtrar(); // se abre mostrando solo el cuerpo con el que se venía trabajando
   resumen();
-  if (recuperadas) pintarEstado('Sin guardar', 'aviso-texto');
+  if (recuperadas || propuestas) pintarEstado('Sin guardar', 'aviso-texto');
 }
 
 /** Estado de una cuenta de tesorería: saldo, totales y últimos movimientos. */

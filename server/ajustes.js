@@ -76,6 +76,14 @@ const OPCIONES = [
         clave: 'iglesia_email', label: 'Correo electrónico', tipo: 'text', defecto: '',
       },
       {
+        clave: 'documento_pie_texto', label: 'Línea extra al pie de los documentos impresos', tipo: 'textarea',
+        defecto: '',
+        ayuda:
+          'Se imprime debajo del contacto en certificados, informes y listados. Sirve para una leyenda legal, ' +
+          'el número de personalidad jurídica o cualquier cosa que deba figurar en todo lo que sale firmado. ' +
+          'Vacío, no se imprime nada.',
+      },
+      {
         clave: 'iglesia_web', label: 'Sitio web', tipo: 'text', defecto: '',
       },
     ],
@@ -94,6 +102,25 @@ const OPCIONES = [
         ayuda:
           'Cuánto dura el período de prueba de quien entra a un cuerpo, antes de evaluar su informe para pasar ' +
           'a integrante oficial. Cada cuerpo puede fijar los suyos en su ficha.',
+      },
+      {
+        clave: 'asistencia_actividad_defecto', label: 'Actividad que viene elegida al pasar lista',
+        tipo: 'select', defecto: 'Servicio General',
+        opciones: require('./actividades').TIPOS_DE_ACTIVIDAD.map((t) => ({ valor: t, label: t })),
+        ayuda: 'La que aparece marcada al crear una actividad nueva. Conviene poner la que más se repite.',
+      },
+      {
+        clave: 'asistencia_marca_inicial', label: 'Cómo viene marcada una lista recién abierta',
+        tipo: 'select', defecto: 'Sin marcar',
+        opciones: [
+          { valor: 'Sin marcar', label: 'Sin marcar a nadie (recomendado)' },
+          { valor: 'Presente', label: 'Con todos como presentes' },
+        ],
+        ayuda:
+          'Con todos como presentes se pasa lista más rápido donde casi nadie falta: solo hay que marcar a ' +
+          'los que no vinieron. Ojo con el otro lado: si alguien abre la lista y guarda sin mirarla, quedan ' +
+          'todos presentes. Nada se guarda hasta apretar Guardar, y solo se propone en listas donde todavía ' +
+          'no hay ni una marca puesta.',
       },
       {
         clave: 'cuota_registra_tesoreria', label: 'Registrar las cuotas en tesorería', tipo: 'boolean', defecto: '1',
@@ -139,6 +166,15 @@ const OPCIONES = [
           'Tras esa cantidad de errores seguidos sobre una misma cuenta, el sistema no acepta más intentos ' +
           'por un rato, y ese rato crece si insisten. Es lo que hace inútil probar contraseñas a máquina. ' +
           'Bajarlo aprieta más; subirlo da más margen a quien se equivoca de verdad.',
+      },
+      {
+        clave: 'acceso_espera_minutos', label: 'Cuánto queda cerrada la puerta, como máximo (minutos)',
+        tipo: 'number', defecto: '15', min: 1, max: 120,
+        ayuda:
+          'La espera más larga, la que se aplica cuando ya insistieron mucho. Las dos anteriores salen de ' +
+          'esta —un tercio y una quinceava parte—, así que con el valor de fábrica queda la escala de ' +
+          'siempre: 1, 5 y 15 minutos. Subirla aprieta a quien prueba contraseñas a máquina; bajarla ' +
+          'perdona antes a quien de verdad se equivocó.',
       },
       {
         clave: 'recuperacion_activa', label: 'Permitir recuperar la contraseña con una pregunta', tipo: 'boolean', defecto: '1',
@@ -208,6 +244,21 @@ const OPCIONES = [
           'muestra el estado de la credencial al día. Sin conexión: el QR lleva los datos del titular escritos ' +
           'adentro, para cuando en el lugar donde se verifica no hay internet; ahí el código no puede saber si ' +
           'la credencial fue revocada después de imprimirse.',
+      },
+      {
+        clave: 'credencial_vigencia_anios', label: 'Años que dura una credencial', tipo: 'number',
+        defecto: '2', min: 1, max: 20,
+        ayuda:
+          'Al escribir la fecha de entrega, el formulario PROPONE el vencimiento sumando estos años. Es una ' +
+          'propuesta a la vista, que se puede corregir antes de guardar: el sistema no pone fechas por su ' +
+          'cuenta en un documento que alguien firma.',
+      },
+      {
+        clave: 'credencial_aviso_dias', label: 'Avisar que una credencial vence con tantos días de anticipación',
+        tipo: 'number', defecto: '60', min: 7, max: 365,
+        ayuda:
+          'Desde cuántos días antes del vencimiento una credencial pasa a figurar «Por vencer», tanto en su ' +
+          'listado como en el aviso del panel. Es el tiempo que se da para alcanzar a emitir la nueva.',
       },
       {
         clave: 'credencial_intentos_por_minuto', label: 'Verificaciones erradas por minuto desde una misma conexión',
@@ -308,6 +359,14 @@ const OPCIONES = [
           'A partir de esta hora el sistema revisa lo de todos los días —credenciales por vencer, cumpleaños, ' +
           'cuotas al debe— y deja un solo aviso con todo. Lo urgente, como una solicitud que le trasladan, ' +
           'avisa en el momento y no espera a esta hora.',
+      },
+      {
+        clave: 'avisos_revisar_minutos', label: 'Cada cuántos minutos revisa el sistema si hay algo que avisar',
+        tipo: 'number', defecto: '30', min: 5, max: 180,
+        ayuda:
+          'Cada tanto el sistema se asoma a ver si hay credenciales por vencer, cumpleaños o cuotas al debe. ' +
+          'No conviene bajarlo mucho: no hace que los avisos lleguen antes —el resumen sale a la hora que se ' +
+          'fije más arriba— y solo agrega trabajo al servidor.',
       },
       {
         clave: 'avisos_solicitud_dias', label: 'Avisar una solicitud sin respuesta a los tantos días', tipo: 'number',
