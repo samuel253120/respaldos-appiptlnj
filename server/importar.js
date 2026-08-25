@@ -134,7 +134,22 @@ function prepararFila(def, fila, user) {
       }
     }
 
-    const convertido = coerce(f, valor);
+    /*
+     * La conversión puede negarse, y acá eso es un error DE LA FILA.
+     *
+     * Desde la 1.96.2, un campo de varios que no traiga una lista se rechaza
+     * en vez de guardarse vacío (ver comoListaDeIds en server/crud.js). En una
+     * importación eso tiene que salir en el informe junto a las demás filas
+     * con problemas, y no tumbar la petición entera: quien está importando
+     * quiere ver de una vez todo lo que hay que corregir.
+     */
+    let convertido;
+    try {
+      convertido = coerce(f, valor);
+    } catch (e) {
+      errores.push(`${f.label}: ${e.message}`);
+      continue;
+    }
     if (convertido !== undefined) datos[f.name] = convertido;
   }
 

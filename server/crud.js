@@ -78,6 +78,75 @@ function isChurchScoped(def) {
   return def.fields.some((f) => f.name === 'iglesia_id');
 }
 
+/**
+ * Los ids de un campo de varios (multiref), o un error si lo que llegó no es
+ * una lista.
+ *
+ * POR QUÉ ESTO SE NIEGA EN VEZ DE ARREGLARLO SOLO. Hasta la 1.96.1 acá decía
+ * `Array.isArray(value) ? value : []`: cualquier cosa que no fuera una lista
+ * se guardaba como lista VACÍA, con un 200 y sin una palabra. Y en el campo
+ * «Iglesias que administra» de un usuario, vacío no significa «ninguna»:
+ * significa TODAS, como dice la ayuda del propio campo.
+ *
+ * O sea que una restricción mal escrita no fallaba: abría. Comprobado
+ * mandando `{"iglesias": "[1]"}` —el texto en vez de la lista, que es la
+ * equivocación natural de cualquier programa que no sea esta pantalla—: se
+ * guardó vacío, respondió 200, y la secretaria pasó de ver los 8 miembros de
+ * su iglesia a ver los 12 de las dos.
+ *
+ * Un permiso que se equivoca tiene que equivocarse hacia el lado que cierra, y
+ * sobre todo tiene que DECIRLO. Así que ahora:
+ *
+ *   · una lista de verdad se acepta —es lo que manda la pantalla—;
+ *   · un texto que sea una lista bien escrita también, porque es exactamente
+ *     la forma en que el propio sistema la guarda y la devuelve;
+ *   · cualquier otra cosa se rechaza con un aviso que dice qué llegó.
+ *
+ * Vaciar a propósito sigue siendo posible y no pasa por acá: `coerce` atiende
+ * antes el vacío, el nulo y el campo que no viene, y para esos guarda nulo.
+ * Lo que no se puede es vaciar sin querer.
+ *
+ * También se rechaza la lista cuyos elementos no son ids. `["x","y"]` daba
+ * una lista vacía por el mismo camino y con el mismo resultado: dejaba de
+ * acotar. Si algo se pidió y no se entiende, se dice; no se guarda a medias.
+ */
+function comoListaDeIds(field, value) {
+  const cual = field.label || field.name;
+  let lista = value;
+
+  if (typeof lista === 'string') {
+    try {
+      lista = JSON.parse(lista);
+    } catch (e) {
+      lista = null;
+    }
+  }
+
+  if (!Array.isArray(lista)) {
+    throw new ErrorDeDatos(
+      `El campo "${cual}" espera una lista de registros y llegó otra cosa. ` +
+        'No se guarda vacío para no dejar sin efecto lo que se quiso poner.'
+    );
+  }
+
+  const ids = [];
+  const noSirven = [];
+  for (const suelto of lista) {
+    const n = Number(suelto);
+    if (Number.isInteger(n) && n > 0) ids.push(n);
+    else noSirven.push(String(suelto));
+  }
+
+  if (noSirven.length) {
+    throw new ErrorDeDatos(
+      `El campo "${cual}" trae ${noSirven.length} valor(es) que no son un registro: ` +
+        `${noSirven.slice(0, 5).join(', ')}. Corrija esos y vuelva a guardar.`
+    );
+  }
+
+  return ids;
+}
+
 /** Convierte el valor recibido al tipo de almacenamiento del campo. */
 function coerce(field, value) {
   if (value === undefined) return undefined;
@@ -94,10 +163,8 @@ function coerce(field, value) {
       const n = Number(value);
       return Number.isFinite(n) && n > 0 ? n : null;
     }
-    case 'multiref': {
-      const arr = Array.isArray(value) ? value : [];
-      return JSON.stringify(arr.map(Number).filter((n) => Number.isFinite(n) && n > 0));
-    }
+    case 'multiref':
+      return JSON.stringify(comoListaDeIds(field, value));
     case 'richtext':
       // Se guarda solo el formato: lo demás se bota (ver server/textorico.js)
       return require('./textorico').limpiar(value);
@@ -1065,4 +1132,7 @@ function buildRouter() {
 module.exports = {
   buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara,
   revisarLimites, buscarDuplicado, avisoDeDuplicado, TECHO,
+  // Se exporta para que las pruebas puedan exigir que un dato mal escrito se
+  // le explique a la persona (400) en vez de salir como avería del sistema.
+  ErrorDeDatos,
 };
