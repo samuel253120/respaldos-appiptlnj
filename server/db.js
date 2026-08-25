@@ -24,6 +24,20 @@ let db;
  * guardado dejaría esperando a todos los demás. Lo otro son medidas para que
  * nadie quede esperando de más:
  *
+ *   foreign_keys   le pide a la base que haga cumplir las llaves foráneas.
+ *                  HOY NO HACE NADA, y conviene saberlo: ninguna de las 36
+ *                  tablas declara una, así que no hay nada que hacer cumplir.
+ *                  La línea se deja puesta a propósito —es gratis, y el día
+ *                  que alguien declare una llave quedará cumplida desde el
+ *                  primer arranque, porque SQLite las trae apagadas—, pero no
+ *                  hay que leerla como que la base cuida la integridad: eso lo
+ *                  hace el sistema, en server/dependencias.js, y ahí está
+ *                  explicado por qué. Son 90 referencias entre módulos, y cada
+ *                  una tiene decidido qué pasa con lo que cuelga cuando el
+ *                  registro al que apunta se borra: 15 frenan el borrado, 28
+ *                  se van con él y 47 sueltan el enlace y se quedan. Que no
+ *                  quede ninguna sin decidir lo vigila
+ *                  pruebas/motor/dependencias.test.js.
  *   busy_timeout   si justo dos guardados coinciden, el segundo espera su
  *                  turno hasta 8 segundos en vez de fallar al instante.
  *   synchronous    con WAL, NORMAL es lo recomendado: la base nunca se daña,

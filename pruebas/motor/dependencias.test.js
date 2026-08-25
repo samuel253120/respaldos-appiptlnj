@@ -198,3 +198,71 @@ test('una ficha sin nada colgando se borra sin más', () => {
   assert.equal(r.freno, null);
   assert.equal(r.arrastrar.length, 0);
 });
+
+// ──────────────────────────── que no quede ninguna sin decidir (1.97.3) ───
+/*
+ * POR QUÉ ESTAS TRES PRUEBAS, Y POR QUÉ ACÁ.
+ *
+ * La auditoría hizo notar que server/db.js ejecuta `PRAGMA foreign_keys = ON`
+ * y que esa línea no hace nada: ninguna de las 36 tablas declara una llave
+ * foránea, así que no hay nada que hacer cumplir. Eso está bien —es una
+ * decisión, no un olvido: la integridad se cuida acá, donde se puede decir
+ * «esto FRENA el borrado» y no solo «esto existe o no»— pero deja una promesa
+ * apoyada en el aire: si la base no lo cuida y el código sí, más vale que el
+ * código las cubra TODAS.
+ *
+ * Las catorce pruebas de arriba miran casos concretos: la cuenta con
+ * movimientos, el miembro con certificado, la cuota que cuelga a dos saltos.
+ * Ninguna miraba el conjunto. Estas sí, y son las que se caen el día que
+ * alguien agregue un módulo con una referencia que nadie clasificó: no rompen
+ * ninguna pantalla, solo dejan filas colgando en silencio, que es exactamente
+ * lo que una llave foránea habría atrapado.
+ */
+const { allModules } = require('../../server/registry');
+
+/** Todas las referencias del sistema, con el módulo del que salen. */
+function todasLasReferencias() {
+  const todas = [];
+  for (const def of allModules()) {
+    for (const campo of dependencias.referenciasHacia(def.name)) {
+      todas.push({ hacia: def.name, ...campo });
+    }
+  }
+  return todas;
+}
+
+test('toda referencia entre módulos tiene decidido qué pasa al borrar', () => {
+  const sinDecidir = todasLasReferencias()
+    .filter((c) => !c.regla || !c.regla.que)
+    .map((c) => c.clave);
+  assert.deepEqual(sinDecidir, [],
+    `sin regla: ${sinDecidir.join(', ')}. Toda referencia tiene que frenar el borrado, irse con él o soltar el enlace.`);
+});
+
+test('y esa decisión es una de las tres, no cualquier cosa', () => {
+  const LAS_TRES = [dependencias.FRENA, dependencias.ARRASTRA, dependencias.SUELTA];
+  const raras = todasLasReferencias()
+    .filter((c) => !LAS_TRES.includes(c.regla.que))
+    .map((c) => `${c.clave} → ${c.regla.que}`);
+  assert.deepEqual(raras, [], `reglas que no son ninguna de las tres: ${raras.join(', ')}`);
+});
+
+test('ninguna referencia apunta a un módulo que no existe', () => {
+  // Una que apuntara a un módulo inexistente se saltaría el plan entera y sin
+  // ruido: nadie frenaría, nadie arrastraría, y lo que colgara quedaría ahí.
+  const alVacio = [];
+  for (const def of allModules()) {
+    for (const f of def.fields) {
+      if ((f.type !== 'ref' && f.type !== 'multiref') || !f.ref) continue;
+      if (!getModule(f.ref)) alVacio.push(`${def.name}.${f.name} → «${f.ref}»`);
+    }
+  }
+  assert.deepEqual(alVacio, [], `referencias a módulos que no existen: ${alVacio.join(', ')}`);
+});
+
+test('el sistema tiene tantas referencias como para que esto valga la pena', () => {
+  // Si esta cuenta se desploma, es que referenciasHacia dejó de encontrarlas y
+  // las tres pruebas de arriba estarían pasando por no mirar nada.
+  const cuantas = todasLasReferencias().length;
+  assert.ok(cuantas >= 80, `solo se encontraron ${cuantas} referencias: la búsqueda dejó de funcionar`);
+});
