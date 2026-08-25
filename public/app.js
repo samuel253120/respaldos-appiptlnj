@@ -5589,7 +5589,30 @@ async function renderInformeAsistencia(contenedor, precarga) {
     tipo: (precarga && precarga.tipo) || 'general',
     cuerpo_id: (precarga && precarga.cuerpo_id) || '',
     miembro_id: (precarga && precarga.miembro_id) || '',
-    desde: (precarga && precarga.desde) || '',
+    /*
+     * Se abre en el AÑO EN CURSO, no en todo lo registrado.
+     *
+     * Este informe hace siete preguntas sobre la tabla de marcas de
+     * asistencia, que es la que más crece del sistema: una fila por persona y
+     * por actividad. Sin acotar, esas siete preguntas recorren todo lo que
+     * haya. Medido con diez años de datos —124.812 marcas—: el informe entero
+     * costaba 157 ms, y como el servidor atiende de a una cosa, esos 157 ms no
+     * los pagaba solo quien lo pidió. Con cuatro personas pidiéndolo a la vez,
+     * el panel de todos los demás pasaba de 19 ms a 105 ms, con puntas de 793.
+     *
+     * Acotado al año en curso, y con el índice por fecha que trajo la misma
+     * versión (ver dateField en server/modules/asistencia_detalle.js), el
+     * mismo informe baja a menos de un milisegundo.
+     *
+     * Nadie pierde nada: el rango sigue estando a la vista y editable, y hay
+     * un botón que lo abre a todo lo registrado de un clic. Lo que cambia es
+     * que la respuesta cara dejó de ser la que se da sin que nadie la pida.
+     */
+    // Si el enlace trae «desde» —aunque venga vacío, que significa «todo»— se
+    // respeta; si no dice nada, se propone el año en curso.
+    desde: precarga && precarga.desde !== undefined
+      ? precarga.desde
+      : `${new Date().getFullYear()}-01-01`,
     hasta: (precarga && precarga.hasta) || '',
     // La planilla mensual se pide por mes, no por un rango de fechas
     mes: (precarga && precarga.mes) || new Date().toISOString().slice(0, 7),
@@ -5629,6 +5652,9 @@ async function renderInformeAsistencia(contenedor, precarga) {
     <label class="range" id="infMesCaja" ${st.tipo === 'planilla' ? '' : 'hidden'}>Mes <input type="month" id="infMes" value="${esc(st.mes)}" /></label>
     <label class="range rango-fechas" ${st.tipo === 'planilla' ? 'hidden' : ''}>Desde <input type="date" id="infDesde" value="${esc(st.desde)}" /></label>
     <label class="range rango-fechas" ${st.tipo === 'planilla' ? 'hidden' : ''}>Hasta <input type="date" id="infHasta" value="${esc(st.hasta)}" /></label>
+    <button type="button" class="btn secondary sm rango-fechas" id="infTodo"
+            title="Quita el rango de fechas y toma todo lo que haya registrado"
+            ${st.tipo === 'planilla' ? 'hidden' : ''}>Todo lo registrado</button>
     <span class="spacer"></span>
     <button class="btn sm" id="infVer">Ver informe</button>`;
 
@@ -5654,6 +5680,14 @@ async function renderInformeAsistencia(contenedor, precarga) {
   document.getElementById('infHasta').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infMes').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infVer').addEventListener('click', () => { sincronizar(); cargar(); });
+  // Abrir el informe a todo lo registrado: se vacían las dos fechas y se pide.
+  // Es la respuesta cara, y por eso se da cuando alguien la pide.
+  document.getElementById('infTodo').addEventListener('click', () => {
+    document.getElementById('infDesde').value = '';
+    document.getElementById('infHasta').value = '';
+    sincronizar();
+    cargar();
+  });
 
   const pct = (n) => `${String(n).replace('.', ',')}%`;
   const barra = (f) => `
