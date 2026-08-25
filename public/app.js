@@ -6934,12 +6934,22 @@ async function viewConfiguracion() {
       </div>`;
     }
     if (o.tipo === 'select') {
+      /*
+       * La zona horaria lleva debajo la hora que tiene el sistema en este
+       * momento. Un desplegable que dice «Chile» no prueba nada; una fecha y
+       * hora que coinciden con el reloj de la pared, sí. Es la única manera de
+       * que alguien note que está mal sin tener que revisar fechas guardadas.
+       */
+      const reloj = o.clave === 'zona_horaria' && datos.hora
+        ? `<div class="help" id="cfgReloj">🕒 Ahora el sistema son las <b>${esc(datos.hora.texto)}</b></div>`
+        : '';
       return `<div class="fld">
         <label>${esc(o.label)}</label>
         <select data-clave="${o.clave}" data-tipo="select"${bloqueado}>
           ${(o.opciones || []).map((x) => `
             <option value="${esc(x.valor)}" ${String(o.valor) === String(x.valor) ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}
         </select>
+        ${reloj}
         ${o.ayuda ? `<div class="help">${esc(o.ayuda)}</div>` : ''}
       </div>`;
     }
@@ -7121,6 +7131,12 @@ async function viewConfiguracion() {
       // Lo que se guarda es lo que se usa: si un número quedó fuera de sus
       // límites, se ajustó y se dice cuál y en cuánto quedó. Callarlo dejaría
       // la pantalla mostrando un valor que el sistema no está usando.
+      // Y el reloj, con la zona que quedó puesta: se aplica al momento, así
+      // que la hora de abajo tiene que moverse al guardar, no al reiniciar.
+      const reloj = document.getElementById('cfgReloj');
+      if (reloj && r && r.hora) {
+        reloj.innerHTML = `🕒 Ahora el sistema son las <b>${esc(r.hora.texto)}</b>`;
+      }
       const ajustados = (r && r.ajustados) || [];
       const avisoDeLimites = ajustados.length
         ? `<div class="resultado warn"><b>✏️ Se ajustó lo que no cabía.</b> ${ajustados

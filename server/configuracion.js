@@ -92,6 +92,10 @@ router.get('/', authRequired, (req, res) => {
         valor: obtener(o.clave),
       })),
     })),
+    // La hora que tiene el sistema AHORA, para poder comprobar de un vistazo
+    // que la zona quedó bien. Un desplegable que dice «Chile» no prueba nada;
+    // una fecha y hora que coinciden con el reloj de la pared, sí.
+    hora: require('./zona-horaria').ahora(),
   });
 });
 
@@ -144,7 +148,17 @@ router.put('/', authRequired, (req, res) => {
   }
 
   anotarLosCambios(anotados, req.user);
-  res.json({ ok: true, valores: todas(), ajustados });
+
+  /*
+   * La zona horaria se aplica al momento, no al próximo reinicio. Si no, la
+   * pantalla diría «Chile» mientras el sistema sigue anotando en hora
+   * universal, que es peor que no tener el ajuste: se cree arreglado y no lo
+   * está.
+   */
+  const zonaHoraria = require('./zona-horaria');
+  zonaHoraria.aplicar();
+
+  res.json({ ok: true, valores: todas(), ajustados, hora: zonaHoraria.ahora() });
 });
 
 /**

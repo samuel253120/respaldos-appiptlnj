@@ -249,6 +249,22 @@ const OPCIONES = [
     ],
   },
   {
+    grupo: 'Hora y fecha',
+    items: [
+      {
+        clave: 'zona_horaria', label: 'Zona horaria de la institución', tipo: 'select',
+        defecto: 'America/Santiago',
+        opciones: require('./zonas').LAS_ZONAS.map((z) => ({ valor: z.valor, label: z.label })),
+        ayuda:
+          'Con qué hora se anota TODO lo que registra el sistema: la fecha de una asistencia, la de un ' +
+          'movimiento de tesorería, la hora de cada cambio en el registro. Un servidor en internet trabaja ' +
+          'en hora universal si no se le dice otra cosa, y en Chile eso son tres o cuatro horas de más: lo ' +
+          'que pase después de las 20:00 quedaría anotado al día siguiente. Se aplica al momento, sin ' +
+          'reiniciar. Las fechas ya guardadas no se cambian.',
+      },
+    ],
+  },
+  {
     grupo: 'Preferencias',
     items: [
       {

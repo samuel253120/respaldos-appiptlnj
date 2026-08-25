@@ -943,6 +943,24 @@ app.use((err, req, res, next) => {
  * levanta igual, para poder entrar a revisarlo.
  */
 function prepararDatos() {
+  /*
+   * La zona horaria va PRIMERO, antes que nada que escriba una fecha.
+   *
+   * Las migraciones, los datos iniciales y el respaldo automático estampan
+   * horas apenas corren; si la zona se pusiera después, esas primeras filas
+   * quedarían con la hora del servidor y no con la de la iglesia. Se anota
+   * cuál quedó puesta: si un día vuelve a estar mal, se ve en el arranque en
+   * vez de descubrirse meses después mirando fechas torcidas.
+   */
+  try {
+    const zonaHoraria = require('./zona-horaria');
+    zonaHoraria.aplicar();
+    const { texto } = zonaHoraria.ahora();
+    console.log(`🕒 Hora del sistema: ${texto} (${zonaHoraria.cual()})`);
+  } catch (e) {
+    console.error(`⚠️  No se pudo fijar la zona horaria: ${e.message}`);
+  }
+
   try {
     ejecutarMigraciones();
   } catch (e) {
