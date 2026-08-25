@@ -168,7 +168,7 @@ test('avisa cuando hay más de los que muestra', () => {
   }
   const r = buscador.buscar('Muchos', { rol: 'admin' });
   const grupo = r.grupos.find((g) => g.modulo === 'miembros');
-  assert.equal(grupo.resultados.length, buscador.POR_MODULO, 'trae solo los primeros');
+  assert.equal(grupo.resultados.length, buscador.POR_MODULO(), 'trae solo los primeros');
   assert.equal(grupo.hay_mas, true, 'y avisa que hay más');
 });
 

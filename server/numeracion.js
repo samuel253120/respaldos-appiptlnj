@@ -26,31 +26,51 @@
  */
 const { db } = require('./db');
 
+/**
+ * El prefijo que la iglesia haya puesto para esta serie.
+ *
+ * Se lee en cada propuesta y no al arrancar: es un ajuste de la pantalla de
+ * configuración y tiene que valer en cuanto se cambia.
+ */
+function prefijoDe(cual) {
+  const clave = cual === 'actas_asambleas' ? 'acta_asamblea_prefijo' : 'acta_reunion_prefijo';
+  return String(require('./ajustes').obtener(clave) || '').trim();
+}
+
 /** Las series que el sistema numera solo. */
 const SERIES = {
   actas_reuniones: {
     tabla: 'actas_reuniones',
     campo: 'numero_acta',
     acotadaPor: 'cuerpo_id', // cada cuerpo lleva su propio libro
-    // «001-2026»
-    arma: (n, anio) => `${String(n).padStart(3, '0')}-${anio}`,
-    lee: (valor, anio) => {
-      const m = /^(\d{1,6})-(\d{4})$/.exec(String(valor || '').trim());
-      return m && m[2] === String(anio) ? Number(m[1]) : null;
-    },
+    // «001-2026», o con el prefijo que la iglesia haya configurado
+    arma: (n, anio, prefijo) => `${prefijo}${String(n).padStart(3, '0')}-${anio}`,
+    lee: (valor, anio, prefijo) => leerNumero(valor, anio, prefijo),
   },
   actas_asambleas: {
     tabla: 'actas_asambleas',
     campo: 'numero_acta',
     acotadaPor: 'iglesia_id', // la asamblea es de la congregación entera
-    // «AS-001-2026»
-    arma: (n, anio) => `AS-${String(n).padStart(3, '0')}-${anio}`,
-    lee: (valor, anio) => {
-      const m = /^AS-(\d{1,6})-(\d{4})$/i.exec(String(valor || '').trim());
-      return m && m[2] === String(anio) ? Number(m[1]) : null;
-    },
+    // «AS-001-2026» de fábrica, y el prefijo se puede cambiar
+    arma: (n, anio, prefijo) => `${prefijo}${String(n).padStart(3, '0')}-${anio}`,
+    lee: (valor, anio, prefijo) => leerNumero(valor, anio, prefijo),
   },
 };
+
+/**
+ * Lee «PREFIJO123-2026» y devuelve 123, o null si no sigue ese formato.
+ *
+ * El prefijo se compara sin distinguir mayúsculas y se escapa antes de meterlo
+ * en la expresión: alguien puede escribir «ACTA (N.º)» como prefijo, y un
+ * paréntesis suelto adentro de una expresión regular la rompe o —peor— la
+ * cambia de significado sin avisar.
+ */
+function leerNumero(valor, anio, prefijo) {
+  const escapado = String(prefijo || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const patron = new RegExp(`^${escapado}(\\d{1,6})-(\\d{4})$`, 'i');
+  const m = patron.exec(String(valor || '').trim());
+  return m && m[2] === String(anio) ? Number(m[1]) : null;
+}
 
 /** El año que corresponde: el de la fecha del acta, o el de hoy. */
 function anioDe(fecha) {
@@ -73,6 +93,7 @@ function proximoNumero(cual, dentroDe, fecha) {
   if (!acotado) return null;
 
   const anio = anioDe(fecha);
+  const prefijo = prefijoDe(cual);
   let filas;
   try {
     filas = db
@@ -84,10 +105,10 @@ function proximoNumero(cual, dentroDe, fecha) {
 
   let mayor = 0;
   for (const fila of filas) {
-    const n = serie.lee(fila.valor, anio);
+    const n = serie.lee(fila.valor, anio, prefijo);
     if (n !== null && n > mayor) mayor = n;
   }
-  return serie.arma(mayor + 1, anio);
+  return serie.arma(mayor + 1, anio, prefijo);
 }
 
-module.exports = { proximoNumero, anioDe, SERIES };
+module.exports = { proximoNumero, anioDe, prefijoDe, leerNumero, SERIES };

@@ -46,7 +46,7 @@ module.exports = {
       seccion: 'Qué mes se paga',
     },
     { name: 'mes', label: 'Mes', type: 'select', required: true, options: OPCIONES_MES },
-    { name: 'monto', label: 'Monto pagado', type: 'money', required: true, seccion: 'El pago', min: 0, },
+    { name: 'monto', label: 'Monto pagado', type: 'money', required: true, seccion: 'El pago', min: 0, reservado: 'tesoreria_montos' },
     { name: 'fecha_pago', label: 'Fecha del pago', type: 'date', required: true },
     {
       name: 'metodo', label: 'Forma de pago', type: 'select', default: 'Efectivo',

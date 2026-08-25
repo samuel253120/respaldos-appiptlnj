@@ -109,7 +109,7 @@ function puedeVer(archivo, usuario) {
  * que lo enlaza pasan minutos, y a veces la persona deja la pantalla abierta
  * y vuelve al otro día. Borrarlo mientras tanto sería borrarle el trabajo.
  */
-const DIAS_DE_GRACIA = 7;
+const DIAS_DE_GRACIA = () => require('./ajustes').numero('archivos_dias_gracia', 1, 90);
 
 /**
  * ¿La configuración del sistema está usando este archivo?
@@ -180,7 +180,7 @@ function borrarLosDe(def, fila) {
  * La barrida: borra los archivos que no usa nadie y que llevan más de unos
  * días ahí. Devuelve qué encontró, para poder decirlo.
  */
-function limpiarHuerfanos({ diasDeGracia = DIAS_DE_GRACIA, deVerdad = true } = {}) {
+function limpiarHuerfanos({ diasDeGracia = DIAS_DE_GRACIA(), deVerdad = true } = {}) {
   let nombres;
   try {
     nombres = fs.readdirSync(UPLOADS_DIR);

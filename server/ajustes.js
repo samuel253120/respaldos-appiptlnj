@@ -106,7 +106,8 @@ const OPCIONES = [
       {
         clave: 'asistencia_actividad_defecto', label: 'Actividad que viene elegida al pasar lista',
         tipo: 'select', defecto: 'Servicio General',
-        opciones: require('./actividades').TIPOS_DE_ACTIVIDAD.map((t) => ({ valor: t, label: t })),
+        // Los que la iglesia tenga en uso hoy, no la lista de fábrica
+        opciones: require('./actividades').losQueSeUsan().map((t) => ({ valor: t, label: t })),
         ayuda: 'La que aparece marcada al crear una actividad nueva. Conviene poner la que más se repite.',
       },
       {
@@ -121,6 +122,19 @@ const OPCIONES = [
           'los que no vinieron. Ojo con el otro lado: si alguien abre la lista y guarda sin mirarla, quedan ' +
           'todos presentes. Nada se guarda hasta apretar Guardar, y solo se propone en listas donde todavía ' +
           'no hay ni una marca puesta.',
+      },
+      {
+        clave: 'acta_reunion_prefijo', label: 'Prefijo del número de las actas de reunión', tipo: 'text',
+        defecto: '',
+        ayuda:
+          'Lo que va antes del número que el sistema propone al levantar un acta de cuerpo. En blanco, ' +
+          'propone «001-2026»; poniendo «ACTA-» propone «ACTA-001-2026». Lo propuesto se puede cambiar ' +
+          'siempre, y lo ya guardado no se toca.',
+      },
+      {
+        clave: 'acta_asamblea_prefijo', label: 'Prefijo del número de las actas de asamblea', tipo: 'text',
+        defecto: 'AS-',
+        ayuda: 'Lo mismo para las asambleas. De fábrica «AS-», que propone «AS-001-2026».',
       },
       {
         clave: 'cuota_registra_tesoreria', label: 'Registrar las cuotas en tesorería', tipo: 'boolean', defecto: '1',
@@ -290,6 +304,14 @@ const OPCIONES = [
           'iglesia no llega— sino un freno para que un pedido enorme no deje al servidor sin memoria.',
       },
       {
+        clave: 'archivos_dias_gracia', label: 'Días que se guarda un archivo suelto', tipo: 'number',
+        defecto: '7', min: 1, max: 90,
+        ayuda:
+          'Un archivo que se sube y cuyo formulario nunca se guarda queda sin pertenecer a ninguna ficha. ' +
+          'Pasados estos días, la limpieza nocturna lo saca. No conviene bajarlo mucho: entre que alguien ' +
+          'sube un documento y guarda la ficha puede dejar la pantalla abierta y volver al otro día.',
+      },
+      {
         clave: 'disco_aviso_mb', label: 'Avisar cuando queden menos de (MB)', tipo: 'number',
         defecto: '100', min: 20, max: 5000,
         ayuda:
@@ -339,6 +361,18 @@ const OPCIONES = [
       {
         clave: 'imagen_calidad', label: 'Calidad de las imágenes (%)', tipo: 'number', defecto: '88', min: 40, max: 100,
         ayuda: 'Qué tanto detalle conserva la foto reducida. 88 conserva la calidad a simple vista; 100 no comprime.',
+      },
+      {
+        clave: 'buscador_por_modulo', label: 'Resultados del buscador por sección', tipo: 'number',
+        defecto: '5', min: 1, max: 30,
+        ayuda:
+          'Cuántos resultados muestra el buscador general de cada sección —miembros, tesorería, actas—. ' +
+          'Subirlo ayuda cuando se busca por apellidos repetidos; bajarlo deja el panel más corto.',
+      },
+      {
+        clave: 'buscador_total', label: 'Resultados del buscador en total', tipo: 'number',
+        defecto: '40', min: 5, max: 200,
+        ayuda: 'El tope de todo lo que muestra el buscador general de una vez, sumando todas las secciones.',
       },
       {
         clave: 'cumpleanos_cantidad', label: 'Cumpleaños que muestra el panel', tipo: 'number', defecto: '4', min: 1, max: 20,

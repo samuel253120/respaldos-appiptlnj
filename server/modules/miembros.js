@@ -173,6 +173,7 @@ module.exports = {
     // ---------------- Identificación ----------------
     {
       name: 'foto', label: 'Foto', type: 'file', accept: 'image/*', seccion: 'Identificación',
+      reservado: 'miembros_foto',
       recorte: 'cuadrado',
       help: 'Se puede sacar con el teléfono: al subirla se ajusta sola de tamaño para que cargue rápido.',
     },

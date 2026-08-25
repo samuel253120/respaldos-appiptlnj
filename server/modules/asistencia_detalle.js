@@ -15,7 +15,28 @@
  * Asistencia, así que este módulo no ocupa lugar en el menú: existe para
  * guardar las marcas y para llevar el permiso de tomarlas.
  */
-const MOTIVOS_CON_DETALLE = ['Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
+/**
+ * Los motivos que piden explicación.
+ *
+ * Ya no es una lista escrita acá: cada motivo lo dice en su propia ficha
+ * (módulo «Motivos de Ausencia»), así que al agregar «Viaje» la iglesia decide
+ * si hay que explicarlo o no, sin tocar el programa. La lista de abajo queda
+ * como respaldo para el primer arranque, antes de que la tabla exista.
+ */
+const CON_DETALLE_DE_FABRICA = ['Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
+
+function motivosQuePidenDetalle() {
+  try {
+    const { db } = require('../db');
+    const filas = db.prepare('SELECT nombre FROM motivos_ausencia WHERE pide_detalle = 1').all();
+    // Sin ninguno marcado no se cae de vuelta a la lista vieja: que la iglesia
+    // no quiera exigir explicación en ningún motivo es una decisión legítima.
+    if (filas) return filas.map((f) => f.nombre);
+  } catch (e) {
+    /* sin tabla todavía */
+  }
+  return CON_DETALLE_DE_FABRICA.slice();
+}
 
 module.exports = {
   name: 'asistencia_detalle',
@@ -52,15 +73,20 @@ module.exports = {
     },
     {
       name: 'motivo', label: 'Motivo de la justificación', type: 'select',
-      options: ['Trabajo', 'Enfermedad', 'Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'],
+      // Los mantiene la iglesia (módulo «Motivos de Ausencia»).
+      optionsRoute: '/motivos_ausencia/opciones',
       showIf: { field: 'estado', equals: 'Justificado' },
       required: true,
     },
     {
       name: 'detalle', label: 'Detalle del motivo', type: 'text',
-      showIf: { field: 'motivo', in: MOTIVOS_CON_DETALLE },
+      // Cuáles piden explicación lo dice cada motivo en su ficha, no una lista
+      // escrita acá: al agregar «Viaje» la iglesia decide si hay que explicarlo.
+      // Se lee al armar la pantalla, no al arrancar: así, marcar un motivo como
+      // «pide explicación» vale en cuanto se guarda.
+      get showIf() { return { field: 'motivo', in: motivosQuePidenDetalle() }; },
       required: true,
-      help: 'Obligatorio en emergencias, en otra actividad de la iglesia y en otro motivo.',
+      help: 'Obligatorio en los motivos que estén marcados como que piden explicación.',
     },
     // Se copian de la actividad, para poder filtrar e informar sin cruzar tablas
     { name: 'cuerpo_id', label: 'Cuerpo / Grupo', type: 'ref', ref: 'cuerpos', readonly: true },
@@ -87,7 +113,7 @@ module.exports = {
       if (dato('estado') !== 'Justificado') {
         data.motivo = null;
         data.detalle = null;
-      } else if (!MOTIVOS_CON_DETALLE.includes(dato('motivo'))) {
+      } else if (!motivosQuePidenDetalle().includes(dato('motivo'))) {
         data.detalle = null;
       }
 
@@ -99,4 +125,7 @@ module.exports = {
   },
 };
 
-module.exports.MOTIVOS_CON_DETALLE = MOTIVOS_CON_DETALLE;
+// Se conserva el nombre de siempre para quien lo consulta de afuera (la
+// migración que siembra la lista lo usa para saber cuáles piden explicación).
+module.exports.MOTIVOS_CON_DETALLE = CON_DETALLE_DE_FABRICA;
+module.exports.motivosQuePidenDetalle = motivosQuePidenDetalle;

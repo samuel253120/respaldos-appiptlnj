@@ -34,8 +34,8 @@ const alcance = require('./alcance');
 const sensibles = require('./sensibles');
 
 /** Cuántos se traen de cada módulo y cuántos se muestran en total. */
-const POR_MODULO = 5;
-const EN_TOTAL = 40;
+const POR_MODULO = () => require('./ajustes').numero('buscador_por_modulo', 1, 30);
+const EN_TOTAL = () => require('./ajustes').numero('buscador_total', 5, 200);
 
 /** Menos de esto no se busca: dos letras traen media iglesia. */
 const MINIMO = 2;
@@ -126,7 +126,7 @@ function buscar(texto, usuario) {
   let total = 0;
 
   for (const def of dondeBuscar(usuario)) {
-    if (total >= EN_TOTAL) break;
+    if (total >= EN_TOTAL()) break;
 
     // Por los campos que esta persona alcanza, y nada más
     const buscables = sensibles.buscablesPara(def, usuario);
@@ -148,7 +148,7 @@ function buscar(texto, usuario) {
       filas = db
         .prepare(
           `SELECT * FROM "${def.name}" WHERE ${donde.join(' AND ')}
-             ORDER BY id DESC LIMIT ${POR_MODULO + 1}`
+             ORDER BY id DESC LIMIT ${POR_MODULO() + 1}`
         )
         .all(...params);
     } catch (e) {
@@ -156,8 +156,8 @@ function buscar(texto, usuario) {
     }
     if (!filas.length) continue;
 
-    const hayMas = filas.length > POR_MODULO;
-    const limpias = sensibles.limpiarVarias(def, filas.slice(0, POR_MODULO), usuario);
+    const hayMas = filas.length > POR_MODULO();
+    const limpias = sensibles.limpiarVarias(def, filas.slice(0, POR_MODULO()), usuario);
 
     const resultados = limpias.map((fila) => {
       const titulo = displayOf(def, fila) || `#${fila.id}`;

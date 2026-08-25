@@ -117,7 +117,8 @@ module.exports = {
       name: 'estado', label: 'Estado', type: 'select', default: 'Activo',
       options: ['Activo', 'Inactivo', 'Jubilado', 'Trasladado', 'Fallecido'],
     },
-    { name: 'foto', label: 'Foto', type: 'file', accept: 'image/*', recorte: 'cuadrado' },
+    { name: 'foto', label: 'Foto', type: 'file', accept: 'image/*', recorte: 'cuadrado',
+      reservado: 'miembros_foto' },
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],
 

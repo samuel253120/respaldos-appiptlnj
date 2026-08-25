@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.102.0", fecha: "2026-08-25", titulo: "Tres permisos nuevos, cinco ajustes nuevos, y los tipos de actividad y motivos de ausencia los mantiene la iglesia" },
   { version: "1.101.1", fecha: "2026-08-25", titulo: "Tres llaves que se podían conceder y no servían de nada: ahora sí" },
   { version: "1.101.0", fecha: "2026-08-25", titulo: "El menú tiene su buscador de secciones, y el número de acta lo propone el sistema" },
   { version: "1.100.0", fecha: "2026-08-25", titulo: "El acta de reunión se descarga como PDF, con todo lo que tiene y el membrete de la institución" },

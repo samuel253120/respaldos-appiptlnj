@@ -955,6 +955,82 @@ function categoriasDeTesoreria() {
 
 
 /**
+ * Los tipos de actividad y los motivos de ausencia salieron del programa y
+ * pasaron a ser datos que la iglesia mantiene, como ya había pasado con las
+ * categorías de tesorería.
+ *
+ * Se siembra cada lista con lo que venía escrito y, además, con cualquier otro
+ * valor que ya estuviera en uso: una iglesia que importó datos del sistema
+ * anterior puede tener tipos que nunca estuvieron en la lista de fábrica, y
+ * desaparecerían del desplegable justo cuando se vuelven administrables.
+ * Ninguna actividad ni marca se toca: siguen guardando su nombre, igual que
+ * antes.
+ *
+ * Se puede repetir sin daño: solo agrega lo que falte.
+ */
+function listasDeAsistenciaComoDatos() {
+  // PRAGMA no admite parámetros: se pregunta por el catálogo, que sí.
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+
+  let nuevos = 0;
+
+  // ── Tipos de actividad ──
+  if (hayTabla('tipos_actividad')) {
+    const deFabrica = require('./actividades').TIPOS_DE_ACTIVIDAD.slice();
+    const enUso = db
+      .prepare("SELECT DISTINCT tipo_reunion AS nombre FROM asistencias WHERE tipo_reunion IS NOT NULL AND tipo_reunion != ''")
+      .all().map((r) => r.nombre);
+    const conocidos = new Set(deFabrica.map((n) => n.toLowerCase()));
+    for (const n of enUso) if (!conocidos.has(String(n).toLowerCase())) deFabrica.push(n);
+
+    const existe = db.prepare('SELECT id FROM tipos_actividad WHERE lower(nombre) = lower(?)');
+    const agregar = db.prepare('INSERT INTO tipos_actividad (nombre, activo) VALUES (?, 1)');
+    for (const nombre of deFabrica) {
+      if (existe.get(nombre)) continue;
+      agregar.run(nombre);
+      nuevos++;
+    }
+  }
+
+  // ── Motivos de ausencia ──
+  if (hayTabla('motivos_ausencia')) {
+    /*
+     * Cuáles piden explicación es lo que decía el código: «Emergencia», «Otra
+     * actividad de la iglesia» y «Otro motivo». Los que aparezcan por haberse
+     * usado y no estén en esa lista se siembran SIN pedirla, que es lo que
+     * venían haciendo: cambiarles la regla al migrar sería empezar a exigir
+     * algo que antes no se exigía.
+     */
+    const conDetalle = new Set(
+      require('./modules/asistencia_detalle').MOTIVOS_CON_DETALLE.map((m) => m.toLowerCase())
+    );
+    const deFabrica = ['Trabajo', 'Enfermedad', 'Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
+    const enUso = db
+      .prepare("SELECT DISTINCT motivo AS nombre FROM asistencia_detalle WHERE motivo IS NOT NULL AND motivo != ''")
+      .all().map((r) => r.nombre);
+    const conocidos = new Set(deFabrica.map((n) => n.toLowerCase()));
+    for (const n of enUso) if (!conocidos.has(String(n).toLowerCase())) deFabrica.push(n);
+
+    const existe = db.prepare('SELECT id FROM motivos_ausencia WHERE lower(nombre) = lower(?)');
+    const agregar = db.prepare('INSERT INTO motivos_ausencia (nombre, pide_detalle, activo) VALUES (?, ?, 1)');
+    for (const nombre of deFabrica) {
+      if (existe.get(nombre)) continue;
+      agregar.run(nombre, conDetalle.has(String(nombre).toLowerCase()) ? 1 : 0);
+      nuevos++;
+    }
+  }
+
+  if (nuevos) {
+    console.log(
+      `🗓️  asistencia: ${nuevos} tipo(s) de actividad y motivo(s) de ausencia quedaron guardados como ` +
+        'datos y ya se pueden crear, editar y desactivar desde el sistema.'
+    );
+  }
+}
+
+
+/**
  * Los tipos de documento de un pastor o guía pasaron a los ocho que pide la
  * iglesia: carnet, antecedentes, inhabilidades, los dos certificados de
  * matrimonio, el nombramiento, la carta de renuncia y "Otro Documento".
@@ -1552,6 +1628,7 @@ function ejecutarMigraciones() {
     ['la iglesia principal no es una asignación', iglesiaPrincipalNoEsAsignacion],
     ['administrador general', administradorGeneral],
     ['categorías de tesorería', categoriasDeTesoreria],
+    ['tipos de actividad y motivos de ausencia', listasDeAsistenciaComoDatos],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],

@@ -238,6 +238,32 @@ module.exports = {
       if (quedaCerrada && !estabaCerrada) data.fecha_respuesta = new Date().toISOString().slice(0, 10);
       if (!quedaCerrada && estabaCerrada) data.fecha_respuesta = null;
 
+      /*
+       * CERRAR la solicitud de otro pide la misma llave que trasladarla.
+       *
+       * La llave se llama «Trasladar y cerrar solicitudes de otros» desde que
+       * existe, pero solo guardaba el traslado: cerrar era un cambio de estado
+       * como cualquier otro, así que cualquiera con permiso de editar el módulo
+       * podía dar por resuelta una solicitud que llevaba otro. El permiso
+       * prometía una cosa y hacía la mitad.
+       *
+       * Se comprueba acá y no en una ruta aparte porque cerrar no es una
+       * acción propia: es guardar la ficha con otro estado, y el guardado es
+       * por donde pasa. Quien la tiene a cargo la cierra siempre —es su
+       * trabajo—, y reabrirla se trata igual: sacar de «Aprobada» algo que
+       * otro resolvió es tan delicado como cerrarlo.
+       */
+      if (!isNew && existing && quedaCerrada !== estabaCerrada) {
+        const esElResponsable = Number(existing.responsable_id) === Number(user && user.id);
+        if (!esElResponsable && !require('../permissions').can(user, 'solicitudes_tramitar', 'view')) {
+          return quedaCerrada
+            ? 'Esta solicitud está a cargo de otra persona: solo puede cerrarla quien la lleva, '
+              + 'o quien tenga permiso para tramitar las de otros.'
+            : 'Esta solicitud está a cargo de otra persona: solo puede reabrirla quien la lleva, '
+              + 'o quien tenga permiso para tramitar las de otros.';
+        }
+      }
+
       return null;
     },
 

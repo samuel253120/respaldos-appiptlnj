@@ -2053,7 +2053,7 @@ async function viewList(name, filtrosIniciales) {
                 }).join('')}
                 <td class="acciones" style="white-space:nowrap;text-align:right">
                   ${m.printable && tieneLlave('datos_impresion') ? `<button class="btn secondary sm act-print" data-id="${r.id}" title="Imprimir">🖨️</button>` : ''}
-                  ${m.perms.delete && !generadoPorOtroModulo(r)
+                  ${m.perms.delete && tieneLlave('datos_borrar') && !generadoPorOtroModulo(r)
                     ? `<button class="btn danger sm act-del" data-id="${r.id}" title="Eliminar">🗑️</button>`
                     : ''}
                 </td>
@@ -9950,7 +9950,7 @@ async function renderHistorial(panel, id, contenedor) {
                 <div class="ha">
                   ${intocable(r) ? '<span class="ico mut" title="Lo anotó el sistema: es la constancia de lo que pasó">🔒</span>' : `
                     ${modHist.perms.edit ? `<button class="ico" data-editar="${r.id}" title="Editar este registro">✏️</button>` : ''}
-                    ${modHist.perms.delete ? `<button class="ico" data-borrar="${r.id}" title="Eliminar este registro">🗑️</button>` : ''}`}
+                    ${modHist.perms.delete && tieneLlave('datos_borrar') ? `<button class="ico" data-borrar="${r.id}" title="Eliminar este registro">🗑️</button>` : ''}`}
                 </div>
               </li>`;
             }).join('')}

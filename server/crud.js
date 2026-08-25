@@ -1241,7 +1241,28 @@ function buildRouter() {
     router.put(`${base}/:id(\\d+)`, requirePerm(def.name, 'edit'), conLoQueVaAntes(false, save(false)));
 
     // ---- eliminar ----
-    router.delete(`${base}/:id(\\d+)`, requirePerm(def.name, 'delete'), (req, res) => {
+    /*
+     * Además del permiso de eliminar de este módulo, la llave de eliminar.
+     *
+     * Va POR ENCIMA y no en lugar del permiso del módulo: son dos preguntas
+     * distintas. «Puede borrar miembros» dice en qué módulo; «Eliminar
+     * registros» dice si esta persona hace desaparecer cosas, en general.
+     * Separarlas permite lo que hasta ahora no se podía: dejar a alguien
+     * corregir un dato mal escrito —que es lo de todos los días— sin dejarlo
+     * borrar la ficha entera, que casi nunca corresponde y no se deshace.
+     *
+     * De fábrica la tienen todos, así que nada cambia mientras nadie la quite.
+     */
+    const conLlaveDeBorrar = (req, res, siguiente) => {
+      if (!can(req.user, 'datos_borrar', 'view')) {
+        return res.status(403).json({
+          error: 'No tiene permiso para eliminar registros. Puede seguir corrigiendo lo que haya que corregir.',
+        });
+      }
+      return siguiente();
+    };
+
+    router.delete(`${base}/:id(\\d+)`, requirePerm(def.name, 'delete'), conLlaveDeBorrar, (req, res) => {
       const row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(req.params.id);
       if (!row) return res.status(404).json({ error: 'Registro no encontrado' });
       if (!alcance.alcanza(def, row, req.user)) {

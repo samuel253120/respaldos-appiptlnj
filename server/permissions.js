@@ -261,6 +261,41 @@ const LLAVES = [
       'esto es para quien coordina y necesita destrabar las de los demás sin ser administrador.',
   },
   {
+    name: 'miembros_foto',
+    label: 'Fotografías de las personas',
+    group: 'Datos reservados',
+    acciones: ['view'],
+    defecto: 'todos',
+    ayuda:
+      'La fotografía de la ficha de un miembro, un pastor o un no miembro. Quien no la tenga ve la ' +
+      'ficha completa con las iniciales en lugar de la foto. Sirve para quien administra datos —una ' +
+      'planilla de cuotas, una lista de asistencia— y no necesita ver las caras de la congregación.',
+  },
+  {
+    name: 'tesoreria_montos',
+    label: 'Montos del dinero',
+    group: 'Tesorería',
+    acciones: ['view'],
+    defecto: 'todos',
+    ayuda:
+      'Las cantidades: los montos de cada movimiento, los saldos de las cuentas y los totales de los ' +
+      'informes. Quien no la tenga ve QUÉ se movió y CUÁNDO —la fecha, el concepto, la categoría—, ' +
+      'pero no cuánto. Es para quien lleva el registro de lo que entra y sale sin tener por qué saber ' +
+      'las cifras de la iglesia.',
+  },
+  {
+    name: 'datos_borrar',
+    label: 'Eliminar registros',
+    group: 'Sistema',
+    acciones: ['view'],
+    defecto: 'todos',
+    ayuda:
+      'Va POR ENCIMA del permiso de eliminar de cada módulo: quien no la tenga no borra nada, aunque ' +
+      'en algún módulo figure que sí puede. Sirve para separar dos cosas que hasta ahora iban juntas: ' +
+      'corregir un dato mal escrito, que se hace todos los días, y hacer desaparecer un registro, que ' +
+      'casi nunca corresponde. Quitarla no impide trabajar; impide equivocarse de manera definitiva.',
+  },
+  {
     name: 'usuarios_clave',
     label: 'Restablecer contraseñas de otros',
     group: 'Sistema',

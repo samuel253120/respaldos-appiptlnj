@@ -148,13 +148,21 @@ module.exports = {
     },
     {
       name: 'tipo_reunion', label: 'Actividad', type: 'select', required: true,
+      /*
+       * Los tipos los mantiene la iglesia (módulo «Tipos de Actividad»), así
+       * que salen de una ruta y no de una lista escrita acá. Los que había
+       * quedaron sembrados tal cual, y las actividades siguen guardando el
+       * NOMBRE: si mañana un tipo se renombra o se desactiva, lo ya registrado
+       * sigue diciendo lo que decía.
+       */
+      optionsRoute: '/tipos_actividad/opciones',
       // La que viene elegida se fija en Configuración; si la guardada ya no
       // existe en la lista, se usa la primera y no una que el select no ofrece.
       get default() {
         const suya = require('../ajustes').obtener('asistencia_actividad_defecto');
-        return TIPOS_DE_ACTIVIDAD.includes(suya) ? suya : TIPOS_DE_ACTIVIDAD[0];
+        const hay = require('../actividades').losQueSeUsan();
+        return hay.includes(suya) ? suya : (hay[0] || TIPOS_DE_ACTIVIDAD[0]);
       },
-      options: TIPOS_DE_ACTIVIDAD,
     },
     {
       name: 'nombre', label: 'Nombre de la actividad', type: 'text',
