@@ -1811,11 +1811,45 @@ table.grid.informe td:first-child { white-space: normal; }
 .barra .a { background: var(--danger); }
 .informe-pie { padding: 4px 2px 18px; font-size: 12px; }
 .print-only { display: none; }
+
+/* La leyenda legal, en su propia línea: no es un dato de contacto y pegada a
+   ellos con un punto en el medio se leía como si lo fuera. */
+.membrete .datos.legal { margin-top: 2px; font-style: italic; }
+
+/* Cuándo se emitió el documento y quién lo emitió. Va al pie de todo lo que se
+   imprime, con la misma redacción. */
+.doc-pie {
+  margin-top: 26px; padding-top: 8px; border-top: 1px solid #d7dbe3;
+  font-size: 10.5px; color: #78716c; text-align: right;
+}
+
 @media print {
   .sidebar, .topbar, .page-head .actions, #infFiltros, .no-print { display: none !important; }
-  .print-only { display: flex; }
+  .print-only { display: block; }
   .informe-hoja { padding: 0; }
   .card { break-inside: avoid; box-shadow: none; border: 1px solid #d7dbe3; }
+
+  /*
+   * En pantalla los emojis de las tarjetas ayudan a encontrar el dato de un
+   * vistazo. En un informe que se entrega firmado, no: un documento formal con
+   * caritas de colores pierde autoridad, y además cada impresora los dibuja
+   * distinto —o los deja en blanco—. En papel manda el número.
+   */
+  .stat .ic { display: none !important; }
+  .stat {
+    box-shadow: none; border: 1px solid #d7dbe3; border-radius: 0;
+    background: #fff !important;
+  }
+
+  /* Las tablas no se parten en medio de una fila, y su encabezado se repite
+     en cada hoja: un informe de ciento setenta y nueve miembros son varias
+     páginas, y las de más atrás sin encabezado son columnas de números sin
+     nombre. */
+  table thead { display: table-header-group; }
+  table tr { break-inside: avoid; }
+
+  /* El pie va con el documento, no arrancado en una hoja sola. */
+  .doc-pie, .informe-pie { break-inside: avoid; break-before: avoid; }
 }
 
 /* Cuerpos asignados, junto a la iglesia, en la barra superior */

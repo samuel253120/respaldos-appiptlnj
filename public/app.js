@@ -84,10 +84,47 @@ function pieDeLaInstitucion() {
     .map((x) => (x || '').trim())
     .filter(Boolean)
     .join(' · ');
-  // La línea extra va aparte y debajo: una leyenda legal no es un dato de
-  // contacto, y mezclarla con puntos en el medio la volvería ilegible.
-  const extra = (IGLESIA.pie_texto || '').trim();
-  return [contacto, extra].filter(Boolean).join('\n');
+  return contacto;
+}
+
+/**
+ * El membrete: lo mismo en TODO lo que se imprime.
+ *
+ * Estaba escrito tres veces a mano —una por cada clase de hoja— y por eso
+ * había divergido: las fichas y las actas llevaban el RUT, la dirección y el
+ * teléfono de la institución, y los informes no. Justamente los informes, que
+ * son los que salen de la iglesia y llegan a manos de otros; una hoja con
+ * cifras de asistencia y solo un nombre arriba no identifica a nadie.
+ *
+ * La leyenda legal va en su propia línea y no pegada al contacto: no es un
+ * dato de contacto, y con un punto en el medio se leía como si lo fuera.
+ */
+function membreteDelDocumento() {
+  const contacto = pieDeLaInstitucion();
+  const legal = (IGLESIA.pie_texto || '').trim();
+  return `
+    <div class="membrete">
+      <img src="${IGLESIA.logo}" alt="" />
+      <div>
+        <b>${esc(IGLESIA.nombre)}</b>
+        ${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}
+        ${contacto ? `<span class="datos">${esc(contacto)}</span>` : ''}
+        ${legal ? `<span class="datos legal">${esc(legal)}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+/**
+ * El pie: cuándo se emitió y quién lo emitió.
+ *
+ * Lo segundo faltaba en todo. Un informe de asistencia o una ficha que se
+ * entrega y no dice quién la sacó no se puede preguntar después: si alguien
+ * discute una cifra, no hay a quién volver. Y la redacción es una sola —antes
+ * las fichas decían «impreso el» y los informes «Emitido el», para lo mismo—.
+ */
+function pieDelDocumento(extra) {
+  const quien = (USER && USER.nombre) ? ` por ${esc(USER.nombre)}` : '';
+  return `Emitido el ${fechaLarga(new Date().toISOString())}${quien}${extra ? ` · ${extra}` : ''}`;
 }
 
 /**
@@ -5678,10 +5715,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
 
     return `
       <div class="informe-hoja planilla-hoja">
-        <div class="print-only membrete">
-          <img src="${IGLESIA.logo}" alt="" />
-          <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}</div>
-        </div>
+        <div class="print-only">${membreteDelDocumento()}</div>
         <h3 class="informe-tit planilla-tit">${esc(titulo)}</h3>
         ${sinNada || `
         <div class="planilla-scroll">
@@ -5727,7 +5761,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
         </table>
         </div>`}
         <div class="informe-pie mut">
-          Emitido el ${fechaLarga(new Date().toISOString())} ·
+          ${pieDelDocumento()} ·
           <b>S</b> asistió · <b>J</b> justificó · <b>N</b> faltó · en blanco, ese día no hubo reunión del cuerpo.<br>
           Salen los integrantes vigentes del cuerpo —activos y en período de prueba—. Un día en que hubo dos
           actividades del cuerpo cuenta como una sola columna, con lo mejor de las dos.
@@ -5814,10 +5848,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
 
     caja.innerHTML = `
       <div class="informe-hoja">
-        <div class="print-only membrete">
-          <img src="${IGLESIA.logo}" alt="" />
-          <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}</div>
-        </div>
+        <div class="print-only">${membreteDelDocumento()}</div>
         <h3 class="informe-tit">
           ${st.tipo === 'general' ? 'Informe general de asistencia'
             : st.tipo === 'cuerpo' ? `Informe de asistencia — ${esc(cuerpoTexto)}`
@@ -5862,7 +5893,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
           ${tabla('Promedio por miembro', conEtiqueta(d.porMiembro, 'miembro'), 'Miembro', (f) => f.miembro_id)}
           ${motivos}`}
         <div class="informe-pie mut">
-          Emitido el ${fechaLarga(new Date().toISOString())} · Verde: presentes · Azul: justificados · Rojo: ausentes.<br>
+          ${pieDelDocumento()} · Verde: presentes · Azul: justificados · Rojo: ausentes.<br>
           Cada actividad cuenta por separado: quien pertenece a varios cuerpos tiene una marca en cada actividad a la que
           fue convocado, y en el promedio de cada cuerpo cuenta solo lo de ese cuerpo.
         </div>
@@ -6419,14 +6450,7 @@ function printActa(m, row, esAsamblea) {
   const asistentes = (row.asistentes_labels || []).join(' · ');
   return `
     <div class="print-sheet acta-sheet">
-      <div class="membrete">
-        <img src="${IGLESIA.logo}" alt="" />
-        <div>
-          <b>${esc(IGLESIA.nombre)}</b>
-          ${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}
-          ${pieDeLaInstitucion() ? `<span class="datos">${esc(pieDeLaInstitucion())}</span>` : ''}
-        </div>
-      </div>
+      ${membreteDelDocumento()}
       <h1>${esAsamblea ? 'Acta de Asamblea' : 'Acta de Reunión'} N.º ${esc(row.numero_acta || '')}</h1>
       <div class="sub">${esc(iglesiaDeTrabajo(row.iglesia_id_label))}${row.cuerpo_id_label ? ' — ' + esc(row.cuerpo_id_label) : ''}</div>
       <table class="meta-tbl">
@@ -6439,13 +6463,21 @@ function printActa(m, row, esAsamblea) {
         ${esAsamblea ? `<tr><td class="k">Asistentes / Quórum</td><td>${esc(row.total_asistentes ?? '')} asistentes — ${row.hubo_quorum ? 'hubo quórum' : 'sin quórum'}</td></tr>` : ''}
       </table>
       ${asistentes ? `<h3>Asistentes</h3><p>${esc(asistentes)}</p>` : ''}
-      ${row.agenda ? `<h3>Agenda / Orden del día</h3><div class="blk">${esc(row.agenda)}</div>` : ''}
-      ${row.desarrollo ? `<h3>Desarrollo</h3><div class="blk">${esc(row.desarrollo)}</div>` : ''}
-      ${row.acuerdos ? `<h3>Acuerdos</h3><div class="blk">${esc(row.acuerdos)}</div>` : ''}
+      ${/*
+          Sin esc(): estos campos son de texto con formato y ya vienen limpios
+          del servidor (server/textorico.js deja solo las etiquetas de formato
+          y bota todo lo demás), igual que en la ficha en pantalla. Escapándolos
+          el acta salía impresa con las etiquetas a la vista —«<p>Se acordó…</p>»—
+          en un documento que se firma.
+        */''}
+      ${row.agenda ? `<h3>Agenda / Orden del día</h3><div class="blk">${row.agenda}</div>` : ''}
+      ${row.desarrollo ? `<h3>Desarrollo</h3><div class="blk">${row.desarrollo}</div>` : ''}
+      ${row.acuerdos ? `<h3>Acuerdos</h3><div class="blk">${row.acuerdos}</div>` : ''}
       <div class="acta-firmas">
         <div class="firma">${esc(row.presidida_por || 'Preside')}<br>Preside</div>
         <div class="firma">${esc(row.secretario || 'Secretario(a)')}<br>Secretario(a)</div>
       </div>
+      <div class="doc-pie">${pieDelDocumento()}</div>
     </div>`;
 }
 
@@ -6454,11 +6486,7 @@ function printServicio(m, row) {
   const fila = (k, v) => (v == null || v === '' ? '' : `<tr><td class="k">${esc(k)}</td><td>${esc(v)}</td></tr>`);
   return `
     <div class="print-sheet print-generic">
-      <div class="membrete">
-        <img src="${IGLESIA.logo}" alt="" />
-        <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}${
-          pieDeLaInstitucion() ? `<span class="datos">${esc(pieDeLaInstitucion())}</span>` : ''}</div>
-      </div>
+      ${membreteDelDocumento()}
       <h1>Registro de Servicio</h1>
       <div class="sub">${esc(iglesiaDeTrabajo(row.iglesia_id_label))} — ${fechaLarga(row.fecha)}</div>
       <table class="meta-tbl">
@@ -6505,13 +6533,9 @@ function printServicio(m, row) {
 function printGenerico(m, row) {
   return `
     <div class="print-sheet print-generic">
-      <div class="membrete">
-        <img src="${IGLESIA.logo}" alt="" />
-        <div><b>${esc(IGLESIA.nombre)}</b>${IGLESIA.lema ? `<i>${esc(IGLESIA.lema)}</i>` : ''}${
-          pieDeLaInstitucion() ? `<span class="datos">${esc(pieDeLaInstitucion())}</span>` : ''}</div>
-      </div>
+      ${membreteDelDocumento()}
       <h1>${esc(m.labelSingular)}</h1>
-      <div class="sub">Registro N.º ${row.id} — impreso el ${fechaLarga(new Date().toISOString())}</div>
+      <div class="sub">Registro N.º ${row.id}</div>
       <table>
         ${m.fields
           .filter((f) => f.type !== 'password')
@@ -6523,11 +6547,15 @@ function printGenerico(m, row) {
             if (f.type === 'money') v = fmtMoney(v);
             if (f.type === 'rut') v = rutFormatear(v);
             if (f.type === 'boolean') v = v ? 'Sí' : 'No';
+            // Las fechas salían como «1975-04-12», que es como las guarda la
+            // base, no como se escriben en un documento que alguien firma.
+            if (f.type === 'date' && v) v = fechaLarga(v);
             if (v == null || v === '') return '';
             return `<tr><td class="k">${esc(f.label)}</td><td>${esc(v)}</td></tr>`;
           })
           .join('')}
       </table>
+      <div class="doc-pie">${pieDelDocumento()}</div>
     </div>`;
 }
 
