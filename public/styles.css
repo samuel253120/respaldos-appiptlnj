@@ -1990,3 +1990,74 @@ input.fuera-de-rango { border-color: var(--danger); background: #fff5f5; }
 .asis-tit.asis-falto  { color: var(--danger);  border-bottom-color: var(--danger); }
 .asis-grupo .mini-list { padding: 6px 0; }
 .asis-grupo .mini-list li { padding: 5px 2px; }
+
+/* ── El buscador del menú ────────────────────────────────────────────────
+   Va adentro del menú, debajo del membrete: busca SECCIONES, no datos. El
+   buscador de datos está arriba, en la barra, y son dos cosas distintas. */
+.side-buscar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 12px 12px 2px;
+}
+.side-buscar .lupa {
+  position: absolute;
+  left: 9px;
+  font-size: 12px;
+  opacity: .7;
+  pointer-events: none;
+}
+.side-buscar input {
+  width: 100%;
+  padding: 7px 28px 7px 29px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  /* El navegador pinta su propia crucecita en los campos de búsqueda, y con
+     la nuestra al lado quedaban dos. */
+  appearance: none;
+  -webkit-appearance: none;
+}
+.side-buscar input::-webkit-search-cancel-button { display: none; }
+.side-buscar input::placeholder { color: rgba(255, 255, 255, 0.55); }
+.side-buscar input:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.14);
+  border-color: var(--marca-oro);
+}
+.side-buscar .limpiar {
+  position: absolute;
+  right: 5px;
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.side-buscar .limpiar:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+
+.side-sin-nada {
+  margin: 10px 14px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Buscando, los grupos se abren solos y sus títulos no invitan a plegarlos:
+   plegar un grupo mientras se filtra esconde justo lo que se encontró. */
+.sidebar.buscando .side-group.cerrado .group-items { display: block; }
+.sidebar.buscando .group-title .flecha { opacity: .25; }
+
+/* Y lo que el filtro esconde, se esconde de verdad.
+   `.side-link` y `.side-group` traen su propio `display`, que le gana al
+   `display:none` que el navegador le da de suyo a `[hidden]`. Sin estas dos
+   líneas el filtro marcaba los enlaces como ocultos y se seguían viendo
+   todos: buscar «tesor» dejaba en pantalla el menú entero. */
+.sidebar .side-link[hidden],
+.sidebar .side-group[hidden] { display: none; }

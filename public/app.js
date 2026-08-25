@@ -1539,6 +1539,13 @@ function renderShell() {
           <img class="logo" src="${IGLESIA.logo}" alt="" />
           <span class="txt"><b>${esc(dondeTrabaja)}</b><i>Sistema de Gestión</i></span>
         </div>
+        <div class="side-buscar">
+          <span class="lupa" aria-hidden="true">🔎</span>
+          <input type="search" id="menuBuscar" placeholder="Buscar una sección…"
+                 aria-label="Buscar una sección del menú" autocomplete="off" spellcheck="false" />
+          <button type="button" class="limpiar" id="menuBuscarLimpiar" aria-label="Limpiar la búsqueda del menú" hidden>✕</button>
+        </div>
+        <p class="side-sin-nada" id="menuSinNada" hidden>No hay ninguna sección con ese nombre.</p>
         <div class="side-group">
           <a class="side-link" data-mod="_dash" href="#/"><span class="ic">📊</span> Panel de control</a>
         </div>
@@ -3617,6 +3624,101 @@ function iniciarGruposDelMenu() {
       }
     });
   });
+
+  iniciarBuscadorDelMenu(barra);
+}
+
+/**
+ * El buscador del menú: escribir dos letras en vez de recorrer los grupos.
+ *
+ * El menú tiene más de treinta secciones repartidas en grupos plegables, y
+ * llegar a una que está en un grupo cerrado son dos gestos: abrir el grupo y
+ * después buscar con la vista. Escribiendo «cuo» se llega a Cuotas de una.
+ *
+ * Es SOLO para el menú, y por eso está adentro del menú y no arriba: el
+ * buscador de la barra superior busca en los DATOS —una persona, un
+ * movimiento, un acta— y son dos cosas distintas que conviene no confundir.
+ *
+ * Tres detalles que hacen la diferencia entre que se use y que estorbe:
+ *
+ *   · **los grupos cerrados se abren solos** mientras se busca. Si no, uno
+ *     escribe «cuo», no ve nada y concluye que no existe;
+ *   · **al limpiar, todo vuelve como estaba**, con los grupos que uno tenía
+ *     cerrados otra vez cerrados: BUSCAR no puede deshacerle a nadie cómo dejó
+ *     ordenado su menú. (ENTRAR sí: quien llega a una sección que estaba en un
+ *     grupo cerrado lo deja abierto, y eso es de antes y a propósito —ver
+ *     marcarActivo—: es la única señal de dónde quedó parado);
+ *   · **Enter entra a la primera**, que es lo que uno quiere después de
+ *     escribir tres letras, y Escape limpia.
+ */
+function iniciarBuscadorDelMenu(barra) {
+  const caja = barra.querySelector('#menuBuscar');
+  if (!caja) return;
+  const limpiar = barra.querySelector('#menuBuscarLimpiar');
+  const sinNada = barra.querySelector('#menuSinNada');
+  const grupos = [...barra.querySelectorAll('.side-group[data-grupo]')];
+  const enlaces = [...barra.querySelectorAll('.side-link')];
+
+  const filtrar = () => {
+    const busca = textoBuscable(caja.value.trim());
+    const buscando = busca.length > 0;
+    barra.classList.toggle('buscando', buscando);
+    if (limpiar) limpiar.hidden = !buscando;
+
+    let cuantas = 0;
+    for (const enlace of enlaces) {
+      // El Panel de control no está en ningún grupo y se busca igual
+      const calza = !buscando || textoBuscable(enlace.textContent).includes(busca);
+      enlace.hidden = !calza;
+      if (calza) cuantas++;
+    }
+
+    for (const grupo of grupos) {
+      const suyos = [...grupo.querySelectorAll('.side-link')];
+      const algunoCalza = suyos.some((e) => !e.hidden);
+      grupo.hidden = buscando && !algunoCalza;
+      // Mientras se busca, los grupos se abren para que se vea lo encontrado;
+      // al limpiar, cada uno vuelve a como lo dejó su dueño.
+      if (buscando) grupo.classList.remove('cerrado');
+      else if (gruposCerrados().has(grupo.dataset.grupo)) grupo.classList.add('cerrado');
+    }
+
+    if (sinNada) sinNada.hidden = !buscando || cuantas > 0;
+  };
+
+  const primeraQueCalza = () => enlaces.find((e) => !e.hidden && !e.closest('[hidden]'));
+
+  caja.addEventListener('input', filtrar);
+  caja.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      caja.value = '';
+      filtrar();
+      return;
+    }
+    if (e.key === 'Enter') {
+      const primera = primeraQueCalza();
+      if (primera) {
+        e.preventDefault();
+        primera.click();
+        caja.value = '';
+        filtrar();
+      }
+    }
+  });
+  if (limpiar) {
+    limpiar.addEventListener('click', () => {
+      caja.value = '';
+      filtrar();
+      caja.focus();
+    });
+  }
+  // Al tocar una sección encontrada, el buscador se limpia: quien vuelve al
+  // menú lo quiere entero, no con el filtro de hace media hora puesto.
+  enlaces.forEach((e) => e.addEventListener('click', () => {
+    if (!caja.value) return;
+    caja.value = '';
+    filtrar();
+  }));
 }
 
 /* ---------------- los avisos: la campanita ---------------- */
@@ -4030,6 +4132,15 @@ async function viewForm(name, id, precarga) {
 
   // El acta: traer el texto del documento adjunto, y ver a quién enlaza
   if (name === 'actas_reuniones') prepararElActa(id, row, isNew);
+
+  // El acta de asamblea también estrena su número, pero se numera por iglesia
+  if (name === 'actas_asambleas') {
+    proponerElNumeroDeActa(isNew, {
+      ruta: '/actas_asambleas/proximo-numero',
+      depende: ['iglesia_id', 'fecha'],
+      clave: 'iglesia_id',
+    });
+  }
 
   // Al traspasar, se muestra cuánto hay en la cuenta de origen
   if (name === 'traspasos') mostrarSaldoOrigen();
@@ -5102,9 +5213,26 @@ function initSelectoresDependientes(m, row, isNew) {
     aplicarCondiciones();
   };
 
-  fuentes.forEach((nombre) => {
-    const el = form.querySelector(`[name="${nombre}"]`);
-    if (el) el.addEventListener('change', refrescar);
+  /*
+   * Se escucha el FORMULARIO entero y no cada campo del que se depende.
+   *
+   * Cuando el módulo referenciado tiene muchas opciones —más de veinte
+   * cuerpos, por ejemplo— el campo no es un desplegable sino un buscador: una
+   * caja de texto visible más un campo oculto que lleva el nombre. Al elegir,
+   * el aviso de «cambió» se dispara en la CAJA, no en el campo oculto, así que
+   * escuchando el campo por su nombre no llegaba nunca y la lista dependiente
+   * se quedaba con lo de antes, sin decir nada. Con pocas opciones —cuando sí
+   * era un desplegable— funcionaba, que es lo que lo hacía difícil de ver.
+   *
+   * El aviso sube por el formulario, así que oyéndolo ahí se enteran los dos
+   * casos.
+   */
+  form.addEventListener('change', (e) => {
+    if (!e.target || !e.target.closest) return;
+    const suyo = e.target.closest('.fld');
+    if (!suyo) return;
+    const nombres = [...suyo.querySelectorAll('[name]')].map((el) => el.name);
+    if (nombres.some((n) => fuentes.has(n))) refrescar();
   });
 }
 
@@ -10277,6 +10405,71 @@ function prepararElActa(id, row, isNew) {
   ponerBotonDeTranscribir(id, row, isNew);
   ponerPanelDeAsistencia(row);
   ponerBotonDePdf(id, isNew);
+  proponerElNumeroDeActa(isNew, {
+    ruta: '/actas_reuniones/proximo-numero',
+    // Cada cuerpo lleva su propio libro, y el año lo pone la fecha del acta
+    depende: ['cuerpo_id', 'fecha'],
+    clave: 'cuerpo_id',
+  });
+}
+
+/**
+ * Propone el número que le toca a la próxima acta, y lo deja cambiar.
+ *
+ * SOLO PROPONE. El número se escribe en el campo como cualquier otro valor y
+ * la persona lo puede corregir: hay actas que llegan con su número ya puesto
+ * y libros que vienen de antes y no empiezan en 001.
+ *
+ * Y solo pisa lo que él mismo escribió. Si uno cambia el cuerpo, el número que
+ * el sistema había propuesto deja de valer y se propone el del libro nuevo;
+ * pero si uno escribió el suyo, no se lo tocan más, ni cambiando el cuerpo
+ * diez veces. Sin esa distinción, el sistema le borraría a alguien lo que
+ * acaba de escribir, que es la peor manera de ayudar.
+ */
+function proponerElNumeroDeActa(isNew, { ruta, depende, clave }) {
+  if (!isNew) return; // un acta ya guardada conserva el número que tenga
+  const form = document.getElementById('recForm');
+  if (!form) return;
+  const campo = form.querySelector('[name="numero_acta"]');
+  if (!campo) return;
+
+  let loQuePropuso = null;
+  const valorDe = (nombre) => {
+    const el = form.querySelector(`[name="${nombre}"]`);
+    return el ? el.value : '';
+  };
+
+  const proponer = async () => {
+    // Lo escrito por la persona manda: solo se reemplaza lo vacío o lo que
+    // propuso el propio sistema y todavía nadie tocó.
+    const escrito = campo.value.trim();
+    if (escrito && escrito !== loQuePropuso) return;
+
+    const dentroDe = valorDe(clave);
+    if (!dentroDe) return;
+    const partes = depende.map((n) => `${n}=${encodeURIComponent(valorDe(n))}`).join('&');
+    let r;
+    try {
+      r = await api('GET', `${ruta}?${partes}`);
+    } catch (e) {
+      return; // sin propuesta se escribe a mano, como antes
+    }
+    if (!r || !r.numero) return;
+    campo.value = r.numero;
+    loQuePropuso = r.numero;
+  };
+
+  proponer();
+  // Se oye el formulario y no cada campo, por lo mismo que arriba: un campo de
+  // referencia con muchas opciones avisa desde su caja de búsqueda y no desde
+  // el campo oculto que lleva el nombre.
+  form.addEventListener('change', (e) => {
+    if (!e.target || !e.target.closest) return;
+    const suyo = e.target.closest('.fld');
+    if (!suyo) return;
+    const nombres = [...suyo.querySelectorAll('[name]')].map((el) => el.name);
+    if (nombres.some((n) => depende.includes(n))) proponer();
+  });
 }
 
 /**

@@ -40,7 +40,15 @@ module.exports = {
   listFields: ['numero_acta', 'fecha', 'cuerpo_id', 'iglesia_id', 'presidida_por', 'estado'],
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
-    { name: 'numero_acta', label: 'Número de acta', type: 'text', required: true, help: 'Ej. 001-2026', seccion: 'Identificación' },
+    {
+      name: 'numero_acta', label: 'Número de acta', type: 'text', required: true,
+      // Único dentro del cuerpo: cada cuerpo lleva su propio libro, así que el
+      // 001 del coro y el 001 de las dorcas son dos actas distintas y las dos
+      // válidas. Repetirlo DENTRO de un mismo libro sí es un error.
+      unique: 'cuerpo_id',
+      help: 'Lo propone el sistema, y se puede cambiar. Ej. 001-2026',
+      seccion: 'Identificación',
+    },
     { name: 'fecha', label: 'Fecha', type: 'date', required: true },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
     { name: 'cuerpo_id', label: 'Cuerpo / Grupo', type: 'ref', ref: 'cuerpos', required: true },
@@ -109,6 +117,30 @@ module.exports = {
     /** El acta pedida, comprobando que sea de las que esa persona alcanza. */
     const actaSuya = (req, res) =>
       require('../alcance').registroSuyo(req, res, 'actas_reuniones', req.params.id, 'Esa acta');
+
+    /**
+     * Qué número le toca a la próxima acta de este cuerpo.
+     *
+     * Es una propuesta para el formulario, no una reserva: dos personas
+     * creando un acta a la vez reciben el mismo número, y la segunda se topa
+     * al guardar con que ya está usado —para eso está el «unique» del campo—.
+     * Reservar números de verdad obligaría a guardar algo antes de que exista
+     * el acta, y a limpiar los que nadie llegó a usar; no vale la pena para un
+     * libro donde se levantan dos actas al mes.
+     */
+    router.get('/actas_reuniones/proximo-numero', requirePerm('actas_reuniones', 'create'), (req, res) => {
+      const cuerpoId = Number(req.query.cuerpo_id) || 0;
+      if (!cuerpoId) return res.json({ numero: null });
+      // El cuerpo tiene que ser de los suyos: si no, esta ruta diría cuántas
+      // actas lleva un cuerpo ajeno con solo escribir su número.
+      const alcance = require('../alcance');
+      const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
+      if (!cuerpo) return res.json({ numero: null });
+      if (!alcance.alcanza(require('../registry').getModule('cuerpos'), cuerpo, req.user)) {
+        return res.status(403).json({ error: 'Ese cuerpo está fuera de lo que tiene asignado' });
+      }
+      res.json({ numero: require('../numeracion').proximoNumero('actas_reuniones', cuerpoId, req.query.fecha) });
+    });
 
     /**
      * El acta completa, como PDF que se baja.
