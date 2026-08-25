@@ -136,7 +136,4 @@ function coincide(texto, huella) {
     () => bcrypt.compareSync(String(texto), String(huella)));
 }
 
-/** Para las pruebas: si el cálculo se está haciendo en el hilo aparte o acá. */
-const enHiloAparte = () => obrero !== false;
-
-module.exports = { cifrar, coincide, enHiloAparte, CUANTAS_VUELTAS };
+module.exports = { cifrar, coincide, CUANTAS_VUELTAS };

@@ -221,6 +221,25 @@ function limpiarArchivos() {
   } catch (e) {
     console.error(`⚠️  No se pudieron limpiar los archivos sueltos: ${e.message}`);
   }
+
+  /*
+   * Y de paso se compacta la base, que es el otro espacio que se recupera de
+   * noche. Va acá, después de borrar los archivos sin dueño y los avisos
+   * viejos, porque compactar solo devuelve al disco lo que ya está borrado:
+   * hacerlo antes de las limpiezas recuperaría bastante menos.
+   */
+  try {
+    const { db } = require('./db');
+    const r = require('./compactar').compactar(db);
+    if (r.hecho) {
+      console.log(
+        `🗜️  Base compactada: de ${(r.antes / 1024 / 1024).toFixed(1)} a ` +
+          `${(r.despues / 1024 / 1024).toFixed(1)} MB (${(r.recuperado / 1024 / 1024).toFixed(1)} MB recuperados).`
+      );
+    }
+  } catch (e) {
+    console.error(`⚠️  No se pudo compactar la base: ${e.message}`);
+  }
 }
 
 /** Deja el reloj andando. Se llama una vez, al arrancar. */

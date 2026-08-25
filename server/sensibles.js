@@ -53,10 +53,6 @@ function gruposDe(def) {
   return salida;
 }
 
-/** Los campos marcados como sensibles de un módulo (los de salud). */
-function camposSensibles(def) {
-  return (def.fields || []).filter((f) => grupoDe(f) === SALUD).map((f) => f.name);
-}
 
 /**
  * ¿Es la ficha de la propia persona?
@@ -163,5 +159,5 @@ function buscablesPara(def, usuario) {
 
 module.exports = {
   alcanza, alcanzaGrupo, limpiar, limpiarVarias, protegerAlGuardar,
-  camposSensibles, gruposDe, grupoDe, vedados, buscablesPara, LLAVE,
+  gruposDe, grupoDe, vedados, buscablesPara, LLAVE,
 };
