@@ -183,6 +183,17 @@ async function montarEscenario(admin) {
   const actividadSur = await buscarOCrear('asistencias', (f) => f.nombre === `Culto ${MARCA} Sur`,
     { nombre: `Culto ${MARCA} Sur`, fecha: '2026-08-02', iglesia_id: sur.id, cuerpos: [cuerpoSur.id], tipo: 'Culto' });
 
+  /*
+   * Y una actividad COMPARTIDA por los dos cuerpos del Norte: el caso del coro
+   * cantando en un aniversario junto a otros. Existe para probar el recorte del
+   * enlace acta–asistencia (1.99.0), que es donde se ve si el alcance por
+   * cuerpo aguanta cuando la actividad no es de un cuerpo solo.
+   */
+  const actividadCompartida = await buscarOCrear('asistencias',
+    (f) => f.nombre === `Aniversario ${MARCA}`,
+    { nombre: `Aniversario ${MARCA}`, fecha: '2026-08-21', iglesia_id: norte.id,
+      cuerpos: [damas.id, jovenes.id], tipo: 'Culto' });
+
   const perfil = await buscarOCrear('perfiles_permisos', (f) => f.nombre === `Perfil ${MARCA}`,
     { nombre: `Perfil ${MARCA}`, estado: 'Activo', permisos: JSON.stringify({ miembros: ['view'] }) });
 
@@ -231,7 +242,7 @@ async function montarEscenario(admin) {
   return {
     norte, sur, damas, jovenes, cuerpoSur,
     deDamas, deJovenes, delSur, pastorSur,
-    cuentaSur, cuentaJovenes, actividadSur, perfil,
+    cuentaSur, cuentaJovenes, actividadSur, actividadCompartida, perfil,
     secretaria, adminNorte, delOtroLado, ayudante,
   };
 }
@@ -293,9 +304,20 @@ async function loAjenoNoSeVe(E, modulos) {
     [E.delSur.rut, 'el RUT de una miembro de la otra iglesia'],
     [E.pastorSur.rut, 'el RUT del pastor de la otra iglesia'],
   ];
+  /*
+   * Lo que NO puede ver de otro cuerpo es su GENTE y su plata.
+   *
+   * El NOMBRE del otro cuerpo no está en esta lista, y es a propósito: una
+   * actividad puede convocar a varios —el coro cantando en un aniversario junto
+   * a otros cinco— y quien participó en ella la ve entera, con los nombres de
+   * los cuerpos que la compartieron. Ocultarlos dejaría la actividad
+   * incomprensible («convocó a 6 cuerpos, no se dice cuáles») sin proteger nada
+   * que valga: el nombre de un cuerpo de la propia iglesia no es un dato de
+   * nadie. Lo que sí se protege —y se comprueba abajo— es que de esos cuerpos
+   * no salga NI UNA PERSONA.
+   */
   const deOtroCuerpo = [
     [E.deJovenes.apellidos, 'un miembro de otro cuerpo de su misma iglesia'],
-    [E.jovenes.nombre, 'otro cuerpo de su misma iglesia'],
     [E.cuentaJovenes.nombre, 'la caja de otro cuerpo'],
     [E.deJovenes.rut, 'el RUT de alguien de otro cuerpo'],
   ];
@@ -345,6 +367,12 @@ async function loAjenoNoSeVe(E, modulos) {
       '/api/directivas/oficiales',
       `/api/directivas/integrantes?cuerpo_id=${E.cuerpoSur.id}`,
       `/api/directivas/integrantes?cuerpo_id=${E.jovenes.id}`,
+      // Las que enlazan un acta con su asistencia (1.99.0): dicen qué
+      // actividades tuvo un cuerpo y quiénes de él estuvieron
+      `/api/asistencias/de-cuerpo?cuerpo_id=${E.cuerpoSur.id}`,
+      `/api/asistencias/de-cuerpo?cuerpo_id=${E.jovenes.id}`,
+      `/api/asistencias/${E.actividadSur.id}/por-cuerpo?cuerpo_id=${E.cuerpoSur.id}`,
+      `/api/asistencias/${E.actividadSur.id}/por-cuerpo?cuerpo_id=${E.jovenes.id}`,
       '/api/dashboard', '/api/pendientes', '/api/huerfanos', '/api/avisos', '/api/meta',
       `/api/buscar?q=${encodeURIComponent(E.delSur.apellidos)}`,
       `/api/buscar?q=${encodeURIComponent(E.deJovenes.apellidos)}`,
@@ -495,6 +523,25 @@ async function niSePuedeApuntarALoAjeno(E, admin) {
   revisar('y su ficha sigue cerrada después de intentarlo', sigueCerrada.estado === 403,
     sigueCerrada.estado === 200 ? 'la escalada funcionó: pasó a ver a alguien de otro cuerpo' : null);
   if (laOtra.json && laOtra.json.id) await admin('DELETE', `/api/integrantes_cuerpo/${laOtra.json.id}`);
+
+  /*
+   * El recorte del enlace acta–asistencia, que es lo que sostiene la 1.99.0.
+   * De una actividad COMPARTIDA, la secretaria de un cuerpo tiene que ver a los
+   * suyos y a nadie más, aunque la actividad haya convocado a los dos.
+   */
+  const compartida = await secre(
+    'GET', `/api/asistencias/${E.actividadCompartida.id}/por-cuerpo?cuerpo_id=${E.damas.id}`);
+  revisar('de una actividad compartida ve la lista de SU cuerpo', compartida.estado === 200,
+    `respondió ${compartida.estado}: ${compartida.texto.slice(0, 140)}`);
+  revisar('y en ella no aparece nadie del otro cuerpo',
+    !compartida.texto.includes(E.deJovenes.apellidos));
+  const delOtro = await secre(
+    'GET', `/api/asistencias/${E.actividadCompartida.id}/por-cuerpo?cuerpo_id=${E.jovenes.id}`);
+  revisar('y pedir derecho la lista del otro cuerpo se cierra', delOtro.estado === 403,
+    `respondió ${delOtro.estado}`);
+  const actividadesAjenas = await secre('GET', `/api/asistencias/de-cuerpo?cuerpo_id=${E.jovenes.id}`);
+  revisar('como se cierra preguntar qué actividades tuvo el otro cuerpo',
+    actividadesAjenas.estado === 403, `respondió ${actividadesAjenas.estado}`);
 
   noSeGuarda('no se escribe en un cuerpo que no se tiene asignado',
     await secre('POST', '/api/actas_reuniones', {

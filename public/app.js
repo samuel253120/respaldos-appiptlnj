@@ -3990,6 +3990,9 @@ async function viewForm(name, id, precarga) {
   aplicarCondiciones();
   renumerarBloques();
 
+  // El acta: traer el texto del documento adjunto, y ver a quién enlaza
+  if (name === 'actas_reuniones') prepararElActa(id, row, isNew);
+
   // Al traspasar, se muestra cuánto hay en la cuenta de origen
   if (name === 'traspasos') mostrarSaldoOrigen();
 
@@ -10167,6 +10170,152 @@ async function renderDirectivasCuerpo(cuerpoId, caja) {
 }
 
 /** Las actas de las reuniones administrativas del cuerpo. */
+/**
+ * Las dos ayudas del acta: traer el texto del adjunto y ver a quién enlaza.
+ *
+ * Un acta se registra de dos maneras —escribiéndola acá o adjuntando el
+ * documento firmado—, y hasta ahora eran dos caminos que no se cruzaban: lo
+ * adjunto quedaba como un archivo cerrado que no se busca ni se lee sin
+ * bajarlo. Estas dos cosas los juntan.
+ */
+function prepararElActa(id, row, isNew) {
+  ponerBotonDeTranscribir(id, row, isNew);
+  ponerPanelDeAsistencia(row);
+}
+
+/**
+ * «Traer el texto del documento», al lado del editor.
+ *
+ * Solo aparece cuando hay algo que traer: un acta ya guardada y con documento
+ * adjunto. En una recién creada no se ofrece porque el archivo todavía no está
+ * en el servidor —se sube al guardar—, y un botón que solo sabe fallar es peor
+ * que no tenerlo.
+ */
+function ponerBotonDeTranscribir(id, row, isNew) {
+  if (isNew || !row.documento) return;
+  const barra = document.querySelector('#rico_desarrollo .rico-barra');
+  if (!barra || document.getElementById('actaTranscribir')) return;
+
+  barra.insertAdjacentHTML('beforeend',
+    '<span class="sep"></span>'
+    + '<button type="button" id="actaTranscribir" title="Copiar acá el texto del documento adjunto">'
+    + '📄 Traer el texto del documento</button>');
+
+  document.getElementById('actaTranscribir').addEventListener('click', async (e) => {
+    const boton = e.currentTarget;
+    const hoja = document.getElementById('ricoh_desarrollo');
+    const oculto = document.querySelector('#rico_desarrollo input[type=hidden]');
+    if (!hoja || !oculto) return;
+
+    // Reemplazar lo escrito es una decisión de quien redacta, no algo que deba
+    // pasarle por encima: si ya hay texto, se pregunta.
+    if (hoja.textContent.trim() && !confirm(
+      'El desarrollo ya tiene texto escrito.\n\n'
+      + 'Traer el del documento lo REEMPLAZA por completo.\n\n'
+      + '¿Seguir?'
+    )) return;
+
+    const decia = boton.textContent;
+    boton.disabled = true;
+    boton.textContent = 'Leyendo el documento…';
+    try {
+      const r = await api('POST', `/actas_reuniones/${id}/transcribir`);
+      hoja.innerHTML = r.texto;
+      oculto.value = r.texto;
+      hoja.dispatchEvent(new Event('input'));
+      toast(`Se trajeron ${fmtNumero(r.palabras)} palabras de ${r.de}. Revise y guarde.`);
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      boton.disabled = false;
+      boton.textContent = decia;
+    }
+  });
+}
+
+/**
+ * Debajo del formulario, quiénes estuvieron en la reunión que se enlazó.
+ *
+ * Se pinta apenas se elige la actividad, ANTES de guardar: enlazar la reunión
+ * equivocada es fácil —dos ensayos de la misma semana— y verlo después de
+ * guardar no sirve de nada.
+ */
+function ponerPanelDeAsistencia(row) {
+  if (!MOD['asistencias']) return;
+  const form = document.getElementById('recForm');
+  if (!form) return;
+
+  const zona = document.createElement('div');
+  content().appendChild(zona);
+
+  const cual = () => ({
+    actividad: (form.querySelector('[name="asistencia_id"]') || {}).value || '',
+    cuerpo: (form.querySelector('[name="cuerpo_id"]') || {}).value || '',
+  });
+
+  let ultimo = '';
+  const pintar = async () => {
+    const { actividad, cuerpo } = cual();
+    const clave = `${actividad}|${cuerpo}`;
+    if (clave === ultimo) return;
+    ultimo = clave;
+
+    if (!actividad || !cuerpo) { zona.innerHTML = ''; return; }
+    zona.innerHTML = '<div class="card" style="margin-top:18px"><div class="card-body">Buscando la lista…</div></div>';
+
+    let d;
+    try {
+      d = await api('GET', `/asistencias/${actividad}/por-cuerpo?cuerpo_id=${encodeURIComponent(cuerpo)}`);
+    } catch (e) {
+      zona.innerHTML = `<div class="card" style="margin-top:18px"><div class="card-body">
+        <span class="mut">No se pudo mirar esa asistencia: ${esc(e.message)}</span></div></div>`;
+      return;
+    }
+
+    const grupo = (titulo, gente, clase, conMotivo) => `
+      <div class="asis-grupo">
+        <b class="asis-tit ${clase}">${titulo} · ${fmtNumero(gente.length)}</b>
+        ${gente.length ? `<ul class="mini-list">${gente.map((p) => `
+          <li><span>${esc(p.nombre)}</span>${conMotivo && p.motivo
+            ? `<span class="mut">${esc(p.motivo)}${p.detalle ? `: ${esc(p.detalle)}` : ''}</span>` : ''}</li>`).join('')}
+        </ul>` : '<div class="mut" style="padding:8px 2px">Ninguno.</div>'}
+      </div>`;
+
+    zona.innerHTML = `
+      <div class="card" style="margin-top:18px">
+        <div class="toolbar">
+          <b>🖐️ La lista de esa reunión</b>
+          <span class="spacer"></span>
+          <a class="btn secondary sm" href="#/asistencia?actividad=${esc(d.actividad.id)}">Ver la actividad</a>
+        </div>
+        <div class="card-body">
+          <p style="margin:0 0 14px;color:var(--muted);font-size:13.5px">
+            ${esc(d.actividad.tipo || 'Actividad')} del ${esc(fechaCorta(d.actividad.fecha))}${d.actividad.lugar ? ` · ${esc(d.actividad.lugar)}` : ''}.
+            ${d.actividad.cuantos_cuerpos > 1
+              ? `Convocó a ${fmtNumero(d.actividad.cuantos_cuerpos)} cuerpos; acá salen solo los de <b>${esc(d.cuerpo.nombre)}</b>.`
+              : ''}
+          </p>
+          ${!d.convocado ? `<div class="resultado warn" style="margin-bottom:14px">
+            <b>${esc(d.cuerpo.nombre)} no estaba convocado a esa actividad.</b>
+            Revise si es la reunión que corresponde.</div>` : ''}
+          ${d.sin_marcar ? `<div class="empty-state" style="padding:22px">
+              De esa actividad todavía no se pasó lista para este cuerpo.
+            </div>` : `<div class="asis-tres">
+              ${grupo('Asistieron', d.presentes, 'asis-fue')}
+              ${grupo('Se justificaron', d.justificados, 'asis-excusa', true)}
+              ${grupo('No asistieron', d.ausentes, 'asis-falto')}
+            </div>`}
+        </div>
+      </div>`;
+  };
+
+  pintar();
+  // El selector de la actividad puede ser un buscador, así que se escucha todo
+  // el formulario en vez de un solo control.
+  form.addEventListener('change', pintar);
+  form.addEventListener('input', pintar);
+}
+
 async function renderActasCuerpo(cuerpoId, caja) {
   if (!MOD['actas_reuniones']) return;
   const actas = await api('GET', `/actas_reuniones?f_cuerpo_id=${cuerpoId}&sort=fecha&dir=desc&limit=30`)

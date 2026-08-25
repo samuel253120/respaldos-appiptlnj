@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.99.0", fecha: "2026-08-25", titulo: "El acta trae el texto del documento adjunto y se enlaza con la lista de asistencia de esa reunión" },
   { version: "1.98.1", fecha: "2026-08-25", titulo: "No se puede apuntar a lo que no se alcanza: se cierra la escritura que ampliaba el propio alcance" },
   { version: "1.98.0", fecha: "2026-08-25", titulo: "Auditoría de aislamiento: diez rutas entregaban datos de otra iglesia, y una dejaba entrar a una cuenta ajena" },
   { version: "1.97.5", fecha: "2026-08-25", titulo: "El archivo del sistema anterior se puede sacar del servidor: terminado el traspaso, ya no tiene para qué quedarse" },

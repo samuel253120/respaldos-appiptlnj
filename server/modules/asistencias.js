@@ -212,6 +212,117 @@ module.exports = {
      * de una vez todo lo que la pantalla necesita: no hace falta entrar a
      * cada actividad para saber cuál falta ni quién puede marcarla.
      */
+    /**
+     * Las actividades a las que fue convocado un cuerpo, para poder enlazarlas
+     * desde su acta.
+     *
+     * Se ofrece la actividad aunque haya convocado a varios cuerpos: el coro
+     * puede haber participado en un aniversario junto a otros cinco, y esa
+     * actividad es igual de válida para el acta del coro. Lo que después se
+     * mira de ella —quién asistió— sí sale acotado a la gente de ese cuerpo
+     * (ver la ruta del acta).
+     *
+     * Salen primero las más recientes, que es lo que se está por levantar en
+     * acta, y se acotan con el mismo alcance que todo lo demás.
+     */
+    router.get('/asistencias/de-cuerpo', requirePerm('asistencias', 'view'), (req, res) => {
+      const cuerpoId = Number(req.query.cuerpo_id) || 0;
+      if (!cuerpoId) return res.json([]);
+
+      const alcance = require('../alcance');
+      const { getModule } = require('../registry'); // tardío: evita ciclo con el registro
+      // El cuerpo tiene que ser de los suyos: si no, esta ruta diría qué
+      // actividades tiene un cuerpo ajeno con solo escribir su número.
+      const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
+      if (!cuerpo) return res.json([]);
+      if (!alcance.alcanza(getModule('cuerpos'), cuerpo, req.user)) {
+        return res.status(403).json({ error: 'Ese cuerpo está fuera de lo que tiene asignado' });
+      }
+
+      const params = [cuerpoId];
+      const cond = ['EXISTS (SELECT 1 FROM json_each(asistencias.cuerpos) WHERE json_each.value = ?)'];
+      const suyo = alcance.condiciones(module.exports, req.user, params);
+      if (suyo) cond.push(suyo);
+
+      const filas = db
+        .prepare(`SELECT * FROM asistencias WHERE ${cond.join(' AND ')} ORDER BY fecha DESC, id DESC LIMIT 400`)
+        .all(...params);
+
+      res.json(filas.map((a) => ({
+        id: a.id,
+        // Se nombra como se busca: por la fecha primero, que es lo que uno
+        // recuerda de una reunión, y después de qué fue.
+        label: `${require('../formato').fechaLarga(a.fecha)} · ${a.tipo_reunion || 'Actividad'}`
+          + (a.lugar ? ` (${a.lugar})` : ''),
+      })));
+    });
+
+    /**
+     * Quiénes de UN CUERPO estuvieron en esta actividad.
+     *
+     * Es lo que mira un acta al enlazar su reunión. La actividad puede haber
+     * convocado a seis cuerpos —el coro cantando en un aniversario—, y en el
+     * acta del coro tienen que salir los del coro y nadie más: por eso se pide
+     * el cuerpo y se recorta por él.
+     *
+     * Los tres estados van separados, no contados: un acta necesita nombrar a
+     * los que faltaron y a los que se excusaron, con su motivo. Ese motivo es
+     * justamente el dato que se perdía cuando la lista se escribía a mano en el
+     * campo «Asistentes», que solo sabía guardar nombres.
+     */
+    router.get('/asistencias/:id(\\d+)/por-cuerpo', requirePerm('asistencias', 'view'), (req, res) => {
+      const alcance = require('../alcance');
+      const { getModule } = require('../registry'); // tardío: evita ciclo con el registro
+
+      const actividad = alcance.registroSuyo(req, res, 'asistencias', req.params.id, 'Esa actividad');
+      if (!actividad) return;
+
+      const cuerpoId = Number(req.query.cuerpo_id) || 0;
+      if (!cuerpoId) return res.status(400).json({ error: 'Falta decir de qué cuerpo.' });
+      const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
+      if (!cuerpo) return res.status(404).json({ error: 'Cuerpo no encontrado' });
+      if (!alcance.alcanza(getModule('cuerpos'), cuerpo, req.user)) {
+        return res.status(403).json({ error: 'Ese cuerpo está fuera de lo que tiene asignado' });
+      }
+
+      const convocados = idsDeCuerpos(actividad.cuerpos);
+      const nombres = require('../nombres');
+      const filas = db
+        .prepare(
+          `SELECT d.estado, d.motivo, d.detalle, m.id, m.nombres, m.apellidos
+             FROM asistencia_detalle d
+             JOIN miembros m ON m.id = d.miembro_id
+            WHERE d.asistencia_id = ? AND d.cuerpo_id = ?
+            ORDER BY m.apellidos, m.nombres`
+        )
+        .all(actividad.id, cuerpoId);
+
+      const comoSale = (f) => ({
+        id: f.id,
+        nombre: nombres.paraMostrar(f.nombres, f.apellidos),
+        motivo: f.motivo || null,
+        detalle: f.detalle || null,
+      });
+
+      res.json({
+        actividad: {
+          id: actividad.id,
+          tipo: actividad.tipo_reunion,
+          fecha: actividad.fecha,
+          lugar: actividad.lugar || null,
+          cuantos_cuerpos: convocados.length,
+        },
+        cuerpo: { id: cuerpo.id, nombre: cuerpo.nombre },
+        // Se dice si el cuerpo estaba convocado: enlazar una actividad a la que
+        // no fue es una equivocación que conviene ver antes de guardar
+        convocado: convocados.includes(cuerpoId),
+        presentes: filas.filter((f) => f.estado === 'Presente').map(comoSale),
+        ausentes: filas.filter((f) => f.estado === 'Ausente').map(comoSale),
+        justificados: filas.filter((f) => f.estado === 'Justificado').map(comoSale),
+        sin_marcar: filas.length === 0,
+      });
+    });
+
     router.get('/asistencias/agenda', requirePerm('asistencias', 'view'), (req, res) => {
       const alcance = require('../alcance');
       const params = [];

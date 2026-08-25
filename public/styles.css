@@ -1964,3 +1964,29 @@ input.fuera-de-rango { border-color: var(--danger); background: #fff5f5; }
 }
 .sin-senal b { font-weight: 700; }
 @media print { .sin-senal { display: none; } }
+
+/* ── La lista de asistencia dentro del acta ──────────────────────────────
+   Tres columnas: quiénes fueron, quiénes se excusaron y quiénes no fueron.
+   En el teléfono se apilan, que es como se lee una lista de nombres. */
+.asis-tres {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 18px;
+}
+.asis-grupo { min-width: 0; }
+.asis-tit {
+  display: block;
+  font-size: 12.5px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--border);
+}
+/* Nombres propios y no `ok`/`aviso`/`malo` a secas: `.aviso` ya existe en esta
+   misma hoja con recuadro y fondo propios, y le pintaba una caja al título del
+   medio que los otros dos no tenían. */
+.asis-tit.asis-fue    { color: var(--success); border-bottom-color: var(--success); }
+.asis-tit.asis-excusa { color: var(--warning); border-bottom-color: var(--warning); }
+.asis-tit.asis-falto  { color: var(--danger);  border-bottom-color: var(--danger); }
+.asis-grupo .mini-list { padding: 6px 0; }
+.asis-grupo .mini-list li { padding: 5px 2px; }
