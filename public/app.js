@@ -9876,5 +9876,60 @@ async function renderUsuariosDelPerfil(perfilId, contenedor) {
   });
 }
 
+/* ---------------- el ayudante y la falta de señal ---------------- */
+/**
+ * Deja al ayudante instalado desde que se abre el sistema.
+ *
+ * Antes se registraba solo al activar los avisos, dentro de ese botón. Tenía
+ * sentido cuando lo único que hacía era recibirlos, pero ahora también es lo
+ * que permite que la aplicación abra sin señal, y eso lo necesita todo el
+ * mundo —no solo quien quiso avisos—. Sin esto, a la mayoría le seguiría
+ * saliendo la pantalla de error del navegador.
+ *
+ * Si falla, no se dice nada: es una mejora, no un requisito. El sistema
+ * funciona igual sin ayudante, solo que necesitando señal.
+ */
+function dejarElAyudanteInstalado() {
+  if (!('serviceWorker' in navigator)) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/avisos-sw.js', { scope: '/' }).catch((e) => {
+      console.warn('No se pudo dejar instalado el ayudante:', e.message);
+    });
+  });
+}
+
+/**
+ * La cinta de «sin conexión».
+ *
+ * Cuando no hay señal el sistema abre igual, pero no puede traer ni guardar
+ * datos. Sin decirlo, la persona ve listas vacías y errores sueltos y cree que
+ * el sistema se echó a perder. Con la cinta sabe qué pasa y que lo que ve
+ * puede no estar al día.
+ */
+function avisarCuandoNoHaySenal() {
+  const pintar = () => {
+    const hay = navigator.onLine;
+    let cinta = document.getElementById('sinSenal');
+    if (hay) {
+      if (cinta) cinta.remove();
+      return;
+    }
+    if (cinta) return;
+    cinta = document.createElement('div');
+    cinta.id = 'sinSenal';
+    cinta.className = 'sin-senal';
+    cinta.setAttribute('role', 'status');
+    cinta.innerHTML =
+      '📡 <b>Sin conexión.</b> Puede mirar lo que ya está abierto, pero no se ' +
+      'traen ni se guardan datos hasta que vuelva la señal.';
+    document.body.prepend(cinta);
+  };
+  window.addEventListener('online', pintar);
+  window.addEventListener('offline', pintar);
+  pintar();
+}
+
 /* ---------------- inicio ---------------- */
+dejarElAyudanteInstalado();
+avisarCuandoNoHaySenal();
 boot();

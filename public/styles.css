@@ -1896,3 +1896,20 @@ input.fuera-de-rango { border-color: var(--danger); background: #fff5f5; }
   background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
 }
 .pendientes .aviso-fuerte a { margin-left: 6px; white-space: nowrap; }
+
+/* La cinta que aparece cuando se cae la señal. Va sobre todo lo demás porque
+   explica por qué el resto de la pantalla se está portando raro. */
+.sin-senal {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  padding: 9px 14px;
+  background: #7a2e12;
+  color: #fff;
+  font-size: .9rem;
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.sin-senal b { font-weight: 700; }
+@media print { .sin-senal { display: none; } }
