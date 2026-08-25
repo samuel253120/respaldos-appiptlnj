@@ -40,10 +40,20 @@ router.post('/avisos/leidos', authRequired, (req, res) => {
  * para encender los del navegador.
  */
 router.get('/avisos/preferencias', authRequired, (req, res) => {
-  const usuario = db.prepare('SELECT id, rol, avisos FROM usuarios WHERE id = ?').get(req.user.id);
+  /*
+   * Se traen también los permisos propios y el perfil.
+   *
+   * Con «id, rol, avisos» a secas, `can()` se quedaba sin las dos capas que van
+   * ENCIMA del rol y decidía solo por el rol: a quien se le había concedido a
+   * mano la llave del respaldo, el aviso de que la copia está atrasada no se le
+   * ofrecía. No se notaba antes porque este filtro miraba el rol y nada más.
+   */
+  const usuario = db
+    .prepare('SELECT id, rol, avisos, permisos, perfil_id FROM usuarios WHERE id = ?')
+    .get(req.user.id);
   res.json({
     tipos: Object.entries(avisos.TIPOS)
-      .filter(([, def]) => !def.soloAdmin || usuario.rol === 'admin')
+      .filter(([, def]) => !def.llave || require('../permissions').can(usuario, def.llave, 'view'))
       .map(([clave, def]) => ({ clave, label: def.label, ayuda: def.ayuda, urgente: !!def.urgente })),
     canales: avisos.CANALES,
     preferencias: avisos.preferenciasDe(usuario),
@@ -64,7 +74,9 @@ router.put('/avisos/preferencias', authRequired, (req, res) => {
   }
   db.prepare("UPDATE usuarios SET avisos = ?, updated_at = datetime('now','localtime') WHERE id = ?")
     .run(JSON.stringify(limpias), req.user.id);
-  const usuario = db.prepare('SELECT id, rol, avisos FROM usuarios WHERE id = ?').get(req.user.id);
+  const usuario = db
+    .prepare('SELECT id, rol, avisos, permisos, perfil_id FROM usuarios WHERE id = ?')
+    .get(req.user.id);
   res.json({ ok: true, preferencias: avisos.preferenciasDe(usuario) });
 });
 

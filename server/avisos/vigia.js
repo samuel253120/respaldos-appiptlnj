@@ -129,9 +129,17 @@ function cumpleanosDeHoy(usuario, dejar) {
   });
 }
 
-/** El respaldo sin bajar y el espacio del disco. Solo al administrador. */
+/**
+ * El respaldo sin bajar y el espacio del disco.
+ *
+ * Le llega a quien tiene la llave del respaldo, que es quien puede hacer algo
+ * al respecto. Antes decía «solo si el rol es admin», escrito así: a quien se
+ * le concedía «Respaldos del sistema» —para que se bajara la copia una vez al
+ * mes sin ser administrador de todo— no le llegaba nunca el aviso de que la
+ * copia estaba atrasada. Justo la persona a la que había que avisarle.
+ */
 function respaldoYDisco(usuario, dejar) {
-  if (usuario.rol !== 'admin') return;
+  if (!require('../permissions').can(usuario, 'sistema_respaldo', 'view')) return;
   const respaldo = require('../respaldo');
   try {
     const bajada = respaldo.estadoDeLaBajada();

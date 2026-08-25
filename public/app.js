@@ -9783,8 +9783,18 @@ async function renderTramitacionSolicitud(id, row, contenedor) {
   const cerradas = ['Aprobada', 'Rechazada', 'Completada', 'Anulada'];
   const estaCerrada = cerradas.includes(row.estado);
   const suya = Number(row.responsable_id) === Number(USER.id);
-  const esAdmin = USER.rol === 'admin';
-  const puedeTrasladar = mod.perms.edit && !estaCerrada && (suya || esAdmin);
+  /*
+   * Quién puede moverla lo dice la LLAVE, no el rol.
+   *
+   * El servidor ya preguntaba por «solicitudes_tramitar» (ver el módulo), pero
+   * acá seguía escrito «o es administrador». El resultado: a quien se le
+   * concedía la llave —justamente para que coordinara solicitudes sin hacerlo
+   * administrador de todo— el servidor le habría dejado trasladar, pero el
+   * botón no le aparecía nunca. Un permiso que se puede dar y no sirve de nada
+   * es peor que no tenerlo: parece concedido y no lo está.
+   */
+  const puedeTramitarLasDeOtros = tieneLlave('solicitudes_tramitar');
+  const puedeTrasladar = mod.perms.edit && !estaCerrada && (suya || puedeTramitarLasDeOtros);
 
   const quien = row.responsable_id_label || (row.responsable_id ? `usuario ${row.responsable_id}` : null);
 

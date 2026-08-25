@@ -31,7 +31,10 @@ const { db } = require('../db');
  * momento, y los de rutina se juntan en el resumen del día. Un traslado de
  * solicitud interrumpe; un cumpleaños, no.
  *
- * `soloAdmin` marca los que son del que administra el sistema y no de todos.
+ * `llave` marca los que solo tienen sentido para quien puede hacer algo con
+ * ellos: el aviso de que el respaldo está atrasado le sirve a quien puede
+ * bajarlo. Antes esto decía «soloAdmin» y miraba el rol, así que a quien se le
+ * concedía la llave del respaldo el aviso no le llegaba igual.
  */
 const TIPOS = {
   solicitud_asignada: {
@@ -52,7 +55,9 @@ const TIPOS = {
   respaldo_atrasado: {
     label: 'Respaldo sin bajar y espacio en disco',
     urgente: false,
-    soloAdmin: true,
+    // Se ofrece a quien tenga la llave del respaldo, no solo al administrador:
+    // es quien puede hacer algo con el aviso (ver avisos/vigia.js).
+    llave: 'sistema_respaldo',
     ayuda: 'Hace demasiado que nadie se baja el respaldo completo, o queda poco espacio en el disco.',
   },
   cumpleanos_hoy: {
@@ -122,7 +127,7 @@ function preferenciasDe(usuario) {
 function quiere(usuario, tipo, canal) {
   const def = TIPOS[tipo];
   if (!def) return false;
-  if (def.soloAdmin && usuario.rol !== 'admin') return false;
+  if (def.llave && !require('../permissions').can(usuario, def.llave, 'view')) return false;
   return !!preferenciasDe(usuario)[tipo][canal];
 }
 
@@ -135,7 +140,11 @@ function quiere(usuario, tipo, canal) {
  * decide.
  */
 function crear({ usuario_id, tipo, clave, titulo, cuerpo, enlace, iglesia_id }) {
-  const usuario = db.prepare('SELECT id, rol, activo, avisos FROM usuarios WHERE id = ?').get(usuario_id);
+  // Con los permisos y el perfil, no solo el rol: `quiere()` consulta la llave
+  // del tipo de aviso, y sin estas dos columnas decidiría por el rol a secas.
+  const usuario = db
+    .prepare('SELECT id, rol, activo, avisos, permisos, perfil_id FROM usuarios WHERE id = ?')
+    .get(usuario_id);
   if (!usuario || usuario.activo === 0) return null;
   if (!quiere(usuario, tipo, 'sistema')) return null;
 
@@ -216,7 +225,9 @@ function avisar({ usuario_id, tipo, clave, titulo, cuerpo, enlace, iglesia_id })
   const def = TIPOS[tipo];
   if (!def || !def.urgente) return fila; // los de rutina salen en el resumen del día
 
-  const usuario = db.prepare('SELECT id, rol, avisos FROM usuarios WHERE id = ?').get(usuario_id);
+  const usuario = db
+    .prepare('SELECT id, rol, avisos, permisos, perfil_id FROM usuarios WHERE id = ?')
+    .get(usuario_id);
   if (!usuario || !quiere(usuario, tipo, 'navegador')) return fila;
 
   const navegador = require('./navegador');
