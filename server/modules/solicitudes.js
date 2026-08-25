@@ -308,9 +308,19 @@ module.exports = {
      * usuario, para poder buscar por ahí, y acá no hacen ninguna falta.
      */
     router.get('/solicitudes/responsables', requirePerm('solicitudes', 'view'), (req, res) => {
+      // Y solo las cuentas que esta persona alcanza: entregaba los nombres de
+      // TODAS las del sistema, incluidas las de otras iglesias. Una solicitud
+      // tampoco se le puede endosar a alguien de una iglesia que no se
+      // administra, así que acotarlo arregla las dos cosas de una vez.
+      const params = [];
+      const suyas = require('../alcance').condicionesDeUsuarios(req.user, params);
       const filas = db
-        .prepare('SELECT id, nombre FROM usuarios WHERE activo = 1 ORDER BY nombre')
-        .all();
+        .prepare(
+          `SELECT usuarios.id, usuarios.nombre FROM usuarios
+            WHERE usuarios.activo = 1${suyas ? ` AND ${suyas}` : ''}
+            ORDER BY usuarios.nombre`
+        )
+        .all(...params);
       res.json(filas.map((u) => ({ id: u.id, label: u.nombre })));
     });
 

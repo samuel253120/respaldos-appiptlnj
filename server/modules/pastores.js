@@ -232,10 +232,20 @@ module.exports = {
       );
     });
 
+    /*
+     * El pastor pedido por su número, comprobando que sea de una iglesia suya.
+     *
+     * La ruta hermana que CREA la ficha ya lo comprobaba; estas dos no, y por
+     * ahí salían el RUT del pastor de otra iglesia y el nombre y el RUT de su
+     * ficha de miembro, a quien tenía una sola iglesia asignada.
+     */
+    const pastorSuyo = (req, res) =>
+      require('../alcance').registroSuyo(req, res, 'pastores', req.params.id, 'Ese pastor');
+
     /** Cómo está el enlace con su ficha de miembro, para mostrarlo en su ficha. */
     router.get('/pastores/:id(\\d+)/ficha-miembro', requirePerm('pastores', 'view'), (req, res) => {
-      const pastor = db.prepare('SELECT * FROM pastores WHERE id = ?').get(req.params.id);
-      if (!pastor) return res.status(404).json({ error: 'Pastor no encontrado' });
+      const pastor = pastorSuyo(req, res);
+      if (!pastor) return;
       const estado = estadoFichaMiembro(pastor, db);
       res.json({
         estado: estado.texto,
@@ -257,8 +267,8 @@ module.exports = {
      * corregir el que esté equivocado.
      */
     router.post('/pastores/:id(\\d+)/copiar-rut', requirePerm('miembros', 'edit'), (req, res) => {
-      const pastor = db.prepare('SELECT * FROM pastores WHERE id = ?').get(req.params.id);
-      if (!pastor) return res.status(404).json({ error: 'Pastor no encontrado' });
+      const pastor = pastorSuyo(req, res);
+      if (!pastor) return;
       if (!pastor.rut) return res.status(400).json({ error: 'Esta ficha no tiene RUT que copiar' });
       const miembro = fichaDeMiembro(pastor, db);
       if (!miembro) return res.status(400).json({ error: 'Todavía no tiene ficha de miembro' });

@@ -335,6 +335,10 @@ module.exports = {
      * integrantes como entre quienes los lideran.
      */
     router.get('/miembros/:id(\\d+)/cuerpos', requirePerm('miembros', 'view'), (req, res) => {
+      // La ficha tiene que ser de las suyas: por acá salían los nombres de los
+      // cuerpos de otra iglesia —y de otros cuerpos de la misma— con solo
+      // escribir el número en la dirección.
+      if (!require('../alcance').registroSuyo(req, res, 'miembros', req.params.id, 'Esa ficha')) return;
       const id = Number(req.params.id);
       const { cuerposDe } = require('../integrantes');
 
@@ -356,8 +360,10 @@ module.exports = {
 
     /** Cómo está el acceso al sistema de este miembro. */
     router.get('/miembros/:id(\\d+)/usuario', requirePerm('miembros', 'view'), (req, res) => {
-      const miembro = db.prepare('SELECT * FROM miembros WHERE id = ?').get(req.params.id);
-      if (!miembro) return res.status(404).json({ error: 'Miembro no encontrado' });
+      // Entrega el nombre, el RUT y el rol de la cuenta enlazada: la ficha
+      // tiene que ser de las suyas, como en cualquier otra consulta.
+      const miembro = require('../alcance').registroSuyo(req, res, 'miembros', req.params.id, 'Esa ficha');
+      if (!miembro) return;
       const usuario = db.prepare('SELECT * FROM usuarios WHERE miembro_id = ?').get(miembro.id)
         || (miembro.rut ? db.prepare('SELECT * FROM usuarios WHERE rut = ?').get(miembro.rut) : null);
       res.json({

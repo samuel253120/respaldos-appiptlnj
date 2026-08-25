@@ -246,7 +246,57 @@ function alcanzaCuerpo(usuario, cuerpoId) {
   return !!cuerpoId && cuerpos.includes(Number(cuerpoId));
 }
 
+/**
+ * El registro pedido por su número, ya comprobado contra el alcance.
+ *
+ * POR QUÉ EXISTE. El listado y la ficha de cualquier módulo pasan por el motor
+ * (server/crud.js), que aplica el alcance sin que haya que acordarse. Pero un
+ * módulo puede declarar RUTAS PROPIAS —«los cuerpos de este miembro», «cómo
+ * está el acceso de esta cuenta»— y esas consultan la base a mano. Ahí el
+ * alcance hay que ponerlo, y donde hay que acordarse, tarde o temprano se
+ * olvida: la auditoría de aislamiento de la 1.98.0 encontró diez rutas propias
+ * que respondían con datos de otra iglesia a quien tenía una sola asignada.
+ *
+ * Así que la comprobación se escribe una vez y se pide en una línea. Devuelve
+ * la fila, o null habiendo respondido ya:
+ *
+ *   · 404 si no existe;
+ *   · 403 si existe pero es de otra iglesia o de otro cuerpo.
+ *
+ * Se distinguen a propósito, y es la misma distinción que hace la ficha normal
+ * de cualquier módulo (ver el detalle en server/crud.js): a quien se topa con
+ * esto no le sirve un «no existe» cuando lo que pasa es que no le corresponde,
+ * porque lo que tiene que hacer es pedir que se lo asignen.
+ */
+function registroSuyo(req, res, modulo, id, queEs) {
+  const { getModule } = require('./registry'); // tardío: el registro carga los módulos
+  const def = getModule(modulo);
+  const fila = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
+  if (!fila) {
+    res.status(404).json({ error: `${queEs} no encontrado` });
+    return null;
+  }
+  if (!alcanza(def, fila, req.user)) {
+    res.status(403).json({ error: `${queEs} está fuera de lo que tiene asignado` });
+    return null;
+  }
+  return fila;
+}
+
+/**
+ * Las cuentas de usuario que esta persona alcanza, como trozo de SQL.
+ *
+ * Es lo mismo que aplica el listado de Usuarios, para poder usarlo en las
+ * consultas escritas a mano sin repetir el criterio (que es delicado: ver
+ * usuariosAlAlcance). La tabla tiene que ir SIN alias, o con el alias
+ * `usuarios`, porque las condiciones nombran sus columnas así.
+ */
+function condicionesDeUsuarios(usuario, params) {
+  const { getModule } = require('./registry');
+  return condiciones(getModule('usuarios'), usuario, params);
+}
+
 module.exports = {
   lista, iglesiasDe, iglesiasAsignadas, cuerposDe, iglesiaPrincipal, miembrosDeCuerpos,
-  condiciones, alcanza, alcanzaIglesia, alcanzaCuerpo,
+  condiciones, alcanza, alcanzaIglesia, alcanzaCuerpo, registroSuyo, condicionesDeUsuarios,
 };

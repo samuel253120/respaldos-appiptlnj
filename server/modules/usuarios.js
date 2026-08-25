@@ -152,10 +152,28 @@ module.exports = {
       );
     });
 
+    /*
+     * Las tres rutas que siguen trabajan sobre UNA CUENTA pedida por su número,
+     * y hasta la 1.98.0 ninguna comprobaba de quién era.
+     *
+     * Con eso, quien administraba una sola iglesia podía mirar el nombre y el
+     * RUT de cualquier cuenta del sistema, y —lo serio— RESTABLECERLE la
+     * contraseña y recibirla en la respuesta, con lo que entraba en esa cuenta
+     * ajena. Se comprobó en vivo entre dos iglesias: el administrador de una
+     * restableció la clave de la secretaria de la otra y entró con ella.
+     *
+     * El permiso de «Usuarios» dice QUÉ puede hacer; a QUIÉNES alcanza lo dice
+     * la asignación de iglesias, y eso faltaba. `registroSuyo` aplica el mismo
+     * criterio que el listado de Usuarios —uno siempre se ve a sí mismo, más
+     * las cuentas de sus iglesias— y responde por su cuenta cuando no toca.
+     */
+    const cuentaSuya = (req, res) =>
+      require('../alcance').registroSuyo(req, res, 'usuarios', req.params.id, 'Ese usuario');
+
     /** Cómo está el acceso de esta cuenta: su contraseña y su recuperación. */
     router.get('/usuarios/:id(\\d+)/clave', requirePerm('usuarios', 'view'), (req, res) => {
-      const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.params.id);
-      if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+      const usuario = cuentaSuya(req, res);
+      if (!usuario) return;
       res.json({
         nombre: usuario.nombre,
         rut: usuario.rut,
@@ -171,8 +189,8 @@ module.exports = {
      * le obligará a cambiarla.
      */
     router.post('/usuarios/:id(\\d+)/restablecer-clave', requirePerm('usuarios', 'edit'), conLlaveDeClaves, async (req, res, next) => {
-      const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.params.id);
-      if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+      const usuario = cuentaSuya(req, res);
+      if (!usuario) return;
       try {
         const clave = await claves.restablecer(usuario.id);
         res.json({ ok: true, clave, nombre: usuario.nombre, rut: usuario.rut });
@@ -183,8 +201,8 @@ module.exports = {
 
     /** Vuelve a habilitar la recuperación bloqueada por intentos fallidos. */
     router.post('/usuarios/:id(\\d+)/desbloquear-recuperacion', requirePerm('usuarios', 'edit'), conLlaveDeClaves, (req, res) => {
-      const usuario = db.prepare('SELECT id FROM usuarios WHERE id = ?').get(req.params.id);
-      if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+      const usuario = cuentaSuya(req, res);
+      if (!usuario) return;
       claves.desbloquearRecuperacion(usuario.id);
       res.json({ ok: true });
     });

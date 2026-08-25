@@ -74,24 +74,49 @@ module.exports = {
   },
 
   extraRoutes(router, { db, requirePerm }) {
+    /*
+     * Las tres rutas de acá manejan CUENTAS DE USUARIO desde la ficha del
+     * perfil, y hasta la 1.98.0 ninguna miraba de qué iglesia era cada cuenta.
+     *
+     * El perfil sí es de toda la organización —uno solo, que se le pone a
+     * quien sea—, pero las cuentas no. Así, quien administraba una iglesia
+     * veía acá el nombre, el RUT, el rol y la iglesia de TODAS las cuentas del
+     * sistema, y podía cambiarle los permisos a cualquiera de ellas. Era la
+     * puerta de atrás de un listado de Usuarios que sí estaba acotado.
+     *
+     * Se acota con el mismo criterio que ese listado. La tabla va sin alias a
+     * propósito: las condiciones nombran sus columnas como `usuarios.…`.
+     */
+    const soloLasSuyas = (req, params) =>
+      require('../alcance').condicionesDeUsuarios(req.user, params);
+
     /** Quiénes tienen puesto este perfil, para verlos y sacárselos desde acá. */
     router.get('/perfiles_permisos/:id(\\d+)/usuarios', requirePerm('perfiles_permisos', 'view'), (req, res) => {
       const perfil = db.prepare('SELECT * FROM perfiles_permisos WHERE id = ?').get(req.params.id);
       if (!perfil) return res.status(404).json({ error: 'Perfil no encontrado' });
+
+      const pSuyos = [perfil.id];
+      const alcanceSuyos = soloLasSuyas(req, pSuyos);
       const suyos = db
         .prepare(
-          `SELECT u.id, u.nombre, u.rut, u.rol, u.activo,
-                  (SELECT nombre FROM iglesias WHERE id = u.iglesia_id) AS iglesia
-             FROM usuarios u WHERE u.perfil_id = ? ORDER BY u.nombre`
+          `SELECT usuarios.id, usuarios.nombre, usuarios.rut, usuarios.rol, usuarios.activo,
+                  (SELECT nombre FROM iglesias WHERE id = usuarios.iglesia_id) AS iglesia
+             FROM usuarios
+            WHERE usuarios.perfil_id = ?${alcanceSuyos ? ` AND ${alcanceSuyos}` : ''}
+            ORDER BY usuarios.nombre`
         )
-        .all(perfil.id);
+        .all(...pSuyos);
+
+      const pLibres = [perfil.id];
+      const alcanceLibres = soloLasSuyas(req, pLibres);
       const libres = db
         .prepare(
-          `SELECT id, nombre, rut, rol FROM usuarios
-            WHERE (perfil_id IS NULL OR perfil_id != ?) AND rol != 'admin'
-            ORDER BY nombre`
+          `SELECT usuarios.id, usuarios.nombre, usuarios.rut, usuarios.rol FROM usuarios
+            WHERE (usuarios.perfil_id IS NULL OR usuarios.perfil_id != ?) AND usuarios.rol != 'admin'
+              ${alcanceLibres ? `AND ${alcanceLibres}` : ''}
+            ORDER BY usuarios.nombre`
         )
-        .all(perfil.id);
+        .all(...pLibres);
       res.json({ perfil: { id: perfil.id, nombre: perfil.nombre }, usuarios: suyos, disponibles: libres });
     });
 
@@ -102,16 +127,39 @@ module.exports = {
       const ids = Array.isArray(req.body && req.body.usuarios) ? req.body.usuarios.map(Number).filter(Boolean) : [];
       if (!ids.length) return res.status(400).json({ error: 'Elija al menos un usuario' });
 
+      /*
+       * Se comprueba cuenta por cuenta, no en el UPDATE: así se puede decir
+       * cuántas quedaron fuera en vez de que desaparezcan sin explicación.
+       * Cambiarle el perfil a alguien es cambiarle los permisos, y eso no se
+       * hace en silencio sobre una cuenta que uno no administra.
+       */
+      const alcance = require('../alcance');
       const poner = db.prepare(
         "UPDATE usuarios SET perfil_id = ?, updated_at = datetime('now','localtime') WHERE id = ? AND rol != 'admin'"
       );
+      const def = require('../registry').getModule('usuarios');
       let puestos = 0;
-      for (const id of ids) puestos += poner.run(perfil.id, id).changes;
-      res.json({ puestos });
+      let ajenas = 0;
+      for (const id of ids) {
+        const cuenta = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(id);
+        if (!cuenta) continue;
+        if (!alcance.alcanza(def, cuenta, req.user)) { ajenas++; continue; }
+        puestos += poner.run(perfil.id, id).changes;
+      }
+      if (ajenas && !puestos) {
+        return res.status(403).json({
+          error: ajenas === 1
+            ? 'Esa cuenta está fuera de lo que tiene asignado'
+            : `Esas ${ajenas} cuentas están fuera de lo que tiene asignado`,
+        });
+      }
+      res.json({ puestos, ajenas });
     });
 
     /** Y sacárselo a uno. */
     router.delete('/perfiles_permisos/:id(\\d+)/usuarios/:usuario(\\d+)', requirePerm('usuarios', 'edit'), (req, res) => {
+      const cuenta = require('../alcance').registroSuyo(req, res, 'usuarios', req.params.usuario, 'Ese usuario');
+      if (!cuenta) return;
       const r = db
         .prepare("UPDATE usuarios SET perfil_id = NULL, updated_at = datetime('now','localtime') WHERE id = ? AND perfil_id = ?")
         .run(req.params.usuario, req.params.id);

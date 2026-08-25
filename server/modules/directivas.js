@@ -32,10 +32,21 @@ function oficialesDisponibles(db, usuario) {
   const { getModule, displayOf } = require('../registry'); // tardío: evita ciclo con el registro
   const miembros = getModule('miembros');
 
-  const iglesiaId = usuario && usuario.iglesia_id;
+  /*
+   * Acotado como cualquier listado, y no por la «iglesia principal».
+   *
+   * Hasta la 1.98.0 esto filtraba por `usuario.iglesia_id`, que es justamente
+   * el campo que server/alcance.js dice que NO acota: es solo la iglesia que
+   * se propone al crear un registro. Fallaba por los dos lados: quien no la
+   * tenía puesta veía los miembros de TODAS las iglesias, y quien tiene
+   * asignado un cuerpo veía la gente de los otros cuerpos de su iglesia. Se
+   * comprobó en vivo: la secretaria de un cuerpo tenía acá la lista completa.
+   */
+  const params = [];
+  const donde = require('../alcance').condiciones(miembros, usuario, params);
   const filas = db
-    .prepare(`SELECT * FROM miembros ${iglesiaId ? 'WHERE iglesia_id = ?' : ''} ORDER BY id DESC LIMIT 1000`)
-    .all(...(iglesiaId ? [iglesiaId] : []));
+    .prepare(`SELECT * FROM miembros ${donde ? `WHERE ${donde}` : ''} ORDER BY id DESC LIMIT 1000`)
+    .all(...params);
 
   const cuerpo = cuerpoDeOficiales(db);
   let permitidos = null;
