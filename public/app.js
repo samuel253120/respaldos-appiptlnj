@@ -7731,6 +7731,22 @@ async function renderTraspaso(contenedor, mostrarDespues) {
             <span>Compara las dos bases módulo por módulo y revisa que las relaciones quedaran intactas.</span>
             <button class="btn secondary sm" id="tpInforme">📋 Ver el informe</button>
           </div>
+          <!--
+            El paso que faltaba. La ruta para sacar el archivo existía desde el
+            principio y esta pantalla nunca la ofrecía, así que el volcado se
+            quedaba en el servidor para siempre: una copia entera de los datos
+            del sistema anterior —nombres, RUT, teléfonos, direcciones— que ya
+            no sirve para nada. El dato que no está no se puede filtrar.
+          -->
+          <div class="tp">
+            <b>6 · Sacar el archivo</b>
+            <span>
+              ${yaImportado
+                ? 'El traspaso ya está hecho: los datos viven en el sistema y este archivo ya no hace falta. El informe queda igual.'
+                : 'Cuando el traspaso esté hecho, conviene sacarlo: es una copia completa de los datos del sistema anterior.'}
+            </span>
+            <button class="btn ${yaImportado ? '' : 'secondary '}sm" id="tpSacarOrigen">🗑️ Sacar el archivo del servidor</button>
+          </div>
         </div>
 
         `}
@@ -7834,6 +7850,33 @@ async function renderTraspaso(contenedor, mostrarDespues) {
     } catch (err) {
       toast(err.message, true);
     } finally {
+      boton.disabled = false;
+    }
+  });
+
+  /*
+   * Sacar el volcado del servidor.
+   *
+   * Es un borrado y no se deshace, así que se pregunta antes y se dice
+   * exactamente qué se va y qué se queda: lo que desaparece es el archivo del
+   * sistema anterior, no lo que ya se importó. Si mañana hiciera falta otra
+   * vez, se vuelve a subir.
+   */
+  document.getElementById('tpSacarOrigen').addEventListener('click', async (e) => {
+    const boton = e.currentTarget;
+    if (!confirm(
+      '¿Sacar del servidor el archivo con los datos del sistema anterior?\n\n' +
+      'NO se toca nada de lo que ya está en el sistema: los miembros, la tesorería y todo lo\n' +
+      'demás quedan como están, y el informe del traspaso también.\n\n' +
+      'Lo que se va es el archivo del volcado. Si algún día hace falta, se vuelve a subir.'
+    )) return;
+    boton.disabled = true;
+    try {
+      const r = await api('DELETE', '/importacion/origen');
+      toast(r && r.ya_no_estaba ? 'El archivo ya no estaba' : 'El archivo salió del servidor');
+      renderTraspaso(contenedor);
+    } catch (err) {
+      toast(err.message, true);
       boton.disabled = false;
     }
   });

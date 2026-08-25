@@ -66,15 +66,33 @@ const SIN_NOMBRE = `(() => {
     }
   }
 
-  // La configuración, pestaña por pestaña
+  /*
+   * La configuración, pestaña por pestaña.
+   *
+   * Acá hay que nombrar bien el botón de la pestaña: hasta la 1.97.5 esta
+   * prueba lo buscaba por «#cfgTabs button, .tabs button», que no existe en
+   * ninguna pantalla. La lista salía vacía, el bucle no daba ni una vuelta y
+   * la prueba informaba que todo estaba bien habiendo revisado CERO pestañas
+   * —y la configuración es justamente donde más campos hay—. Una prueba que
+   * no encuentra qué revisar tiene que fallar, no aprobar; de eso se encarga
+   * la comprobación de abajo.
+   */
   await pg.goto(B + '/#/config');
   await pg.waitForTimeout(1500);
-  const pestanas = await pg.$$eval('#cfgTabs button, .tabs button', (bs) => bs.map((b) => b.textContent.trim()));
+  const PESTANA = '.pestanas button[data-pestana]';
+  const pestanas = await pg.$$eval(PESTANA, (bs) => bs.map((b) => b.textContent.trim()));
+  if (pestanas.length < 2) {
+    console.log(`\n   💥 No se encontraron las pestañas de la configuración (${PESTANA}).`);
+    console.log('      Sin ellas esta prueba no revisa nada, así que no puede aprobar.');
+    await nav.close();
+    process.exitCode = 1;
+    return;
+  }
   for (let i = 0; i < pestanas.length; i++) {
-    const botones = await pg.$$('#cfgTabs button, .tabs button');
+    const botones = await pg.$$(PESTANA);
     if (!botones[i]) continue;
     await botones[i].click();
-    await pg.waitForTimeout(700);
+    await pg.waitForTimeout(900);
     const sueltos = await pg.evaluate(SIN_NOMBRE);
     if (sueltos.length) {
       total += sueltos.length;

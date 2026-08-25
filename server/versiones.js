@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.97.5", fecha: "2026-08-25", titulo: "El archivo del sistema anterior se puede sacar del servidor: terminado el traspaso, ya no tiene para qué quedarse" },
   { version: "1.97.4", fecha: "2026-08-25", titulo: "En las planillas los teléfonos bajan sin el «+», que Excel podía comerse" },
   { version: "1.97.3", fecha: "2026-08-25", titulo: "Queda dicho quién cuida la integridad de los datos, y vigilado que no se le escape ninguna referencia" },
   { version: "1.97.2", fecha: "2026-08-25", titulo: "No se guarda una referencia a un registro que no existe" },

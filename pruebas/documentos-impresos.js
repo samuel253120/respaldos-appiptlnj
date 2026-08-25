@@ -75,12 +75,31 @@ const RADIOGRAFIA = `(() => {
   };
 })()`;
 
+/*
+ * Qué se manda a imprimir.
+ *
+ * Los dos primeros necesitan un registro de verdad, y hasta la 1.97.5 iban
+ * con el número 1 escrito a mano. Eso aguanta mientras nadie borre la primera
+ * ficha; el día que alguien la borra —o que la base se armó de otra manera—
+ * la prueba falla diciendo «no se encuentra la hoja», que suena a que la
+ * impresión se rompió cuando lo único que pasó es que ese número ya no existe.
+ * Un número inventado no prueba nada: acá se pregunta cuál hay.
+ */
 const DOCUMENTOS = [
-  { nombre: 'la ficha de un miembro', ruta: '#/print/miembros/1' },
-  { nombre: 'un acta de reunión', ruta: '#/print/actas_reuniones/1' },
+  { nombre: 'la ficha de un miembro', modulo: 'miembros' },
+  { nombre: 'un acta de reunión', modulo: 'actas_reuniones' },
   { nombre: 'el informe de asistencia', ruta: '#/asistencia/informes' },
   { nombre: 'la planilla mensual', ruta: '#/asistencia/informes?tipo=planilla' },
 ];
+
+/** El primer registro que exista en ese módulo, o nada si no hay ninguno. */
+async function primerRegistro(pagina, modulo) {
+  return pagina.evaluate(async (m) => {
+    const r = await api('GET', `/${m}?page=1&pageSize=1`);
+    const fila = (r.items || r.data || r.rows || [])[0];
+    return fila ? fila.id : null;
+  }, modulo);
+}
 
 (async () => {
   console.log(`🖨️  Revisando los documentos impresos contra ${URL}\n`);
@@ -110,6 +129,15 @@ const DOCUMENTOS = [
 
   for (const doc of DOCUMENTOS) {
     console.log(`\n── ${doc.nombre} ──`);
+    if (doc.modulo) {
+      const id = await primerRegistro(pagina, doc.modulo);
+      if (!id) {
+        revisar(`${doc.nombre}: hay alguno para imprimir`, false,
+          `no hay ningún registro en ${doc.modulo}`);
+        continue;
+      }
+      doc.ruta = `#/print/${doc.modulo}/${id}`;
+    }
     await pagina.goto(URL + '/' + doc.ruta);
     await pagina.waitForTimeout(2200);
     const r = await pagina.evaluate(RADIOGRAFIA);

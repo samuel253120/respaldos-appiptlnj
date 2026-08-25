@@ -1444,6 +1444,72 @@ async function entrar(rut = RUT, clave = CLAVE) {
     conUna.datos && conDos.datos && conUna.datos.total === conDos.datos.total,
     `sola dio ${conUna.datos && conUna.datos.total} y repetida ${conDos.datos && conDos.datos.total}`);
 
+  /* 11 · El archivo del sistema anterior ---------------------------------- */
+  /*
+   * El volcado del sistema anterior es una copia entera de los datos de todos
+   * —nombres, RUT, teléfonos, direcciones— guardada como un archivo suelto
+   * junto a la base. Terminado el traspaso no sirve para nada, y desde la
+   * 1.97.5 la pantalla ofrece sacarlo. Acá se comprueba lo que importa de esa
+   * puerta: que la abra solo quien tiene la llave del traspaso.
+   */
+  console.log('\n11 · El archivo del sistema anterior');
+  const nCurioso = String(19000000 + Math.floor(Math.random() * 900000));
+  const rutCurioso = `${nCurioso}-${require('../server/rut').digitoVerificador(nCurioso)}`;
+  const curioso = await api('POST', '/api/usuarios', {
+    rut: rutCurioso, nombre: 'Sin Traspaso', rol: 'consulta', activo: 1, password: 'Cordillera47',
+  });
+  if (curioso.datos && curioso.datos.id) {
+    await api('PUT', `/api/usuarios/${curioso.datos.id}`, { ...curioso.datos, debe_cambiar_password: 0 });
+    const pase = await fetch(`${URL}/api/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rut: rutCurioso, password: 'Cordillera47' }),
+    }).then((r) => r.json());
+    const conElPase = (metodo, token) => fetch(`${URL}/api/importacion/origen`, {
+      method: metodo, headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    const suyo = await conElPase('DELETE', pase.token);
+    revisar('quien no tiene la llave del traspaso no puede sacar el archivo',
+      suyo.status === 403, `respondió ${suyo.status}`);
+
+    const mirar = await fetch(`${URL}/api/importacion/estado`, {
+      headers: { Authorization: `Bearer ${pase.token}` },
+    });
+    revisar('ni puede siquiera preguntar si el archivo está', mirar.status === 403,
+      `respondió ${mirar.status}`);
+
+    await api('DELETE', `/api/usuarios/${curioso.datos.id}`);
+  } else {
+    revisar('se pudo crear el usuario sin llave de traspaso', false,
+      JSON.stringify(curioso.datos).slice(0, 140));
+  }
+
+  const sinSesión = await fetch(`${URL}/api/importacion/origen`, { method: 'DELETE' });
+  revisar('y sin sesión, menos', sinSesión.status === 401, `respondió ${sinSesión.status}`);
+
+  /*
+   * Que sacarlo no se lleve por delante nada más. Esta comprobación BORRA, así
+   * que primero se mira si hay archivo: si lo hay, no se toca —esta prueba
+   * corre contra un servidor andando y ese archivo puede ser el de verdad, que
+   * no se recupera—. Cuando no lo hay, la ruta contesta «ya no estaba» sin
+   * borrar nada y sirve igual para lo que se quiere probar: que la respuesta
+   * sea 200 y que los datos del sistema queden donde estaban.
+   */
+  const estadoDelTraspaso = await api('GET', '/api/importacion/estado');
+  if (estadoDelTraspaso.datos && estadoDelTraspaso.datos.origen) {
+    console.log('   ⏭️  hay un volcado en el servidor: no se toca (podría ser el de verdad)');
+  } else {
+    const antesDeSacar = await api('GET', '/api/miembros?page=1&pageSize=1');
+    const sacar = await api('DELETE', '/api/importacion/origen');
+    const despuesDeSacar = await api('GET', '/api/miembros?page=1&pageSize=1');
+    revisar('sacar el archivo no toca los datos del sistema',
+      sacar.estado === 200
+        && antesDeSacar.datos && despuesDeSacar.datos
+        && antesDeSacar.datos.total === despuesDeSacar.datos.total,
+      `respondió ${sacar.estado}; había ${antesDeSacar.datos && antesDeSacar.datos.total} `
+      + `y quedaron ${despuesDeSacar.datos && despuesDeSacar.datos.total} miembros`);
+  }
+
   console.log(fallas ? `\n❌ ${fallas} comprobación(es) fallaron.` : '\n✅ Lo que tiene que estar cerrado, está cerrado.');
   process.exit(fallas ? 1 : 0);
 })();
