@@ -1454,6 +1454,80 @@ function contadorDeCredencialesAlDia() {
 }
 
 
+/**
+ * Vuelve a pasar el filtro por el texto con formato que ya estaba guardado.
+ *
+ * POR QUÉ HACE FALTA. Hasta la 1.96.1, el filtro de server/textorico.js
+ * reconocía una etiqueta por su «>» de cierre, así que una etiqueta SIN CERRAR
+ * —`<img src=x onerror=…` — pasaba entera y quedaba guardada tal cual. Suelta
+ * no hacía nada; envuelta en el `<div class="dato-rico">…</div>` con que se
+ * pinta el acta, el «</div>» le prestaba el «>» que le faltaba y ahí nacía un
+ * elemento de verdad, con su manejador de evento puesto.
+ *
+ * El filtro ya quedó arreglado, pero eso solo vale para lo que se guarde de
+ * ahora en adelante. Lo que se guardó antes sigue como estaba, y es
+ * justamente lo que se muestra e imprime. Por eso hay que volver a pasarlo.
+ *
+ * SE PUEDE VOLVER A PASAR SIN MIEDO. Todo lo que hay guardado salió de este
+ * mismo filtro, y el filtro es punto fijo: limpiar algo ya limpio lo deja
+ * igual. Así que esta migración no puede alterar el contenido de un acta
+ * legítima; solo toca las filas que traen el agujero. Y para que eso no
+ * dependa de una promesa, se comprueba fila por fila: si lo que sale es
+ * idéntico a lo que había, no se escribe nada.
+ *
+ * Nada se borra. Un texto que quedara vacío después de limpiarlo se deja como
+ * estaba: en un acta, perder el desarrollo sería peor que dejar una etiqueta
+ * escrita como texto.
+ */
+function textoConFormatoSaneadoDeNuevo() {
+  if (yaAplicada('texto_rico_saneado_1_96_1')) return;
+  marcarAplicada('texto_rico_saneado_1_96_1');
+
+  const { limpiar } = require('./textorico');
+
+  /** Dónde vive el texto con formato: tabla y columnas. */
+  const DONDE = [
+    ['actas_reuniones', ['desarrollo', 'acuerdos']],
+    ['evaluaciones_integrantes', ['informe']],
+  ];
+
+  let arregladas = 0;
+  for (const [tabla, columnas] of DONDE) {
+    let existentes;
+    try {
+      existentes = new Set(db.prepare(`PRAGMA table_info("${tabla}")`).all().map((c) => c.name));
+    } catch (e) {
+      continue; // la tabla todavía no existe: no hay nada que sanear
+    }
+    const suyas = columnas.filter((c) => existentes.has(c));
+    if (!suyas.length) continue;
+
+    const guardar = db.prepare(
+      `UPDATE "${tabla}" SET ${suyas.map((c) => `"${c}" = ?`).join(', ')} WHERE id = ?`
+    );
+    const filas = db.prepare(`SELECT id, ${suyas.map((c) => `"${c}"`).join(', ')} FROM "${tabla}"`).all();
+    for (const fila of filas) {
+      const nuevos = suyas.map((c) => {
+        const antes = fila[c];
+        if (antes == null || !String(antes).trim()) return antes;
+        const despues = limpiar(antes);
+        // Si al limpiarlo no queda nada, se deja lo que había: en un acta,
+        // quedarse sin desarrollo es peor que una etiqueta escrita como texto.
+        return despues == null ? antes : despues;
+      });
+      if (nuevos.every((v, i) => v === fila[suyas[i]])) continue;
+      guardar.run(...nuevos, fila.id);
+      arregladas++;
+    }
+  }
+
+  if (arregladas) {
+    console.log(
+      `🔁 texto con formato: ${arregladas} registro(s) traían una etiqueta sin cerrar y quedaron saneados.`
+    );
+  }
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -1492,6 +1566,7 @@ function ejecutarMigraciones() {
     ['contador de credenciales al día', contadorDeCredencialesAlDia],
     ['ficha del beneficiario de cada ayuda', ayudasConFichaDelBeneficiario],
     ['seguimiento de las solicitudes', solicitudesConSeguimiento],
+    ['texto con formato saneado de nuevo', textoConFormatoSaneadoDeNuevo],
   ];
 
   for (const [nombre, paso] of pasos) {

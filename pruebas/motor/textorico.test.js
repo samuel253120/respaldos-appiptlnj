@@ -85,3 +85,92 @@ test('el texto en plano sirve para buscar y para resumir', () => {
   assert.equal(rico.enPlano('<ul><li>Uno</li><li>Dos</li></ul>'), 'Uno Dos');
   assert.equal(rico.enPlano(null), '');
 });
+
+// ────────────────────────────────────── la etiqueta sin cerrar (1.96.1) ───
+/*
+ * El agujero que estuvo abierto hasta la 1.96.1.
+ *
+ * El filtro reconoce una etiqueta por su «>» de cierre. Una etiqueta SIN
+ * CERRAR no la reconocía, y pasaba entera con sus atributos puestos. Suelta
+ * no hacía nada —el navegador descarta una etiqueta incompleta al final del
+ * texto—, y por eso nadie lo vio. Pero un acta no se pinta suelta: se pinta
+ * envuelta, y el «</div>» que viene después le presta el «>» que le faltaba.
+ *
+ * Se comprobó en un navegador de verdad: seis de siete variantes creaban un
+ * elemento vivo con su manejador de evento, y salían impresas en el acta.
+ * La política de contenido impedía que se ejecutaran, pero eso era la segunda
+ * muralla haciendo el trabajo de la primera.
+ */
+
+/** Cómo lo envuelve la pantalla (public/app.js, campo de tipo richtext). */
+const comoSePinta = (guardado) => `<div class="dato-rico">${guardado}</div>`;
+
+test('una etiqueta sin cerrar no sobrevive como etiqueta', () => {
+  for (const carga of [
+    '<img src=x onerror=alert(1)',
+    '<svg onload=alert(1)',
+    '<input autofocus onfocus=alert(1)',
+    '<details open ontoggle=alert(1)',
+    '<iframe src=javascript:alert(1)',
+  ]) {
+    const limpio = rico.limpiar(carga);
+    // Ojo con lo que se comprueba acá: el resultado SÍ contiene las letras
+    // «onerror=», y está bien. Escapado, eso es texto que se lee en la
+    // pantalla, no un atributo que el navegador vaya a mirar. Lo que no puede
+    // quedar es una etiqueta abierta, y eso es lo que se exige.
+    assert.doesNotMatch(limpio, /<[a-zA-Z]/, `«${carga}» dejó una etiqueta abierta`);
+    assert.match(limpio, /^&lt;/, `«${carga}» tendría que quedar escrito como texto`);
+  }
+});
+
+test('y tampoco cuando la pantalla la envuelve y le presta el «>» que le falta', () => {
+  // Esto es lo que de verdad pasaba: el peligro no estaba en lo guardado, sino
+  // en lo guardado MÁS lo que viene detrás.
+  const guardado = rico.limpiar('<p>Lo tratado.</p><img src=x onerror=alert(1)');
+  const enLaPagina = comoSePinta(guardado);
+  assert.doesNotMatch(enLaPagina, /<img/i, 'el «</div>» le completó la etiqueta');
+  assert.match(enLaPagina, /&lt;img/, 'la carga tiene que quedar como texto a la vista');
+  assert.match(enLaPagina, /<p>Lo tratado\.<\/p>/, 'el texto legítimo tiene que seguir ahí');
+});
+
+test('un «<» que la persona escribió de verdad se conserva, escrito como texto', () => {
+  // Antes se lo comía en silencio junto con todo lo que viniera detrás hasta
+  // el siguiente «>». En un acta que habla de plata, eso es perder una cifra.
+  assert.equal(rico.limpiar('<p>el saldo < 100 quedó pendiente</p>'),
+    '<p>el saldo &lt; 100 quedó pendiente</p>');
+  assert.equal(rico.enPlano(rico.limpiar('<p>2 < 3</p>')), '2 < 3');
+});
+
+test('limpiar algo ya limpio lo deja igual', () => {
+  // De esto depende que se pueda volver a pasar el filtro por las actas que ya
+  // estaban guardadas sin alterar ninguna: la migración del 1.96.1 solo puede
+  // tocar las que traen el agujero si el filtro es punto fijo.
+  for (const muestra of [
+    '<p>Se abre la reunión.</p><ul><li>Primer punto</li><li>Segundo</li></ul>',
+    '<h3>Acuerdos</h3><p>Se acuerda <b>por unanimidad</b>.</p>',
+    '<blockquote>Palabras del pastor</blockquote><p>Y la <i>oración</i>.</p>',
+    '<p>Con &amp; y &lt; escritos como corresponde</p>',
+    '<p>Acentos: ñ, á, ü, ¿pregunta?</p>',
+    '<p>Uno</p><br><p>Dos</p>',
+  ]) {
+    const una = rico.limpiar(muestra);
+    assert.equal(rico.limpiar(una), una, `«${muestra}» cambia al limpiarlo dos veces`);
+  }
+});
+
+test('el «<» que escribe el propio filtro no se escapa a sí mismo', () => {
+  // Se hace todo en una sola pasada justamente por esto: si el escape fuera un
+  // paso aparte, se comería las etiquetas que el filtro acaba de conservar.
+  assert.equal(rico.limpiar('<p>hola</p>'), '<p>hola</p>');
+  assert.doesNotMatch(rico.limpiar('<b>negrita</b>'), /&lt;/);
+});
+
+test('un «<» seguido de espacio tampoco abre etiqueta, ni para bien ni para mal', () => {
+  // Es la regla del HTML, y corta por los dos lados: rescata una frase
+  // legítima y le quita el disfraz a una carga escrita con espacio.
+  assert.equal(rico.limpiar('<p>de 50 < x < 200 personas</p>'),
+    '<p>de 50 &lt; x &lt; 200 personas</p>');
+  const conEspacio = rico.limpiar('< img src=x onerror=alert(1)>');
+  assert.doesNotMatch(conEspacio, /<img/i);
+  assert.match(conEspacio, /&lt;/);
+});

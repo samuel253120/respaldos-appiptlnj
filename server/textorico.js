@@ -37,8 +37,53 @@ function limpiar(html) {
   }
   texto = texto.replace(/<!--[\s\S]*?-->/g, '');
 
-  // De las demás, se conserva la etiqueta pelada si está permitida
-  texto = texto.replace(/<\s*(\/?)\s*([a-zA-Z0-9]+)\b[^>]*>/g, (todo, cierre, nombre) => {
+  /*
+   * De las demás se conserva la etiqueta pelada si está permitida, y CUALQUIER
+   * «<» que no forme una etiqueta completa se escribe como texto.
+   *
+   * Lo segundo tapa un agujero que estuvo abierto hasta la 1.96.1. Esta
+   * expresión reconoce una etiqueta por su «>» de cierre, así que una etiqueta
+   * SIN CERRAR no la reconocía y pasaba entera, con sus atributos y todo:
+   *
+   *     <img src=x onerror=…        (sin el «>» final)
+   *
+   * Suelta no hacía nada —el navegador descarta una etiqueta incompleta al
+   * final del texto—, y por eso no se veía. Pero el acta no se pinta suelta:
+   * se pinta envuelta, `<div class="dato-rico">…</div>`, y ese «</div>» de
+   * más abajo le prestaba el «>» que le faltaba. Ahí nacía un <img> de
+   * verdad, con su manejador de evento puesto. Comprobado: seis de siete
+   * variantes creaban un elemento vivo, y salían impresas en el acta.
+   *
+   * La política de contenido del sistema impedía que se ejecutaran, y sigue
+   * ahí; pero era la segunda muralla haciendo el trabajo de la primera, y el
+   * día que ese HTML salga del navegador —un correo, un exportador— no habría
+   * ninguna. Se cierra donde corresponde: acá.
+   *
+   * Va en la MISMA pasada y no en otra aparte, a propósito: los «<» que esta
+   * función escribe (los de las etiquetas que sí se conservan) no se vuelven a
+   * mirar, así que no hay forma de escaparlos dos veces por descuido.
+   *
+   * Y el nombre de la etiqueta tiene que EMPEZAR POR LETRA, como manda el HTML.
+   * Aceptando también números se perdía texto en silencio: en
+   *
+   *     <p>el saldo < 100 quedó pendiente</p>
+   *
+   * el «< 100 quedó pendiente</p>» calzaba entero como una etiqueta llamada
+   * «100», no estaba en la lista blanca, y se borraba con todo lo de adentro;
+   * del acta quedaba «el saldo » y la cifra desaparecía. Exigiendo la letra,
+   * ese «<» ya no parece una etiqueta, cae en la rama de arriba y se guarda
+   * como lo que es: un signo de menor que alguien escribió.
+   *
+   * Por lo mismo el «<» tiene que ir PEGADO al nombre, sin espacio en medio.
+   * Es la regla del HTML —el navegador solo abre una etiqueta cuando al «<»
+   * le sigue una letra de inmediato—, y acá arregla el caso hermano del
+   * anterior: en «de 50 < x < 200 personas», el «< x …>» se tragaba el resto
+   * de la frase. Además cierra la puerta al revés: un «< img src=x onerror=…>»
+   * escrito con espacio ya no se toma por etiqueta, que es exactamente lo que
+   * hace el navegador con él.
+   */
+  texto = texto.replace(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>|</g, (todo, cierre, nombre) => {
+    if (nombre === undefined) return '&lt;'; // un «<» suelto: es texto, no etiqueta
     const etiqueta = nombre.toLowerCase();
     if (!PERMITIDAS.has(etiqueta)) return '';
     if (cierre) return `</${etiqueta}>`;
