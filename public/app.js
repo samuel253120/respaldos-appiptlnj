@@ -492,6 +492,86 @@ function invalidarOpciones(modName) {
 }
 
 /* ---------------- arranque y enrutador ---------------- */
+/* ===================================================================
+ * QUE CADA CAMPO DIGA CÓMO SE LLAMA
+ * ===================================================================
+ *
+ * Un formulario del sistema se ve así:
+ *
+ *     <div class="fld"><label>Nombre de la institución</label><input ...></div>
+ *
+ * Quien mira la pantalla lee «Nombre de la institución» y entiende qué va en
+ * esa caja. Un lector de pantalla, no: la etiqueta está escrita al lado, pero
+ * no está UNIDA al campo, así que anuncia «cuadro de texto, en blanco» y la
+ * persona tiene que adivinar. La auditoría contó 64 campos así: 39 en
+ * Configuración, 18 en Mi perfil y el resto repartidos.
+ *
+ * La unión se hace con `for` en la etiqueta e `id` en el campo. Escribirla a
+ * mano en cada sitio serían treinta y un lugares en esta pantalla y todos los
+ * que se agreguen después, y basta que a uno se le olvide para que vuelva el
+ * problema sin que nada falle a la vista. Así que se hace en un solo lugar y
+ * sobre lo que de verdad quedó en la página.
+ *
+ * SE MIRA EL RESULTADO, NO EL CÓDIGO QUE LO ESCRIBIÓ. Los campos salen de tres
+ * generadores distintos y de una veintena de formularios escritos a mano, y
+ * algunos aparecen después —los que se muestran al elegir una opción, la lista
+ * de un campo de varios—. Un observador del navegador ve todo eso igual, venga
+ * de donde venga y aparezca cuando aparezca.
+ *
+ * No toca lo que ya está bien: una etiqueta que ya tiene su `for`, o que
+ * envuelve a su propio campo, se deja como está.
+ */
+
+/** Cuántos identificadores se han repartido, para que no se repita ninguno. */
+let cuantosNombresPuestos = 0;
+
+/**
+ * Une cada etiqueta suelta con el campo al que acompaña.
+ *
+ * Se busca dentro de la misma casilla —el `.fld` que los envuelve— y se toma
+ * el primer control con el que se pueda trabajar. Los campos ocultos no
+ * cuentan: son los que llevan el valor por debajo y nadie los enfoca.
+ */
+function unirEtiquetasASusCampos(raiz = document) {
+  const SE_PUEDE_ENFOCAR = 'input:not([type="hidden"]), select, textarea, [contenteditable="true"]';
+  for (const etiqueta of raiz.querySelectorAll('label:not([for])')) {
+    // La que ya envuelve a su campo no necesita nada: la unión es implícita
+    if (etiqueta.querySelector('input, select, textarea')) continue;
+
+    const casilla = etiqueta.closest('.fld, .ajuste, .range, .campo') || etiqueta.parentElement;
+    if (!casilla) continue;
+    const campo = casilla.querySelector(SE_PUEDE_ENFOCAR);
+    if (!campo) continue; // una etiqueta que no acompaña a nada: se deja
+
+    // Si el campo ya se explica solo, no se le agrega una segunda voz
+    if (campo.getAttribute('aria-label') || campo.getAttribute('aria-labelledby')) continue;
+
+    if (!campo.id) campo.id = `campo${++cuantosNombresPuestos}`;
+    etiqueta.htmlFor = campo.id;
+  }
+}
+
+/**
+ * Deja el sistema mirando: cada vez que aparece un formulario, sus etiquetas
+ * quedan unidas.
+ *
+ * Se junta el trabajo de cada cuadro de imagen —un formulario grande cambia el
+ * árbol muchas veces seguidas mientras se pinta— para no rehacerlo por cada
+ * elemento que entra.
+ */
+function vigilarQueLosCamposTenganNombre() {
+  unirEtiquetasASusCampos();
+  let pedido = null;
+  const observador = new MutationObserver(() => {
+    if (pedido) return;
+    pedido = requestAnimationFrame(() => {
+      pedido = null;
+      unirEtiquetasASusCampos();
+    });
+  });
+  observador.observe(document.body, { childList: true, subtree: true });
+}
+
 async function boot() {
   if (!TOKEN) return renderLogin();
   try {
@@ -1750,10 +1830,11 @@ async function viewList(name, filtrosIniciales) {
     : null;
 
   tb.innerHTML = `
-    <input type="search" id="q" placeholder="Buscar…" value="${esc(st.q)}" />
-    ${iglesiaField ? `<select id="f_iglesia_id"><option value="">— Todas las iglesias —</option></select>` : ''}
+    <input type="search" id="q" placeholder="Buscar…" value="${esc(st.q)}"
+           aria-label="Buscar en ${esc(m.label)}" />
+    ${iglesiaField ? `<select id="f_iglesia_id" aria-label="Filtrar por iglesia"><option value="">— Todas las iglesias —</option></select>` : ''}
     ${filterFields.map((f) => `
-      <select id="f_${f.name}">
+      <select id="f_${f.name}" aria-label="Filtrar por ${esc(f.label)}">
         <option value="">— ${esc(f.label)} —</option>
         ${(f.options || []).map((o) => {
           const v = typeof o === 'object' ? o.value : o;
@@ -3329,11 +3410,16 @@ async function renderMisAvisos(caja) {
                 <div class="mut" style="font-size:12.5px">${esc(t.ayuda)}</div>
               </td>
               <td style="text-align:center">
+                <!-- De qué es cada casilla lo dicen su fila y su columna, y eso
+                     solo lo junta quien ve la tabla entera: a quien la escucha
+                     hay que decírselo en la casilla misma. -->
                 <input type="checkbox" data-tipo="${t.clave}" data-canal="sistema"
+                  aria-label="${esc(t.label)}: recibirlo en el sistema"
                   ${d.preferencias[t.clave] && d.preferencias[t.clave].sistema ? 'checked' : ''} />
               </td>
               <td style="text-align:center">
                 <input type="checkbox" data-tipo="${t.clave}" data-canal="navegador"
+                  aria-label="${esc(t.label)}: recibirlo en este aparato"
                   ${d.preferencias[t.clave] && d.preferencias[t.clave].navegador ? 'checked' : ''} />
               </td>
             </tr>`).join('')}
@@ -5633,19 +5719,21 @@ async function renderInformeAsistencia(contenedor, precarga) {
 
   const filtros = contenedor.querySelector('#infFiltros');
   filtros.innerHTML = `
-    <select id="infTipo">
+    <select id="infTipo" aria-label="Qué informe se quiere ver">
       <option value="general" ${st.tipo === 'general' ? 'selected' : ''}>Informe general</option>
       <option value="cuerpo" ${st.tipo === 'cuerpo' ? 'selected' : ''}>Informe por cuerpo</option>
       <option value="planilla" ${st.tipo === 'planilla' ? 'selected' : ''}>Planilla mensual</option>
       <option value="persona" ${st.tipo === 'persona' ? 'selected' : ''}>Informe por persona</option>
     </select>
-    <select id="infCuerpo" ${st.tipo === 'cuerpo' || st.tipo === 'planilla' ? '' : 'hidden'}>
+    <select id="infCuerpo" aria-label="Cuerpo del que se quiere el informe"
+            ${st.tipo === 'cuerpo' || st.tipo === 'planilla' ? '' : 'hidden'}>
       <option value="">— Elija el cuerpo —</option>
       ${cuerpos.map((c) => `<option value="${c.id}" ${String(st.cuerpo_id) === String(c.id) ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
     </select>
     <div class="refbuscar inf-persona" id="rb_miembro_id" data-ruta="miembros" ${st.tipo === 'persona' ? '' : 'hidden'}>
       <input type="hidden" name="miembro_id" value="${esc(st.miembro_id)}" />
-      <input type="text" class="rb-txt" placeholder="Busque a la persona por nombre o RUT…" autocomplete="off" />
+      <input type="text" class="rb-txt" aria-label="Persona de la que se quiere el informe"
+             placeholder="Busque a la persona por nombre o RUT…" autocomplete="off" />
       <button type="button" class="rb-x" title="Quitar" hidden>×</button>
       <ul class="rb-lista" hidden></ul>
     </div>
@@ -8455,11 +8543,14 @@ function pintarFiltros() {
   const tipos = (MOD['asistencias'].fields.find((f) => f.name === 'tipo_reunion') || {}).options || [];
   const zona = document.getElementById('asisFiltros');
   zona.innerHTML = `
-    <select id="asisCuerpo" title="Con qué cuerpo se está trabajando: filtra las actividades del calendario y abre sus listas mostrando a sus integrantes">
+    <!-- El «title» es la explicación que sale al pasar por encima; el nombre
+         corto va aparte, porque es lo que se anuncia al llegar al campo. -->
+    <select id="asisCuerpo" aria-label="Cuerpo con el que se trabaja"
+            title="Con qué cuerpo se está trabajando: filtra las actividades del calendario y abre sus listas mostrando a sus integrantes">
       <option value="">Todos los cuerpos</option>
       ${cuerpos.map((c) => `<option value="${c.id}" ${String(ASIS.cuerpo_id) === String(c.id) ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
     </select>
-    <select id="asisTipo">
+    <select id="asisTipo" aria-label="Filtrar por tipo de actividad">
       <option value="">Todos los tipos</option>
       ${tipos.map((t) => `<option value="${esc(t)}" ${ASIS.tipo === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
     </select>
@@ -10199,4 +10290,5 @@ function avisarCuandoNoHaySenal() {
 /* ---------------- inicio ---------------- */
 dejarElAyudanteInstalado();
 avisarCuandoNoHaySenal();
+vigilarQueLosCamposTenganNombre();
 boot();
