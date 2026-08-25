@@ -28,6 +28,7 @@ const { exigirBaseDescartable } = require('./aislada');
 exigirBaseDescartable();
 
 const { coerce } = require('../../server/crud');
+const { db } = require('../../server/db');
 
 /** Un campo de varios cualquiera, como lo declara un módulo. */
 const CAMPO = {
@@ -135,4 +136,80 @@ test('un rechazo se le muestra a la persona, no se convierte en avería del sist
   // referencia—. Esto tiene que ser lo primero.
   const { ErrorDeDatos } = require('../../server/crud');
   assert.throws(() => coerce(CAMPO, 'no es una lista'), ErrorDeDatos);
+});
+
+// ─────────────────────────── que lo referenciado exista de verdad (1.97.2) ───
+/*
+ * Un campo de referencia guarda el número de OTRO registro: el cuerpo de un
+ * documento, el miembro de una anotación, la cuenta de un movimiento. Hasta la
+ * 1.97.2 nadie comprobaba que ese número correspondiera a algo: se podía
+ * guardar un documento del cuerpo 88.888 y quedaba anotado tal cual; al
+ * abrirlo, donde va el nombre del cuerpo salía «#88888».
+ *
+ * La comprobación no es que no existiera: existía DOS VECES, escrita a mano
+ * para el cónyuge de un miembro y para el de un pastor. Dos excepciones en un
+ * sistema con más de cien referencias declaradas.
+ */
+const { referenciasRotas } = require('../../server/crud');
+const { getModule } = require('../../server/registry');
+
+/** Una iglesia de verdad, para tener a qué apuntar. */
+const laIglesia = db
+  .prepare("INSERT INTO iglesias (nombre, codigo, estado) VALUES ('Central de referencias','IG-REF','Activa')")
+  .run().lastInsertRowid;
+
+test('una referencia a un registro que existe no se objeta', () => {
+  const def = getModule('documentos');
+  assert.deepEqual(referenciasRotas(def, { iglesia_id: laIglesia }), []);
+});
+
+test('una que apunta a un número que no existe se nombra', () => {
+  const def = getModule('documentos');
+  const rotas = referenciasRotas(def, { iglesia_id: 88888 });
+  assert.equal(rotas.length, 1);
+  assert.match(rotas[0], /88888/, 'el aviso tiene que decir qué número no existe');
+  assert.match(rotas[0], /Iglesia/i, 'y de qué campo salió');
+});
+
+test('un campo de varios se revisa uno por uno', () => {
+  const def = getModule('usuarios');
+  const rotas = referenciasRotas(def, { iglesias: JSON.stringify([laIglesia, 77777]) });
+  assert.equal(rotas.length, 1, 'solo el que no existe');
+  assert.match(rotas[0], /77777/);
+});
+
+test('lo que este guardado no toca, no se revisa', () => {
+  // De esto depende que una ficha que ya venía con una referencia rota —de una
+  // importación vieja, de un borrado anterior a que el sistema los siguiera— se
+  // pueda seguir guardando para corregirle el teléfono. La comprobación frena
+  // el guardado que empeora las cosas, no el que no arregla lo que ya estaba.
+  const def = getModule('documentos');
+  assert.deepEqual(referenciasRotas(def, { titulo: 'Solo cambio el título' }), []);
+  assert.deepEqual(referenciasRotas(def, {}), []);
+});
+
+test('vaciar una referencia no es apuntar a algo que no existe', () => {
+  const def = getModule('documentos');
+  for (const vacio of [null, '', undefined]) {
+    assert.deepEqual(referenciasRotas(def, { cuerpo_id: vacio }), [], `${JSON.stringify(vacio)} no es una referencia rota`);
+  }
+  assert.deepEqual(referenciasRotas(getModule('usuarios'), { iglesias: '[]' }), []);
+});
+
+test('se pregunta una vez por tabla, no una vez por referencia', () => {
+  // Una ficha de miembro apunta varias veces a Miembros. Si se preguntara una
+  // por una, guardar una ficha costaría una consulta por campo de referencia.
+  const def = getModule('miembros');
+  const cuantasReferencias = def.fields.filter((f) => f.type === 'ref' || f.type === 'multiref').length;
+  assert.ok(cuantasReferencias >= 2, 'la ficha de miembro tiene varias referencias');
+
+  let consultas = 0;
+  const original = db.prepare.bind(db);
+  db.prepare = (sql) => { if (/SELECT id FROM/.test(sql)) consultas++; return original(sql); };
+  try {
+    referenciasRotas(def, { iglesia_id: laIglesia, conyuge_id: 99991 });
+  } finally {
+    db.prepare = original;
+  }
+  assert.ok(consultas <= 2, `se hicieron ${consultas} consultas para dos tablas`);
 });

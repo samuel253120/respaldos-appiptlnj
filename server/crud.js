@@ -147,6 +147,73 @@ function comoListaDeIds(field, value) {
   return ids;
 }
 
+/**
+ * Las referencias de este guardado que apuntan a un registro que no existe.
+ *
+ * POR QUÉ HACÍA FALTA. Un campo de referencia guarda el número de otro
+ * registro: el cuerpo de un documento, el miembro de una anotación de
+ * bitácora, la cuenta de un movimiento. Hasta la 1.97.2 nadie comprobaba que
+ * ese número correspondiera a algo. Se podía guardar un documento del cuerpo
+ * 88.888 y quedaba anotado tal cual; al abrirlo, donde va el nombre del cuerpo
+ * salía «#88888».
+ *
+ * No es que la comprobación no existiera: existía DOS VECES, escrita a mano
+ * para el cónyuge de un miembro y para el de un pastor. Dos excepciones en un
+ * sistema con más de cien referencias declaradas. Lo que faltaba era hacerlo
+ * donde se hace una sola vez y vale para todas.
+ *
+ * SOLO SE MIRA LO QUE ESTE GUARDADO ESTÁ CAMBIANDO, igual que con las fechas.
+ * Una ficha que ya venía con una referencia rota —de una importación vieja, de
+ * un borrado anterior a que el sistema los siguiera— se tiene que poder seguir
+ * guardando para corregirle el teléfono. La comprobación frena el guardado que
+ * empeora las cosas, no el que simplemente no arregla algo que ya estaba.
+ *
+ * Se pregunta UNA VEZ POR TABLA y no una vez por referencia: una ficha de
+ * miembro puede apuntar tres veces a Miembros, y son tres números que se
+ * buscan juntos.
+ */
+function referenciasRotas(def, data) {
+  /** tabla → { ids que hay que comprobar, y de qué campo salió cada uno } */
+  const porTabla = new Map();
+
+  const anotar = (campo, ids) => {
+    const destino = getModule(campo.ref);
+    if (!destino) return; // un módulo que declara un destino que no existe: no es cosa del dato
+    if (!porTabla.has(destino.name)) porTabla.set(destino.name, { destino, ids: new Map() });
+    const bolsa = porTabla.get(destino.name).ids;
+    for (const id of ids) if (!bolsa.has(id)) bolsa.set(id, campo);
+  };
+
+  for (const f of def.fields) {
+    if ((f.type !== 'ref' && f.type !== 'multiref') || !f.ref) continue;
+    const valor = data[f.name];
+    if (valor === undefined || valor === null || valor === '') continue; // no se está tocando
+    if (f.type === 'ref') anotar(f, [Number(valor)].filter((n) => Number.isInteger(n) && n > 0));
+    else anotar(f, idsDe(valor));
+  }
+
+  const rotas = [];
+  for (const { destino, ids } of porTabla.values()) {
+    const cuales = [...ids.keys()];
+    if (!cuales.length) continue;
+    let existen;
+    try {
+      existen = new Set(
+        db.prepare(`SELECT id FROM "${destino.name}" WHERE id IN (${cuales.map(() => '?').join(',')})`)
+          .all(...cuales).map((r) => r.id)
+      );
+    } catch (e) {
+      continue; // si la tabla todavía no está, no se inventa un error de dato
+    }
+    for (const id of cuales) {
+      if (existen.has(id)) continue;
+      const campo = ids.get(id);
+      rotas.push(`${campo.label}: no existe ${destino.labelSingular ? destino.labelSingular.toLowerCase() : 'el registro'} n.º ${id}`);
+    }
+  }
+  return rotas;
+}
+
 /** Convierte el valor recibido al tipo de almacenamiento del campo. */
 function coerce(field, value) {
   if (value === undefined) return undefined;
@@ -935,6 +1002,19 @@ function buildRouter() {
           if (problema) return res.status(400).json({ error: problema });
         }
 
+        /*
+         * Y que lo que se referencia exista de verdad: no se guarda un
+         * documento del cuerpo 88.888 (ver referenciasRotas, más arriba).
+         */
+        const rotas = referenciasRotas(def, data);
+        if (rotas.length) {
+          return res.status(400).json({
+            error: rotas.length === 1
+              ? rotas[0]
+              : `Hay ${rotas.length} referencias a registros que no existen. ${rotas.join('. ')}`,
+          });
+        }
+
         /**
          * Y de las fechas: que sean fechas, que estén en un rango con sentido
          * y que se lleven bien entre ellas (ver server/fechas.js).
@@ -1147,7 +1227,7 @@ function buildRouter() {
 
 module.exports = {
   buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara,
-  revisarLimites, buscarDuplicado, avisoDeDuplicado, TECHO,
+  revisarLimites, buscarDuplicado, avisoDeDuplicado, TECHO, referenciasRotas,
   // Se exporta para que las pruebas puedan exigir que un dato mal escrito se
   // le explique a la persona (400) en vez de salir como avería del sistema.
   ErrorDeDatos,

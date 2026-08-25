@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.97.2", fecha: "2026-08-25", titulo: "No se guarda una referencia a un registro que no existe" },
   { version: "1.97.1", fecha: "2026-08-25", titulo: "Cada campo dice cómo se llama: el sistema se puede usar sin ver la pantalla" },
   { version: "1.97.0", fecha: "2026-08-25", titulo: "El informe de asistencia abre en el año en curso, y la base ya sabe buscar por fecha" },
   { version: "1.96.3", fecha: "2026-08-25", titulo: "Una dirección mal escrita ya no deja sin listados a todo el mundo" },
