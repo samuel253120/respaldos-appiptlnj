@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.100.0", fecha: "2026-08-25", titulo: "El acta de reunión se descarga como PDF, con todo lo que tiene y el membrete de la institución" },
   { version: "1.99.1", fecha: "2026-08-25", titulo: "Los asistentes del acta salen de la lista que se pasó, y no de un campo que ofrecía a toda la iglesia" },
   { version: "1.99.0", fecha: "2026-08-25", titulo: "El acta trae el texto del documento adjunto y se enlaza con la lista de asistencia de esa reunión" },
   { version: "1.98.1", fecha: "2026-08-25", titulo: "No se puede apuntar a lo que no se alcanza: se cierra la escritura que ampliaba el propio alcance" },

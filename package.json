@@ -1,6 +1,6 @@
 {
   "name": "sistema-gestion-iglesias",
-  "version": "1.99.1",
+  "version": "1.100.0",
   "description": "Sistema integral para la gestión de múltiples iglesias: miembros, cuerpos, asistencias, tesorería, inventarios, actas, documentos, ayudas sociales, certificados, credenciales, solicitudes y usuarios.",
   "main": "server/index.js",
   "scripts": {
@@ -30,6 +30,7 @@
     "mammoth": "^1.12.1",
     "multer": "^2.2.0",
     "pdfjs-dist": "^6.2.108",
+    "pdfkit": "^0.20.1",
     "web-push": "^3.6.7"
   },
   "license": "MIT",

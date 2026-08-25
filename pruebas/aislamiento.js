@@ -194,6 +194,12 @@ async function montarEscenario(admin) {
     { nombre: `Aniversario ${MARCA}`, fecha: '2026-08-21', iglesia_id: norte.id,
       cuerpos: [damas.id, jovenes.id], tipo: 'Culto' });
 
+  // Un acta de la otra iglesia, para probar que su PDF no se baja desde acá
+  const actaSur = await buscarOCrear('actas_reuniones', (f) => f.numero_acta === `ACTA-${MARCA}-SUR`,
+    { numero_acta: `ACTA-${MARCA}-SUR`, fecha: '2026-08-02', iglesia_id: sur.id,
+      cuerpo_id: cuerpoSur.id, tipo: 'Ordinaria', estado: 'Borrador',
+      presidida_por: `Preside ${MARCA}` });
+
   const perfil = await buscarOCrear('perfiles_permisos', (f) => f.nombre === `Perfil ${MARCA}`,
     { nombre: `Perfil ${MARCA}`, estado: 'Activo', permisos: JSON.stringify({ miembros: ['view'] }) });
 
@@ -242,7 +248,7 @@ async function montarEscenario(admin) {
   return {
     norte, sur, damas, jovenes, cuerpoSur,
     deDamas, deJovenes, delSur, pastorSur,
-    cuentaSur, cuentaJovenes, actividadSur, actividadCompartida, perfil,
+    cuentaSur, cuentaJovenes, actividadSur, actividadCompartida, actaSur, perfil,
     secretaria, adminNorte, delOtroLado, ayudante,
   };
 }
@@ -303,6 +309,7 @@ async function loAjenoNoSeVe(E, modulos) {
     [E.actividadSur.nombre, 'una actividad de la otra iglesia'],
     [E.delSur.rut, 'el RUT de una miembro de la otra iglesia'],
     [E.pastorSur.rut, 'el RUT del pastor de la otra iglesia'],
+    [`Preside ${MARCA}`, 'quien preside un acta de la otra iglesia'],
   ];
   /*
    * Lo que NO puede ver de otro cuerpo es su GENTE y su plata.
@@ -373,6 +380,9 @@ async function loAjenoNoSeVe(E, modulos) {
       `/api/asistencias/de-cuerpo?cuerpo_id=${E.jovenes.id}`,
       `/api/asistencias/${E.actividadSur.id}/por-cuerpo?cuerpo_id=${E.cuerpoSur.id}`,
       `/api/asistencias/${E.actividadSur.id}/por-cuerpo?cuerpo_id=${E.jovenes.id}`,
+      // El PDF de un acta ajena (1.100.0): es el acta entera en un archivo
+      `/api/actas_reuniones/${E.actaSur.id}/pdf`,
+      `/api/actas_reuniones/${E.actaSur.id}`,
       '/api/dashboard', '/api/pendientes', '/api/huerfanos', '/api/avisos', '/api/meta',
       `/api/buscar?q=${encodeURIComponent(E.delSur.apellidos)}`,
       `/api/buscar?q=${encodeURIComponent(E.deJovenes.apellidos)}`,

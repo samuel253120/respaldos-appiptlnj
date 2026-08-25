@@ -1,0 +1,316 @@
+/**
+ * El acta de reunión, como PDF que se descarga.
+ *
+ * POR QUÉ EN EL SERVIDOR Y NO EN LA PANTALLA. Hasta la 1.100.0 el acta se
+ * llevaba con el botón «Imprimir», que abre el diálogo del navegador y deja
+ * que uno elija «Guardar como PDF». En un computador funciona; en un teléfono
+ * es un trámite, y lo que sale depende del navegador de cada uno —los márgenes,
+ * si pone o no la dirección de la página arriba, si respeta los colores—. Un
+ * acta es un documento que se archiva y se manda, así que conviene que salga
+ * IGUAL siempre y que se baje de una.
+ *
+ * Se arma con pdfkit, que escribe el PDF directamente. La otra manera sería
+ * traer un navegador entero al servidor para que imprima el HTML, y son
+ * cientos de megas para esto.
+ *
+ * QUÉ LLEVA. Todo lo que tiene el acta, no un resumen: el membrete de la
+ * institución, sus datos, la lista de asistencia enlazada —quién fue, quién se
+ * justificó con su motivo y quién no fue—, la agenda, el desarrollo y los
+ * acuerdos con su formato, las firmas y un pie en cada página que dice cuándo
+ * se emitió y quién lo emitió. Si el acta tiene un documento adjunto, se dice
+ * cuál es: el PDF no lo puede meter adentro, pero sí dejar constancia.
+ */
+const fs = require('fs');
+const path = require('path');
+const PDFDocument = require('pdfkit');
+const { db, UPLOADS_DIR } = require('../db');
+const ajustes = require('../ajustes');
+const formato = require('../formato');
+const nombres = require('../nombres');
+const textoRico = require('./textorico-a-pdf');
+
+const TINTA = '#111827';
+const SUAVE = '#6b7280';
+const LINEA = '#d1d5db';
+const MARCA = '#16265c'; // el azul del emblema
+
+/** El logo que corresponde: el que se subió, o el que trae el sistema. */
+function rutaDelLogo() {
+  const suyo = ajustes.obtener('iglesia_logo');
+  if (suyo) {
+    const ruta = path.join(UPLOADS_DIR, path.basename(suyo));
+    if (fs.existsSync(ruta)) return ruta;
+  }
+  const dedefecto = path.join(__dirname, '..', '..', 'public', 'img', 'logo.png');
+  return fs.existsSync(dedefecto) ? dedefecto : null;
+}
+
+/** Los datos de contacto en una línea, saltándose los que estén en blanco. */
+function contactoDeLaInstitucion() {
+  return [
+    ajustes.obtener('iglesia_direccion'),
+    ajustes.obtener('iglesia_telefono'),
+    ajustes.obtener('iglesia_rut'),
+  ].map((x) => (x || '').trim()).filter(Boolean).join(' · ');
+}
+
+/** La gente de un cuerpo en una actividad, separada por cómo asistió. */
+function laAsistencia(actaFila) {
+  if (!actaFila.asistencia_id || !actaFila.cuerpo_id) return null;
+  const actividad = db.prepare('SELECT * FROM asistencias WHERE id = ?').get(actaFila.asistencia_id);
+  if (!actividad) return null;
+
+  const filas = db
+    .prepare(
+      `SELECT d.estado, d.motivo, d.detalle, m.nombres, m.apellidos
+         FROM asistencia_detalle d
+         JOIN miembros m ON m.id = d.miembro_id
+        WHERE d.asistencia_id = ? AND d.cuerpo_id = ?
+        ORDER BY m.apellidos, m.nombres`
+    )
+    .all(actividad.id, actaFila.cuerpo_id);
+  if (!filas.length) return null;
+
+  const como = (f) => ({
+    nombre: nombres.paraMostrar(f.nombres, f.apellidos),
+    motivo: f.motivo || null,
+    detalle: f.detalle || null,
+  });
+  return {
+    actividad,
+    presentes: filas.filter((f) => f.estado === 'Presente').map(como),
+    justificados: filas.filter((f) => f.estado === 'Justificado').map(como),
+    ausentes: filas.filter((f) => f.estado === 'Ausente').map(como),
+  };
+}
+
+/** Los asistentes que se escribieron a mano, en las actas antiguas. */
+function asistentesEscritosAMano(actaFila) {
+  let ids = [];
+  try {
+    ids = JSON.parse(actaFila.asistentes || '[]').map(Number).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+  if (!ids.length) return [];
+  return db
+    .prepare(`SELECT nombres, apellidos FROM miembros WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY apellidos, nombres`)
+    .all(...ids)
+    .map((m) => nombres.paraMostrar(m.nombres, m.apellidos));
+}
+
+/**
+ * Escribe el acta en un documento PDF y lo devuelve como flujo.
+ *
+ * `quien` es la persona que lo pidió: su nombre va al pie, porque un documento
+ * que se entrega y no dice quién lo sacó no se puede preguntar después.
+ */
+function generar(actaFila, { quien } = {}) {
+  const doc = new PDFDocument({
+    size: 'LETTER',
+    margins: { top: 56, bottom: 64, left: 56, right: 56 },
+    info: {
+      Title: `Acta de Reunión N.º ${actaFila.numero_acta || ''}`,
+      Author: ajustes.obtener('iglesia_nombre') || 'Sistema de Gestión de Iglesias',
+      Subject: 'Acta de reunión de cuerpo',
+    },
+    // El pie se dibuja a mano en cada página (ver más abajo), así que pdfkit no
+    // debe agregar la página nueva por su cuenta antes de que se pinte.
+    bufferPages: true,
+  });
+
+  const izq = doc.page.margins.left;
+  const ancho = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const derecha = izq + ancho;
+
+  // ── Membrete ───────────────────────────────────────────────────────────
+  const logo = rutaDelLogo();
+  const arribaDelTodo = doc.y;
+  if (logo) {
+    try {
+      doc.image(logo, izq, arribaDelTodo, { fit: [52, 52] });
+    } catch (e) { /* un logo ilegible no puede impedir que salga el acta */ }
+  }
+  const xTexto = izq + (logo ? 66 : 0);
+  const anchoTexto = ancho - (logo ? 66 : 0);
+
+  doc.font('Helvetica-Bold').fontSize(13).fillColor(MARCA)
+    .text((ajustes.obtener('iglesia_nombre') || '').toUpperCase(), xTexto, arribaDelTodo + 2, { width: anchoTexto });
+  const lema = (ajustes.obtener('iglesia_lema') || '').trim();
+  if (lema) {
+    doc.font('Helvetica-Oblique').fontSize(9.5).fillColor(SUAVE).text(lema, { width: anchoTexto });
+  }
+  const contacto = contactoDeLaInstitucion();
+  if (contacto) {
+    doc.font('Helvetica').fontSize(8.5).fillColor(SUAVE).text(contacto, { width: anchoTexto });
+  }
+  const legal = (ajustes.obtener('documento_pie_texto') || '').trim();
+  if (legal) {
+    doc.font('Helvetica').fontSize(8.5).fillColor(SUAVE).text(legal, { width: anchoTexto });
+  }
+
+  doc.y = Math.max(doc.y, arribaDelTodo + (logo ? 56 : 0)) + 10;
+  doc.moveTo(izq, doc.y).lineTo(derecha, doc.y).lineWidth(1.4).strokeColor(MARCA).stroke();
+  doc.moveDown(1);
+
+  // ── Título ─────────────────────────────────────────────────────────────
+  doc.font('Helvetica-Bold').fontSize(16).fillColor(TINTA)
+    .text(`ACTA DE REUNIÓN N.º ${actaFila.numero_acta || ''}`, izq, doc.y, { width: ancho, align: 'center' });
+
+  const iglesia = actaFila.iglesia_id
+    ? (db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(actaFila.iglesia_id) || {}).nombre
+    : null;
+  const cuerpo = actaFila.cuerpo_id
+    ? (db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(actaFila.cuerpo_id) || {}).nombre
+    : null;
+  const bajada = [iglesia, cuerpo].filter(Boolean).join(' — ');
+  if (bajada) {
+    doc.moveDown(0.25);
+    doc.font('Helvetica').fontSize(10.5).fillColor(SUAVE)
+      .text(bajada, { width: ancho, align: 'center' });
+  }
+  doc.moveDown(1);
+
+  // ── Los datos, en dos columnas de etiqueta y valor ────────────────────
+  const dato = (etiqueta, valor) => {
+    if (valor === null || valor === undefined || String(valor).trim() === '') return;
+    const y = doc.y;
+    doc.font('Helvetica-Bold').fontSize(9.5).fillColor(SUAVE)
+      .text(etiqueta.toUpperCase(), izq, y, { width: 128 });
+    doc.font('Helvetica').fontSize(10.5).fillColor(TINTA)
+      .text(String(valor), izq + 136, y, { width: ancho - 136 });
+    doc.moveDown(0.35);
+  };
+
+  dato('Fecha', actaFila.fecha ? formato.fechaLarga(actaFila.fecha) : '');
+  dato('Lugar', actaFila.lugar);
+  const hora = [actaFila.hora_inicio, actaFila.hora_fin].filter(Boolean).join(' a ');
+  dato('Hora', hora);
+  dato('Tipo', actaFila.tipo);
+  dato('Presidida por', actaFila.presidida_por);
+  dato('Secretario(a)', actaFila.secretario);
+  dato('Estado', actaFila.estado);
+  if (actaFila.documento) dato('Documento adjunto', path.basename(String(actaFila.documento)));
+
+  // ── La asistencia enlazada ────────────────────────────────────────────
+  const titulo = (t) => {
+    doc.moveDown(0.9);
+    doc.font('Helvetica-Bold').fontSize(11.5).fillColor(MARCA).text(t.toUpperCase(), izq, doc.y, { width: ancho });
+    doc.moveTo(izq, doc.y + 2).lineTo(derecha, doc.y + 2).lineWidth(0.6).strokeColor(LINEA).stroke();
+    doc.moveDown(0.5);
+  };
+
+  const asistencia = laAsistencia(actaFila);
+  if (asistencia) {
+    titulo('Asistencia');
+    doc.font('Helvetica').fontSize(9.5).fillColor(SUAVE).text(
+      `${asistencia.actividad.tipo_reunion || 'Actividad'} del `
+      + `${formato.fechaLarga(asistencia.actividad.fecha)}`
+      + (asistencia.actividad.lugar ? ` · ${asistencia.actividad.lugar}` : ''),
+      izq, doc.y, { width: ancho }
+    );
+    doc.moveDown(0.5);
+
+    const grupo = (rotulo, gente, conMotivo) => {
+      if (!gente.length) return;
+      const y = doc.y;
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(SUAVE)
+        .text(`${rotulo} (${gente.length})`.toUpperCase(), izq, y, { width: 128 });
+      const texto = gente
+        .map((p) => p.nombre + (conMotivo && p.motivo ? ` (${p.motivo}${p.detalle ? `: ${p.detalle}` : ''})` : ''))
+        .join(' · ');
+      doc.font('Helvetica').fontSize(10.5).fillColor(TINTA)
+        .text(texto, izq + 136, y, { width: ancho - 136 });
+      doc.moveDown(0.4);
+    };
+    grupo('Asistieron', asistencia.presentes);
+    grupo('Se justificaron', asistencia.justificados, true);
+    grupo('No asistieron', asistencia.ausentes);
+  }
+
+  // Y los que se escribieron a mano, en las actas de antes
+  const aMano = asistentesEscritosAMano(actaFila);
+  if (aMano.length) {
+    titulo('Asistentes');
+    doc.font('Helvetica').fontSize(10.5).fillColor(TINTA).text(aMano.join(' · '), izq, doc.y, { width: ancho });
+  }
+
+  // ── El acta propiamente tal ───────────────────────────────────────────
+  if ((actaFila.agenda || '').trim()) {
+    titulo('Agenda / Orden del día');
+    doc.font('Helvetica').fontSize(10.5).fillColor(TINTA)
+      .text(String(actaFila.agenda), izq, doc.y, { width: ancho });
+  }
+  if ((actaFila.desarrollo || '').trim()) {
+    titulo('Desarrollo de la reunión');
+    textoRico.dibujar(doc, actaFila.desarrollo);
+  }
+  if ((actaFila.acuerdos || '').trim()) {
+    titulo('Acuerdos y compromisos');
+    textoRico.dibujar(doc, actaFila.acuerdos);
+  }
+
+  // ── Firmas ────────────────────────────────────────────────────────────
+  /*
+   * Las firmas no se parten nunca, pero tampoco se llevan una hoja entera si
+   * caben: se mide lo que ocupan —la separación, la raya y sus dos líneas— y
+   * solo se pasa de página cuando de verdad no entran. Antes se pedían 90
+   * puntos con una separación de tres líneas, y un acta que terminaba cerca
+   * del pie mandaba las firmas solas a una segunda página en blanco.
+   */
+  const ALTO_DE_LAS_FIRMAS = 78;
+  doc.moveDown(1.5);
+  if (doc.y + ALTO_DE_LAS_FIRMAS > doc.page.height - doc.page.margins.bottom) doc.addPage();
+  const yFirmas = doc.y + 24;
+  const anchoFirma = (ancho - 40) / 2;
+  [[actaFila.presidida_por || '', 'Preside'], [actaFila.secretario || '', 'Secretario(a)']]
+    .forEach(([quienFirma, cargo], i) => {
+      const x = izq + i * (anchoFirma + 40);
+      doc.moveTo(x, yFirmas).lineTo(x + anchoFirma, yFirmas).lineWidth(0.8).strokeColor(TINTA).stroke();
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(TINTA)
+        .text(quienFirma, x, yFirmas + 6, { width: anchoFirma, align: 'center' });
+      doc.font('Helvetica').fontSize(9).fillColor(SUAVE)
+        .text(cargo, x, doc.y, { width: anchoFirma, align: 'center' });
+    });
+
+  // ── El pie, en todas las páginas ──────────────────────────────────────
+  /*
+   * Se dibuja al final y recorriendo las páginas ya escritas: hacerlo al vuelo
+   * obligaría a saber cuántas páginas van a ser antes de escribirlas, y el
+   * «página 2 de 5» necesita el total.
+   */
+  const pie = `Emitido el ${formato.fechaLarga(new Date().toISOString().slice(0, 10))}`
+    + (quien ? ` por ${quien}` : '');
+  const rango = doc.bufferedPageRange();
+  for (let i = 0; i < rango.count; i++) {
+    doc.switchToPage(rango.start + i);
+    /*
+     * El pie va POR DEBAJO del margen inferior, que es donde corresponde. Para
+     * pdfkit eso es texto que no cabe, así que abre una página nueva… y como se
+     * hace en un bucle, abría una por cada pie: el acta salía con seis páginas
+     * en vez de dos, tres de ellas con nada más que el pie. Se le baja el
+     * margen a cero mientras se dibuja y se le devuelve después.
+     */
+    const margenAbajo = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+    const y = doc.page.height - margenAbajo + 18;
+    doc.moveTo(izq, y - 8).lineTo(derecha, y - 8).lineWidth(0.5).strokeColor(LINEA).stroke();
+    doc.font('Helvetica').fontSize(8).fillColor(SUAVE)
+      .text(pie, izq, y, { width: ancho - 90, lineBreak: false });
+    doc.font('Helvetica').fontSize(8).fillColor(SUAVE)
+      .text(`Página ${i + 1} de ${rango.count}`, derecha - 90, y, { width: 90, align: 'right', lineBreak: false });
+    doc.page.margins.bottom = margenAbajo;
+  }
+
+  doc.end();
+  return doc;
+}
+
+/** Cómo se va a llamar el archivo que baja. */
+function nombreDelArchivo(actaFila) {
+  const numero = String(actaFila.numero_acta || actaFila.id).replace(/[^\w.-]+/g, '-');
+  const fecha = (actaFila.fecha || '').slice(0, 10);
+  return `Acta ${numero}${fecha ? ` ${fecha}` : ''}.pdf`.replace(/\s+/g, ' ').trim();
+}
+
+module.exports = { generar, nombreDelArchivo };

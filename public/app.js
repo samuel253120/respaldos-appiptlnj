@@ -115,6 +115,44 @@ function membreteDelDocumento() {
 }
 
 /**
+ * Baja un archivo del servidor con la sesión puesta.
+ *
+ * Un enlace normal no sirve: el sistema no usa galletas sino un pase que viaja
+ * en la cabecera, así que el navegador pediría el archivo sin identificarse y
+ * se toparía con un 401. Hay que pedirlo a mano, quedarse con el contenido y
+ * entregárselo al navegador ya bajado.
+ *
+ * El nombre sale de lo que diga el servidor, que es quien sabe cómo se llama
+ * el documento; `comoSeLlamaSiNoDice` es el respaldo por si no lo dijera.
+ */
+async function bajarArchivoConSesion(ruta, comoSeLlamaSiNoDice) {
+  const r = await fetch(ruta, { headers: { Authorization: 'Bearer ' + TOKEN } });
+  if (!r.ok) {
+    const dijo = await r.json().catch(() => ({}));
+    throw new Error(dijo.error || 'No se pudo preparar el archivo');
+  }
+  const cabecera = r.headers.get('Content-Disposition') || '';
+  // El nombre con tildes viaja en «filename*=UTF-8''…», que hay que descifrar
+  const conTildes = cabecera.match(/filename\*=UTF-8''([^;]+)/i);
+  const simple = cabecera.match(/filename="([^"]+)"/i);
+  let nombre = comoSeLlamaSiNoDice;
+  if (conTildes) { try { nombre = decodeURIComponent(conTildes[1]); } catch (e) { /* se queda el de respaldo */ } }
+  else if (simple) nombre = simple[1];
+
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombre;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Se suelta después, o en algunos navegadores la descarga queda a medias
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  return nombre;
+}
+
+/**
  * El pie: cuándo se emitió y quién lo emitió.
  *
  * Lo segundo faltaba en todo. Un informe de asistencia o una ficha que se
@@ -6203,9 +6241,13 @@ async function viewPrint(name, id) {
   content().innerHTML = `
     <div class="print-actions no-print">
       <button class="btn secondary" data-ir="#/m/${name}">← Volver</button>
+      ${name === 'actas_reuniones' ? `<button class="btn secondary" id="actaPDF">⬇️ Descargar PDF</button>` : ''}
       <button class="btn" data-imprimir="1">🖨️ Imprimir</button>
     </div>
     ${sheet}`;
+
+  const bajarPdf = document.getElementById('actaPDF');
+  if (bajarPdf) bajarPdf.addEventListener('click', () => descargarActaEnPdf(id, bajarPdf));
 }
 
 function certTextoEstandar(row) {
@@ -10203,6 +10245,27 @@ async function renderDirectivasCuerpo(cuerpoId, caja) {
 
 /** Las actas de las reuniones administrativas del cuerpo. */
 /**
+ * Baja el acta completa como PDF.
+ *
+ * Se arma en el servidor y no con el diálogo de impresión del navegador: así
+ * sale igual en cualquier aparato —el teléfono incluido, donde «guardar como
+ * PDF» es un trámite— y con el membrete, la asistencia y el pie que
+ * corresponden (ver server/pdf/acta.js).
+ */
+async function descargarActaEnPdf(id, boton) {
+  const decia = boton ? boton.textContent : '';
+  if (boton) { boton.disabled = true; boton.textContent = 'Preparando…'; }
+  try {
+    const nombre = await bajarArchivoConSesion(`/api/actas_reuniones/${id}/pdf`, `Acta ${id}.pdf`);
+    toast(`Se descargó «${nombre}»`);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    if (boton) { boton.disabled = false; boton.textContent = decia; }
+  }
+}
+
+/**
  * Las dos ayudas del acta: traer el texto del adjunto y ver a quién enlaza.
  *
  * Un acta se registra de dos maneras —escribiéndola acá o adjuntando el
@@ -10213,6 +10276,23 @@ async function renderDirectivasCuerpo(cuerpoId, caja) {
 function prepararElActa(id, row, isNew) {
   ponerBotonDeTranscribir(id, row, isNew);
   ponerPanelDeAsistencia(row);
+  ponerBotonDePdf(id, isNew);
+}
+
+/**
+ * «Descargar PDF» en la ficha del acta, al lado de «Imprimir».
+ *
+ * En un acta que no se ha guardado no se ofrece: no hay nada que bajar
+ * todavía, y un botón que solo sabe fallar es peor que no tenerlo.
+ */
+function ponerBotonDePdf(id, isNew) {
+  if (isNew || !tieneLlave('datos_impresion')) return;
+  const acciones = content().querySelector('.page-head .actions');
+  if (!acciones || document.getElementById('actaPDF')) return;
+  acciones.insertAdjacentHTML('afterbegin',
+    '<button class="btn secondary" id="actaPDF">⬇️ Descargar PDF</button>');
+  const boton = document.getElementById('actaPDF');
+  boton.addEventListener('click', () => descargarActaEnPdf(id, boton));
 }
 
 /**

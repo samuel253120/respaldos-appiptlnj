@@ -111,6 +111,38 @@ module.exports = {
       require('../alcance').registroSuyo(req, res, 'actas_reuniones', req.params.id, 'Esa acta');
 
     /**
+     * El acta completa, como PDF que se baja.
+     *
+     * Pide las dos llaves que corresponden: la del módulo, para ver el acta, y
+     * la de imprimir, porque esto ES sacar el documento del sistema —igual que
+     * la pantalla de impresión, que ya la exigía—. Y el acta tiene que estar
+     * dentro de lo que esa persona alcanza, como cualquier otra consulta.
+     */
+    router.get('/actas_reuniones/:id(\\d+)/pdf', requirePerm('actas_reuniones', 'view'), (req, res, next) => {
+      if (!require('../permissions').can(req.user, 'datos_impresion', 'view')) {
+        return res.status(403).json({ error: 'No tiene permiso para imprimir ni descargar documentos.' });
+      }
+      const acta = actaSuya(req, res);
+      if (!acta) return;
+      try {
+        const { generar, nombreDelArchivo } = require('../pdf/acta');
+        const archivo = nombreDelArchivo(acta);
+        res.setHeader('Content-Type', 'application/pdf');
+        // El nombre va dos veces a propósito: la primera la entiende cualquier
+        // navegador, la segunda lleva las tildes y las eñes sin romperse.
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${archivo.replace(/[^\x20-\x7E]/g, '_')}"; `
+          + `filename*=UTF-8''${encodeURIComponent(archivo)}`
+        );
+        res.setHeader('Cache-Control', 'private, no-store');
+        generar(acta, { quien: req.user && req.user.nombre }).pipe(res);
+      } catch (e) {
+        next(e);
+      }
+    });
+
+    /**
      * Trae al campo de formato el texto del documento adjunto.
      *
      * Va como acción aparte y no al guardar, a propósito: reemplaza lo que haya
