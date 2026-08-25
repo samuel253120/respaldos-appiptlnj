@@ -54,11 +54,31 @@ module.exports = {
       // Solo las actividades a las que este cuerpo fue convocado. La ruta se
       // resuelve con el cuerpo que tenga puesto el formulario en ese momento.
       optionsRoute: '/asistencias/de-cuerpo?cuerpo_id={cuerpo_id}',
-      help: 'Enlaza la lista que se pasó ese día: quién asistió, quién no y quién se justificó.',
+      help: 'De acá salen los asistentes del acta: quién fue, quién no y quién se justificó.',
     },
+    /*
+     * Los asistentes escritos a mano: retirado del formulario, conservado en la
+     * base.
+     *
+     * Era un campo donde se elegía miembro por miembro, y ofrecía a TODA la
+     * gente de la iglesia, no a la del cuerpo del acta: al levantar un acta de
+     * Ciclistas aparecía el listado completo de la congregación. Se comprobó en
+     * el sistema andando.
+     *
+     * Se podría haber acotado la lista al cuerpo, pero el campo sobra: la
+     * asistencia enlazada dice lo mismo y más —quién faltó y quién se excusó,
+     * con su motivo—, y sale de la lista que alguien ya pasó en vez de pedir
+     * que se escriba dos veces. Dos maneras de anotar lo mismo terminan
+     * discrepando, y entonces no se sabe cuál vale.
+     *
+     * `oculto` lo saca del formulario, del listado y de las planillas, pero NO
+     * borra la columna ni lo que ya esté guardado: un acta antigua que traiga
+     * su lista escrita a mano la conserva y la sigue imprimiendo igual (ver
+     * printActa). Se retira de lo que se ofrece, no de lo que se guardó.
+     */
     {
       name: 'asistentes', label: 'Asistentes (escritos a mano)', type: 'multiref', ref: 'miembros',
-      help: 'Solo hace falta si no se pasó lista de esa reunión. Si enlazó la asistencia, se usa esa.',
+      oculto: true,
     },
     {
       name: 'agenda', label: 'Agenda / Orden del día', type: 'textarea',

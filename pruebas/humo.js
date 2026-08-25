@@ -117,6 +117,7 @@ async function revisarUnMedio(navegador, medio, ancho) {
   const modulos = await pagina.evaluate(() => MODULES.map((m) => m.name));
   const pegados = [];
   const anchos = {};
+  const repetidos = [];
 
   const revisar = async (ruta) => {
     await pagina.goto(URL + '/' + ruta);
@@ -128,6 +129,37 @@ async function revisarUnMedio(navegador, medio, ancho) {
       return g ? /Cargando…/.test(g.innerText) : false;
     });
     if (cargando) pegados.push(ruta);
+
+    /*
+     * Un campo que sale DOS VECES en el mismo formulario.
+     *
+     * Se agregó porque alguien lo vio en su teléfono —«Secretario(a)» dos
+     * veces al levantar un acta— y no se pudo reproducir acá: ni abriendo el
+     * formulario, ni cambiando el cuerpo, ni entrando desde la ficha, ni en
+     * ninguno de los 24 formularios del sistema. Un defecto que no se
+     * reproduce no se arregla a ciegas, pero sí se puede dejar vigilado: si
+     * vuelve a pasar, ahora lo dice una prueba en vez de tener que verlo
+     * alguien de casualidad.
+     *
+     * Se miran las etiquetas y también los nombres de los controles: dos
+     * controles con el mismo nombre son peores que dos etiquetas iguales,
+     * porque al guardar solo uno de los dos vale y no se sabe cuál.
+     */
+    const dobles = await pagina.evaluate(() => {
+      const campos = [...document.querySelectorAll('#formGrid .fld')].map((d) => {
+        const et = d.querySelector('label');
+        const ctrl = d.querySelector('[name]');
+        return { et: (et ? et.textContent : '').replace('*', '').trim(), n: ctrl ? ctrl.name : '' };
+      });
+      const dosVeces = (lista) => [...new Set(lista.filter((v, i) => v && lista.indexOf(v) !== i))];
+      return {
+        etiquetas: dosVeces(campos.map((c) => c.et)),
+        nombres: dosVeces(campos.map((c) => c.n)),
+      };
+    });
+    if (dobles.etiquetas.length || dobles.nombres.length) {
+      repetidos.push(`${ruta} → ${[...dobles.etiquetas, ...dobles.nombres].join(', ')}`);
+    }
   };
 
   /**
@@ -219,11 +251,12 @@ async function revisarUnMedio(navegador, medio, ancho) {
     `${medio.padEnd(6)} · módulos: ${modulos.length}` +
       ` · pestañas abiertas: ${conPestanas}` +
       ` · pegados en "Cargando…": ${pegados.length ? pegados.join(', ') : 'ninguno'}` +
+      ` · campos repetidos: ${repetidos.length ? repetidos.join(' | ') : 'ninguno'}` +
       ` · se salen de lado: ${Object.keys(anchos).length ? JSON.stringify(anchos) : 'ninguna'}` +
       ` · errores: ${distintos.length ? distintos.slice(0, 4).join(' | ') : 'ninguno'}`
   );
   await pagina.close();
-  return pegados.length + Object.keys(anchos).length + distintos.length;
+  return pegados.length + Object.keys(anchos).length + distintos.length + repetidos.length;
 }
 
 (async () => {

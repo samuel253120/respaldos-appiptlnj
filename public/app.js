@@ -6182,9 +6182,21 @@ async function viewPrint(name, id) {
   // QR, que se firma en el servidor, y los recursos institucionales.
   if (name === 'credenciales') return viewImprimirCredencial(id);
 
+  /*
+   * El acta que enlazó su asistencia se imprime CON la lista de ese día. Es lo
+   * que hace que el enlace sirva de algo: un acta que se firma tiene que decir
+   * quiénes estuvieron, y hasta acá eso vivía solo en la pantalla.
+   */
+  let asistenciaDelActa = null;
+  if (name === 'actas_reuniones' && row.asistencia_id && row.cuerpo_id) {
+    asistenciaDelActa = await api(
+      'GET', `/asistencias/${row.asistencia_id}/por-cuerpo?cuerpo_id=${encodeURIComponent(row.cuerpo_id)}`
+    ).catch(() => null); // sin permiso para ver asistencia, el acta se imprime igual
+  }
+
   let sheet;
   if (name === 'certificados') sheet = printCertificado(row);
-  else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas');
+  else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
   else sheet = printGenerico(m, row);
 
@@ -6600,8 +6612,27 @@ async function viewImprimirCredencial(id) {
   });
 }
 
-function printActa(m, row, esAsamblea) {
+function printActa(m, row, esAsamblea, asistencia) {
+  // Los escritos a mano: ya no se piden en el formulario, pero un acta antigua
+  // que los traiga se sigue imprimiendo tal cual (ver el módulo).
   const asistentes = (row.asistentes_labels || []).join(' · ');
+
+  /** Un grupo de la lista enlazada, solo si tiene gente. */
+  const grupoImpreso = (titulo, gente, conMotivo) => {
+    if (!gente || !gente.length) return '';
+    return `<tr>
+      <td class="k">${esc(titulo)} (${gente.length})</td>
+      <td>${gente.map((p) => esc(p.nombre) + (conMotivo && p.motivo
+        ? ` <span class="mut">(${esc(p.motivo)}${p.detalle ? `: ${esc(p.detalle)}` : ''})</span>` : '')).join(' · ')}</td>
+    </tr>`;
+  };
+  const listaEnlazada = asistencia && !asistencia.sin_marcar ? `
+    <h3>Asistencia</h3>
+    <table class="meta-tbl">
+      ${grupoImpreso('Asistieron', asistencia.presentes)}
+      ${grupoImpreso('Se justificaron', asistencia.justificados, true)}
+      ${grupoImpreso('No asistieron', asistencia.ausentes)}
+    </table>` : '';
   return `
     <div class="print-sheet acta-sheet">
       ${membreteDelDocumento()}
@@ -6616,6 +6647,7 @@ function printActa(m, row, esAsamblea) {
         <tr><td class="k">Secretario(a)</td><td>${esc(row.secretario || '')}</td></tr>
         ${esAsamblea ? `<tr><td class="k">Asistentes / Quórum</td><td>${esc(row.total_asistentes ?? '')} asistentes — ${row.hubo_quorum ? 'hubo quórum' : 'sin quórum'}</td></tr>` : ''}
       </table>
+      ${listaEnlazada}
       ${asistentes ? `<h3>Asistentes</h3><p>${esc(asistentes)}</p>` : ''}
       ${/*
           Sin esc(): estos campos son de texto con formato y ya vienen limpios
