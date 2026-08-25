@@ -94,9 +94,12 @@ larga y no es suya. Se le puede poner un subdominio del dominio de la iglesia.
 2. **Settings → Networking → Custom Domain** (botón *+ Custom Domain*).
 3. Escriba el nombre completo: `gestion.lanuevajerusalen.cl` — sin `https://`
    y sin barra al final.
-4. Si le pregunta por el **Target port**, ponga el mismo que ya usa la
-   dirección `…up.railway.app` que tiene funcionando. Si no aparece ninguno,
-   es `3000`.
+4. Si le pregunta por el **Target port**, ponga **exactamente el mismo** que
+   aparece bajo la dirección `…up.railway.app` que ya le funciona —en este
+   proyecto es `8080`—. No ponga `3000`: ese es solo el valor de respaldo para
+   cuando el sistema se corre en un computador propio. En Railway el puerto lo
+   asigna la plataforma con la variable `PORT`, y si el dominio apunta a otro,
+   la página responde error aunque el DNS esté perfecto.
 5. Railway le va a mostrar un **destino CNAME**, algo como
    `abc123xy.up.railway.app`. **Cópielo**: es el dato que se ocupa en el paso
    siguiente. Mientras tanto la pantalla va a decir que está esperando el DNS;
@@ -125,14 +128,37 @@ Para saber en cualquier momento quién manda sobre el dominio:
 nslookup -type=NS lanuevajerusalen.cl
 ```
 
-Ya en el panel correcto, agregue **un** registro:
+Ya en el panel correcto, agregue **DOS registros**. Railway los pide juntos —su
+cuadro dice literalmente *«Add **both** of the following DNS records»*— y con
+uno solo el dominio se queda para siempre en «Waiting for DNS update», sin
+decir cuál falta:
+
+**El primero, que dice a dónde va el tráfico:**
 
 | Campo | Qué poner |
 |---|---|
 | Tipo | `CNAME` |
-| Nombre / Host | `gestion` (solo esa palabra; algunos paneles piden el nombre completo `gestion.lanuevajerusalen.cl`) |
-| Valor / Destino | lo que copió de Railway, por ejemplo `abc123xy.up.railway.app` |
-| TTL | el que venga por omisión, o `300` |
+| Nombre / Host | `gestion` (si el panel pide el nombre completo, `gestion.lanuevajerusalen.cl.` con el punto final) |
+| Valor / Destino | lo que copió de Railway, por ejemplo `rl4by0v1.up.railway.app` |
+| TTL | `300` |
+
+**El segundo, con el que Railway comprueba que el dominio es suyo:**
+
+| Campo | Qué poner |
+|---|---|
+| Tipo | `TXT` |
+| Nombre / Host | `_railway-verify.gestion` (o completo: `_railway-verify.gestion.lanuevajerusalen.cl.`) |
+| Valor / TXT Data | `railway-verify=…` — **el valor completo** que muestra Railway |
+| TTL | `300` |
+
+> ⚠️ En pantallas angostas Railway **corta el valor del TXT** con unos puntos
+> suspensivos. Son unos 79 caracteres; si lo copia cortado no sirve y tampoco
+> avisa. Cópielo desde un computador, o toque el valor para verlo entero.
+> Péguelo tal cual, sin agregarle comillas.
+
+En el cuadro de Railway cada registro tiene su propio ícono: ✅ el que ya
+encontró, ⚠️ el que todavía falta. Ese ícono es la forma más rápida de saber
+cuál de los dos es el que está pendiente.
 
 Tres cosas que suelen salir mal:
 
