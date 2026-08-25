@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.87.2", fecha: "2026-08-25", titulo: "El icono de la aplicación ya no sale con el nombre de la iglesia cortado" },
   { version: "1.87.1", fecha: "2026-08-24", titulo: "El aviso de prueba dice de verdad qué falló, y la campanita lleva a sus preferencias" },
   { version: "1.87.0", fecha: "2026-08-24", titulo: "Avisos: la campanita del sistema y los avisos en el teléfono" },
   { version: "1.86.0", fecha: "2026-08-24", titulo: "Las solicitudes ahora se siguen: número, responsable, traslados e historial" },
