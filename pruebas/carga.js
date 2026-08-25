@@ -33,6 +33,7 @@
  * los movimientos «Movimiento de prueba N». Por ahí los encuentra LIMPIAR.
  */
 const URL = process.env.URL || 'http://localhost:4314';
+const { hoy, alinearConElServidor } = require('./hoy');
 const RUT = process.env.RUT || '11.111.111-1';
 const CLAVE = process.env.CLAVE || 'admin123';
 const USUARIOS = Number(process.env.USUARIOS) || 12;
@@ -205,7 +206,7 @@ function prepararDatos() {
     const miembros = db.prepare('SELECT id FROM miembros').all().map((m) => m.id);
 
     for (let i = cuantos('asistencias'); i < META.actividades; i++) {
-      const fecha = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      const fecha = hoy(new Date(Date.now() - i * 86400000));
       const info = db
         .prepare(
           `INSERT INTO asistencias (fecha, tipo_reunion, cuerpos, iglesia_id) VALUES (?, 'Servicio General', ?, ?)`
@@ -226,7 +227,7 @@ function prepararDatos() {
           `INSERT INTO tesoreria (fecha, tipo, categoria, monto, concepto, cuenta_id, iglesia_id)
            VALUES (?,?,?,?,?,?,?)`
         ).run(
-          new Date(Date.now() - (i % 700) * 86400000).toISOString().slice(0, 10),
+          hoy(new Date(Date.now() - (i % 700) * 86400000)),
           Math.random() < 0.6 ? 'Ingreso' : 'Egreso',
           'Ofrenda',
           Math.round(Math.random() * 200000),
@@ -380,6 +381,8 @@ function informe() {
 }
 
 (async () => {
+  // La fecha de hoy la decide el servidor, no esta máquina: ver pruebas/hoy.js
+  await alinearConElServidor(URL);
   if (process.env.LIMPIAR) {
     limpiarDatosDePrueba(process.env.LIMPIAR === 'borrar');
     return;

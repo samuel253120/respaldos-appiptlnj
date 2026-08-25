@@ -25,6 +25,7 @@
  *   URL=http://localhost:3000 RUT=11.111.111-1 CLAVE=… npm run seguridad
  */
 const fs = require('fs');
+const { hoy, alinearConElServidor } = require('./hoy');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -59,6 +60,8 @@ async function entrar(rut = RUT, clave = CLAVE) {
 }
 
 (async () => {
+  // La fecha de hoy la decide el servidor, no esta máquina: ver pruebas/hoy.js
+  await alinearConElServidor(URL);
   console.log(`🔐 Prueba de seguridad contra ${URL}\n`);
   const api = await entrar();
 
@@ -292,7 +295,7 @@ async function entrar(rut = RUT, clave = CLAVE) {
   const iglesia = (await api('GET', '/api/iglesias?page=1&limit=1')).datos.rows[0];
   const concepto = `Prueba de seguridad ${Date.now()}`;
   const mov = await api('POST', '/api/tesoreria', {
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: hoy(),
     tipo: 'Ingreso', categoria: 'Ofrenda', monto: 12345, concepto,
     cuenta_id: cuenta && cuenta.id, iglesia_id: iglesia && iglesia.id,
   });
@@ -770,11 +773,11 @@ async function entrar(rut = RUT, clave = CLAVE) {
   } else {
     const marca = `Prueba ${Date.now()}`;
     const movCuerpo = await api('POST', '/api/tesoreria', {
-      fecha: new Date().toISOString().slice(0, 10), tipo: 'Ingreso', categoria: 'Otros ingresos',
+      fecha: hoy(), tipo: 'Ingreso', categoria: 'Otros ingresos',
       concepto: `${marca} cuerpo`, monto: 12345, cuenta_id: deCuerpo.id,
     });
     const movIglesia = await api('POST', '/api/tesoreria', {
-      fecha: new Date().toISOString().slice(0, 10), tipo: 'Ingreso', categoria: 'Otros ingresos',
+      fecha: hoy(), tipo: 'Ingreso', categoria: 'Otros ingresos',
       concepto: `${marca} iglesia`, monto: 54321, cuenta_id: deIglesia.id,
     });
 
@@ -784,7 +787,7 @@ async function entrar(rut = RUT, clave = CLAVE) {
 
     // Y no se puede mentir: decir que un movimiento de la iglesia es del cuerpo
     const mentira = await api('POST', '/api/tesoreria', {
-      fecha: new Date().toISOString().slice(0, 10), tipo: 'Ingreso', categoria: 'Otros ingresos',
+      fecha: hoy(), tipo: 'Ingreso', categoria: 'Otros ingresos',
       concepto: `${marca} mentira`, monto: 100, cuenta_id: deIglesia.id, cuerpo_id: deCuerpo.cuerpo_id,
     });
     revisar('y no se le puede poner a mano el de otro', !mentira.datos.cuerpo_id,
@@ -858,7 +861,7 @@ async function entrar(rut = RUT, clave = CLAVE) {
         'la diferencia tendría que llevarse al menos los 12.345 del cuerpo');
 
       const alGuardar = await soloIglesia.api('POST', '/api/tesoreria', {
-        fecha: new Date().toISOString().slice(0, 10), tipo: 'Ingreso', categoria: 'Otros ingresos',
+        fecha: hoy(), tipo: 'Ingreso', categoria: 'Otros ingresos',
         concepto: `${marca} a escondidas`, monto: 999, cuenta_id: deCuerpo.id,
       });
       revisar('ni le registra plata al cuerpo escribiendo la cuenta a mano',

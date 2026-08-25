@@ -104,6 +104,22 @@ router.put('/', authRequired, (req, res) => {
     return res.status(403).json({ error: 'No tiene permiso para cambiar la configuración del sistema' });
   }
   const cambios = req.body || {};
+
+  /*
+   * El mantenimiento tiene su propia llave.
+   *
+   * Deja a TODA la iglesia fuera del sistema hasta que alguien lo apague, y
+   * vivía dentro del mismo permiso que corregir el teléfono de la iglesia. No
+   * es lo mismo: se puede querer delegar la configuración sin entregar la
+   * llave que cierra la puerta. Se comprueba acá y no en la pantalla porque
+   * quien manda una petición a mano no pasa por ninguna pantalla.
+   */
+  const DEL_MANTENIMIENTO = ['mantenimiento_activo', 'mantenimiento_mensaje'];
+  if (DEL_MANTENIMIENTO.some((c) => c in cambios) && !can(req.user, 'sistema_mantenimiento', 'view')) {
+    return res.status(403).json({
+      error: 'No tiene permiso para dejar el sistema en mantenimiento. Puede cambiar el resto de la configuración.',
+    });
+  }
   /**
    * Lo que se guarda es lo que se usa.
    *

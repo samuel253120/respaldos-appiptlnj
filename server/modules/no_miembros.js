@@ -73,12 +73,12 @@ module.exports = {
     { name: 'apellidos', label: 'Apellidos', type: 'text',
       help: 'Opcional: muchas veces no se alcanzan a preguntar.' },
     {
-      name: 'rut', label: 'RUT', type: 'rut', unique: true,
+      name: 'rut', label: 'RUT', type: 'rut', unique: true, reservado: 'miembros_identidad',
       help: 'Opcional. Si se escribe, se valida el dígito verificador y no se admite repetido: ' +
         'es lo que permite darse cuenta de que esta persona ya tenía ficha.',
     },
     { name: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date', mostrarEdad: true,
-      help: 'Opcional. La edad se calcula sola.' },
+      help: 'Opcional. La edad se calcula sola.', reservado: 'miembros_identidad' },
     { name: 'genero', label: 'Sexo', type: 'select', options: ['Femenino', 'Masculino'] },
 
     // ---------------- Contacto ----------------

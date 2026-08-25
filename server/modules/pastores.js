@@ -86,7 +86,7 @@ module.exports = {
     },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias' },
     {
-      name: 'rut', label: 'RUT', type: 'rut', unique: true,
+      name: 'rut', label: 'RUT', type: 'rut', unique: true, reservado: 'miembros_identidad',
       help: 'Con o sin puntos. Se valida el dígito verificador y evita registros repetidos.',
     },
     {
@@ -97,7 +97,7 @@ module.exports = {
         'esto es el puesto: Pastor Titular, Pastor Supervisor. Es opcional: si se deja en blanco, en la credencial ' +
         'no se imprime esa línea y su espacio se reparte entre los demás datos.',
     },
-    { name: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date' },
+    { name: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date', reservado: 'miembros_identidad' },
     // Reservados igual que en la ficha de miembro (ver server/sensibles.js)
     { name: 'telefono', label: 'Teléfono', type: 'tel', reservado: 'miembros_contacto' },
     { name: 'email', label: 'Correo electrónico', type: 'email', reservado: 'miembros_contacto' },

@@ -178,7 +178,7 @@ module.exports = {
     },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
     {
-      name: 'rut', label: 'RUT', type: 'rut', unique: true,
+      name: 'rut', label: 'RUT', type: 'rut', unique: true, reservado: 'miembros_identidad',
       help: 'Con o sin puntos. Se valida el dígito verificador y evita miembros repetidos.',
     },
     {
@@ -189,7 +189,7 @@ module.exports = {
     { name: 'nombres', label: 'Nombres', recorta: 'primero', type: 'text', required: true },
     { name: 'apellidos', label: 'Apellidos', type: 'text', required: true },
     {
-      name: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date',
+      name: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date', reservado: 'miembros_identidad',
       mostrarEdad: true, help: 'La edad se calcula sola.',
     },
     {

@@ -106,7 +106,16 @@ app.get('/health', (req, res) => {
   // conteste y que al volumen le quede espacio. Siempre devuelve 200 mientras
   // el sistema pueda contestar —el estado va en el contenido—, para que la
   // plataforma no esconda la explicación detrás de un error en blanco.
-  const salud = { ok: true, version: VERSION, base: 'ok', disco: null, sesiones: null };
+  // La zona horaria va en la salud del sistema a propósito: es lo único que
+  // deja comprobar desde fuera —abriendo /health— que el servidor está
+  // anotando con la hora de la iglesia y no con la del centro de datos.
+  let zona = null;
+  try {
+    zona = require('./zona-horaria').ahora();
+  } catch (e) {
+    zona = { zona: '?', texto: e.message };
+  }
+  const salud = { ok: true, version: VERSION, base: 'ok', disco: null, sesiones: null, zona: zona.zona, hora: zona.texto };
 
   // Si las sesiones se firman con la llave de reserva, cualquiera que haya
   // visto el código puede fabricarse una de administrador. Se dice acá para

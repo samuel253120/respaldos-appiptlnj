@@ -284,6 +284,7 @@ module.exports = {
     router.post('/solicitudes/:id(\\d+)/trasladar', requirePerm('solicitudes', 'edit'), (req, res) => {
       const seguimiento = require('../solicitudes/seguimiento');
       const alcance = require('../alcance');
+      const { can } = require('../permissions');
       const fila = db.prepare('SELECT * FROM solicitudes WHERE id = ?').get(req.params.id);
       if (!fila) return res.status(404).json({ error: 'Esa solicitud no existe.' });
       if (!alcance.alcanza(module.exports, fila, req.user)) {
@@ -293,11 +294,21 @@ module.exports = {
         return res.status(400).json({ error: `La solicitud está ${fila.estado.toLowerCase()}: ya no se traslada.` });
       }
 
+      /*
+       * Quién puede moverla: quien la tiene a cargo, siempre; y quien tenga la
+       * llave de tramitar las de otros.
+       *
+       * Antes decía «o el administrador», escrito así, con el rol adentro del
+       * código. Eso obligaba a hacer administrador de TODO a quien solo tenía
+       * que coordinar solicitudes y destrabar las que quedaban paradas. Con
+       * una llave propia eso se concede solo. De fábrica la tiene el
+       * administrador y nadie más, así que nada cambia mientras no se
+       * conceda a propósito.
+       */
       const esElResponsable = Number(fila.responsable_id) === Number(req.user.id);
-      const esAdmin = req.user.rol === 'admin';
-      if (!esElResponsable && !esAdmin) {
+      if (!esElResponsable && !can(req.user, 'solicitudes_tramitar', 'view')) {
         return res.status(403).json({
-          error: 'Solo puede trasladarla quien la tiene a cargo, o el administrador.',
+          error: 'Solo puede trasladarla quien la tiene a cargo, o quien tenga permiso para tramitar las de otros.',
         });
       }
 

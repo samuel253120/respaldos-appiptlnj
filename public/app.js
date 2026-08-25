@@ -498,7 +498,11 @@ document.addEventListener(
 document.addEventListener('click', (e) => {
   for (let el = e.target; el && el !== document; el = el.parentElement) {
     if (el.dataset && el.dataset.parar !== undefined) return; // lo suyo, no lo de la fila
-    if (el.dataset && el.dataset.imprimir !== undefined) { window.print(); return; }
+    if (el.dataset && el.dataset.imprimir !== undefined) {
+      if (!tieneLlave('datos_impresion')) return toast('Su cuenta no tiene permiso para imprimir', true);
+      window.print();
+      return;
+    }
     if (el.dataset && el.dataset.ir) { location.hash = el.dataset.ir; return; }
   }
 });
@@ -585,7 +589,16 @@ function route() {
     if (cl) marcarActivo(cl);
     return viewConfiguracion();
   }
-  if (parts[0] === 'print' && MOD[parts[1]] && parts[2]) return viewPrint(parts[1], parts[2]);
+  if (parts[0] === 'print' && MOD[parts[1]] && parts[2]) {
+    // También acá, no solo escondiendo el botón: una dirección de impresión
+    // guardada o pasada a alguien no puede saltarse la llave.
+    if (!tieneLlave('datos_impresion')) {
+      return (content().innerHTML =
+        '<div class="page-head"><h2>🖨️ Imprimir</h2></div>' +
+        '<p>Su cuenta no tiene permiso para imprimir. Puede seguir viendo y buscando en pantalla.</p>');
+    }
+    return viewPrint(parts[1], parts[2]);
+  }
   const dl = document.querySelector('.side-link[data-mod="_dash"]');
   if (dl) marcarActivo(dl);
   return viewDashboard();
@@ -1809,7 +1822,7 @@ async function viewList(name, filtrosIniciales) {
                     clase ? ` class="${clase}"` : ''}>${cellValue(f, r, c)}</td>`;
                 }).join('')}
                 <td class="acciones" style="white-space:nowrap;text-align:right">
-                  ${m.printable ? `<button class="btn secondary sm act-print" data-id="${r.id}" title="Imprimir">🖨️</button>` : ''}
+                  ${m.printable && tieneLlave('datos_impresion') ? `<button class="btn secondary sm act-print" data-id="${r.id}" title="Imprimir">🖨️</button>` : ''}
                   ${m.perms.delete && !generadoPorOtroModulo(r)
                     ? `<button class="btn danger sm act-del" data-id="${r.id}" title="Eliminar">🗑️</button>`
                     : ''}
@@ -2274,7 +2287,7 @@ async function viewFicha(name, id, pestana) {
       <h2>${m.icon} ${esc(m.labelSingular)}</h2>
       <div class="actions">
         <button class="btn secondary" id="btnBack">← Volver</button>
-        ${m.printable ? `<button class="btn secondary" id="btnPrint">🖨️ Imprimir</button>` : ''}
+        ${m.printable && tieneLlave('datos_impresion') ? `<button class="btn secondary" id="btnPrint">🖨️ Imprimir</button>` : ''}
         ${m.perms.edit ? `<button class="btn" id="btnEdit">✏️ Editar</button>` : ''}
       </div>
     </div>
@@ -3827,7 +3840,7 @@ async function viewForm(name, id, precarga) {
 
   const foot = document.getElementById('formFoot');
   foot.innerHTML = `
-    ${!isNew && m.printable ? `<button type="button" class="btn secondary left" id="btnPrint">🖨️ Imprimir</button>` : ''}
+    ${!isNew && m.printable && tieneLlave('datos_impresion') ? `<button type="button" class="btn secondary left" id="btnPrint">🖨️ Imprimir</button>` : ''}
     <button type="button" class="btn secondary" id="btnCancel">Cancelar</button>
     ${canEdit ? `<button type="submit" class="btn">💾 Guardar</button>` : ''}`;
   document.getElementById('btnCancel').addEventListener('click', () => (location.hash = `#/m/${name}`));

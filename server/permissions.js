@@ -208,6 +208,59 @@ const LLAVES = [
       'registro de cambios. De fábrica es solo del administrador.',
   },
   {
+    name: 'sistema_mantenimiento',
+    label: 'Dejar el sistema en mantenimiento',
+    group: 'Sistema',
+    // Una sola acción, como en «restablecer contraseñas de otros»: la llave se
+    // tiene o no se tiene. Separar ver de cambiar no diría nada acá.
+    acciones: ['view'],
+    defecto: ['admin'],
+    ayuda:
+      'Encender y apagar el modo mantenimiento, que deja a TODA la iglesia fuera del sistema hasta que ' +
+      'alguien lo desactive. Vivía dentro del permiso de configuración, así que quien podía corregir el ' +
+      'teléfono de la iglesia podía también cerrarle la puerta a todo el mundo. Separado, la configuración ' +
+      'se puede delegar sin entregar esa llave.',
+  },
+  {
+    name: 'miembros_identidad',
+    label: 'RUT y fecha de nacimiento de las fichas',
+    group: 'Datos reservados',
+    acciones: ['view'],
+    defecto: 'todos',
+    ayuda:
+      'El RUT y la fecha de nacimiento de los miembros, los pastores y las personas que no son de la ' +
+      'iglesia. Son los dos datos con que se suplanta a alguien, y hasta ahora los veía cualquiera que ' +
+      'pudiera abrir una ficha. Quien no lo tenga ve la ficha completa menos eso, no lo baja en la ' +
+      'planilla y tampoco puede dar con una persona buscando por su RUT. La ficha propia se ve entera ' +
+      'siempre.',
+  },
+  {
+    name: 'datos_impresion',
+    label: 'Imprimir fichas y documentos',
+    group: 'Sacar datos',
+    acciones: ['view'],
+    defecto: 'todos',
+    ayuda:
+      'El botón de imprimir de las fichas, los listados y los informes, y las pantallas de impresión. Se ' +
+      'separa por lo mismo que bajar la planilla: mirar una ficha en pantalla y salir con ella impresa ' +
+      'bajo el brazo no son la misma cosa. Quien no lo tenga sigue viendo y buscando en pantalla como ' +
+      'siempre. OJO CON LO QUE ESTA LLAVE NO PUEDE: la hoja se arma en el navegador con datos que esa ' +
+      'persona ya está viendo, así que quitarla saca el camino normal de imprimir, pero no impide que ' +
+      'alguien decidido use la impresión del propio navegador. Para que un dato no salga impreso, lo que ' +
+      'corresponde es no dejar que lo vea.',
+  },
+  {
+    name: 'solicitudes_tramitar',
+    label: 'Trasladar y cerrar solicitudes de otros',
+    group: 'Sistema',
+    acciones: ['view'],
+    defecto: ['admin'],
+    ayuda:
+      'Mover una solicitud a otro responsable, o darla por cerrada, cuando uno no es quien la tiene a ' +
+      'cargo. Quien es el responsable actual siempre puede hacerlo con las suyas, tenga o no esta llave: ' +
+      'esto es para quien coordina y necesita destrabar las de los demás sin ser administrador.',
+  },
+  {
     name: 'usuarios_clave',
     label: 'Restablecer contraseñas de otros',
     group: 'Sistema',

@@ -25,6 +25,7 @@
 const URL = process.env.URL || 'http://localhost:4314';
 const RUT = process.env.RUT || '11.111.111-1';
 const CLAVE = process.env.CLAVE || 'admin123';
+const { hoy, alinearConElServidor } = require('./hoy');
 
 let fallas = 0;
 
@@ -54,6 +55,8 @@ async function entrar() {
 }
 
 (async () => {
+  // La fecha de hoy la decide el servidor, no esta máquina: ver pruebas/hoy.js
+  await alinearConElServidor(URL);
   console.log(`🤝 Prueba de convivencia contra ${URL}\n`);
   const ana = await entrar(); // dos sesiones distintas, como dos personas
   const luis = await entrar();
@@ -232,7 +235,7 @@ async function entrar() {
       suGente.push(ficha.datos.id);
       await ana('POST', '/api/integrantes_cuerpo', {
         iglesia_id: iglesiaId, cuerpo_id: cuerpoId, miembro_id: ficha.datos.id,
-        estado: 'Activo', fecha_ingreso: new Date().toISOString().slice(0, 10),
+        estado: 'Activo', fecha_ingreso: hoy(),
       });
     }
   }
@@ -241,7 +244,7 @@ async function entrar() {
 
   const actividad = cuerpoId
     ? await ana('POST', '/api/asistencias', {
-        fecha: new Date().toISOString().slice(0, 10),
+        fecha: hoy(),
         tipo_reunion: 'Servicio General',
         cuerpos: [cuerpoId],
         nombre: `Prueba de convivencia ${Date.now()}`,
