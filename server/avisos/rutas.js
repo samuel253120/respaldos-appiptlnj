@@ -75,10 +75,31 @@ router.post('/avisos/aparato', authRequired, (req, res) => {
   res.json({ ok: true, aparatos: navegador.cuantosAparatos(req.user.id) });
 });
 
-router.delete('/avisos/aparato', authRequired, (req, res) => {
-  navegador.desuscribir(req.user.id, (req.body && req.body.endpoint) || '');
-  res.json({ ok: true, aparatos: navegador.cuantosAparatos(req.user.id) });
-});
+/**
+ * Desenganchar un aparato. Se atiende por POST y también por DELETE.
+ *
+ * POR QUÉ HAY DOS. Lo natural sería solo DELETE, y así estaba. Pero la
+ * dirección del aparato es larga y hay que mandarla en el cuerpo, y un DELETE
+ * CON CUERPO no tiene significado definido en la norma (RFC 9110 §9.3.5): a
+ * quien esté en el camino —un proxy, la red del teléfono, un cortafuegos— se
+ * le permite vaciarlo o rechazar la petición entera, y varios lo hacen. Cuando
+ * eso pasa, al navegador le llega un «Failed to fetch» pelado: ni siquiera se
+ * sabe que hubo un servidor al otro lado. Justamente lo que ocurrió al publicar
+ * el sistema en su propio dominio.
+ *
+ * Así que el sistema pide por POST, que nadie discute, y se deja el DELETE
+ * atendido por si algún navegador quedó con la página vieja cargada.
+ */
+function desenganchar(req, res) {
+  const cuerpo = req.body || {};
+  const cuantos = cuerpo.todos
+    ? navegador.desuscribirTodos(req.user.id)
+    : navegador.desuscribir(req.user.id, cuerpo.endpoint || '');
+  res.json({ ok: true, apagados: cuantos, aparatos: navegador.cuantosAparatos(req.user.id) });
+}
+
+router.post('/avisos/aparato/apagar', authRequired, desenganchar);
+router.delete('/avisos/aparato', authRequired, desenganchar);
 
 /**
  * Un aviso de prueba, para comprobar que de verdad llega.

@@ -332,6 +332,28 @@ async function api(method, path, body, isForm) {
   }
   return data;
 }
+
+/**
+ * Por qué falló algo, dicho en castellano.
+ *
+ * Cuando `fetch` no consigue hablar con el servidor —sin señal, la red del
+ * teléfono cortando la petición, un proxy que no deja pasar el método, el
+ * servidor reiniciándose— lanza un error cuyo texto lo escribe el navegador:
+ * «Failed to fetch», «Load failed», «NetworkError when attempting to fetch
+ * resource». Está en inglés, no dice qué pasó y no sugiere qué hacer. Enseñarle
+ * eso a alguien es peor que no decirle nada, porque parece una falla del
+ * sistema cuando casi siempre es la conexión.
+ *
+ * Lo que manda el servidor, en cambio, ya viene escrito para leerse: eso pasa
+ * tal cual.
+ */
+function porQueFalloLaRed(e) {
+  const texto = String((e && e.message) || e);
+  const deLaRed =
+    e instanceof TypeError ||
+    /failed to fetch|load failed|networkerror|network request failed/i.test(texto);
+  return deLaRed ? 'no se pudo hablar con el servidor. Revise su conexión e intente de nuevo.' : texto;
+}
 /**
  * Ruta de la que salen las opciones de un campo de referencia. Normalmente es
  * la lista completa del módulo referenciado, salvo que el campo declare su
@@ -3203,7 +3225,7 @@ async function renderMisAvisos(caja) {
         toast('Avisos activados en este aparato');
         renderMisAvisos(caja);
       } catch (e) {
-        decir(`No se pudo activar: ${e.message}`, true);
+        decir(`No se pudo activar: ${porQueFalloLaRed(e)}`, true);
       } finally {
         activar.disabled = false;
       }
@@ -3217,7 +3239,7 @@ async function renderMisAvisos(caja) {
         await api('POST', '/avisos/probar');
         decir('Mandado. Si no lo ve en unos segundos, revise que el aparato no esté en «no molestar».');
       } catch (e) {
-        decir(e.message, true);
+        decir(porQueFalloLaRed(e), true);
       }
     });
   }
@@ -3225,17 +3247,50 @@ async function renderMisAvisos(caja) {
   const apagar = document.getElementById('avApagar');
   if (apagar) {
     apagar.addEventListener('click', async () => {
+      apagar.disabled = true;
       try {
         const reg = await navigator.serviceWorker.getRegistration('/');
         const sus = reg && (await reg.pushManager.getSubscription());
+
         if (sus) {
-          await api('DELETE', '/avisos/aparato', { endpoint: sus.endpoint });
+          // Primero se le pide la baja al servidor y después se suelta acá: al
+          // revés, si el servidor no contestara, seguiría mandando avisos a un
+          // aparato que ya no los espera y nadie podría darlo de baja, porque
+          // su dirección solo la sabía este navegador.
+          await api('POST', '/avisos/aparato/apagar', { endpoint: sus.endpoint });
           await sus.unsubscribe();
+          toast('Avisos apagados en este aparato');
+          renderMisAvisos(caja);
+          return;
         }
-        toast('Avisos apagados en este aparato');
+
+        // No hay suscripción acá, pero el servidor puede tener aparatos
+        // enganchados: otro teléfono, un computador que ya no se usa, o una
+        // dirección anterior del sistema. Esos no se pueden apagar uno por uno
+        // desde acá —su dirección la sabía aquel navegador, no este—, así que
+        // la única salida es apagarlos todos.
+        if (!d.aparatos) {
+          decir('En este aparato los avisos ya estaban apagados.');
+          return;
+        }
+        const igual = await preguntarEnDialogo({
+          titulo: 'En este aparato ya estaban apagados',
+          cuerpo:
+            `Su cuenta tiene ${d.aparatos} aparato(s) enganchado(s), pero ninguno es este. ` +
+            'Pueden ser otro teléfono, un computador que ya no usa, o una dirección anterior del sistema. ' +
+            'Desde acá no se pueden apagar de a uno. ¿Los apago todos? ' +
+            'Después tendrá que volver a activarlos en cada aparato donde los quiera.',
+          aceptar: 'Apagarlos todos',
+          peligro: true,
+        });
+        if (!igual) return;
+        const r = await api('POST', '/avisos/aparato/apagar', { todos: true });
+        toast(`${r.apagados} aparato(s) apagado(s)`);
         renderMisAvisos(caja);
       } catch (e) {
-        decir(`No se pudo apagar: ${e.message}`, true);
+        decir(`No se pudo apagar: ${porQueFalloLaRed(e)}`, true);
+      } finally {
+        apagar.disabled = false;
       }
     });
   }

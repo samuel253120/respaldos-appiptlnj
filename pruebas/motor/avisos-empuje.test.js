@@ -242,6 +242,34 @@ test('una suscripción incompleta no se guarda', () => {
   assert.equal(navegador.cuantosAparatos(quien), 0);
 });
 
+test('apagarlos todos deja la cuenta sin ningún aparato', () => {
+  const quien = unUsuario();
+  unAparato(quien, `https://127.0.0.1:${puerto}/push/todos-1`);
+  unAparato(quien, `https://127.0.0.1:${puerto}/push/todos-2`);
+  unAparato(quien, `https://127.0.0.1:${puerto}/push/todos-3`);
+  assert.equal(navegador.cuantosAparatos(quien), 3);
+  assert.equal(navegador.desuscribirTodos(quien), 3, 'dice cuántos apagó');
+  assert.equal(navegador.cuantosAparatos(quien), 0);
+});
+
+test('apagarlos todos no toca los de otra persona', () => {
+  // Es la única forma de sacar un aparato huérfano —uno activado en un
+  // computador que ya no se usa, o en una dirección anterior del sistema—, y
+  // por eso mismo tiene que estar bien acotada: se apagan los de quien lo
+  // pide, y de nadie más.
+  const mio = unUsuario();
+  const ajeno = unUsuario();
+  unAparato(mio, `https://127.0.0.1:${puerto}/push/mio`);
+  unAparato(ajeno, `https://127.0.0.1:${puerto}/push/ajeno`);
+  navegador.desuscribirTodos(mio);
+  assert.equal(navegador.cuantosAparatos(mio), 0);
+  assert.equal(navegador.cuantosAparatos(ajeno), 1, 'el de la otra persona sigue puesto');
+});
+
+test('apagar todo sin tener ninguno no es un error', () => {
+  assert.equal(navegador.desuscribirTodos(unUsuario()), 0);
+});
+
 test('desenganchar saca solo el aparato de uno', () => {
   const mio = unUsuario();
   const ajeno = unUsuario();

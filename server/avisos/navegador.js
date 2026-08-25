@@ -108,6 +108,21 @@ function desuscribir(usuarioId, endpoint) {
     .run(usuarioId, endpoint).changes;
 }
 
+/**
+ * Desengancha TODOS los aparatos de una persona.
+ *
+ * Hace falta porque un aparato solo se puede desenganchar por su nombre —la
+ * dirección que le dio el servicio del navegador— y esa dirección la conoce
+ * únicamente el navegador que la pidió. Si alguien activó los avisos en un
+ * computador que ya no usa, o en una dirección anterior del sistema, o limpió
+ * los datos del sitio, esa suscripción queda huérfana: el servidor le sigue
+ * mandando avisos y no hay ningún navegador que pueda pedir su baja. Esto es
+ * la única salida para esos casos.
+ */
+function desuscribirTodos(usuarioId) {
+  return db.prepare('DELETE FROM notificacion_suscripciones WHERE usuario_id = ?').run(usuarioId).changes;
+}
+
 /** Cuántos aparatos tiene enganchados esta persona. */
 const cuantosAparatos = (usuarioId) =>
   db.prepare('SELECT COUNT(*) c FROM notificacion_suscripciones WHERE usuario_id = ?').get(usuarioId).c;
@@ -169,4 +184,4 @@ async function empujar(usuarioId, { titulo, cuerpo, enlace, etiqueta }, comoMand
   return { mandados, borrados, fallados, porque };
 }
 
-module.exports = { llavePublica, suscribir, desuscribir, cuantosAparatos, empujar };
+module.exports = { llavePublica, suscribir, desuscribir, desuscribirTodos, cuantosAparatos, empujar };
