@@ -28,6 +28,23 @@
  *               → esto no lo puede hacer un programa. Lo más cerca que se
  *                 llega es decodificar el QR del PDF rasterizado, con y sin
  *                 tinta corrida, que es lo que hace la otra prueba.
+ *
+ *                 COMPROBADO EN PAPEL el 25 de agosto de 2026: se imprimió una
+ *                 credencial, se escaneó con un teléfono y la verificación
+ *                 resolvió bien. Queda anotado acá porque es la única prueba de
+ *                 toda la especificación que no deja rastro en ninguna suite, y
+ *                 sin la anotación se vuelve a pedir cada vez.
+ *
+ *                 Vale por lo que confirma de una sola vez, y que ninguna
+ *                 prueba automática puede confirmar junta: que el QR sobrevive
+ *                 a la tinta al tamaño de módulo elegido, que la dirección del
+ *                 QR llega a la página pública, y que el código de autenticidad
+ *                 valida contra la llave que hoy tiene el servidor.
+ *
+ *                 De eso último se sigue una consecuencia práctica: esas
+ *                 credenciales ya impresas validan contra la CREDENCIAL_SECRETO
+ *                 que está puesta ahora. Cambiarla las deja todas sin verificar
+ *                 (ver server/credenciales/codigo.js).
  *   15.11       mirar las pantallas nuevas en un teléfono → pruebas/humo.js
  *               las abre en 390 px y avisa si alguna se sale de lado
  */
