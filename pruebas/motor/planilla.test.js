@@ -47,12 +47,26 @@ test('pero un signo seguido de algo que no es número sí se marca', () => {
   }
 });
 
-test('los números llevan la coma decimal que se usa acá', () => {
-  assert.equal(planilla.numero(1250000.5), '"1250000,5"');
-  assert.equal(planilla.numero(0), '"0"');
-  assert.equal(planilla.numero(-25000), '"-25000"');
-  assert.equal(planilla.numero(null), '""');
-  assert.equal(planilla.numero(''), '""');
+test('los números llevan la coma decimal que se usa acá, y van SIN comillas', () => {
+  /*
+   * Las comillas son para el texto. Un número entre comillas la planilla puede
+   * tomarlo por texto, y ahí no se suma, no se promedia y no se grafica, que es
+   * lo primero que alguien hace con una columna de montos. Como el separador de
+   * columnas es «;», la coma decimal no confunde a nadie.
+   */
+  assert.equal(planilla.numero(1250000.5), '1250000,5');
+  assert.equal(planilla.numero(0), '0');
+  assert.equal(planilla.numero(-25000), '-25000');
+  assert.equal(planilla.numero(null), '', 'una casilla vacía se deja vacía, no con dos comillas');
+  assert.equal(planilla.numero(''), '');
+});
+
+test('un número de verdad nunca queda entre comillas', () => {
+  // La regla en una línea, por si alguien vuelve a envolverlos «para que se
+  // vean prolijos»: se ven igual, y dejan de poder calcularse.
+  for (const n of [0, 1, -1, 0.5, 1250000.5, -25000]) {
+    assert.ok(!planilla.numero(n).includes('"'), `${n} salió entre comillas`);
+  }
 });
 
 test('lo que no es un número se escribe tal cual', () => {

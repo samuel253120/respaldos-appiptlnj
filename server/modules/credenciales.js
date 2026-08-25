@@ -410,7 +410,7 @@ module.exports = {
 
       let anterior = null;
       try {
-        anterior = emitir();
+        anterior = emitir.immediate();
       } catch (e) {
         return res.status(500).json({ error: `No se pudo emitir la credencial: ${e.message}` });
       }

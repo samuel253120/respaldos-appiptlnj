@@ -128,6 +128,17 @@ function pieDelDocumento(extra) {
 }
 
 /**
+ * El mismo pie, para los archivos que no son HTML.
+ *
+ * En una planilla no hay nada que escapar —la celda no interpreta etiquetas—,
+ * así que un nombre con «&» tiene que salir con su «&» y no como «&amp;».
+ */
+function pieDelDocumentoEnPlano() {
+  const quien = (USER && USER.nombre) ? ` por ${USER.nombre}` : '';
+  return `Emitido el ${fechaLarga(new Date().toISOString())}${quien}`;
+}
+
+/**
  * El nombre oficial de la institución va donde importa —la pantalla de
  * ingreso y todo lo que se imprime—; en el resto del sistema basta con saber
  * con qué iglesia se está trabajando.
@@ -5921,8 +5932,10 @@ function exportarInformeCSV() {
   if (INFORME.planilla) return exportarPlanillaCSV(INFORME.planilla);
   const d = INFORME.datos;
   const comilla = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  // En Chile el decimal se escribe con coma; el separador de columnas es ";"
-  const numero = (v) => comilla(String(v).replace('.', ','));
+  // En Chile el decimal se escribe con coma; el separador de columnas es «;»,
+  // así que la coma decimal no confunde a nadie y el número puede ir pelado.
+  // Entre comillas la planilla puede tomarlo por texto y ahí no se promedia.
+  const numero = (v) => String(v).replace('.', ',');
   const lineas = [];
   const bloque = (titulo, columna, filas, campo) => {
     if (!filas.length) return;
@@ -5936,7 +5949,9 @@ function exportarInformeCSV() {
   };
 
   lineas.push([comilla('Informe de asistencia'), comilla(INFORME.titulo)].join(';'));
+  lineas.push([comilla('Institución'), comilla(IGLESIA.nombre)].join(';'));
   lineas.push([comilla('Período'), comilla(INFORME.periodo)].join(';'));
+  lineas.push([comilla(''), comilla(pieDelDocumentoEnPlano())].join(';'));
   lineas.push('');
   bloque('Resumen general', 'Total', [d.general], () => 'Todo');
   bloque('Por cuerpo', 'Cuerpo / Grupo', d.porCuerpo, (f) => f.cuerpo || '—');
@@ -5950,7 +5965,7 @@ function exportarInformeCSV() {
   }
 
   // El BOM hace que Excel reconozca las tildes
-  const blob = new Blob(['\ufeff' + lineas.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\ufeff' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   const enlace = document.createElement('a');
   enlace.href = URL.createObjectURL(blob);
   enlace.download = `asistencia-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -5974,7 +5989,21 @@ function exportarPlanillaCSV(pl) {
   const hubo = new Set(pl.diasConReunion);
   const lineas = [];
 
+  /*
+   * LA REGLA, EN TODA LA PLANILLA: el texto va entre comillas y los números
+   * van pelados. Antes no era así y el mismo dato se escribía de dos maneras
+   * en el mismo archivo —los conteos del cuerpo iban como número («2») y los
+   * del pie como texto («"32"»)—, así que una planilla podía sumar una fila y
+   * no la otra sin que nadie entendiera por qué.
+   *
+   * Y los porcentajes salen sin el signo. Un «41%» es un valor ya formateado:
+   * si la planilla lo toma como texto, no se promedia ni se grafica, y si lo
+   * toma como número depende de la versión y del idioma. Mandando el número
+   * pelado no queda ninguna duda, y el encabezado ya dice que es un porcentaje.
+   */
   lineas.push([comilla(`REGISTRO DE ASISTENCIAS · ${pl.cuerpo.nombre.toUpperCase()} · ${MESES[pl.numeroDeMes - 1]} ${pl.anio}`)].join(';'));
+  lineas.push([comilla(IGLESIA.nombre)].join(';'));
+  lineas.push([comilla(pieDelDocumentoEnPlano())].join(';'));
   lineas.push('');
   lineas.push(['N°', 'NOMBRE Y APELLIDOS', ...pl.dias, 'T.', 'S', '% S', 'J', '% J', 'N', '% N'].map(comilla).join(';'));
 
@@ -5983,27 +6012,27 @@ function exportarPlanillaCSV(pl) {
       comilla(String(p.n).padStart(2, '0')),
       comilla(`${p.trato ? p.trato + ' ' : ''}${p.nombre}`),
       ...pl.dias.map((dia) => comilla(hubo.has(dia) ? p.marcas[dia] : '')),
-      p.total, p.presentes, comilla(`${p.pct_presente}%`),
-      p.justificados, comilla(`${p.pct_justificado}%`),
-      p.ausentes, comilla(`${p.pct_ausente}%`),
+      p.total, p.presentes, p.pct_presente,
+      p.justificados, p.pct_justificado,
+      p.ausentes, p.pct_ausente,
     ].join(';'));
   }
 
   const pie = (etiqueta, saca) => lineas.push([
     comilla(''), comilla(etiqueta),
-    ...pl.dias.map((dia) => comilla(hubo.has(dia) ? saca(pl.porDia[dia]) : '')),
+    ...pl.dias.map((dia) => (hubo.has(dia) ? saca(pl.porDia[dia]) : '')),
   ].join(';'));
   lineas.push('');
   pie('TOTAL INTEGRANTES', (x) => x.integrantes);
   pie('TOTAL ASISTENCIA', (x) => x.presentes);
-  pie('PORCENTAJE ASISTENCIA', (x) => `${x.pct_presente}%`);
+  pie('PORCENTAJE ASISTENCIA', (x) => x.pct_presente);
   pie('TOTAL JUSTIFICADOS', (x) => x.justificados);
-  pie('PORCENTAJE JUSTIFICACIÓN', (x) => `${x.pct_justificado}%`);
+  pie('PORCENTAJE JUSTIFICACIÓN', (x) => x.pct_justificado);
   pie('TOTAL INASISTENCIA', (x) => x.ausentes);
-  pie('PORCENTAJE INASISTENCIA', (x) => `${x.pct_ausente}%`);
+  pie('PORCENTAJE INASISTENCIA', (x) => x.pct_ausente);
 
   // El BOM hace que Excel reconozca las tildes
-  const blob = new Blob(['\ufeff' + lineas.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\ufeff' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   const enlace = document.createElement('a');
   enlace.href = URL.createObjectURL(blob);
   enlace.download = `asistencia-${pl.cuerpo.nombre.replace(/[^\w]+/g, '-').toLowerCase()}-${pl.mes}.csv`;

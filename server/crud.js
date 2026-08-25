@@ -960,7 +960,7 @@ function buildRouter() {
           return row;
         });
 
-        const row = escribir();
+        const row = escribir.immediate();
         return res.status(isNew ? 201 : 200).json(expandRow(def, row, req.user));
       } catch (e) {
         if (e instanceof ErrorDeDatos) {
@@ -1039,7 +1039,7 @@ function buildRouter() {
           // siempre sin ficha desde donde llegar a ellos (ver server/archivos.js)
           archivos.borrarLosDe(def, row);
           db.prepare(`DELETE FROM "${def.name}" WHERE id = ?`).run(req.params.id);
-        })();
+        }).immediate();
       } catch (e) {
         if (e instanceof ErrorDeDatos || e.esDeDatos) return res.status(400).json({ error: e.message });
         return averiaInterna(res, `eliminar en ${def.label}`, e);

@@ -375,7 +375,7 @@ module.exports = {
           descripcion: `Pasa de ${seguimiento.nombreDelUsuario(db, fila.responsable_id)} a ${destino.nombre}. Motivo: ${motivo}`,
           user: req.user,
         });
-      })();
+      }).immediate();
 
       avisarAlResponsable(db, { ...fila, responsable_id: hacia }, req.user, 'Le trasladaron', motivo);
 

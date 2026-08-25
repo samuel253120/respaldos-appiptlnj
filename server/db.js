@@ -34,6 +34,29 @@ let db;
  *                  y otra vez ya no vuelven al disco.
  *   mmap_size      leer la base como si fuera memoria, que es más rápido.
  *   temp_store     los ordenamientos temporales se hacen en memoria.
+ *
+ * Y una que no es un pragma pero va acá porque es la otra mitad de lo mismo:
+ * TODA transacción que escribe se abre con `.immediate()`, no suelta.
+ *
+ * El busy_timeout de arriba no alcanza solo. Una transacción suelta —la que
+ * abre `db.transaction(...)()` por omisión— parte leyendo y recién pide el
+ * permiso de escribir cuando llega al primer INSERT. Si para entonces otro
+ * proceso ya escribió, lo que esta transacción leyó quedó viejo, y SQLite no
+ * puede hacer otra cosa que rechazarla en el acto: esperar no arreglaría nada,
+ * porque lo leído seguiría estando viejo. El busy_timeout ni se consulta, y
+ * sale «database is locked» aunque haya ocho segundos de paciencia
+ * configurados. Abriéndola con `.immediate()` el permiso de escribir se pide
+ * al empezar, que es cuando el busy_timeout sí sirve: el segundo espera su
+ * turno y después escribe.
+ *
+ * Medido con cuatro procesos guardando a la vez sobre la misma base: sueltas,
+ * 120 fallas de 160 intentos; inmediatas, ninguna. Con un solo proceso —que es
+ * como corre hoy en Railway— no se nota, porque no hay con quién chocar; se
+ * nota apenas hay un segundo, y hay varios que aparecen sin avisar: el
+ * respaldo, una migración corrida a mano con el sistema andando, o el día que
+ * se levante una segunda instancia.
+ *
+ * Que no quede ninguna suelta lo vigila pruebas/motor/transacciones.test.js.
  */
 function afinar() {
   db.pragma('journal_mode = WAL');

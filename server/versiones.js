@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.96.0", fecha: "2026-08-25", titulo: "Los números de las planillas bajan como números, y dos guardados a la vez ya no se traban" },
   { version: "1.95.0", fecha: "2026-08-25", titulo: "Todo lo que se imprime identifica a la institución, dice quién lo emitió y sale sin restos de pantalla" },
   { version: "1.94.0", fecha: "2026-08-25", titulo: "El menú se reordenó por lo que más se usa, y sus grupos se pliegan" },
   { version: "1.93.0", fecha: "2026-08-25", titulo: "Al aprobar una solicitud de ayuda social, la ayuda queda registrada sola" },

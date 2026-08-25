@@ -276,7 +276,7 @@ router.post('/:modulo', (req, res) => {
     });
 
     try {
-      ejecutar();
+      ejecutar.immediate();
     } catch (e) {
       if (e.message !== '__revision__') {
         console.error('Error importando:', e);

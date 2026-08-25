@@ -29,7 +29,21 @@ const { chromium } = require('playwright');
 
 const URL = process.env.URL || 'http://localhost:4314';
 const RUT = process.env.RUT || '11.111.111-1';
-const CLAVE = process.env.CLAVE || 'admin123';
+
+/**
+ * La contraseña con la que se entra, que puede cambiar durante la corrida.
+ *
+ * En un sistema recién instalado la cuenta trae la contraseña que entrega el
+ * administrador y el sistema OBLIGA a cambiarla antes de dejar hacer nada: sin
+ * pasar por ahí no hay ninguna pantalla que revisar. Así que la primera vez
+ * esta suite la cambia, se queda con la nueva y sigue. En un sistema que ya
+ * está en uso esa pantalla no aparece y esto no hace nada.
+ *
+ * Es un dato de la corrida y no una constante justamente por eso: la segunda
+ * entrada —la que revisa el teléfono— ya no sirve con la de fábrica.
+ */
+let clave = process.env.CLAVE || 'admin123';
+const CLAVE_NUEVA = process.env.CLAVE_NUEVA || 'Humo.2026.Prueba';
 
 // «#/config» no está acá: se revisa aparte, pestaña por pestaña, más abajo
 const PANTALLAS_SUELTAS = ['#/', '#/asistencia', '#/asistencia/informes', '#/perfil'];
@@ -37,16 +51,68 @@ const PANTALLAS_SUELTAS = ['#/', '#/asistencia', '#/asistencia/informes', '#/per
 async function revisarUnMedio(navegador, medio, ancho) {
   const pagina = await navegador.newPage({ viewport: { width: ancho, height: 900 } });
   const errores = [];
+  /*
+   * Mientras se está entrando, que el servidor diga que no es lo esperado.
+   *
+   * Pasan dos cosas antes de ver la primera pantalla, y las dos dejan una
+   * línea roja en la consola del navegador:
+   *
+   *   401  el intento con la contraseña de fábrica, cuando esta suite ya la
+   *        cambió en una corrida anterior. Se prueba una y después la otra.
+   *   403  la cuenta que todavía tiene la contraseña que le entregaron: el
+   *        servidor le niega /api/meta, y la pantalla usa justamente esa
+   *        negativa para llevarla a cambiarla. El 403 no es una falla: es
+   *        cómo está hecho.
+   *
+   * Sin esto, una instalación recién hecha «falla» siempre por lo único que
+   * tiene que pasar. La excepción dura hasta que se entra y ni un segundo más:
+   * de ahí en adelante, si una pantalla pide algo que no le corresponde, se ve.
+   */
+  let todaviaEntrando = true;
+  const esDeLaEntrada = (t) => todaviaEntrando && /\b(401|403)\b/.test(t);
   pagina.on('pageerror', (e) => errores.push(e.message));
-  pagina.on('console', (m) => { if (m.type() === 'error') errores.push(m.text().slice(0, 120)); });
+  pagina.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    const texto = m.text().slice(0, 120);
+    if (!esDeLaEntrada(texto)) errores.push(texto);
+  });
 
-  await pagina.goto(URL + '/');
-  await pagina.fill('#loginRut', RUT);
-  await pagina.fill('#loginPass', CLAVE);
-  await pagina.click('button[type=submit]');
-  await pagina.waitForTimeout(1500);
+  const entrar = async (conQue) => {
+    await pagina.goto(URL + '/');
+    await pagina.fill('#loginRut', RUT);
+    await pagina.fill('#loginPass', conQue);
+    await pagina.click('button[type=submit]');
+    await pagina.waitForTimeout(1500);
+    return !(await pagina.$('#loginRut')); // si el formulario ya no está, entró
+  };
+
+  /*
+   * Se prueba con la de fábrica y, si no, con la que esta suite deja puesta.
+   *
+   * La primera corrida sobre una instalación nueva TIENE que cambiar la
+   * contraseña —el sistema no deja pasar de ahí—, así que de la segunda en
+   * adelante la de fábrica ya no sirve. Sin esto, «npm run humo» andaba una
+   * vez y a la siguiente se quedaba esperando una pantalla que no iba a
+   * llegar. Es un intento fallido como mucho, y solo la primera vez: `clave`
+   * queda corregida para el resto de la corrida.
+   */
+  if (!(await entrar(clave)) && clave !== CLAVE_NUEVA) {
+    if (await entrar(CLAVE_NUEVA)) clave = CLAVE_NUEVA;
+  }
+
+  // Primer ingreso: hay que elegir una contraseña propia antes de seguir
+  if (await pagina.$('#cambioForm')) {
+    await pagina.fill('#cambioNueva', CLAVE_NUEVA);
+    await pagina.fill('#cambioRepetir', CLAVE_NUEVA);
+    await pagina.click('#cambioForm button[type=submit]');
+    await pagina.waitForTimeout(1800);
+    clave = CLAVE_NUEVA;
+    console.log('   🔑 era el primer ingreso: la contraseña quedó cambiada para el resto de la revisión');
+  }
+  // Enseguida se ofrece la pregunta secreta, que acá se deja para después
   if (await pagina.$('#psLuego')) { await pagina.click('#psLuego'); await pagina.waitForTimeout(700); }
   await pagina.waitForSelector('.topbar', { timeout: 15000 });
+  todaviaEntrando = false; // de acá en adelante, un 401 o un 403 sí es una falla
 
   const modulos = await pagina.evaluate(() => MODULES.map((m) => m.name));
   const pegados = [];

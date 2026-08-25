@@ -350,7 +350,7 @@ router.post('/limpieza', (req, res) => {
         db.prepare('DELETE FROM usuarios WHERE id != ?').run(req.user.id);
         vaciadas.usuarios = otras;
       }
-    })();
+    }).immediate();
   } catch (e) {
     return res.status(500).json({ error: `No se pudo vaciar: ${e.message}` });
   }

@@ -150,18 +150,34 @@ test('si figuraba atendida por alguien, eso queda dicho', () => {
 
 // -------------------------------------------------------------- repetirla ---
 
+/**
+ * Se cuenta SOLO lo de las dos iglesias de este archivo.
+ *
+ * Los archivos de prueba del motor corren a la vez sobre UNA misma base, así
+ * que un COUNT(*) de toda la tabla mide también lo que otro archivo esté
+ * escribiendo en ese instante. Contado así, este control fallaba de a ratos
+ * —una vez de cada tantas y siempre por uno de más— y el número que salía no
+ * tenía nada que ver con la migración. Las dos iglesias se crean acá arriba y
+ * no las toca nadie más: acotando a ellas se mide lo que se quería medir.
+ */
+const loDeAca = (tabla) =>
+  db.prepare(`SELECT COUNT(*) c FROM ${tabla} WHERE iglesia_id IN (?, ?)`).get(iglesia, otra).c;
+
 test('correrla dos veces no duplica nada', () => {
+  const numerosDeAca = () => db
+    .prepare('SELECT numero FROM solicitudes WHERE iglesia_id IN (?, ?) ORDER BY id')
+    .all(iglesia, otra).map((s) => s.numero).join(',');
   const antes = {
-    solicitudes: db.prepare('SELECT COUNT(*) c FROM solicitudes').get().c,
-    fichas: db.prepare('SELECT COUNT(*) c FROM no_miembros').get().c,
-    docs: db.prepare('SELECT COUNT(*) c FROM documentos_solicitudes').get().c,
-    hist: db.prepare('SELECT COUNT(*) c FROM historial_solicitudes').get().c,
-    numeros: db.prepare('SELECT numero FROM solicitudes ORDER BY id').all().map((s) => s.numero).join(','),
+    solicitudes: loDeAca('solicitudes'),
+    fichas: loDeAca('no_miembros'),
+    docs: loDeAca('documentos_solicitudes'),
+    hist: loDeAca('historial_solicitudes'),
+    numeros: numerosDeAca(),
   };
   solicitudesConSeguimiento();
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM solicitudes').get().c, antes.solicitudes);
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM no_miembros').get().c, antes.fichas);
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM documentos_solicitudes').get().c, antes.docs);
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM historial_solicitudes').get().c, antes.hist);
-  assert.equal(db.prepare('SELECT numero FROM solicitudes ORDER BY id').all().map((s) => s.numero).join(','), antes.numeros);
+  assert.equal(loDeAca('solicitudes'), antes.solicitudes);
+  assert.equal(loDeAca('no_miembros'), antes.fichas);
+  assert.equal(loDeAca('documentos_solicitudes'), antes.docs);
+  assert.equal(loDeAca('historial_solicitudes'), antes.hist);
+  assert.equal(numerosDeAca(), antes.numeros);
 });

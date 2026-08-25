@@ -167,7 +167,7 @@ function correr({ ruta, prueba = false, ruts = 'detener', solo = null, hasta = n
       db.transaction(() => {
         pasarPorLosModulos();
         throw new EnsayoTerminado();
-      })();
+      }).immediate();
     } catch (e) {
       if (!(e instanceof EnsayoTerminado)) throw e;
     }

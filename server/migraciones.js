@@ -1420,7 +1420,7 @@ function credencialesDesdeCero() {
       `INSERT INTO configuracion (clave, valor) VALUES ('credenciales_desde_cero', datetime('now','localtime'))
        ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor`
     ).run();
-  })();
+  }).immediate();
 
   // El contador vuelve a cero: el primer número que se entregue será el 001
   try { require('./credenciales/serie').fijarContador(0); } catch (e) { /* aún no existe: se crea en cero */ }
@@ -1583,7 +1583,7 @@ function ayudasConFichaDelBeneficiario() {
       enlazar.run(ficha, ayuda.id);
       comoNoMiembro++;
     }
-  })();
+  }).immediate();
 
   if (comoMiembro || comoNoMiembro || sinNombre) {
     console.log(
@@ -1708,7 +1708,7 @@ function solicitudesConSeguimiento() {
         user: null,
       });
     }
-  })();
+  }).immediate();
 
   if (numeradas) {
     console.log(

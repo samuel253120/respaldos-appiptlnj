@@ -55,12 +55,23 @@ function celda(valor) {
   return `"${texto.replace(/"/g, '""')}"`;
 }
 
-/** Un número, con la coma decimal que se usa acá. */
+/**
+ * Un número, con la coma decimal que se usa acá y SIN comillas.
+ *
+ * Las comillas son para el texto. Un número entre comillas la planilla puede
+ * tomarlo por texto, y ahí no se suma, no se promedia y no se grafica —que es
+ * lo primero que alguien intenta hacer con una columna de montos—. Como el
+ * separador de columnas es «;», la coma decimal no confunde a nadie.
+ *
+ * Lo que no sea un número de verdad sí pasa por celda(), entre comillas y con
+ * su protección: un campo de monto puede traer cualquier cosa de una
+ * importación vieja.
+ */
 function numero(valor) {
-  if (valor === null || valor === undefined || valor === '') return '""';
+  if (valor === null || valor === undefined || valor === '') return '';
   const n = Number(valor);
   if (!Number.isFinite(n)) return celda(valor);
-  return `"${String(n).replace('.', ',')}"`;
+  return String(n).replace('.', ',');
 }
 
 /** El texto con formato, en plano: en una celda las etiquetas solo estorban. */

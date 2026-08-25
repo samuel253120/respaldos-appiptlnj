@@ -463,7 +463,7 @@ module.exports = {
         return guardadas;
       });
 
-      const guardadas = guardar();
+      const guardadas = guardar.immediate();
       // Se devuelve cómo quedó la lista completa: así, si mientras esta
       // persona marcaba lo suyo otra marcó lo de ella, la pantalla lo muestra
       // en vez de quedarse con una foto vieja.

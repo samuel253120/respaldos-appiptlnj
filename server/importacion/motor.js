@@ -59,7 +59,7 @@ function importarModulo({ nombre, filas, lote, prueba }, trabajo) {
   });
 
   try {
-    correr();
+    correr.immediate();
   } catch (e) {
     if (!(e instanceof EnsayoTerminado)) throw e;
   }
