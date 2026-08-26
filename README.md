@@ -271,7 +271,11 @@ Si a un cuerpo se le marca la casilla cuando la iglesia ya tenía sus líderes r
 
 **La regla manda sobre los líderes, y sobre nadie más.** El cuerpo de la directiva suele tener también gente puesta a mano que no es líder —la tesorera, el secretario, alguien que la iglesia decidió que estuviera—. A esa gente **no se le toca la ficha nunca**: no está ahí por su categoría, está porque alguien la puso. A quien sí es líder, en cambio, la regla lo maneja aunque lo hubieran anotado a mano.
 
-> ⚠️ **La primera versión de esta regla (1.107.0) no hacía esa distinción** y retiraba a todo integrante que no fuera líder, en silencio y de a uno, a medida que se guardaban fichas por otros motivos. Un cuerpo de veintisiete podía quedar en tres, y solo se notaba al pasar lista. **La 1.107.1 lo repara sola al actualizar**: devuelve a su cuerpo a los que retiró —con su fecha de ingreso original, y en *En prueba* si les quedaba plazo por delante— y le deja a cada uno la explicación en su bitácora. A quien salió como correspondía no se le toca.
+> ⚠️ **La primera versión de esta regla (1.107.0) no hacía esa distinción** y retiraba a todo integrante que no fuera líder, en silencio y de a uno, a medida que se guardaban fichas por otros motivos. Un cuerpo de veintisiete podía quedar en tres, y solo se notaba al pasar lista. **La 1.107.2 lo repara sola al actualizar**: devuelve a su cuerpo a los que retiró —conservando su ficha tal como estaba, y en *En prueba* si les quedaba plazo por delante— y le deja a cada uno la explicación en su bitácora.
+>
+> Se devuelve solo a quien cumple las cuatro cosas: está retirado con el motivo exacto que escribía la regla, su ficha no lleva la marca de automática, está en un cuerpo marcado como directiva, y se lo retiró **después** del día en que la regla empezó a existir en ese servidor. Una salida que una persona escribió con esas mismas palabras antes de todo esto no se toca.
+>
+> **La reparación de la 1.107.1 no devolvió a nadie.** Exigía que la ficha tuviera fecha de ingreso y que fuera anterior al retiro; pero las fichas de los integrantes que venían de antes las creó la migración *«integrantes con su ficha»*, que no se la puso, así que quedó en nulo. La condición dejaba fuera justo a toda la gente que había que devolver: la reparación corrió, no encontró a nadie, se dio por aplicada y el cuerpo siguió mostrando tres. La de la 1.107.2 lleva otro nombre a propósito, para que vuelva a correr donde aquella ya se dio por hecha.
 
 ### Histórico de directivas 🏅
 

@@ -1683,51 +1683,79 @@ function directivaDeCadaIglesia() {
  * motivos: un cuerpo de veintisiete quedó en tres sin que nada lo dijera, y se
  * notó al ir a pasar la lista.
  *
- * A quiénes se devuelve: a los que llevan EXACTAMENTE el motivo de retiro que
- * escribía esa regla y que ya estaban en el cuerpo desde antes del día en que
- * se los retiró. Esa segunda condición es la que separa los dos casos:
+ * POR QUÉ ESTA ES LA SEGUNDA VERSIÓN. La primera reparación (1.107.1) no
+ * devolvió a nadie. Pedía que la ficha tuviera fecha de ingreso y que fuera
+ * anterior al retiro, creyendo que así distinguía al que ya estaba en el
+ * cuerpo del que la regla había metido y sacado el mismo día. Pero las fichas
+ * de los integrantes que venían de antes las creó la migración «integrantes
+ * con su ficha», que NO les puso fecha de ingreso: quedó en nulo. O sea que la
+ * condición dejaba fuera justo a toda la gente que había que devolver. La
+ * reparación corrió, no encontró a nadie, se dio por aplicada, y el cuerpo
+ * siguió mostrando tres integrantes.
  *
- *   · Alguien que estaba desde antes y que la regla echó → se devuelve. Su
- *     fecha de ingreso es anterior al día del retiro.
- *   · Alguien a quien la regla metió y después sacó el mismo día por dejar de
- *     ser líder → se queda retirado, que es lo correcto. Su fecha de ingreso
- *     ES el día del retiro.
+ * A QUIÉNES SE DEVUELVE. A los que cumplen las cuatro cosas a la vez:
  *
- * En qué estado vuelve: en el que tenía. Si le quedó una fecha de fin de
- * prueba por delante, estaba en prueba; si no, era integrante activo. Eso se
- * puede reconstruir porque la regla solo cambió el estado y el retiro, y no
- * tocó nada más de la ficha.
+ *   · Están retirados con EXACTAMENTE el motivo que escribía esa regla.
+ *   · Su ficha no lleva la marca de automática, o sea que no la puso la regla
+ *     —a los que metió ella y después sacó por dejar de ser líderes se los
+ *     retiró con razón, y esos se quedan afuera—.
+ *   · Están en un cuerpo marcado como directiva, que es el único lugar donde
+ *     la regla llegó a meter mano.
+ *   · Se los retiró DESPUÉS del día en que la regla empezó a existir en este
+ *     servidor. Esa fecha no se adivina: la deja anotada la migración que
+ *     marcó los cuerpos de directiva. Así, una salida que una persona escribió
+ *     con esas mismas palabras antes de todo esto no se toca.
+ *
+ * EN QUÉ ESTADO VUELVE. En el que tenía. Si le quedó una fecha de fin de
+ * prueba por delante, estaba en prueba; si no, era integrante activo. Se puede
+ * reconstruir porque la regla solo cambió el estado y el retiro, y no tocó
+ * nada más de la ficha —ni la fecha de ingreso, que sigue siendo la suya—.
  *
  * Y se anota en la bitácora de cada persona, porque la salida también quedó
  * anotada: sin esto, su historial diría que salió del cuerpo y nunca volvió.
  */
 function devolverLosQueLaDirectivaSaco() {
-  const NOMBRE = 'devolver los que la directiva sacó';
+  // Nombre nuevo a propósito: en los servidores donde ya corrió la reparación
+  // equivocada, aquella quedó marcada como aplicada y no volvería a correr
+  const NOMBRE = 'devolver los que la directiva sacó (corregida)';
   if (yaAplicada(NOMBRE)) return;
 
   const hayTabla = (t) =>
     !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
-  if (!hayTabla('integrantes_cuerpo')) return marcarAplicada(NOMBRE);
+  if (!hayTabla('integrantes_cuerpo') || !hayTabla('cuerpos')) return marcarAplicada(NOMBRE);
 
   const columnas = new Set(db.prepare('PRAGMA table_info("integrantes_cuerpo")').all().map((c) => c.name));
   if (!columnas.has('automatico')) return; // la columna se crea al arrancar; se intentará de nuevo
+  const deCuerpos = new Set(db.prepare('PRAGMA table_info("cuerpos")').all().map((c) => c.name));
+  if (!deCuerpos.has('reune_lideres')) return;
 
   const MOTIVO = require('./directiva').MOTIVO_SALIDA;
   const bitacora = require('./bitacora');
+
+  /**
+   * Desde cuándo pudo la regla haber retirado a alguien: desde que se marcaron
+   * los cuerpos de directiva en este servidor. Si por lo que sea no está
+   * anotado, se usa el día en que salió la versión que trajo la regla, que es
+   * un piso igual de seguro.
+   */
+  const marca = db
+    .prepare("SELECT date(aplicada_en) AS dia FROM migraciones WHERE nombre = 'directiva de cada iglesia'")
+    .get();
+  const desde = (marca && marca.dia) || '2026-08-25';
 
   const echados = db
     .prepare(
       `SELECT i.id, i.miembro_id, i.cuerpo_id, i.iglesia_id, i.fecha_fin_prueba, c.nombre AS cuerpo
          FROM integrantes_cuerpo i
-         LEFT JOIN cuerpos c ON c.id = i.cuerpo_id
+         JOIN cuerpos c ON c.id = i.cuerpo_id
         WHERE i.estado = 'Retirado'
           AND i.motivo_retiro = ?
           AND (i.automatico IS NULL OR i.automatico = 0)
-          AND i.fecha_ingreso IS NOT NULL
+          AND c.reune_lideres = 1
           AND i.fecha_retiro IS NOT NULL
-          AND i.fecha_ingreso < i.fecha_retiro`
+          AND i.fecha_retiro >= ?`
     )
-    .all(MOTIVO);
+    .all(MOTIVO, desde);
 
   if (!echados.length) return marcarAplicada(NOMBRE);
 
@@ -1789,7 +1817,7 @@ function ejecutarMigraciones() {
     ['categorías de tesorería', categoriasDeTesoreria],
     ['tipos de actividad y motivos de ausencia', listasDeAsistenciaComoDatos],
     ['directiva de cada iglesia', directivaDeCadaIglesia],
-    ['devolver los que la directiva sacó', devolverLosQueLaDirectivaSaco],
+    ['devolver los que la directiva sacó (corregida)', devolverLosQueLaDirectivaSaco],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],

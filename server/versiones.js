@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.107.2", fecha: "2026-08-26", titulo: "La reparación de la directiva no devolvía a nadie: pedía una fecha de ingreso que esas fichas nunca tuvieron" },
   { version: "1.107.1", fecha: "2026-08-26", titulo: "Se devuelve a los integrantes que la regla de la directiva había retirado por error, y ahora solo maneja a los líderes" },
   { version: "1.107.0", fecha: "2026-08-26", titulo: "Los miembros líderes entran y salen solos de la directiva de su iglesia" },
   { version: "1.106.0", fecha: "2026-08-26", titulo: "El panel ya no muestra las últimas asistencias, y la barra de arriba cabe hasta en un teléfono de 320 px" },
