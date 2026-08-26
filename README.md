@@ -249,6 +249,26 @@ Al elegir **Cuerpo** aparecen los campos que solo tienen sentido en una entidad 
 
 La directiva no se guarda en el cuerpo, sino en su propio módulo, para conservar también las anteriores (ver más abajo).
 
+### La directiva de la iglesia se llena sola 🏛️
+
+Los **miembros líderes** de una iglesia **son** su directiva. No es una lista que alguien mantenga: quien pasa a la categoría *Miembro Líder* entra solo al cuerpo de la directiva, y quien deja esa categoría sale solo.
+
+Llevarlo a mano significaba acordarse dos veces por cada cambio —una en la ficha de la persona y otra en la del cuerpo—, y bastaba olvidar una para que la lista dejara de decir la verdad. Eso no se nota: la lista sigue ahí, completa a la vista, solo que le falta alguien o le sobra.
+
+**Cuál es el cuerpo de la directiva** se marca una vez, en su ficha: *«Este cuerpo reúne a los miembros líderes de su iglesia»*. Se marca en **uno solo por iglesia** —con dos, un líder quedaría en los dos y ninguno sería «la directiva»—, y el sistema avisa cuál lo tiene ya si se intenta marcar otro. A las iglesias que ya tenían su cuerpo de directiva registrado se les pone sola al actualizar, deduciéndola del nombre: no hay nada que configurar.
+
+| Lo que pasa en la ficha del miembro | Lo que hace el sistema |
+|---|---|
+| Pasa a *Miembro Líder* | Entra a la directiva como integrante **activo** |
+| Deja de ser *Miembro Líder* | Queda **Retirado**, con la fecha y el motivo |
+| Pasa a *Fallecido* o *Trasladado* | Queda **Retirado**: la directiva es de quienes la componen hoy |
+| Cambia de iglesia | Sale de la directiva que dejó y entra a la de la que llegó |
+| Vuelve a ser líder | Se reusa su ficha anterior, con su primera fecha de ingreso intacta |
+
+**Nunca se borra nada**: al salir, la ficha de integrante queda marcada *Retirado* con su fecha y su motivo, que es como el sistema conserva el recorrido de cada persona. Y **las dos cosas quedan anotadas en su bitácora**, diciendo por qué: *«Entra a "Directiva" por pasar a Miembro Líder»*, *«Sale de "Directiva" (Dejó de ser Miembro Líder)»*.
+
+Si a un cuerpo se le marca la casilla cuando la iglesia ya tenía sus líderes registrados, **entran todos de una vez**: la directiva no arranca vacía.
+
 ### Histórico de directivas 🏅
 
 Cada cuerpo elige su directiva por períodos, y el módulo **Directivas de Cuerpos** guarda todas: la vigente y las anteriores, con su período, sus fechas, sus integrantes y el acta de elección adjunta.

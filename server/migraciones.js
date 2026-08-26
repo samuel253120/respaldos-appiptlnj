@@ -1604,6 +1604,74 @@ function textoConFormatoSaneadoDeNuevo() {
   }
 }
 
+/**
+ * Marca cuál cuerpo es la directiva, en las iglesias que ya tenían uno.
+ *
+ * Desde ahora los miembros líderes entran y salen solos de la directiva de su
+ * iglesia (ver server/directiva.js), y para eso el cuerpo tiene que decir de
+ * sí mismo que lo es. Una iglesia que ya llevaba su directiva registrada como
+ * un cuerpo más no tiene por qué ir a marcarla: se deduce del nombre UNA vez,
+ * acá, y de ahí en adelante manda la marca.
+ *
+ * Se deduce del nombre solo en la migración y nunca en la regla del día a día.
+ * Es la diferencia entre adivinar una vez, con el resultado a la vista y
+ * corregible, y adivinar en cada guardado: lo segundo se rompe en silencio el
+ * día que alguien renombra el cuerpo.
+ *
+ * Se reconocen «Directiva», «Directivas» y lo que empiece por ahí —«Directiva
+ * General», «Directiva de la Iglesia»— sin distinguir mayúsculas ni tildes. Si
+ * en una iglesia calzan varios, se marca el de nombre más corto: entre
+ * «Directiva» y «Directiva de Damas», la directiva de la iglesia es la
+ * primera. Y NO se mete a nadie: solo se pone la marca. A los líderes los
+ * hace entrar la regla la próxima vez que se guarde su ficha, o el barrido de
+ * abajo si el cuerpo se marca a mano.
+ */
+function directivaDeCadaIglesia() {
+  const NOMBRE = 'directiva de cada iglesia';
+  if (yaAplicada(NOMBRE)) return;
+
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('cuerpos')) return marcarAplicada(NOMBRE);
+
+  const columnas = new Set(db.prepare('PRAGMA table_info("cuerpos")').all().map((c) => c.name));
+  if (!columnas.has('reune_lideres')) return; // la columna se crea al arrancar; se intentará de nuevo
+
+  const sinTildes = (t) =>
+    String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+  const marcados = [];
+  db.transaction(() => {
+    const iglesias = db.prepare('SELECT id, nombre FROM iglesias').all();
+    const marcar = db.prepare('UPDATE cuerpos SET reune_lideres = 1 WHERE id = ?');
+    for (const ig of iglesias) {
+      const yaMarcado = db
+        .prepare('SELECT id FROM cuerpos WHERE iglesia_id = ? AND reune_lideres = 1')
+        .get(ig.id);
+      if (yaMarcado) continue;
+
+      const candidatos = db
+        .prepare('SELECT id, nombre FROM cuerpos WHERE iglesia_id = ?')
+        .all(ig.id)
+        .filter((c) => sinTildes(c.nombre).startsWith('directiva'))
+        .sort((a, b) => String(a.nombre).length - String(b.nombre).length);
+      if (!candidatos.length) continue;
+
+      marcar.run(candidatos[0].id);
+      marcados.push(`${candidatos[0].nombre} (${ig.nombre})`);
+    }
+  }).immediate();
+
+  if (marcados.length) {
+    console.log(
+      `🏛️  directiva: ${marcados.length} cuerpo(s) quedaron marcados como la directiva de su iglesia ` +
+        `— ${marcados.slice(0, 3).join(', ')}${marcados.length > 3 ? '…' : ''}. ` +
+        'Los miembros líderes entran y salen de ahí solos.'
+    );
+  }
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -1629,6 +1697,7 @@ function ejecutarMigraciones() {
     ['administrador general', administradorGeneral],
     ['categorías de tesorería', categoriasDeTesoreria],
     ['tipos de actividad y motivos de ausencia', listasDeAsistenciaComoDatos],
+    ['directiva de cada iglesia', directivaDeCadaIglesia],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],

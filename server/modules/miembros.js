@@ -570,8 +570,17 @@ module.exports = {
      * que quedaran colgando y se copian las fechas de matrimonio a quien las
      * tenga en blanco.
      */
-    afterSave(fila, { db }) {
+    afterSave(fila, { db, user }) {
       sincronizarUsuario(fila, db);
+
+      /**
+       * Los miembros líderes componen la directiva de su iglesia.
+       *
+       * No es una lista que alguien mantenga: al pasar a esa categoría la
+       * persona entra sola al cuerpo de la directiva, y al dejarla sale sola.
+       * La regla entera —y por qué— está en server/directiva.js.
+       */
+      require('../directiva').alGuardarUnMiembro(db, fila, user);
 
       const conyugeId = fila.conyuge_id || null;
 

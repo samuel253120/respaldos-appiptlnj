@@ -98,6 +98,11 @@ module.exports = {
     },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
     { name: 'lider_id', label: 'Líder / Encargado', type: 'ref', ref: 'miembros' },
+    {
+      name: 'reune_lideres', label: 'Este cuerpo reúne a los miembros líderes de su iglesia', type: 'boolean',
+      help: 'Es la directiva. Quien pase a la categoría «Miembro Líder» entra solo, y quien la deje sale solo. '
+        + 'Se marca en un solo cuerpo por iglesia.',
+    },
     { name: 'fecha_creacion', label: 'Fecha de creación', type: 'date' },
 
     // --- Cómo entra y cómo aporta cada integrante ---
@@ -139,12 +144,51 @@ module.exports = {
   ],
   hooks: {
     /**
+     * La directiva es una sola por iglesia.
+     *
+     * Con dos cuerpos marcados, un miembro líder entraría a los dos y saldría
+     * de los dos, y ninguna de las dos listas sería «la directiva». Se dice
+     * cuál lo tiene ya, para poder ir a destildarlo si de verdad se quiere
+     * cambiar.
+     */
+    beforeSave(data, { id, existing, db }) {
+      const marcada = data.reune_lideres !== undefined
+        ? data.reune_lideres
+        : existing ? existing.reune_lideres : 0;
+      if (!marcada) return null;
+      const iglesiaId = data.iglesia_id !== undefined
+        ? data.iglesia_id
+        : existing ? existing.iglesia_id : null;
+      if (!iglesiaId) return null;
+
+      const otra = db
+        .prepare('SELECT id, nombre FROM cuerpos WHERE iglesia_id = ? AND reune_lideres = 1 AND id <> ?')
+        .get(iglesiaId, id || 0);
+      if (otra) {
+        return `"${otra.nombre}" ya es la directiva de esta iglesia. Destíldelo ahí antes de marcar este, ` +
+          'para que los miembros líderes no queden en dos cuerpos a la vez.';
+      }
+      return null;
+    },
+
+    /**
      * Cada cuerpo estrena dos cuentas: su tesorería general y la de las
      * cuotas de sus integrantes, que se manejan aparte.
      */
-    afterSave(fila, { isNew, db }) {
-      if (!isNew) return;
-      require('../cuentas-de-cuerpos').crearLasQueFalten(db, fila);
+    afterSave(fila, { isNew, existing, user, db }) {
+      if (isNew) require('../cuentas-de-cuerpos').crearLasQueFalten(db, fila);
+
+      /**
+       * Recién marcado como directiva: entran los líderes que ya lo eran.
+       *
+       * Sin esto la casilla solo valdría de ahí en adelante, y la directiva
+       * arrancaría vacía teniendo la iglesia sus líderes registrados desde
+       * antes. Se corre solo cuando la marca CAMBIA a puesta, no en cada
+       * guardado: si no, cada vez que alguien corrigiera el teléfono del
+       * cuerpo volvería a meter a los que se hubieran retirado a mano.
+       */
+      const seAcabaDeMarcar = fila.reune_lideres && (isNew || !(existing && existing.reune_lideres));
+      if (seAcabaDeMarcar) require('../directiva').alMarcarUnCuerpo(db, fila, user);
     },
   },
 
