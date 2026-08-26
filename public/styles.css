@@ -322,6 +322,16 @@ table.grid .btn.danger.sm:hover { background: #fee2e2; border-color: #fecaca; co
 .toolbar select { flex: 0 1 auto; max-width: 190px; }
 .toolbar .spacer { flex: 1; }
 .toolbar label.range { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+/**
+ * El envoltorio de los filtros, que en pantalla grande no existe.
+ *
+ * `display: contents` hace que la caja desaparezca y sus hijos queden como
+ * hijos directos de la barra: el diseño del computador es exactamente el de
+ * antes de que este envoltorio existiera. Solo en el teléfono se convierte en
+ * una caja de verdad, para poder plegarla (más abajo, en su media query).
+ */
+.toolbar .tb-plegable { display: contents; }
+.toolbar .tb-desplegar { display: none; }
 
 table.grid { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 table.grid th {
@@ -348,8 +358,13 @@ table.grid th.col-mini { font-size: 15px; }
   display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
   background: #e2e8f0; color: #334155;
   /* Se lee en una línea mientras quepa; si la etiqueta es larga y la pantalla
-     angosta, corta adentro de la píldora en vez de empujar la página de lado */
-  max-width: 100%; overflow-wrap: anywhere;
+     angosta, corta adentro de la píldora en vez de empujar la página de lado.
+     «break-word» y no «anywhere»: con «anywhere» la píldora se dejaba encoger
+     hasta una letra de ancho, y al lado de un texto largo —el nombre de una
+     cuenta de tesorería— quedaba partiendo palabras enteras por la mitad
+     («Corporaci/ón», «Cuerp/o / Grupo»). Así solo se parte lo que de verdad no
+     cabe, y lo que cede primero es el texto de al lado, que sí puede. */
+  max-width: 100%; overflow-wrap: break-word;
 }
 .badge.green { background: #dcfce7; color: #166534; }
 .badge.red { background: #fee2e2; color: #991b1b; }
@@ -501,17 +516,23 @@ table.grid th.col-mini { font-size: 15px; }
   table.grid-lista thead { display: none; }
   table.grid-lista tr {
     position: relative;
-    border: 1px solid var(--border); border-radius: 12px; margin: 8px 10px; padding: 9px 12px;
+    border: 1px solid var(--border); border-radius: 12px; margin: 7px 10px; padding: 8px 12px;
     background: var(--card); box-shadow: var(--shadow);
   }
   table.grid-lista tr:hover td { background: transparent; }
   table.grid-lista td {
-    border: 0; padding: 3px 0; display: flex; gap: 14px; align-items: baseline;
-    justify-content: space-between; text-align: right; font-size: 13.5px; line-height: 1.35;
+    border: 0; padding: 2px 0; display: flex; gap: 12px; align-items: baseline;
+    justify-content: space-between; text-align: right; font-size: 13.5px; line-height: 1.32;
   }
+  /* El nombre del dato cede antes que el dato.
+     Iba fijo («flex: none»), así que una etiqueta larga —«Total general de
+     asistencia»— se llevaba media línea y empujaba el número al renglón
+     siguiente. Ahora la que se recorta es la etiqueta, que es la que se puede
+     adivinar; el dato se queda entero. */
   table.grid-lista td::before {
-    content: attr(data-label); flex: none; text-align: left;
+    content: attr(data-label); flex: 0 1 auto; min-width: 0; text-align: left;
     color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   /* Lo que viene en blanco no ocupa lugar */
   table.grid-lista td:empty { display: none; }
@@ -540,9 +561,30 @@ table.grid th.col-mini { font-size: 15px; }
     position: absolute; top: 7px; right: 9px; padding: 0; gap: 4px; justify-content: flex-end;
   }
   table.grid-lista td.acciones::before { display: none; }
-  /* Y el nombre no se mete por debajo de ellos */
+  /* Y lo que va arriba de todo no se mete por debajo de ellos.
+     El sitio se reservaba nombrando las columnas de nombre, y en los listados
+     que parten por la fecha —Servicios, Asistencia, Tesorería, Actas— los
+     botones quedaban justo encima del dato: la fecha no se podía leer. Ahora
+     la reserva la lleva el primer dato de la tarjeta, lo llame como se llame
+     («col-primera», que la pone app.js). */
+  table.grid-lista td.col-primera,
   table.grid-lista td[data-col="tratamiento"], table.grid-lista td[data-col="nombres"],
   table.grid-lista td[data-col="nombre"], table.grid-lista td[data-col="apellidos"] { padding-right: 78px; }
+  /* Y esa primera línea mide por lo menos lo que miden los botones, para que
+     la SEGUNDA empiece por debajo de ellos y no a un pelo. Sin esto quedaba un
+     píxel de aire: cualquier cosa que estirara los botones o acortara el
+     título —y son dos cosas que se tocan seguido— metía el segundo dato
+     debajo. Se vio midiendo: en Iglesias, Cuerpos, Categorías, Perfiles y
+     Asistencia el segundo dato ya se estaba pisando con ellos. */
+  table.grid-lista td.col-primera { min-height: 27px; }
+  /* Cuando el listado no lleva ningún nombre, ese primer dato ES el título de
+     la tarjeta —la fecha del servicio, el número del acta— y se lee como tal,
+     no como una línea más con su etiqueta al lado. */
+  table.grid-lista td.col-titular {
+    font-size: 15.5px; font-weight: 700; line-height: 1.25;
+    justify-content: flex-start; text-align: left; padding-bottom: 4px;
+  }
+  table.grid-lista td.col-titular::before { display: none; }
   /* Y se ven siempre: en el teléfono no hay ratón que pasar por encima */
   table.grid-lista .btn.sm { border-color: var(--border); background: #fff; color: var(--text); }
   table.grid-lista .thumb { width: 46px; height: 46px; }
@@ -1133,6 +1175,26 @@ table.planilla-mes tfoot .pie.no td  { color: #b91c1c; }
   .fin .num { font-size: 18px; }
   .toolbar { padding: 10px 12px; gap: 8px; }
   .toolbar input[type="search"] { min-width: 0; flex: 1 1 100%; }
+  /**
+   * Los filtros, plegados hasta que se piden.
+   *
+   * Buscador, cuatro selectores, dos fechas y dos botones son casi cuatrocientos
+   * píxeles: más de media pantalla de teléfono antes del primer registro. Se
+   * queda a la vista el buscador —que es lo que se usa siempre— y lo demás se
+   * abre con el botón, que además dice cuántos filtros hay puestos.
+   */
+  .toolbar .tb-plegable { display: none; }
+  .toolbar.filtros-abiertos .tb-plegable {
+    display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin-top: 2px;
+  }
+  .toolbar .tb-desplegar { display: inline-flex; align-items: center; gap: 6px; }
+  .toolbar .tb-desplegar::before { content: "▾"; font-size: 11px; }
+  .toolbar.filtros-abiertos .tb-desplegar::before { content: "▴"; }
+  /* Con un filtro puesto el botón se nota: si no, una lista recortada parece
+     una lista a la que le faltan fichas */
+  .toolbar .tb-desplegar.con-filtros {
+    border-color: var(--accent); color: var(--accent); font-weight: 700;
+  }
   /* Un filtro cuya opción más larga es el nombre completo de la iglesia
      estiraba la barra fuera de la pantalla: se le pone freno. */
   .toolbar select, .toolbar label.range { flex: 1 1 45%; min-width: 0; max-width: 100%; }
@@ -1494,7 +1556,25 @@ table.grid.cuotas td.debe.se-puede:hover::after { content: "✓"; color: var(--a
 
 /* Saldos por cuenta en el listado de Tesorería */
 .saldos-cuentas { grid-column: 1 / -1; background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
-.saldos-cuentas .sc-tit { font-size: 13px; font-weight: 700; color: var(--marca-azul); margin-bottom: 6px; }
+/**
+ * El saldo de cada cuenta se puede plegar.
+ *
+ * En el computador viene abierto y se ve igual que siempre. En un teléfono con
+ * doce cuentas ocupaba setecientos píxeles —dos pantallas— antes del primer
+ * movimiento, así que ahí llega plegado, con el número de cuentas a la vista
+ * para saber qué hay adentro. Es un <details> de toda la vida: se abre solo,
+ * sin programa que lo atienda, y funciona con el teclado.
+ */
+.saldos-cuentas .sc-tit {
+  font-size: 13px; font-weight: 700; color: var(--marca-azul); margin-bottom: 6px;
+  cursor: pointer; list-style: none;
+}
+.saldos-cuentas .sc-tit::-webkit-details-marker { display: none; }
+.saldos-cuentas .sc-tit::before {
+  content: "▸"; display: inline-block; width: 1em; color: var(--muted); font-weight: 400;
+}
+.saldos-cuentas[open] .sc-tit::before { content: "▾"; }
+.saldos-cuentas .sc-tit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .saldos-cuentas .sc-tit .mut { font-weight: 500; color: var(--muted); font-size: 12px; }
 .saldos-cuentas ul { list-style: none; margin: 0; padding: 0; }
 .saldos-cuentas li {

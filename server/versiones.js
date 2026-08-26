@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.104.0", fecha: "2026-08-26", titulo: "En el teléfono, los botones ya no tapan la fecha y los filtros dejan ver los registros" },
   { version: "1.103.0", fecha: "2026-08-26", titulo: "Optimización completa: entrar pesa 155 KB menos y con señal mala el panel aparece antes" },
   { version: "1.102.0", fecha: "2026-08-25", titulo: "Tres permisos nuevos, cinco ajustes nuevos, y los tipos de actividad y motivos de ausencia los mantiene la iglesia" },
   { version: "1.101.1", fecha: "2026-08-25", titulo: "Tres llaves que se podían conceder y no servían de nada: ahora sí" },

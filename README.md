@@ -1632,6 +1632,20 @@ La interfaz es totalmente adaptable (menú lateral táctil, formularios de una c
 
 Lo que más se usa desde el teléfono está pensado para eso: **Asistencia** reúne el calendario, las actividades y la toma de lista en una sola pantalla, con botones grandes, buscador, filtros, barra de acciones fija y guardado automático con respaldo en el propio teléfono (ver **Asistencia: todo en un solo lugar**), y las **fotos** se ajustan de tamaño antes de subirse, para que carguen aun con mala señal.
 
+### Los listados en el teléfono
+
+Cada registro se dibuja como una tarjeta, con el dato que lo identifica arriba —la fecha del servicio, el número del acta, el nombre de la persona— y lo demás debajo, en vez de una tabla de nueve columnas que obliga a desplazarse de lado.
+
+- **Imprimir y borrar van en la esquina de la tarjeta**, no en una fila propia, y el dato de arriba les deja el sitio: en un listado largo, una fila entera para dos botones chicos es media pantalla desperdiciada.
+- **Los filtros llegan plegados.** A la vista queda el buscador, que es lo que se usa siempre; el resto se abre con un botón que dice cuántos filtros hay puestos. Si se llega con alguno puesto, se abre solo: una lista recortada sin que se vea por qué es peor que un botón de más.
+- **El nombre del dato cede antes que el dato.** Una etiqueta larga se recorta con puntos suspensivos —se puede adivinar— y el dato se queda entero.
+
+| | Antes | Ahora |
+|---|---|---|
+| Dónde empieza el primer registro (Servicios) | 387 px | **260 px** |
+| Registros a la vista sin desplazar (Servicios) | 3 | **4** |
+| Ídem en Tesorería, con doce cuentas | 0 | **3** |
+
 ## Publicar en internet 🌐
 
 Para que el equipo acceda desde cualquier lugar (computador o celular), vea la guía paso a paso en **[DESPLIEGUE.md](DESPLIEGUE.md)** — incluye Railway, Render y servidor propio con Docker (`Dockerfile` y `docker-compose.yml` ya incluidos).

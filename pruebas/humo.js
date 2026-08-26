@@ -118,6 +118,7 @@ async function revisarUnMedio(navegador, medio, ancho) {
   const pegados = [];
   const anchos = {};
   const repetidos = [];
+  const tapados = [];
 
   const revisar = async (ruta) => {
     await pagina.goto(URL + '/' + ruta);
@@ -159,6 +160,51 @@ async function revisarUnMedio(navegador, medio, ancho) {
     });
     if (dobles.etiquetas.length || dobles.nombres.length) {
       repetidos.push(`${ruta} → ${[...dobles.etiquetas, ...dobles.nombres].join(', ')}`);
+    }
+
+    /*
+     * Un dato TAPADO por los botones de la tarjeta.
+     *
+     * En el teléfono el listado se dibuja como tarjetas, e imprimir y borrar
+     * van pegados a la esquina con posición absoluta: una fila entera para dos
+     * botones chicos sería media pantalla desperdiciada. Eso obliga a
+     * reservarles el sitio en el dato que quede debajo, y ese sitio se
+     * reservaba NOMBRANDO las columnas de nombre. En Registro de Servicios
+     * —y en Asistencia, Tesorería, Actas, Inventarios y todas las que parten
+     * por la fecha— no hay ninguna columna de nombre, así que los botones
+     * quedaban justo encima y la fecha no se podía leer.
+     *
+     * No lo vio ninguna prueba: la tarjeta no se sale de la pantalla, no tira
+     * ningún error y ninguna pantalla queda «Cargando…». Se vio en el teléfono
+     * de alguien. Así que ahora se mide: se toma el rectángulo de los botones
+     * y el de cada dato, y si se pisan, se dice cuál y dónde.
+     */
+    if (ancho <= 700) {
+      const encima = await pagina.evaluate(() => {
+        const choques = [];
+        for (const fila of document.querySelectorAll('table.grid-lista tbody tr')) {
+          const botones = fila.querySelector('td.acciones');
+          if (!botones || !botones.getClientRects().length) continue;
+          const b = botones.getBoundingClientRect();
+          if (!b.width) continue;
+          for (const celda of fila.querySelectorAll('td:not(.acciones)')) {
+            if (!celda.getClientRects().length) continue;
+            const texto = celda.textContent.trim();
+            if (!texto) continue;
+            // Se mide el texto y no la celda: la celda ocupa todo el ancho de
+            // la tarjeta aunque su dato esté a la izquierda, y eso no molesta.
+            const rango = document.createRange();
+            rango.selectNodeContents(celda);
+            for (const r of rango.getClientRects()) {
+              if (!r.width || !r.height) continue;
+              const seTocan = r.left < b.right && r.right > b.left && r.top < b.bottom && r.bottom > b.top;
+              if (seTocan) { choques.push(`«${texto.slice(0, 24)}» (${celda.dataset.col || '?'})`); break; }
+            }
+          }
+        }
+        return [...new Set(choques)];
+      });
+      if (encima.length) tapados.push(`${ruta} → ${encima.slice(0, 3).join(' · ')}`);
     }
   };
 
@@ -252,11 +298,12 @@ async function revisarUnMedio(navegador, medio, ancho) {
       ` · pestañas abiertas: ${conPestanas}` +
       ` · pegados en "Cargando…": ${pegados.length ? pegados.join(', ') : 'ninguno'}` +
       ` · campos repetidos: ${repetidos.length ? repetidos.join(' | ') : 'ninguno'}` +
+      (ancho <= 700 ? ` · datos tapados por los botones: ${tapados.length ? tapados.join(' | ') : 'ninguno'}` : '') +
       ` · se salen de lado: ${Object.keys(anchos).length ? JSON.stringify(anchos) : 'ninguna'}` +
       ` · errores: ${distintos.length ? distintos.slice(0, 4).join(' | ') : 'ninguno'}`
   );
   await pagina.close();
-  return pegados.length + Object.keys(anchos).length + distintos.length + repetidos.length;
+  return pegados.length + Object.keys(anchos).length + distintos.length + repetidos.length + tapados.length;
 }
 
 (async () => {

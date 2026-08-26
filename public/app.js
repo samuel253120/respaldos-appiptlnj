@@ -1690,6 +1690,17 @@ function renderShell() {
     backdrop.classList.remove('show');
   });
 }
+/**
+ * ¿Se está mirando en un teléfono?
+ *
+ * Los 700 px son los mismos con que la hoja de estilos cambia de diseño (ver
+ * styles.css): así lo que se decide acá y lo que se decide allá no pueden
+ * quedar diciendo cosas distintas.
+ */
+function enPantallaChica() {
+  return window.matchMedia('(max-width: 700px)').matches;
+}
+
 function content() {
   return document.getElementById('content');
 }
@@ -1952,27 +1963,85 @@ async function viewList(name, filtrosIniciales) {
     ? fieldsBy['iglesia_id']
     : null;
 
+  /**
+   * Los filtros van plegados en el teléfono.
+   *
+   * En el computador esta barra es una línea y no estorba. En un teléfono son
+   * el buscador, cuatro selectores, dos fechas y dos botones: casi cuatrocientos
+   * píxeles —más de media pantalla— antes del primer registro. Quien abre
+   * Servicios en el teléfono quiere ver los servicios, no la caja de filtros.
+   *
+   * Así que en pantalla chica se queda a la vista lo que se usa siempre —el
+   * buscador— y lo demás se despliega con un botón que dice cuántos filtros
+   * hay puestos. Si viene alguno puesto, se despliega solo: una lista recortada
+   * sin que se vea por qué es peor que un botón de más.
+   *
+   * En el computador el envoltorio es `display: contents` (ver styles.css), o
+   * sea que no existe para el diseño: la barra queda exactamente igual que
+   * antes. El botón tampoco se ve ahí.
+   */
+  const hayQuePlegar = !!(iglesiaField || filterFields.length || m.dateField);
+
   tb.innerHTML = `
     <input type="search" id="q" placeholder="Buscar…" value="${esc(st.q)}"
            aria-label="Buscar en ${esc(m.label)}" />
-    ${iglesiaField ? `<select id="f_iglesia_id" aria-label="Filtrar por iglesia"><option value="">— Todas las iglesias —</option></select>` : ''}
-    ${filterFields.map((f) => `
-      <select id="f_${f.name}" aria-label="Filtrar por ${esc(f.label)}">
-        <option value="">— ${esc(f.label)} —</option>
-        ${(f.options || []).map((o) => {
-          const v = typeof o === 'object' ? o.value : o;
-          const l = typeof o === 'object' ? o.label : o;
-          return `<option value="${esc(v)}" ${st.filters[f.name] === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
-        }).join('')}
-      </select>`).join('')}
-    ${m.dateField ? `
-      <label class="range">Desde <input type="date" id="fDesde" value="${esc(st.desde)}" /></label>
-      <label class="range">Hasta <input type="date" id="fHasta" value="${esc(st.hasta)}" /></label>` : ''}
+    ${hayQuePlegar
+      ? `<button type="button" class="btn secondary sm tb-desplegar" id="tbFiltros" aria-expanded="false"
+                 aria-controls="tbPlegable">Filtros</button>`
+      : ''}
+    <div class="tb-plegable" id="tbPlegable">
+      ${iglesiaField ? `<select id="f_iglesia_id" aria-label="Filtrar por iglesia"><option value="">— Todas las iglesias —</option></select>` : ''}
+      ${filterFields.map((f) => `
+        <select id="f_${f.name}" aria-label="Filtrar por ${esc(f.label)}">
+          <option value="">— ${esc(f.label)} —</option>
+          ${(f.options || []).map((o) => {
+            const v = typeof o === 'object' ? o.value : o;
+            const l = typeof o === 'object' ? o.label : o;
+            return `<option value="${esc(v)}" ${st.filters[f.name] === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
+          }).join('')}
+        </select>`).join('')}
+      ${m.dateField ? `
+        <label class="range">Desde <input type="date" id="fDesde" value="${esc(st.desde)}" /></label>
+        <label class="range">Hasta <input type="date" id="fHasta" value="${esc(st.hasta)}" /></label>` : ''}
+    </div>
     <span class="spacer"></span>
     ${tieneLlave('datos_planilla')
       ? '<a class="btn secondary sm" id="btnPlanilla" download>⬇️ Excel</a>'
       : ''}
     <button class="btn secondary sm" id="btnReload">⟳ Actualizar</button>`;
+
+  /**
+   * El botón de los filtros: los despliega y dice cuántos hay puestos.
+   *
+   * El número importa. Plegados, un filtro puesto no se ve, y una lista
+   * recortada sin motivo visible parece una lista a la que le faltan fichas.
+   */
+  const cuantosFiltros = () =>
+    Object.values(st.filters).filter(Boolean).length + (st.desde ? 1 : 0) + (st.hasta ? 1 : 0);
+
+  const botonDeFiltros = document.getElementById('tbFiltros');
+  const ponerElBotonAlDia = () => {
+    if (!botonDeFiltros) return;
+    const n = cuantosFiltros();
+    botonDeFiltros.textContent = n ? `Filtros (${n})` : 'Filtros';
+    botonDeFiltros.classList.toggle('con-filtros', !!n);
+    const abiertos = tb.classList.contains('filtros-abiertos');
+    botonDeFiltros.setAttribute('aria-expanded', String(abiertos));
+    botonDeFiltros.setAttribute(
+      'aria-label',
+      `${abiertos ? 'Ocultar' : 'Mostrar'} los filtros${n ? `. Hay ${n} puesto${n > 1 ? 's' : ''}` : ''}`
+    );
+  };
+  if (botonDeFiltros) {
+    // Si se llega con un filtro puesto —desde «Datos por completar», o
+    // volviendo a la lista— se abre solo, para que se vea por qué está así
+    if (cuantosFiltros()) tb.classList.add('filtros-abiertos');
+    botonDeFiltros.addEventListener('click', () => {
+      tb.classList.toggle('filtros-abiertos');
+      ponerElBotonAlDia();
+    });
+    ponerElBotonAlDia();
+  }
 
   // Cuando se llega desde «Datos por completar», se dice por qué la lista está
   // recortada y cómo salir del filtro: si no, parece que se perdieron fichas.
@@ -2020,6 +2089,7 @@ async function viewList(name, filtrosIniciales) {
     el.addEventListener('change', () => {
       st.filters[key] = el.value;
       st.page = 1;
+      ponerElBotonAlDia(); // el botón dice cuántos filtros hay puestos
       load();
     });
   };
@@ -2036,8 +2106,12 @@ async function viewList(name, filtrosIniciales) {
   if (iglesiaField) bindFilter('f_iglesia_id', 'iglesia_id');
   filterFields.forEach((f) => bindFilter('f_' + f.name, f.name));
   if (m.dateField) {
-    document.getElementById('fDesde').addEventListener('change', (e) => { st.desde = e.target.value; st.page = 1; load(); });
-    document.getElementById('fHasta').addEventListener('change', (e) => { st.hasta = e.target.value; st.page = 1; load(); });
+    document.getElementById('fDesde').addEventListener('change', (e) => {
+      st.desde = e.target.value; st.page = 1; ponerElBotonAlDia(); load();
+    });
+    document.getElementById('fHasta').addEventListener('change', (e) => {
+      st.hasta = e.target.value; st.page = 1; ponerElBotonAlDia(); load();
+    });
   }
   document.getElementById('btnReload').addEventListener('click', load);
 
@@ -2097,6 +2171,33 @@ async function viewList(name, filtrosIniciales) {
       // En el teléfono esta tabla se dibuja como tarjetas (ver styles.css):
       // cada fila con sus datos uno bajo otro, sin desplazarse de lado.
       const etiquetaCol = (c) => (c === 'id' ? 'ID' : (fieldsBy[c] || {}).label || c);
+
+      /**
+       * Cuál dato va arriba de todo en la tarjeta del teléfono.
+       *
+       * Importa por dos razones. La primera es que imprimir y borrar van
+       * pegados a la esquina de la tarjeta —una fila entera para dos botones
+       * chicos es media pantalla desperdiciada—, y el dato que quede debajo
+       * tiene que dejarles el sitio. Antes ese sitio se reservaba nombrando
+       * las columnas de nombre, así que en Servicios, Asistencia, Tesorería,
+       * Actas y todas las que parten por la fecha los botones quedaban
+       * ENCIMA del dato y la fecha no se podía leer.
+       *
+       * La segunda es que ese primer dato es el que identifica el registro
+       * —la fecha del servicio, el número del acta, el artículo del
+       * inventario—, así que encabeza la tarjeta en vez de ir como una línea
+       * más. Salvo cuando el listado ya lleva un nombre: ahí manda el nombre,
+       * que para eso está, y el primer dato se queda como estaba.
+       *
+       * La foto no cuenta: va arriba de todo por su cuenta y no llega al
+       * borde derecho. El trato tampoco: ya se dibuja aparte, sobre el
+       * nombre y con su propio sitio reservado.
+       */
+      const COLUMNAS_DE_NOMBRE = ['nombres', 'nombre', 'apellidos'];
+      const primeraDeLaTarjeta = cols.find(
+        (c) => !(fieldsBy[c] && fieldsBy[c].type === 'file') && c !== 'tratamiento'
+      );
+      const llevaNombre = cols.some((c) => COLUMNAS_DE_NOMBRE.includes(c));
       wrap.innerHTML = `
         <table class="grid grid-lista">
           <thead><tr>
@@ -2123,11 +2224,16 @@ async function viewList(name, filtrosIniciales) {
               <tr data-id="${r.id}">
                 ${cols.map((c) => {
                   const f = fieldsBy[c];
-                  const clase = f && f.type === 'file' ? 'col-mini'
-                    : f && ['money', 'number'].includes(f.type) ? 'num'
-                    : f && ['rut', 'date', 'time'].includes(f.type) ? 'cifra' : '';
+                  const clases = [];
+                  if (f && f.type === 'file') clases.push('col-mini');
+                  else if (f && ['money', 'number'].includes(f.type)) clases.push('num');
+                  else if (f && ['rut', 'date', 'time'].includes(f.type)) clases.push('cifra');
+                  if (c === primeraDeLaTarjeta) {
+                    clases.push('col-primera');
+                    if (!llevaNombre) clases.push('col-titular');
+                  }
                   return `<td data-col="${esc(c)}" data-label="${esc(etiquetaCol(c))}"${
-                    clase ? ` class="${clase}"` : ''}>${cellValue(f, r, c)}</td>`;
+                    clases.length ? ` class="${clases.join(' ')}"` : ''}>${cellValue(f, r, c)}</td>`;
                 }).join('')}
                 <td class="acciones" style="white-space:nowrap;text-align:right">
                   ${m.printable && tieneLlave('datos_impresion') ? `<button class="btn secondary sm act-print" data-id="${r.id}" title="Imprimir">🖨️</button>` : ''}
@@ -2216,8 +2322,10 @@ async function viewList(name, filtrosIniciales) {
         <div class="fin blue"><div class="lbl">Balance</div><div class="num">${fmtMoney(r.balance)}</div></div>
         <div class="fin slate"><div class="lbl">Movimientos</div><div class="num">${esc(fmtNumero(r.movimientos))}</div></div>
         ${cuentas.length ? `
-          <div class="saldos-cuentas">
-            <div class="sc-tit">Saldo de cada cuenta <span class="mut">(no depende del período filtrado)</span></div>
+          <details class="saldos-cuentas" ${enPantallaChica() ? '' : 'open'}>
+            <summary class="sc-tit">Saldo de cada cuenta
+              <span class="mut">(${fmtNumero(cuentas.length)} ${cuentas.length === 1 ? 'cuenta' : 'cuentas'} · no depende del período filtrado)</span>
+            </summary>
             <ul>
               ${cuentas.map((c) => `
                 <li data-ir="#/m/cuentas_tesoreria/edit/${c.id}">
@@ -2227,7 +2335,7 @@ async function viewList(name, filtrosIniciales) {
                   <b class="${Number(c.saldo) < 0 ? 'saldo-negativo' : ''}">${fmtMoney(c.saldo)}</b>
                 </li>`).join('')}
             </ul>
-          </div>` : ''}`;
+          </details>` : ''}`;
     } catch (e) {
       el.innerHTML = '';
     }
