@@ -9,6 +9,8 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const compression = require('compression');
+const apretados = require('./apretados');
+const { sinLoQueNoDiceNada } = require('./meta-liviana');
 const multer = require('multer');
 
 const { db, DATA_DIR, UPLOADS_DIR } = require('./db');
@@ -214,11 +216,9 @@ app.get('/api/meta', authRequired, (req, res) => {
             buscador: buscador === undefined ? null : !!buscador,
             calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
             computed: false,
-          })),
-        ...(m.computed || []).map(({ name, label, type, help }) => ({
-          name, label, type, help: help || null, computed: true,
-          required: false, options: null, sugerencias: null, ref: null, default: null, accept: null, showIf: null,
-          optionsRoute: null, readonly: true, calcula: null,
+          })).map(sinLoQueNoDiceNada),
+        ...(m.computed || []).map(({ name, label, type, help }) => sinLoQueNoDiceNada({
+          name, label, type, help: help || null, computed: true, readonly: true,
         })),
       ],
       perms: {
@@ -905,31 +905,43 @@ const paginaPrincipal = (req, res) => {
   res.type('html').send(PAGINA);
 };
 app.get('/index.html', paginaPrincipal);
+
+/**
+ * Cuánto puede guardar el navegador cada archivo.
+ *
+ * Se dice UNA sola vez y la usan los dos repartos —el de las copias ya
+ * apretadas y el de siempre—, para que no puedan terminar diciendo cosas
+ * distintas sobre el mismo archivo.
+ */
+const cabecerasDelArchivo = (res, ruta) => {
+  if (ruta.endsWith('.html') || ruta.endsWith('.webmanifest')) {
+    res.setHeader('Cache-Control', 'no-cache');
+    return;
+  }
+  // El ayudante de los avisos se pide SIN número de versión detrás —el
+  // navegador lo busca siempre en la misma dirección—, así que si se
+  // guardara una semana, un arreglo suyo no llegaría hasta la otra semana.
+  if (ruta.endsWith('avisos-sw.js')) {
+    res.setHeader('Cache-Control', 'no-cache');
+    // Que pueda controlar todo el sitio y no solo su carpeta
+    res.setHeader('Service-Worker-Allowed', '/');
+    return;
+  }
+  // El programa y los estilos se piden con la versión en la dirección
+  // (?v=1.53.0), así que al publicar una versión nueva la dirección cambia
+  // y el navegador se la baja igual. Como la dirección de una versión ya
+  // nunca cambia de contenido, se marca «immutable»: el navegador deja de
+  // preguntar si sigue vigente y se ahorra ese viaje en cada visita.
+  res.setHeader('Cache-Control', `public, max-age=${UNA_SEMANA / 1000}, immutable`);
+};
+
+// Las copias bien apretadas van primero: ver server/apretados.js
+app.use(apretados.servidorApretado(PUBLIC_DIR, cabecerasDelArchivo));
 app.use(
   express.static(PUBLIC_DIR, {
     index: false, // la página la arma paginaPrincipal, con la versión puesta
     maxAge: UNA_SEMANA,
-    setHeaders: (res, ruta) => {
-      if (ruta.endsWith('.html') || ruta.endsWith('.webmanifest')) {
-        res.setHeader('Cache-Control', 'no-cache');
-        return;
-      }
-      // El ayudante de los avisos se pide SIN número de versión detrás —el
-      // navegador lo busca siempre en la misma dirección—, así que si se
-      // guardara una semana, un arreglo suyo no llegaría hasta la otra semana.
-      if (ruta.endsWith('avisos-sw.js')) {
-        res.setHeader('Cache-Control', 'no-cache');
-        // Que pueda controlar todo el sitio y no solo su carpeta
-        res.setHeader('Service-Worker-Allowed', '/');
-        return;
-      }
-      // El programa y los estilos se piden con la versión en la dirección
-      // (?v=1.53.0), así que al publicar una versión nueva la dirección cambia
-      // y el navegador se la baja igual. Como la dirección de una versión ya
-      // nunca cambia de contenido, se marca «immutable»: el navegador deja de
-      // preguntar si sigue vigente y se ahorra ese viaje en cada visita.
-      res.setHeader('Cache-Control', `public, max-age=${UNA_SEMANA / 1000}, immutable`);
-    },
+    setHeaders: cabecerasDelArchivo,
   })
 );
 app.get('*', (req, res) => {
@@ -1017,4 +1029,14 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Sistema de Gestión de Iglesias v${VERSION} escuchando en el puerto ${PORT}`);
   console.log('   (al publicar en internet, este puerto debe coincidir con el "Target port" del dominio)');
+  // Recién ahora, con el servidor ya atendiendo, se aprietan bien los archivos
+  // grandes. Mientras eso ocurre se sigue repartiendo como siempre, así que el
+  // arranque no se retrasa ni un instante: ver server/apretados.js
+  apretados
+    .prepararApretados(PUBLIC_DIR)
+    .then(() => {
+      const cuantos = apretados.GUARDADOS.size;
+      if (cuantos) console.log(`   ${cuantos} archivo(s) listos para mandarse bien apretados`);
+    })
+    .catch((e) => console.error('No se pudieron apretar los archivos:', e.message));
 });

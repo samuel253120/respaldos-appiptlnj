@@ -392,6 +392,58 @@ function retratoDe(quien, iniciales) {
 }
 
 /* ---------------- API ---------------- */
+/* ---------------- lo que se pide adelantado ---------------- */
+/**
+ * Al entrar, la pantalla necesita cuatro cosas del servidor: la descripción del
+ * sistema, el panel de control, lo que falta por completar en las fichas y
+ * cuántos avisos hay sin leer. Ninguna depende de las otras, pero se pedían en
+ * fila: primero la descripción, y recién cuando llegaba se pedía el panel, y
+ * recién cuando llegaba el panel se pedía lo que falta.
+ *
+ * En la oficina no se nota. Con la señal de un teléfono en un templo alejado,
+ * cada ida y vuelta son varios cientos de milisegundos, y eran tres esperas
+ * puestas una detrás de otra sin ninguna razón.
+ *
+ * Así que ahora se piden todas juntas, apenas se sabe que hay sesión. Cuando la
+ * pantalla llega a necesitar cada una, la respuesta ya viene en camino o ya
+ * llegó. Si alguna falla, no pasa nada: se pide de nuevo por el camino de
+ * siempre.
+ */
+const ADELANTADOS = new Map();
+
+/** Empieza a pedir algo antes de que haga falta. */
+function adelantar(ruta) {
+  if (!TOKEN || ADELANTADOS.has(ruta)) return;
+  const pedido = fetch('/api' + ruta, { headers: { Authorization: 'Bearer ' + TOKEN } });
+  // Si falla, se atiende cuando alguien lo venga a buscar; que no quede como
+  // un error suelto en la consola del navegador.
+  pedido.catch(() => {});
+  // Si nadie lo vino a buscar —porque se entró directo a otra pantalla—, se
+  // suelta: una respuesta sin leer deja la conexión tomada.
+  const olvido = setTimeout(() => {
+    ADELANTADOS.delete(ruta);
+    pedido.then((r) => (r.body && r.body.cancel ? r.body.cancel() : null)).catch(() => {});
+  }, 20000);
+  ADELANTADOS.set(ruta, { pedido, olvido });
+}
+
+/** Lo pedido adelantado, si estaba; se entrega una sola vez. */
+function tomarAdelantado(ruta) {
+  const guardado = ADELANTADOS.get(ruta);
+  if (!guardado) return null;
+  ADELANTADOS.delete(ruta);
+  clearTimeout(guardado.olvido);
+  return guardado.pedido;
+}
+
+/** Suelta lo que se haya pedido adelantado y no se vaya a usar. */
+function soltarAdelantados() {
+  for (const ruta of [...ADELANTADOS.keys()]) {
+    const guardado = tomarAdelantado(ruta);
+    if (guardado) guardado.then((r) => (r.body && r.body.cancel ? r.body.cancel() : null)).catch(() => {});
+  }
+}
+
 async function api(method, path, body, isForm) {
   const opts = { method, headers: {} };
   if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
@@ -401,7 +453,19 @@ async function api(method, path, body, isForm) {
   } else if (body) {
     opts.body = body;
   }
-  const res = await fetch('/api' + path, opts);
+  // Si esto ya se había pedido adelantado, se aprovecha ese pedido en vez de
+  // hacer otro igual: ver ADELANTADOS, más arriba.
+  const adelantado = method === 'GET' && !body ? tomarAdelantado(path) : null;
+  let res;
+  if (adelantado) {
+    try {
+      res = await adelantado;
+    } catch (e) {
+      res = await fetch('/api' + path, opts); // no llegó: se pide de nuevo
+    }
+  } else {
+    res = await fetch('/api' + path, opts);
+  }
   if (res.status === 401 && path !== '/auth/login') {
     logout();
     throw new Error('Sesión expirada');
@@ -612,6 +676,17 @@ function vigilarQueLosCamposTenganNombre() {
 
 async function boot() {
   if (!TOKEN) return renderLogin();
+  // Todo esto se va a necesitar igual: se pide desde ya, junto con la
+  // descripción del sistema, en vez de uno detrás de otro (ver ADELANTADOS).
+  adelantar('/avisos/cuantos');
+  // El panel es lo que se abre cuando no se pidió otra pantalla. Si se entró
+  // derecho a una dirección concreta, no se adelanta nada suyo: sería pedir
+  // algo que nadie va a mirar.
+  const alPanel = ['', '#', '#/'].includes(location.hash);
+  if (alPanel) {
+    adelantar('/dashboard');
+    adelantar('/pendientes');
+  }
   try {
     const meta = await api('GET', '/meta');
     // El nombre y el lema salen de Configuración, no del programa
@@ -634,11 +709,14 @@ async function boot() {
     renderShell();
     route();
   } catch (e) {
+    // Lo que se había pedido adelantado ya no se va a usar
+    soltarAdelantados();
     if (e && e.cambiarPassword) return; // ya se está mostrando esa pantalla
     renderLogin();
   }
 }
 function logout() {
+  soltarAdelantados();
   // La galleta de sesión —la que deja que el navegador pida las fotos— vive
   // en el servidor: se le avisa que la retire. Si no se alcanza a avisar, la
   // sesión caduca sola igual.
@@ -5418,9 +5496,9 @@ function tamanoLegible(bytes) {
  *
  * Si el archivo no es una imagen, o ya es pequeño, se sube tal cual.
  */
-async function reducirImagen(file) {
+async function reducirImagen(file, ladoPedido) {
   if (!file.type.startsWith('image/') || /svg|gif/i.test(file.type)) return { file, reducida: false };
-  const lado = Number(AJUSTES.imagen_lado_maximo) || 1600;
+  const lado = Number(ladoPedido) || Number(AJUSTES.imagen_lado_maximo) || 1600;
   const calidad = (Number(AJUSTES.imagen_calidad) || 88) / 100;
   try {
     const bitmap = await createImageBitmap(file);
@@ -7606,7 +7684,12 @@ async function viewConfiguracion() {
         if (!archivo) return;
         aviso.textContent = 'Preparando la imagen…';
         try {
-          const ajustada = await reducirImagen(archivo);
+          // El logo lo baja TODO el que entra al sistema, así que se guarda más
+          // chico que el resto: mil pixeles alcanzan de sobra para los 116 con
+          // que se ve en la pantalla de acceso, para los 22,5 mm de la
+          // credencial y para el encabezado del acta impresa. El sello y la
+          // firma no se tocan: van sobre la credencial y ahí sí se notaría.
+          const ajustada = await reducirImagen(archivo, clave === 'iglesia_logo' ? 1024 : 0);
           const fd = new FormData();
           fd.append('archivo', ajustada.file);
           aviso.textContent = 'Subiendo…';
@@ -9258,11 +9341,12 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
           <button type="button" class="pl-b ${e.toLowerCase()} ${p.estado === e ? 'on' : ''}" data-estado="${e}" ${puedeEditar ? '' : 'disabled'}>${e}</button>`).join('')}
       </div>
       <div class="pl-just" ${p.estado === 'Justificado' ? '' : 'hidden'}>
-        <select class="pl-motivo" ${puedeEditar ? '' : 'disabled'}>
+        <select class="pl-motivo" aria-label="Motivo de la ausencia de ${esc(p.nombre)}" ${puedeEditar ? '' : 'disabled'}>
           <option value="">— Motivo —</option>
           ${MOTIVOS.map((o) => `<option value="${esc(o)}" ${p.motivo === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}
         </select>
         <input type="text" class="pl-detalle" placeholder="Especifique el detalle" value="${esc(p.detalle || '')}"
+               aria-label="Detalle de la ausencia de ${esc(p.nombre)}"
                ${CON_DETALLE.includes(p.motivo) ? '' : 'hidden'} ${puedeEditar ? '' : 'disabled'} />
       </div>
     </li>`;
@@ -9287,9 +9371,10 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
         ${recuperadas ? `<div class="pl-recuperado">📵 Se recuperaron ${recuperadas} marca(s) que habían quedado sin guardar en este teléfono. Revíselas y guarde.</div>` : ''}
         ${propuestas ? `<div class="pl-recuperado">✅ La lista se abrió con las ${fmtNumero(propuestas)} personas marcadas como presentes, según lo configurado. <b>Todavía no se ha guardado nada</b>: marque a quienes faltaron y después guarde.</div>` : ''}
         <div class="pl-filtros">
-          <input type="search" id="plBuscar" placeholder="🔎 Buscar miembro por nombre o RUT…" autocomplete="off" />
+          <input type="search" id="plBuscar" aria-label="Buscar a alguien de esta lista por nombre o RUT"
+                 placeholder="🔎 Buscar miembro por nombre o RUT…" autocomplete="off" />
           ${cuerposDeLaLista.length > 1 ? `
-            <select id="plCuerpo" title="Ver solo los integrantes de un cuerpo">
+            <select id="plCuerpo" aria-label="Ver solo los integrantes de un cuerpo" title="Ver solo los integrantes de un cuerpo">
               <option value="">Todos los cuerpos (${fmtNumero(datos.personas.length)})</option>
               ${cuerposDeLaLista.map((c) => `
                 <option value="${esc(String(c.id))}" ${String(c.id) === String(cuerpoElegido) ? 'selected' : ''}>

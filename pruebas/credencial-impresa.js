@@ -176,6 +176,11 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
     for (const cara of document.querySelectorAll('.card')) {
       const c = cara.getBoundingClientRect();
       for (const el of cara.querySelectorAll('.valor, .rval, .titulo, .datos, .rdatos, .barra')) {
+        // Lo que no se dibuja no se sale de ninguna parte. Un campo opcional
+        // que va vacío se esconde al imprimir, y entonces su rectángulo son
+        // cuatro ceros: no está fuera de la tarjeta, no está en ningún lado.
+        // Sin esta línea la prueba lo acusaba de salirse por la izquierda.
+        if (!el.getClientRects().length) continue;
         const r = el.getBoundingClientRect();
         if (r.right > c.right + 1 || r.left < c.left - 1 || r.bottom > c.bottom + 1) {
           salidas.push(el.className + ': «' + el.textContent.trim().slice(0, 24) + '»');
@@ -406,6 +411,7 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
       for (const cara of document.querySelectorAll('.card')) {
         const caja = cara.getBoundingClientRect();
         for (const el of cara.querySelectorAll('.valor, .rval, .titulo, .cat-iglesia')) {
+          if (!el.getClientRects().length) continue; // escondido: no se dibuja
           const r = el.getBoundingClientRect();
           if (r.right > caja.right + 1 || r.left < caja.left - 1 || r.bottom > caja.bottom + 1) {
             fuera.push(`se sale de la tarjeta: ${el.className} «${el.textContent.trim().slice(0, 30)}»`);

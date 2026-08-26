@@ -1594,7 +1594,22 @@ Lo que lo hace posible:
 - **Las etiquetas de un listado, en una sola consulta.** Antes, un listado de 25 fichas con ocho referencias disparaba doscientas consultas, y mientras tanto nadie más era atendido.
 - **Los selectores traen solo lo que muestran**, no la ficha entera de cada persona.
 - **La comprobación de la contraseña no bloquea al resto**: un domingo con veinte personas entrando a la vez, los que ya están adentro siguen atendidos.
-- **Todo viaja comprimido** (el programa pasa de 280 KB a 73 KB) y el navegador guarda los archivos que no cambian, con el número de versión detrás para que al publicar una versión nueva todos reciban la nueva.
+- **Todo viaja comprimido**, y los archivos grandes se aprietan **una sola vez al arrancar**, con la fuerza máxima, en vez de apretarse a la carrera en cada visita: el programa pasa de 486 KB a 108 KB y los estilos de 108 KB a 22 KB. El navegador guarda los que no cambian, con el número de versión detrás para que al publicar una versión nueva todos reciban la nueva.
+- **Lo del arranque se pide todo junto.** La descripción del sistema, el panel, lo que falta por completar y los avisos sin leer no dependen entre sí, pero se pedían uno detrás de otro: tres esperas seguidas donde alcanzaba una.
+- **La descripción del sistema pesa la mitad.** De sus 251 KB, 144 eran propiedades en falso o vacías que la pantalla lee igual si no vienen; sin ellas quedan 107 KB, que además el navegador tarda la mitad en leer.
+
+### Qué se nota al entrar
+
+Medido en un navegador de verdad, contra una base de diez años (813 miembros, 124.812 marcas de asistencia), con el freno de una conexión de teléfono mala:
+
+| | Antes | Ahora |
+|---|---|---|
+| Lo que se baja la primera vez | 408 KB | **286 KB** |
+| Panel completo la primera vez (3G lento) | 1.132 ms | **847 ms** |
+| Panel completo un día cualquiera (3G lento) | 1.033 ms | **860 ms** |
+| Panel completo en la oficina | 112 ms | **116 ms** |
+
+En la oficina no cambia nada —ahí nunca fue el problema—. La diferencia está donde se necesita: con señal mala.
 
 ### Comprobarlo
 

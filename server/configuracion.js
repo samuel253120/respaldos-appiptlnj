@@ -38,17 +38,43 @@ router.get('/publica', (req, res) => {
  * así que se puede dejar que el navegador lo guarde un buen rato: la dirección
  * que se pide es la misma, pero se le cuelga la versión (?v=) para que un
  * cambio se vea en el momento.
+ *
+ * Por eso el tiempo que se deja guardar depende de si vino esa versión: cuando
+ * viene, el navegador puede quedarse con la imagen un año entero, porque un
+ * logo nuevo pide otra dirección; cuando no viene —la primera pintada de la
+ * pantalla de acceso, antes de saber el nombre del archivo— se guarda solo un
+ * rato corto, para que un cambio no quede pegado ahí.
  */
+const GUARDAR_LOGO = (req) => (req.query.v
+  ? 'public, max-age=31536000, immutable'
+  : 'public, max-age=300');
+
+const IMG_DIR = path.join(__dirname, '..', 'public', 'img');
+
 router.get('/logo', (req, res) => {
   const suyo = obtener('iglesia_logo');
   const ruta = suyo ? path.join(UPLOADS_DIR, path.basename(suyo)) : null;
+  res.setHeader('Cache-Control', GUARDAR_LOGO(req));
+  res.setHeader('Vary', 'Accept');
   if (ruta && fs.existsSync(ruta)) {
-    res.setHeader('Cache-Control', 'public, max-age=300');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     return res.sendFile(ruta);
   }
-  res.setHeader('Cache-Control', 'public, max-age=300');
-  res.sendFile(path.join(__dirname, '..', 'public', 'img', 'logo.png'));
+  /**
+   * El de fábrica va en dos formatos.
+   *
+   * El dibujo tiene degradados y sombras, y en PNG eso pesa 180 KB: más que
+   * todo el programa de la pantalla junto. En WebP —que entienden todos los
+   * navegadores desde hace años— el mismo dibujo pesa 89 KB y se ve igual.
+   *
+   * El PNG se queda igual y se sigue entregando a quien no pida WebP, porque
+   * no es solo el navegador quien lo usa: el acta en PDF también lleva el logo,
+   * y ahí solo entran PNG y JPEG.
+   */
+  const quiereWebp = /image\/webp/i.test(String(req.headers.accept || ''));
+  const webp = path.join(IMG_DIR, 'logo.webp');
+  if (quiereWebp && fs.existsSync(webp)) return res.sendFile(webp);
+  res.sendFile(path.join(IMG_DIR, 'logo.png'));
 });
 
 /**
