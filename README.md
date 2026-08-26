@@ -783,7 +783,7 @@ Arriba, dos filtros: por **cuerpo** y por **tipo de actividad**.
 - Cada persona en su fila, con **el cuerpo por el que va** y tres botones grandes —**Presente**, **Ausente**, **Justificado**— de 46 píxeles de alto, cómodos para el pulgar. Volver a pulsar el mismo botón la desmarca.
 - **Buscador**: se escribe parte del nombre o del RUT y la lista se reduce a esa persona, sin desplazarse por sesenta nombres. No importan tildes ni mayúsculas.
 - **Filtros**: *Todos · Presentes · Ausentes · Justificados · Sin marcar (N)*, para revisar al final quiénes faltan.
-- **Elegir el cuerpo**: cuando a la actividad la convocan varios, un desplegable con cada cuerpo y cuánta gente trae —*Coro (28)*, *Dorcas (34)*— deja ver **solo a los integrantes de ese cuerpo**. Quien pertenece a dos aparece **en los dos filtros**, y su fila los nombra a ambos. Uno pasa lista cuerpo por cuerpo, no saltando entre grupos, y el progreso pasa a contar el de ese cuerpo: *«12/28»* de los suyos, no de la actividad entera. Con un solo cuerpo convocado no aparece, porque no haría falta.
+- **Elegir el cuerpo**: cuando a la actividad la convocan varios, un desplegable con cada cuerpo y cuánta gente trae —*Coro (28)*, *Dorcas (34)*— deja ver **solo a los integrantes de ese cuerpo**. Quien pertenece a dos tiene **una fila en cada uno**, y se le marca por separado en cada lista. Uno pasa lista cuerpo por cuerpo, no saltando entre grupos, y el progreso pasa a contar el de ese cuerpo: *«12/28»* de los suyos, no de la actividad entera. Con un solo cuerpo convocado no aparece, porque no haría falta.
 - **Progreso de marcado**: *«12/28 (43%)»* con su barra, siempre a la vista.
 - **Barra pegada abajo**: el recuento en vivo y las dos acciones —**✓ Todos presentes** y **Guardar lista**—, siempre a la vista, sin tener que volver arriba. *Todos presentes* marca a los que están a la vista y **sin marcar**, sin pisar lo ya decidido; con un filtro puesto, solo a esos.
 
@@ -795,9 +795,23 @@ Arriba, dos filtros: por **cuerpo** y por **tipo de actividad**.
 
 ### Una actividad puede convocar a varios cuerpos
 
-En **Cuerpos convocados** se elige uno o varios: a una actividad conjunta pueden asistir Damas y Caballeros a la vez. Al pasar lista aparecen los integrantes de todos ellos —cada fila con la etiqueta de **cada** cuerpo suyo— y quien pertenece a dos aparece **una sola vez** en la lista: marcarlo dos veces contaría doble. En los informes cada persona cuenta en **un** cuerpo, el primero de los convocados al que pertenece, así que un encuentro conjunto no mezcla los promedios.
+En **Cuerpos convocados** se elige uno o varios: a una actividad conjunta pueden asistir Damas y Caballeros a la vez.
 
-> ⚠️ **Aparecer una sola vez no es aparecer en un solo filtro.** Hasta la 1.108.0 el filtro por cuerpo miraba únicamente ese cuerpo de entrada, así que al elegir *Directiva* no salía la tesorera —que entra por *Damas*—. Una iglesia con **27** integrantes en su directiva veía **3**: los únicos que no estaban en ningún otro cuerpo convocado. Y nada en la pantalla lo insinuaba: ni un aviso, ni un número que no cuadrara, solo una lista corta que parecía completa. Ahora cada persona viaja con todos sus cuerpos y el filtro los mira todos.
+### La asistencia se lleva por cuerpo, no por persona
+
+Quien pertenece a **dos** de los cuerpos convocados aparece **una vez en cada uno**, y se le marca **por separado** en cada lista.
+
+No es una duplicación: son dos asistencias distintas, y en la práctica pueden no coincidir sin que ninguna esté equivocada. Alguien de *Damas* y de la *Directiva* le avisa a la Directiva que no va a poder ir —y la Directiva lo anota **justificado**—, pero a Damas no le avisa nada, y Damas lo anota **ausente**. Las dos cosas son ciertas el mismo día, y cada cuerpo lleva su propia cuenta.
+
+| | |
+|---|---|
+| En la lista | Una fila por cuerpo, cada una con su etiqueta |
+| Al marcar | Cada fila es independiente: marcar en un cuerpo no toca la del otro |
+| En los informes | Cada cuerpo cuenta lo suyo; el porcentaje de una persona se abre por cuerpo |
+
+> ⚠️ **Hasta la 1.109.0 había una sola marca por persona y actividad.** El sistema tenía que elegir un cuerpo —el primero de los convocados— y los demás se quedaban sin nada: al filtrar por *Directiva* no salía la tesorera, que entra por *Damas*. Una iglesia con **27** integrantes en su directiva veía **3**, y nada en la pantalla lo insinuaba: ni un aviso, ni un número que no cuadrara, solo una lista corta que parecía completa. Peor todavía, marcarla en un cuerpo le borraba la marca del otro. El informe ya prometía abrir el porcentaje por cuerpo —*«en uno puede andar al día y en otro no»*— pero los datos no daban para eso; ahora sí.
+>
+> Las marcas que ya estaban se conservan. Las que habían quedado **sin cuerpo** se les asigna el suyo al actualizar, cuando se puede deducir con certeza; donde hay más de una respuesta posible se dejan como están, sin inventar.
 
 Cuando alguien queda **Justificado** se pide el motivo:
 

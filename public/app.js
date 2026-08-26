@@ -9431,9 +9431,12 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   const borrador = puedeEditar ? leerBorrador(CLAVE) : null;
   let recuperadas = 0;
   const recuperadasIds = [];
+  // La clave de cada fila es la persona Y el cuerpo: la asistencia se lleva
+  // por cuerpo, así que quien está en dos tiene dos filas y dos marcas
+  const claveDe = (p) => p.clave || `${p.miembro_id}:${p.cuerpo_id || 0}`;
   if (borrador) {
     for (const p of datos.personas) {
-      const b = borrador[p.miembro_id];
+      const b = borrador[claveDe(p)];
       if (!b) continue;
       const igual = (b.estado || null) === (p.estado || null)
         && (b.motivo || null) === (p.motivo || null)
@@ -9442,7 +9445,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
       p.estado = b.estado || null;
       p.motivo = b.motivo || null;
       p.detalle = b.detalle || null;
-      recuperadasIds.push(p.miembro_id); // quedaron sin guardar: son suyas
+      recuperadasIds.push(claveDe(p)); // quedaron sin guardar: son suyas
       recuperadas++;
     }
     if (!recuperadas) borrarBorrador(CLAVE);
@@ -9476,18 +9479,12 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
    * cuerpo por cuerpo, no persona por persona salteando entre grupos.
    */
   const cuerposDeLaLista = (() => {
-    const nombreDe = new Map((datos.actividad.cuerpos || []).map((c) => [Number(c.id), c.nombre]));
     const porId = new Map();
     for (const p of datos.personas) {
-      // Se cuenta en CADA cuerpo al que pertenece, no solo en aquel por el que
-      // entra a la lista: quien está en Damas y en la Directiva tiene que
-      // aparecer en los dos filtros, y sumar en los dos números
-      const suyos = (p.cuerpos && p.cuerpos.length) ? p.cuerpos : (p.cuerpo_id ? [p.cuerpo_id] : []);
-      for (const id of suyos) {
-        const ya = porId.get(id);
-        if (ya) ya.cuantos++;
-        else porId.set(id, { id, nombre: nombreDe.get(Number(id)) || p.cuerpo || 'Sin cuerpo', cuantos: 1 });
-      }
+      if (!p.cuerpo_id) continue;
+      const ya = porId.get(p.cuerpo_id);
+      if (ya) ya.cuantos++;
+      else porId.set(p.cuerpo_id, { id: p.cuerpo_id, nombre: p.cuerpo || 'Sin cuerpo', cuantos: 1 });
     }
     return [...porId.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
   })();
@@ -9506,30 +9503,13 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     ? String(ASIS.cuerpo_id)
     : '';
 
-  /**
-   * Los cuerpos de una persona en esta lista, todos.
-   *
-   * Antes se mostraba solo aquel por el que entra a la lista, y al filtrar por
-   * un cuerpo aparecían filas etiquetadas con OTRO —la tesorera de la
-   * directiva rotulada «Damas»—, que es justo lo que hace dudar de si el
-   * filtro funciona. Diciendo los dos, se entiende: está en los dos.
-   */
-  const etiquetasDeCuerpo = (p) => {
-    const nombreDe = new Map((datos.actividad.cuerpos || []).map((c) => [Number(c.id), c.nombre]));
-    const suyos = (p.cuerpos && p.cuerpos.length ? p.cuerpos : [p.cuerpo_id]).filter(Boolean);
-    const nombres = suyos.map((id) => nombreDe.get(Number(id))).filter(Boolean);
-    if (!nombres.length) return p.cuerpo ? `<span class="pl-cuerpo-chip">${esc(p.cuerpo)}</span>` : '';
-    return nombres.map((n) => `<span class="pl-cuerpo-chip">${esc(n)}</span>`).join('');
-  };
-
   const fila = (p) => `
-    <li data-id="${p.miembro_id}" data-cuerpo="${esc(String(p.cuerpo_id || ''))}"
-        data-cuerpos="${esc(((p.cuerpos && p.cuerpos.length ? p.cuerpos : [p.cuerpo_id]).filter(Boolean)).join(','))}"
+    <li data-clave="${esc(claveDe(p))}" data-id="${p.miembro_id}" data-cuerpo="${esc(String(p.cuerpo_id || ''))}"
         data-buscar="${esc(textoBuscable(`${p.nombre} ${p.rut || ''}`))}"
         class="${p.estado ? 'marcado' : ''}">
       <div class="pl-quien">
         <b>${esc(p.nombre)}</b>
-        ${etiquetasDeCuerpo(p)}
+        ${p.cuerpo ? `<span class="pl-cuerpo-chip">${esc(p.cuerpo)}</span>` : ''}
         ${p.rut ? `<span class="mut">${esc(rutFormatear(p.rut))}</span>` : ''}
       </div>
       <div class="pl-botones">
@@ -9651,7 +9631,11 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   const marcasDe = () => filas().map((li) => {
     const on = li.querySelector('.pl-b.on');
     return {
+      clave: li.dataset.clave,
       miembro_id: Number(li.dataset.id),
+      // Sin el cuerpo, el servidor no sabría a cuál de las dos marcas de esta
+      // persona corresponde, y una le borraría la otra
+      cuerpo_id: Number(li.dataset.cuerpo) || null,
       estado: on ? on.dataset.estado : null,
       motivo: li.querySelector('.pl-motivo').value || null,
       detalle: li.querySelector('.pl-detalle').value || null,
@@ -9659,7 +9643,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   });
 
   /** Lo que se manda al guardar: únicamente lo que esta persona cambió. */
-  const marcasTocadas = () => marcasDe().filter((m) => tocadas.has(m.miembro_id));
+  const marcasTocadas = () => marcasDe().filter((m) => tocadas.has(m.clave));
 
   /** Justificaciones suyas a las que todavía les falta el motivo o el detalle. */
   const incompletas = () => marcasTocadas().filter(
@@ -9680,15 +9664,12 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
    * él, no a la actividad entera.
    */
   /**
-   * ¿Esta fila pertenece al cuerpo elegido en el filtro?
+   * ¿Esta fila es del cuerpo elegido en el filtro?
    *
-   * Se mira la lista completa de cuerpos de la persona, no el único por el que
-   * entró a la lista. Quien está en Damas y en la Directiva aparece al filtrar
-   * por cualquiera de los dos, que es lo que uno espera al elegir «ver solo
-   * los integrantes de un cuerpo».
+   * Cada fila es de UN cuerpo: quien está en dos tiene dos filas, una en cada
+   * lista, y se le marca por separado en cada una.
    */
-  const esDelCuerpo = (li, cuerpo) =>
-    !cuerpo || (li.dataset.cuerpos || li.dataset.cuerpo || '').split(',').includes(cuerpo);
+  const esDelCuerpo = (li, cuerpo) => !cuerpo || li.dataset.cuerpo === cuerpo;
 
   const filasQueCuentan = () => {
     const cuerpo = (document.getElementById('plCuerpo') || {}).value || '';
@@ -9724,12 +9705,14 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
    */
   const ponerseAlDia = (marcas) => {
     if (!Array.isArray(marcas)) return;
-    const porId = new Map(marcas.map((m) => [Number(m.miembro_id), m]));
+    const porPar = new Map(
+      marcas.map((m) => [`${Number(m.miembro_id)}:${Number(m.cuerpo_id) || 0}`, m])
+    );
     let ajenas = 0;
     for (const li of filas()) {
-      const id = Number(li.dataset.id);
-      if (tocadas.has(id)) continue; // lo que esta persona está marcando no se toca
-      const m = porId.get(id) || {};
+      const clave = li.dataset.clave;
+      if (tocadas.has(clave)) continue; // lo que esta persona está marcando no se toca
+      const m = porPar.get(clave) || {};
       const estabaEn = li.dataset.estado || '';
       li.querySelectorAll('.pl-b').forEach((b) => b.classList.toggle('on', b.dataset.estado === m.estado));
       li.querySelector('.pl-motivo').value = m.motivo || '';
@@ -9799,12 +9782,12 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
    */
   const cambio = (quienes) => {
     for (const li of Array.isArray(quienes) ? quienes : quienes ? [quienes] : []) {
-      tocadas.add(Number(li.dataset.id));
+      tocadas.add(li.dataset.clave);
     }
     sinGuardar = true;
-    const porId = {};
-    marcasTocadas().forEach((m) => (porId[m.miembro_id] = m));
-    guardarBorrador(CLAVE, porId);
+    const porPar = {};
+    marcasTocadas().forEach((m) => (porPar[m.clave] = m));
+    guardarBorrador(CLAVE, porPar);
     resumen();
     filtrar();
     pintarEstado(incompletas() ? `Falta el motivo de ${incompletas()} justificación(es)` : 'Sin guardar', 'aviso-texto');

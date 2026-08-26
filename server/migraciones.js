@@ -1791,6 +1791,75 @@ function devolverLosQueLaDirectivaSaco() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Las marcas de asistencia que quedaron sin cuerpo.
+ *
+ * La asistencia se lleva por cuerpo: cada marca dice de qué cuerpo es, y quien
+ * pertenece a dos tiene una marca en cada uno. Pero hay marcas viejas que
+ * quedaron con el cuerpo en nulo —de cuando la actividad guardaba un solo
+ * cuerpo en su propia ficha, y de casos en que el sistema no supo cuál poner—.
+ *
+ * Sin cuerpo, esas marcas no aparecen en el informe de ningún cuerpo y la
+ * pantalla no sabe a qué fila corresponden: la persona figura sin marcar y, al
+ * pasar lista de nuevo, se le vuelve a preguntar algo que ya estaba contestado.
+ *
+ * Se les pone el cuerpo que se puede deducir con certeza, y solo ése: el de la
+ * actividad, si la actividad tiene uno solo; o el único de los cuerpos
+ * convocados al que esa persona pertenece. Donde hay más de una respuesta
+ * posible no se inventa ninguna: se deja la marca como está.
+ */
+function marcasDeAsistenciaConSuCuerpo() {
+  const NOMBRE = 'marcas de asistencia con su cuerpo';
+  if (yaAplicada(NOMBRE)) return;
+
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('asistencia_detalle') || !hayTabla('asistencias')) return marcarAplicada(NOMBRE);
+
+  const sueltas = db
+    .prepare(
+      `SELECT d.id, d.miembro_id, d.asistencia_id, a.cuerpos, a.cuerpo_id
+         FROM asistencia_detalle d
+         JOIN asistencias a ON a.id = d.asistencia_id
+        WHERE d.cuerpo_id IS NULL`
+    )
+    .all();
+  if (!sueltas.length) return marcarAplicada(NOMBRE);
+
+  const perteneceA = db.prepare(
+    `SELECT cuerpo_id FROM integrantes_cuerpo
+      WHERE miembro_id = ? AND cuerpo_id = ? AND estado <> 'Retirado'`
+  );
+  const poner = db.prepare('UPDATE asistencia_detalle SET cuerpo_id = ? WHERE id = ?');
+
+  let puestas = 0;
+  let sinResolver = 0;
+  db.transaction(() => {
+    for (const m of sueltas) {
+      let convocados = [];
+      try { convocados = JSON.parse(m.cuerpos || '[]').map(Number).filter(Boolean); } catch (e) { convocados = []; }
+      if (!convocados.length && m.cuerpo_id) convocados = [Number(m.cuerpo_id)];
+
+      const suyos = convocados.filter((c) => perteneceA.get(m.miembro_id, c));
+      // Con uno solo no hay duda; con varios —o con ninguno— sí, y no se toca
+      if (suyos.length === 1) { poner.run(suyos[0], m.id); puestas++; }
+      else if (convocados.length === 1) { poner.run(convocados[0], m.id); puestas++; }
+      else sinResolver++;
+    }
+  }).immediate();
+
+  if (puestas) {
+    console.log(`🔁 asistencia: ${puestas} marca(s) que estaban sin cuerpo quedaron con el suyo.`);
+  }
+  if (sinResolver) {
+    console.log(
+      `ℹ️  asistencia: ${sinResolver} marca(s) sin cuerpo no se pudieron resolver ` +
+        '(la persona pertenece a varios de los cuerpos convocados, o a ninguno). Se dejaron como estaban.'
+    );
+  }
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -1818,6 +1887,7 @@ function ejecutarMigraciones() {
     ['tipos de actividad y motivos de ausencia', listasDeAsistenciaComoDatos],
     ['directiva de cada iglesia', directivaDeCadaIglesia],
     ['devolver los que la directiva sacó (corregida)', devolverLosQueLaDirectivaSaco],
+    ['marcas de asistencia con su cuerpo', marcasDeAsistenciaConSuCuerpo],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],
@@ -2066,5 +2136,5 @@ function solicitudesConSeguimiento() {
 // significa duplicar personas, perder ayudas o repetir un número de solicitud.
 module.exports = {
   ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
-  devolverLosQueLaDirectivaSaco,
+  devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo,
 };

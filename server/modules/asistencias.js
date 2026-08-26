@@ -59,20 +59,25 @@ function cuerposQueLeTocan(actividad, usuario) {
 }
 
 /**
- * Integrantes de los cuerpos que le tocan a este usuario en esta actividad.
+ * La asistencia se lleva POR CUERPO, no por persona.
  *
- * Quien está en dos de esos cuerpos aparece UNA SOLA VEZ en la lista —si no,
- * habría que marcarlo dos veces y contaría doble en los informes—, y cuenta
- * para el primero de ellos. Eso es `cuerpo_id`: el cuerpo por el que entra.
+ * Quien pertenece a dos de los cuerpos convocados aparece una vez EN CADA UNO,
+ * y se le marca por separado. No es una duplicación: son dos asistencias
+ * distintas, y en la práctica pueden no coincidir. Alguien que está en Damas y
+ * en la Directiva le avisa a la Directiva que no va a poder ir —y la Directiva
+ * lo anota justificado— pero a Damas no le avisa nada, y Damas lo anota
+ * ausente. Las dos cosas son ciertas al mismo tiempo, y cada cuerpo lleva su
+ * propia cuenta.
  *
- * Pero además se guardan TODOS los cuerpos convocados a los que pertenece, en
- * `cuerpos`. La diferencia importa para el filtro de la pantalla: la tesorera
- * de la directiva puede ser también de Damas, y entonces entra por Damas; si
- * el filtro mirara solo `cuerpo_id`, al elegir «Directiva» ella no aparecería.
- * Una iglesia con veintisiete integrantes en su directiva veía tres —los
- * únicos que no estaban en ningún otro cuerpo convocado— y la pantalla no daba
- * ninguna pista de dónde estaban los otros veinticuatro.
+ * Antes había una sola marca por persona y actividad, así que el sistema tenía
+ * que elegir un cuerpo —el primero de los convocados— y los demás se quedaban
+ * sin nada. El informe ya prometía abrir el porcentaje por cuerpo («en uno
+ * puede andar al día y en otro no»), pero los datos no daban para eso.
+ *
+ * Se devuelve una entrada por CADA par persona-cuerpo, con su clave.
  */
+const claveDe = (miembroId, cuerpoId) => `${Number(miembroId)}:${Number(cuerpoId) || 0}`;
+
 function integrantesConvocados(actividad, db, usuario) {
   const { idsDeIntegrantes } = require('../integrantes');
   const mapa = new Map();
@@ -80,9 +85,7 @@ function integrantesConvocados(actividad, db, usuario) {
     const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
     if (!cuerpo) continue;
     for (const id of idsDeIntegrantes(db, cuerpo.id)) {
-      const ya = mapa.get(id);
-      if (ya) ya.cuerpos.push(cuerpo.id);
-      else mapa.set(id, { cuerpo_id: cuerpo.id, cuerpo: cuerpo.nombre, cuerpos: [cuerpo.id] });
+      mapa.set(claveDe(id, cuerpo.id), { miembro_id: id, cuerpo_id: cuerpo.id, cuerpo: cuerpo.nombre });
     }
   }
   return mapa;
@@ -98,7 +101,7 @@ function marcasVisibles(actividad, db, usuario) {
   const acota = suyos.length ? ` AND cuerpo_id IN (${suyos.map(() => '?').join(',')})` : '';
   return db
     .prepare(
-      `SELECT miembro_id, estado, motivo, detalle FROM asistencia_detalle
+      `SELECT miembro_id, cuerpo_id, estado, motivo, detalle FROM asistencia_detalle
         WHERE asistencia_id = ?${acota}`
     )
     .all(actividad.id, ...(acota ? suyos : []));
@@ -418,37 +421,46 @@ module.exports = {
       const leTocan = cuerposQueLeTocan(actividad, req.user);
       const convocados = integrantesConvocados(actividad, db, req.user);
       const marcas = db.prepare('SELECT * FROM asistencia_detalle WHERE asistencia_id = ?').all(actividad.id);
-      const porMiembro = new Map(marcas.map((m) => [m.miembro_id, m]));
+      const porPar = new Map(marcas.map((m) => [claveDe(m.miembro_id, m.cuerpo_id), m]));
 
       // Quien ya tiene marca pero salió del cuerpo se sigue mostrando, siempre
       // que su marca sea de un cuerpo que a esta persona le toque pasar
       const suyos = require('../alcance').cuerposDe(req.user);
       for (const m of marcas) {
-        if (convocados.has(m.miembro_id)) continue;
+        const clave = claveDe(m.miembro_id, m.cuerpo_id);
+        if (convocados.has(clave)) continue;
         if (suyos.length && !suyos.includes(Number(m.cuerpo_id))) continue;
         const cuerpo = m.cuerpo_id ? db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(m.cuerpo_id) : null;
-        convocados.set(m.miembro_id, {
+        convocados.set(clave, {
+          miembro_id: Number(m.miembro_id),
           cuerpo_id: m.cuerpo_id || null,
           cuerpo: cuerpo ? `${cuerpo.nombre} (ya no figura)` : 'Sin cuerpo',
-          cuerpos: m.cuerpo_id ? [Number(m.cuerpo_id)] : [],
         });
       }
 
+      /**
+       * Una fila por persona Y POR CUERPO.
+       *
+       * Quien está en dos de los cuerpos convocados sale dos veces, con la
+       * etiqueta de cada uno, y se le marca por separado en cada lista: puede
+       * quedar justificado en el cuerpo al que avisó y ausente en el que no.
+       * La `clave` es lo que identifica a cada fila —el mismo miembro ya no
+       * alcanza—, y con ella viaja la marca de ida y de vuelta.
+       */
       const personas = [...convocados.entries()]
-        .map(([id, donde]) => {
-          const p = db.prepare('SELECT id, nombres, apellidos, rut, foto FROM miembros WHERE id = ?').get(id);
+        .map(([clave, donde]) => {
+          const p = db.prepare('SELECT id, nombres, apellidos, rut, foto FROM miembros WHERE id = ?')
+            .get(donde.miembro_id);
           if (!p) return null;
-          const marca = porMiembro.get(id) || {};
+          const marca = porPar.get(clave) || {};
           return {
+            clave,
             miembro_id: p.id,
             nombre: nombres.paraMostrar(p.nombres, p.apellidos),
             rut: p.rut || null,
             foto: p.foto || null,
             cuerpo_id: donde.cuerpo_id,
             cuerpo: donde.cuerpo,
-            // Todos los cuerpos convocados a los que pertenece: con esto la
-            // pantalla filtra por cuerpo sin perder a quien está en varios
-            cuerpos: donde.cuerpos || (donde.cuerpo_id ? [donde.cuerpo_id] : []),
             estado: marca.estado || null,
             motivo: marca.motivo || null,
             detalle: marca.detalle || null,
@@ -545,17 +557,41 @@ module.exports = {
        * alguien que desde entonces se retiró—, porque quitar esa marca es
        * justamente lo que hay que poder hacer.
        */
+      /**
+       * Una marca que llega SIN cuerpo se resuelve acá.
+       *
+       * Pasa con los teléfonos que todavía tienen guardada la versión anterior
+       * de la pantalla: el aparato sigue mandando lo de antes —solo la
+       * persona— hasta que la aplicación se le actualiza, y esas listas no se
+       * pueden perder. Se le pone el primero de los cuerpos convocados al que
+       * esa persona pertenece, que es exactamente lo que hacía el sistema
+       * antes; los demás cuerpos quedan sin marcar, como quedaban entonces.
+       */
+      const primerCuerpoDe = (miembroId) => {
+        for (const cuerpoId of cuerposQueLeTocan(actividad, req.user)) {
+          if (convocados.has(claveDe(miembroId, cuerpoId))) return cuerpoId;
+        }
+        return null;
+      };
+      for (const m of marcas) {
+        if (m.cuerpo_id === undefined || m.cuerpo_id === null || m.cuerpo_id === '') {
+          m.cuerpo_id = primerCuerpoDe(Number(m.miembro_id));
+        }
+      }
+
       const suyos = require('../alcance').cuerposDe(req.user);
       const yaMarcados = new Map(
         db.prepare('SELECT miembro_id, cuerpo_id FROM asistencia_detalle WHERE asistencia_id = ?')
           .all(actividad.id)
-          .map((m) => [Number(m.miembro_id), Number(m.cuerpo_id)])
+          .map((m) => [claveDe(m.miembro_id, m.cuerpo_id), Number(m.cuerpo_id)])
       );
+      // La comprobación es por PAR persona-cuerpo: marcar a alguien en un
+      // cuerpo al que no pertenece es tan ajeno como marcar a un desconocido
       const ajeno = marcas.find((m) => {
-        const id = Number(m.miembro_id);
-        if (convocados.has(id)) return false;
-        if (!yaMarcados.has(id)) return true; // ni convocado ni marcado antes
-        return suyos.length ? !suyos.includes(yaMarcados.get(id)) : false;
+        const clave = claveDe(m.miembro_id, m.cuerpo_id);
+        if (convocados.has(clave)) return false;
+        if (!yaMarcados.has(clave)) return true; // ni convocado ni marcado antes
+        return suyos.length ? !suyos.includes(yaMarcados.get(clave)) : false;
       });
       if (ajeno) {
         const quien = db
@@ -574,7 +610,17 @@ module.exports = {
         });
       }
       const guardar = db.transaction(() => {
-        const borrar = db.prepare('DELETE FROM asistencia_detalle WHERE asistencia_id = ? AND miembro_id = ?');
+        /**
+         * Se borra y se inserta por PAR persona-cuerpo.
+         *
+         * Antes se borraba por persona, así que marcarla en un cuerpo le
+         * borraba la marca del otro: eran incompatibles sin que nada lo
+         * dijera. Ahora cada cuerpo lleva la suya, y la misma persona puede
+         * quedar justificada en uno y ausente en el otro.
+         */
+        const borrar = db.prepare(
+          'DELETE FROM asistencia_detalle WHERE asistencia_id = ? AND miembro_id = ? AND COALESCE(cuerpo_id, 0) = ?'
+        );
         const insertar = db.prepare(
           `INSERT INTO asistencia_detalle (asistencia_id, miembro_id, estado, motivo, detalle,
                                            cuerpo_id, fecha, iglesia_id, created_by)
@@ -582,16 +628,17 @@ module.exports = {
         );
         let guardadas = 0;
         for (const m of marcas) {
-          borrar.run(actividad.id, m.miembro_id);
+          const clave = claveDe(m.miembro_id, m.cuerpo_id);
+          const donde = convocados.get(clave);
+          const cuerpoId = (donde && donde.cuerpo_id) || yaMarcados.get(clave) || null;
+          borrar.run(actividad.id, m.miembro_id, Number(cuerpoId) || 0);
           if (!m.estado) continue; // sin marcar: no queda fila
           const justificado = m.estado === 'Justificado';
-          const donde = convocados.get(Number(m.miembro_id));
           insertar.run(
             actividad.id, m.miembro_id, m.estado,
             justificado ? m.motivo : null,
             justificado && MOTIVOS_CON_DETALLE.includes(m.motivo) ? String(m.detalle).trim() : null,
-            (donde && donde.cuerpo_id) || yaMarcados.get(Number(m.miembro_id)) || null,
-            actividad.fecha, actividad.iglesia_id || null, req.user.id
+            cuerpoId, actividad.fecha, actividad.iglesia_id || null, req.user.id
           );
           guardadas++;
         }

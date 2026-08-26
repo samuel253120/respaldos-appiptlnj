@@ -264,11 +264,23 @@ async function entrar() {
     if (deAna.length < 3) {
       revisar('el cuerpo de prueba tiene gente suficiente', false, `solo ${gente.length} integrante(s)`);
     } else {
-      // Luis marca lo suyo y guarda; manda SOLO lo que él marcó
+      /**
+       * Luis marca lo suyo y guarda; manda SOLO lo que él marcó.
+       *
+       * Y lo manda SIN el cuerpo, a propósito: así manda la versión anterior
+       * de la pantalla, la que sigue guardada en los teléfonos hasta que se
+       * les actualiza sola. Una lista pasada desde uno de esos aparatos no se
+       * puede perder, así que el servidor le resuelve el cuerpo.
+       */
       const g1 = await luis('POST', `/api/asistencias/${actId}/lista`, {
         marcas: deLuis.map((p) => ({ miembro_id: p.miembro_id, estado: 'Presente' })),
       });
       revisar('Luis marca a diez y los guarda', g1.estado === 200 && g1.datos.guardadas === 10);
+      revisar(
+        'y aunque su teléfono no mandó el cuerpo, las marcas quedan con el suyo',
+        (g1.datos.marcas || []).filter((m) => m.estado === 'Presente' && m.cuerpo_id).length === 10,
+        'alguna quedó sin cuerpo: no aparecería en el informe de ningún cuerpo'
+      );
 
       // Ana, con su pantalla de antes (todos en blanco), marca a otros tres
       const g2 = await ana('POST', `/api/asistencias/${actId}/lista`, {

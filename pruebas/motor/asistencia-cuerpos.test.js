@@ -1,21 +1,23 @@
 /**
- * Quién aparece al filtrar la lista de asistencia por un cuerpo.
+ * La asistencia se lleva POR CUERPO, no por persona.
  *
  * POR QUÉ IMPORTA. A una actividad la pueden convocar varios cuerpos, y una
- * misma persona puede estar en más de uno: la tesorera de la directiva es
- * también de Damas. En la lista aparece UNA sola vez —marcarla dos veces sería
- * absurdo y contaría doble en los informes—, y cuenta para el primero de esos
- * cuerpos. Eso está bien.
+ * misma persona puede estar en más de uno. Cada cuerpo pasa su propia lista y
+ * las dos respuestas pueden no coincidir, sin que ninguna esté equivocada:
+ * alguien de Damas y de la Directiva le avisa a la Directiva que no va a poder
+ * ir —y la Directiva lo anota justificado— pero a Damas no le avisa nada, y
+ * Damas lo anota ausente. Las dos cosas son ciertas el mismo día.
  *
- * Lo que no estaba bien es que el filtro de la pantalla mirara solo ese cuerpo.
- * Al elegir «Directiva» no aparecía la tesorera, porque ella entra por Damas.
- * Una iglesia con veintisiete integrantes en su directiva veía tres —los
- * únicos que no estaban en ningún otro cuerpo convocado— y la pantalla no daba
- * ninguna pista de dónde estaban los otros veinticuatro: ni un aviso, ni un
- * número que no cuadrara. Solo una lista corta que parecía completa.
+ * Antes había UNA marca por persona y actividad. El sistema elegía un cuerpo
+ * —el primero de los convocados— y los demás se quedaban sin nada: al filtrar
+ * por «Directiva» esa persona no aparecía, y si aparecía y se la marcaba, la
+ * marca le pisaba la del otro cuerpo. El informe ya prometía abrir el
+ * porcentaje por cuerpo («en uno puede andar al día y en otro no») pero los
+ * datos no daban para eso.
  *
- * Por eso cada persona de la lista viaja con TODOS los cuerpos convocados a
- * los que pertenece, y no solo con aquel por el que entra.
+ * Lo que se cuida acá es que cada par persona-cuerpo sea una asistencia
+ * independiente: que aparezca en las dos listas, que se pueda marcar distinto
+ * en cada una, y que marcar en una no toque la otra.
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -72,17 +74,15 @@ const convocados = integrantesConvocados(
   db.prepare('SELECT * FROM asistencias WHERE id = ?').get(actividad), db, null
 );
 
-/** Como filtra la pantalla: por pertenencia, no por el cuerpo de entrada. */
+/** Como filtra la pantalla: cada fila es de un cuerpo. */
 const alFiltrarPor = (cuerpoId) =>
-  [...convocados.values()].filter((d) => (d.cuerpos || []).includes(cuerpoId)).length;
+  [...convocados.values()].filter((d) => d.cuerpo_id === cuerpoId).length;
 
 test('el cuerpo tiene sus 27 integrantes', () => {
   assert.equal(idsDeIntegrantes(db, directiva).length, 27);
 });
 
 test('EL CASO: al filtrar por la directiva aparecen los 27, no solo 3', () => {
-  // Los 3 son los que no están en ningún otro cuerpo convocado. Antes eran los
-  // únicos que se veían, y nada en la pantalla decía que faltaban 24.
   assert.equal(alFiltrarPor(directiva), 27);
 });
 
@@ -91,25 +91,85 @@ test('y cada uno de los otros cuerpos sigue mostrando los suyos', () => {
   assert.equal(alFiltrarPor(caballeros), 12);
 });
 
-test('nadie aparece dos veces en la lista', () => {
-  // Es la razón por la que cada persona entra por un solo cuerpo: marcarla dos
-  // veces contaría doble en los informes.
-  assert.equal(convocados.size, 27);
+test('quien está en dos cuerpos aparece una vez EN CADA UNO', () => {
+  // No es duplicar: son dos asistencias distintas, una por cuerpo.
+  const suyas = [...convocados.values()].filter((d) => d.miembro_id === tambienEnOtro[0]);
+  assert.equal(suyas.length, 2);
+  const suyos = suyas.map((d) => d.cuerpo_id);
+  assert.ok(suyos.includes(directiva), 'le falta la directiva');
+  assert.ok(suyos.some((c) => c === damas || c === caballeros), 'le falta su otro cuerpo');
 });
 
-test('quien está en dos cuerpos cuenta para uno solo', () => {
-  const ficha = convocados.get(tambienEnOtro[0]);
-  assert.equal(ficha.cuerpos.length, 2, 'no llegó con sus dos cuerpos');
-  assert.ok([damas, caballeros].includes(ficha.cuerpo_id), 'entra por el primero de la actividad');
+test('quien está en uno solo aparece una sola vez', () => {
+  const suyas = [...convocados.values()].filter((d) => d.miembro_id === soloDirectiva[0]);
+  assert.equal(suyas.length, 1);
+  assert.equal(suyas[0].cuerpo_id, directiva);
 });
 
-test('quien está en un solo cuerpo llega igual, con ese', () => {
-  const ficha = convocados.get(soloDirectiva[0]);
-  assert.deepEqual(ficha.cuerpos, [directiva]);
-  assert.equal(ficha.cuerpo_id, directiva);
+test('la lista trae una fila por cada par persona-cuerpo', () => {
+  // 3 que solo están en la directiva + 24 que están en dos = 3 + 48
+  assert.equal(convocados.size, 51);
 });
 
 test('a un cuerpo que la actividad no convocó no se lo trae', () => {
-  assert.equal(convocados.has(soloCoro), false);
   assert.equal(alFiltrarPor(coro), 0);
+  assert.equal([...convocados.values()].some((d) => d.miembro_id === soloCoro), false);
+});
+
+/* ── Las dos marcas son independientes ─────────────────────────────── */
+
+const marcar = (miembroId, cuerpoId, estado, motivo = null) =>
+  db.prepare(
+    `INSERT INTO asistencia_detalle (asistencia_id, miembro_id, cuerpo_id, estado, motivo, fecha, iglesia_id)
+     VALUES (?, ?, ?, ?, ?, '2026-08-26', ?)`
+  ).run(actividad, miembroId, cuerpoId, estado, motivo, iglesia);
+
+const marcaDe = (miembroId, cuerpoId) =>
+  db.prepare('SELECT estado, motivo FROM asistencia_detalle WHERE asistencia_id = ? AND miembro_id = ? AND cuerpo_id = ?')
+    .get(actividad, miembroId, cuerpoId);
+
+test('EL CASO DE LA IGLESIA: justificado en un cuerpo y ausente en el otro', () => {
+  // A la directiva le avisó que no iba a poder ir; a Damas no le avisó nada.
+  const quien = tambienEnOtro[0];
+  const otro = [...convocados.values()]
+    .find((d) => d.miembro_id === quien && d.cuerpo_id !== directiva).cuerpo_id;
+  marcar(quien, directiva, 'Justificado', 'Trabajo');
+  marcar(quien, otro, 'Ausente');
+
+  assert.equal(marcaDe(quien, directiva).estado, 'Justificado');
+  assert.equal(marcaDe(quien, directiva).motivo, 'Trabajo');
+  assert.equal(marcaDe(quien, otro).estado, 'Ausente');
+});
+
+test('y cada cuerpo lo cuenta en lo suyo', () => {
+  const cuenta = (cuerpoId, estado) => db
+    .prepare('SELECT COUNT(*) c FROM asistencia_detalle WHERE asistencia_id = ? AND cuerpo_id = ? AND estado = ?')
+    .get(actividad, cuerpoId, estado).c;
+  const otro = [...convocados.values()]
+    .find((d) => d.miembro_id === tambienEnOtro[0] && d.cuerpo_id !== directiva).cuerpo_id;
+  assert.equal(cuenta(directiva, 'Justificado'), 1);
+  assert.equal(cuenta(directiva, 'Ausente'), 0);
+  assert.equal(cuenta(otro, 'Ausente'), 1);
+  assert.equal(cuenta(otro, 'Justificado'), 0);
+});
+
+test('el módulo no admite dos marcas de la misma persona en el mismo cuerpo', () => {
+  // Una por cuerpo, no una por persona: el límite se corrió, no se quitó.
+  const def = require('../../server/modules/asistencia_detalle');
+  const quien = tambienEnOtro[0];
+  const error = def.hooks.beforeSave(
+    { asistencia_id: actividad, miembro_id: quien, cuerpo_id: directiva, estado: 'Presente' },
+    { id: null, existing: null, db }
+  );
+  assert.match(String(error), /ya tiene su marca en este cuerpo/);
+});
+
+test('pero sí admite la de la misma persona en otro cuerpo', () => {
+  const def = require('../../server/modules/asistencia_detalle');
+  const quien = soloDirectiva[0];
+  const error = def.hooks.beforeSave(
+    { asistencia_id: actividad, miembro_id: quien, cuerpo_id: caballeros, estado: 'Presente' },
+    { id: null, existing: null, db }
+  );
+  assert.equal(error, null);
 });

@@ -103,11 +103,21 @@ module.exports = {
       const actividad = db.prepare('SELECT * FROM asistencias WHERE id = ?').get(asistenciaId);
       if (!actividad) return 'La actividad indicada no existe';
 
-      // Una sola marca por persona en cada actividad
+      /**
+       * Una sola marca por persona EN CADA CUERPO de la actividad.
+       *
+       * No una por persona: la asistencia se lleva por cuerpo. Quien está en
+       * Damas y en la Directiva tiene una marca en cada una, y pueden no
+       * coincidir —justificado donde avisó, ausente donde no—.
+       */
+      const cuerpoId = dato('cuerpo_id');
       const repetida = db
-        .prepare('SELECT id FROM asistencia_detalle WHERE asistencia_id = ? AND miembro_id = ? AND id != ?')
-        .get(asistenciaId, miembroId, id || 0);
-      if (repetida) return 'Esa persona ya tiene su marca en esta actividad';
+        .prepare(
+          `SELECT id FROM asistencia_detalle
+            WHERE asistencia_id = ? AND miembro_id = ? AND COALESCE(cuerpo_id, 0) = ? AND id != ?`
+        )
+        .get(asistenciaId, miembroId, Number(cuerpoId) || 0, id || 0);
+      if (repetida) return 'Esa persona ya tiene su marca en este cuerpo para esta actividad';
 
       // Lo que no es justificación no lleva motivo ni detalle
       if (dato('estado') !== 'Justificado') {
@@ -117,7 +127,9 @@ module.exports = {
         data.detalle = null;
       }
 
-      data.cuerpo_id = actividad.cuerpo_id || null;
+      // El cuerpo lo trae la marca; si no viene, se cae al de la actividad
+      // (las de un solo cuerpo lo llevan en su ficha)
+      if (data.cuerpo_id === undefined) data.cuerpo_id = cuerpoId || actividad.cuerpo_id || null;
       data.fecha = actividad.fecha || null;
       data.iglesia_id = actividad.iglesia_id || null;
       return null;
