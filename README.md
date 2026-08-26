@@ -1597,6 +1597,7 @@ Lo que lo hace posible:
 - **Todo viaja comprimido**, y los archivos grandes se aprietan **una sola vez al arrancar**, con la fuerza máxima, en vez de apretarse a la carrera en cada visita: el programa pasa de 486 KB a 108 KB y los estilos de 108 KB a 22 KB. El navegador guarda los que no cambian, con el número de versión detrás para que al publicar una versión nueva todos reciban la nueva.
 - **Lo del arranque se pide todo junto.** La descripción del sistema, el panel, lo que falta por completar y los avisos sin leer no dependen entre sí, pero se pedían uno detrás de otro: tres esperas seguidas donde alcanzaba una.
 - **La descripción del sistema pesa la mitad.** De sus 251 KB, 144 eran propiedades en falso o vacías que la pantalla lee igual si no vienen; sin ellas quedan 107 KB, que además el navegador tarda la mitad en leer.
+- **El icono de la pestaña sale del `.ico`**, que ya trae los tres tamaños dibujados (16, 32 y 48) y se baja igual. Se ofrecía además el de 192 px y el navegador prefería ese: 33 KB en cada primera visita para pintar un cuadrito de 16 px.
 
 ### Qué se nota al entrar
 
@@ -1604,7 +1605,7 @@ Medido en un navegador de verdad, contra una base de diez años (813 miembros, 1
 
 | | Antes | Ahora |
 |---|---|---|
-| Lo que se baja la primera vez | 408 KB | **286 KB** |
+| Lo que se baja la primera vez | 408 KB | **253 KB** |
 | Panel completo la primera vez (3G lento) | 1.132 ms | **847 ms** |
 | Panel completo un día cualquiera (3G lento) | 1.033 ms | **860 ms** |
 | Panel completo en la oficina | 112 ms | **116 ms** |

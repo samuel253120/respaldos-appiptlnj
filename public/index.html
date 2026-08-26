@@ -21,8 +21,14 @@
   <!-- El iPhone no recorta en círculo como Android, pero igual redondea las
        esquinas: va el emblema solo, sin el anillo de letras. -->
   <link rel="apple-touch-icon" href="/icons/icon-emblema-180.png" />
+  <!-- El icono de la pestaña sale del .ico, que trae los tres tamaños dibujados
+       para eso: 16, 32 y 48. Antes se ofrecía además el de 192 px, y el
+       navegador prefería ese: treinta y tres kilos bajados en cada primera
+       visita para pintar un cuadrito de 16 px, cuando el .ico —siete kilos, y
+       que se baja igual— ya lo tenía dibujado a la medida y se ve mejor. El de
+       192 sigue estando: es el que usa el teléfono al instalar la aplicación,
+       y para eso lo nombra manifest.webmanifest. -->
   <link rel="icon" href="/favicon.ico" sizes="any" />
-  <link rel="icon" type="image/png" href="/icons/icon-192.png" />
 </head>
 <body>
   <div id="app"></div>
