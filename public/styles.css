@@ -2463,3 +2463,43 @@ input.fuera-de-rango { border-color: var(--danger); background: #fff5f5; }
 
 .dato-color { display: inline-flex; align-items: center; gap: 7px; font-family: ui-monospace, monospace; font-size: 12px; }
 .dato-color i { width: 15px; height: 15px; border-radius: 4px; border: 1px solid var(--border); flex: none; }
+
+/* ── Vista previa del certificado ─────────────────────────────────────
+   La hoja se muestra dentro del diálogo tal como se va a imprimir. En un
+   teléfono no cabe a tamaño real, así que se achica en bloque —no campo por
+   campo— para que las proporciones sean las de la hoja de verdad: una vista
+   previa que miente en las proporciones no sirve para decidir. */
+.modal.modal-previa { max-width: 1000px; width: 96vw; }
+.previa-cuerpo { background: var(--bg); }
+.previa-aviso {
+  background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--marca-oro);
+  border-radius: 0 8px 8px 0; padding: 10px 14px; margin-bottom: 14px;
+  font-size: 13px; color: var(--muted);
+}
+.previa-hoja { overflow-x: auto; }
+.previa-hoja .print-sheet {
+  margin: 0 auto; background: #fff; box-shadow: 0 2px 14px rgba(15, 23, 42, 0.12);
+}
+
+@media (max-width: 900px) {
+  /**
+   * En una pantalla angosta la hoja se achica ENTERA, no campo por campo: una
+   * vista previa que reacomoda el texto muestra otra cosa que la que va a
+   * salir impresa, y entonces no sirve para decidir.
+   *
+   * Se ancla arriba a la IZQUIERDA. Anclada al centro no queda centrada: la
+   * hoja se declara más ancha que su caja —para que al achicarla ocupe el
+   * ancho justo— y el centro de la hoja no es el centro de la caja, así que se
+   * corría hacia la derecha y se salía de la pantalla.
+   *
+   * El alto que ocupa ya achicada se lo pone la propia pantalla al abrirla
+   * (ver verVistaPreviaCertificado): el transform no encoge el lugar que el
+   * elemento reserva, y sin eso el diálogo queda con un hueco enorme debajo.
+   */
+  .previa-hoja { --previa-escala: 0.62; overflow: hidden; }
+  .previa-hoja .print-sheet {
+    transform: scale(var(--previa-escala)); transform-origin: top left;
+    width: calc(100% / var(--previa-escala));
+  }
+}
+@media (max-width: 560px) { .previa-hoja { --previa-escala: 0.44; } }

@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.111.0", fecha: "2026-08-26", titulo: "Vista previa del certificado, en el formato y al emitirlo, sin guardar nada" },
   { version: "1.110.0", fecha: "2026-08-26", titulo: "Los formatos de los certificados los mantiene la iglesia: su texto, qué muestra la hoja y su diseño" },
   { version: "1.109.0", fecha: "2026-08-26", titulo: "La asistencia se lleva por cuerpo: quien está en dos puede quedar justificado en uno y ausente en el otro" },
   { version: "1.108.0", fecha: "2026-08-26", titulo: "Al pasar lista, filtrar por un cuerpo ya no esconde a quien está además en otro" },

@@ -4450,13 +4450,68 @@ async function viewForm(name, id, precarga) {
   }
 
   const foot = document.getElementById('formFoot');
+  // Los formatos de certificado y los certificados se pueden mirar antes de
+  // guardar: lo que se imprime se firma y se entrega
+  const conPrevia = name === 'formatos_certificado' || name === 'certificados';
   foot.innerHTML = `
     ${!isNew && m.printable && tieneLlave('datos_impresion') ? `<button type="button" class="btn secondary left" id="btnPrint">🖨️ Imprimir</button>` : ''}
+    ${conPrevia ? `<button type="button" class="btn secondary${!isNew && m.printable && tieneLlave('datos_impresion') ? '' : ' left'}" id="btnPrevia">👁️ Vista previa</button>` : ''}
     <button type="button" class="btn secondary" id="btnCancel">Cancelar</button>
     ${canEdit ? `<button type="submit" class="btn">💾 Guardar</button>` : ''}`;
   document.getElementById('btnCancel').addEventListener('click', () => (location.hash = `#/m/${name}`));
   const bp = document.getElementById('btnPrint');
   if (bp) bp.addEventListener('click', () => (location.hash = `#/print/${name}/${id}`));
+
+  const bpv = document.getElementById('btnPrevia');
+  if (bpv) {
+    bpv.addEventListener('click', async () => {
+      /*
+       * Se lee el formulario tal como está, sin guardar: probar un cambio y
+       * recién entonces aceptarlo es todo el sentido de la vista previa.
+       */
+      const enPantalla = collectForm(m);
+
+      if (name === 'formatos_certificado') {
+        return verVistaPreviaCertificado({
+          formato: enPantalla,
+          row: certDeEjemplo(enPantalla.nombre),
+          titulo: `Vista previa: ${enPantalla.nombre || 'formato sin nombre'}`,
+        });
+      }
+
+      /*
+       * En un certificado, el formato viene del servidor —es lo que está
+       * guardado para ese tipo— y lo escrito en pantalla manda sobre él. Las
+       * etiquetas de las referencias no están en el formulario (guarda ids),
+       * así que se toman de los selectores, que es donde se leen.
+       */
+      const tipo = enPantalla.tipo || '';
+      const formato = tipo
+        ? await api('GET', `/formatos_certificado/para?tipo=${encodeURIComponent(tipo)}`).catch(() => null)
+        : null;
+      const etiquetaDe = (campo) => {
+        const el = document.querySelector(`#recForm [name="${campo}"]`);
+        if (!el) return '';
+        if (el.tagName === 'SELECT') return el.selectedOptions[0] ? el.selectedOptions[0].textContent.trim() : '';
+        const caja = el.closest('.refbuscar');
+        const txt = caja && caja.querySelector('.rb-txt');
+        return txt ? txt.value.trim() : '';
+      };
+      const ejemplo = certDeEjemplo(tipo);
+      verVistaPreviaCertificado({
+        formato,
+        row: {
+          ...enPantalla,
+          numero: enPantalla.numero || ejemplo.numero,
+          nombre_titular: enPantalla.nombre_titular || ejemplo.nombre_titular,
+          fecha_emision: enPantalla.fecha_emision || ejemplo.fecha_emision,
+          iglesia_id_label: etiquetaDe('iglesia_id') || ejemplo.iglesia_id_label,
+          oficiante_id_label: etiquetaDe('oficiante_id'),
+        },
+        titulo: tipo ? `Vista previa: ${tipo}` : 'Vista previa',
+      });
+    });
+  }
 
   // Se pone en true cuando la persona confirma un aviso que admite confirmarse,
   // para que el segundo intento entre. Vuelve a false en cuanto se guarda.
@@ -6805,6 +6860,102 @@ function printCertificado(row, formato) {
         ${f.muestra_pie === 0 || !pieDeLaInstitucion() ? '' : `<div class="cert-pie">${esc(pieDeLaInstitucion())}</div>`}
       </div>
     </div>`;
+}
+
+/**
+ * Un certificado de mentira, para ver cómo queda un formato.
+ *
+ * Los datos son de relleno a propósito y se nota que lo son: si la vista
+ * previa mostrara un nombre plausible, alguien terminaría imprimiendo la
+ * prueba creyendo que es el certificado de esa persona.
+ */
+function certDeEjemplo(tipo) {
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  /*
+   * La iglesia sale de la barra de arriba, para que la muestra tenga el largo
+   * de línea de verdad: con un hueco en blanco donde va el nombre no se puede
+   * juzgar si el texto entra en un renglón o se parte en tres. Cuando arriba
+   * dice «Todas las iglesias» no hay una sola que poner, y ahí sí va un nombre
+   * de relleno, con el largo de uno típico.
+   */
+  const enLaBarra = (document.querySelector('.iglesia-local .nm') || {}).textContent || '';
+  const unaSola = enLaBarra.trim() && !/^todas\b/i.test(enLaBarra.trim());
+
+  return {
+    numero: 'CERT-000-0000',
+    tipo: tipo || 'Certificado',
+    nombre_titular: 'Nombre Del Titular Apellido',
+    fecha_evento: hoy,
+    fecha_emision: hoy,
+    oficiante_id_label: 'Nombre del oficiante',
+    iglesia_id_label: unaSola ? enLaBarra.trim() : 'Iglesia Local de Ejemplo',
+    rut: '11111111-1',
+    texto: '',
+  };
+}
+
+/**
+ * La vista previa de un certificado, sin guardar nada.
+ *
+ * Existe porque un certificado se firma y se entrega: lo que salió impreso no
+ * se corrige después. Hasta acá, la única manera de ver cómo quedaba un
+ * formato era guardarlo, emitir un certificado y entrar a imprimirlo —tres
+ * pasos y un registro de mentira que después hay que borrar—, así que en la
+ * práctica nadie miraba antes.
+ *
+ * Se arma con lo que hay EN EL FORMULARIO en este momento, no con lo guardado:
+ * el sentido es probar un cambio antes de aceptarlo.
+ */
+function verVistaPreviaCertificado({ formato, row, titulo }) {
+  const fondo = document.createElement('div');
+  fondo.className = 'modal-fondo';
+  fondo.innerHTML = `
+    <div class="modal modal-previa">
+      <div class="modal-head">
+        <h3>👁️ ${esc(titulo || 'Vista previa')}</h3>
+        <button class="cerrar" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body previa-cuerpo">
+        <div class="previa-aviso">
+          Es una muestra con datos de relleno, para ver cómo queda la hoja.
+          No se guarda nada y no queda ningún certificado emitido.
+        </div>
+        <div class="previa-hoja">${printCertificado(row, formato)}</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="previaCerrar">Cerrar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(fondo);
+  const cerrar = () => fondo.remove();
+  fondo.querySelector('.cerrar').addEventListener('click', cerrar);
+  fondo.querySelector('#previaCerrar').addEventListener('click', cerrar);
+  fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(); });
+  document.addEventListener('keydown', function fuga(e) {
+    if (e.key !== 'Escape') return;
+    document.removeEventListener('keydown', fuga);
+    cerrar();
+  });
+  /*
+   * El alto de la caja, cuando la hoja va achicada. `transform: scale` no
+   * cambia el lugar que el elemento reserva en la página: la hoja se ve chica
+   * pero sigue ocupando el alto de la grande, y el diálogo queda con un hueco
+   * de varias pantallas debajo. Se mide y se ajusta acá, que es donde se sabe
+   * cuánto mide de verdad.
+   */
+  const caja = fondo.querySelector('.previa-hoja');
+  const hoja = caja.querySelector('.print-sheet');
+  const ajustarAlto = () => {
+    const escala = parseFloat(getComputedStyle(caja).getPropertyValue('--previa-escala'));
+    if (!Number.isFinite(escala) || escala >= 1) { caja.style.height = ''; return; }
+    caja.style.height = `${Math.ceil(hoja.offsetHeight * escala)}px`;
+  };
+  ajustarAlto();
+  addEventListener('resize', ajustarAlto);
+  fondo.addEventListener('remove', () => removeEventListener('resize', ajustarAlto));
+
+  fondo.querySelector('#previaCerrar').focus();
 }
 
 /* =====================================================================

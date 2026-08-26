@@ -303,6 +303,12 @@ El que no tenga dato queda en blanco: una llave impresa tal cual obligaría a re
 
 **Un certificado puede decir algo distinto.** Su propio campo de texto manda sobre el del formato, para el caso puntual. Vacío —lo habitual— usa el del formato, así una redacción se corrige una vez y no certificado por certificado.
 
+**Vista previa, antes de guardar.** Tanto en la ficha del formato como al emitir un certificado hay un botón **👁️ Vista previa** que muestra la hoja tal como va a salir impresa, con lo que hay escrito **en ese momento en el formulario** —no con lo guardado—: se prueba un cambio de color, de tipografía o de texto y recién entonces se acepta.
+
+En el formato la muestra va con datos de relleno que se nota que lo son —*«Nombre Del Titular Apellido»*, *«CERT-000-0000»*—, para que a nadie se le pase imprimir la prueba creyendo que es el certificado de alguien. El nombre de la iglesia sí es el real, porque de otro modo no se puede juzgar si el texto entra en un renglón. Al emitir, la muestra usa los datos que ya se escribieron.
+
+> No se guarda nada ni queda ningún certificado emitido por mirar la vista previa. En un teléfono la hoja se achica **entera**, conservando sus proporciones: una vista previa que reacomoda el texto muestra otra cosa que la que va a salir impresa.
+
 > Al actualizar se crean solos los **ocho** tipos que traía el sistema, con sus mismos textos, para que nada cambie de aspecto ese día. Desde ahí se editan, se agregan otros o se sacan de uso.
 
 ### Histórico de directivas 🏅

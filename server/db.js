@@ -197,8 +197,25 @@ function migrate() {
     // Agregar columnas nuevas declaradas después de creada la tabla.
     const existing = new Set(db.prepare(`PRAGMA table_info("${def.name}")`).all().map((c) => c.name));
     for (const f of def.fields) {
-      if (!existing.has(f.name)) {
-        db.exec(`ALTER TABLE "${def.name}" ADD COLUMN "${f.name}" ${sqlType(f)}`);
+      if (existing.has(f.name)) continue;
+      db.exec(`ALTER TABLE "${def.name}" ADD COLUMN "${f.name}" ${sqlType(f)}`);
+
+      /**
+       * Y a las fichas que ya estaban se les pone el valor por omisión.
+       *
+       * `ADD COLUMN` las deja en nulo, y el nulo NO es lo mismo que el valor
+       * por omisión para quien mira la pantalla: el formulario muestra el
+       * valor por omisión solo en las fichas nuevas, así que una casilla que
+       * nace marcada aparece DESMARCADA en todas las fichas anteriores. Quien
+       * abre una de ellas y guarda sin tocar nada le apaga un ajuste que creía
+       * encendido, y no hay nada en pantalla que lo diga.
+       *
+       * Corre una sola vez, en el momento en que la columna se crea: ahí todas
+       * las filas están en nulo por definición, así que no pisa nada.
+       */
+      if (f.default !== undefined && f.default !== null && existing.size) {
+        const valor = f.type === 'boolean' ? (f.default ? 1 : 0) : f.default;
+        db.prepare(`UPDATE "${def.name}" SET "${f.name}" = ? WHERE "${f.name}" IS NULL`).run(valor);
       }
     }
     for (const extra of ['created_at', 'updated_at', 'created_by', 'updated_by', 'version']) {
