@@ -600,6 +600,19 @@ table.grid th.col-mini { font-size: 15px; }
     font-size: 15.5px; font-weight: 700; line-height: 1.25;
     justify-content: flex-start; text-align: left; padding-bottom: 4px;
   }
+  /**
+   * Los títulos de tarjeta se dibujan como bloque, no como caja flexible.
+   *
+   * Una caja flexible no deja que su contenido se encoja por debajo de lo que
+   * mide la palabra más larga, así que un nombre sin espacios —una dirección
+   * de internet pegada como nombre de cuenta— se salía por la derecha POR
+   * ENCIMA del sitio reservado y se metía debajo de los botones. Como bloque,
+   * la palabra se parte donde haga falta y se queda adentro. No cambia nada
+   * más: estos títulos no llevan etiqueta al lado y ya iban a la izquierda.
+   */
+  table.grid-lista td.col-titular,
+  table.grid-lista td[data-col="nombres"], table.grid-lista td[data-col="nombre"],
+  table.grid-lista td[data-col="apellidos"] { display: block; overflow-wrap: break-word; }
   table.grid-lista td.col-titular::before { display: none; }
   /* Y se ven siempre: en el teléfono no hay ratón que pasar por encima */
   table.grid-lista .btn.sm { border-color: var(--border); background: #fff; color: var(--text); }
@@ -1207,7 +1220,21 @@ table.planilla-mes tfoot .pie.no td  { color: #b91c1c; }
   .stat { padding: 10px 12px; }
   .stat .num { font-size: 20px; }
   .stat .ic { font-size: 15px; }
-  .fin-cards, .treasury-summary { grid-template-columns: 1fr 1fr; gap: 8px; }
+  /**
+   * Dos tarjetas de plata por línea, o una si no caben.
+   *
+   * Iban dos fijas. Un monto de nueve cifras —«$ 184.408.964»— mide 145 px, y
+   * con el relleno de la tarjeta son 173: dos no caben en los 332 px útiles de
+   * un teléfono de 360, así que la segunda columna se salía 22 px de la
+   * pantalla. Y un monto no se puede recortar ni partir: es plata, se lee
+   * entera o no sirve.
+   *
+   * Con «auto-fit» lo decide el ancho que haya: dos donde caben dos, una donde
+   * cabe una. El «min-width: 0» es el seguro para el día en que los montos
+   * lleguen a diez cifras: la tarjeta cede antes que la página.
+   */
+  .fin-cards, .treasury-summary { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 8px; }
+  .fin, .treasury-summary > * { min-width: 0; }
   .fin { padding: 10px 12px; }
   .fin .num { font-size: 18px; }
   .toolbar { padding: 10px 12px; gap: 8px; }
@@ -1953,9 +1980,18 @@ ul.pasar-lista .pl-just input { flex: 1; }
   ul.pasar-lista .pl-just { flex-basis: 100%; flex-wrap: wrap; }
   ul.pasar-lista .pl-just select, ul.pasar-lista .pl-just input { flex: 1 1 100%; min-height: 44px; }
   .pl-barra { padding: 10px 14px; gap: 8px; }
+  /* El resumen de la lista va en una tira que se corre de lado —presentes,
+     ausentes, justificados, sin marcar— y esconde más de cien píxeles. Lleva
+     la misma sombra de borde que las tablas anchas para que se vea que sigue:
+     sin ella, en un teléfono angosto uno se queda con que hay tres cifras. */
   .pl-resumen {
     flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px;
     scrollbar-width: none; -ms-overflow-style: none;
+    background:
+      linear-gradient(to right, #fff 30%, rgba(255, 255, 255, 0)) left center / 20px 100% no-repeat local,
+      linear-gradient(to left, #fff 30%, rgba(255, 255, 255, 0)) right center / 20px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(15, 23, 42, 0.24), rgba(15, 23, 42, 0)) left center / 12px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(15, 23, 42, 0.24), rgba(15, 23, 42, 0)) right center / 12px 100% no-repeat scroll;
   }
   .pl-resumen::-webkit-scrollbar { display: none; }
   .pl-resumen .badge { white-space: nowrap; }
@@ -2287,4 +2323,45 @@ input.fuera-de-rango { border-color: var(--danger); background: #fff5f5; }
   .refbuscar .rb-txt { padding-right: 44px; }
   /* Los números de página: van uno al lado del otro y se toca el de al lado */
   .pager button { min-width: 36px; min-height: 34px; padding: 6px 11px; }
+  /**
+   * Y la barra de arriba, que es donde más se toca.
+   *
+   * El botón del menú medía veinte por veintiséis píxeles: el control que más
+   * se usa en un teléfono era el más chico de todos. Ahora tiene el tamaño de
+   * un dedo, y el selector de iglesia también.
+   */
+  .menu-toggle { min-width: 40px; min-height: 40px; padding: 0; }
+  .iglesia-local { min-height: 36px; }
+  .campanita .cam-boton, #camAbrir { min-width: 38px; min-height: 38px; }
+}
+
+
+/* ---------- Los teléfonos angostos de verdad (320 px) ---------- */
+/**
+ * En un teléfono de 320 px —un iPhone SE de los primeros, un Android básico—
+ * la barra de arriba pedía 338 px y «Cerrar sesión» se salía dieciocho por el
+ * borde derecho. No se notaba mirando: la página se podía correr de lado, así
+ * que el botón estaba, solo que había que descubrir que había que arrastrar.
+ *
+ * No se saca nada de la barra: se aprieta. Con el relleno y las separaciones
+ * un poco más juntas caben las siete piezas —el menú, la iglesia, el buscador,
+ * la campanita, la cuenta y el botón— sin que ninguna se vaya.
+ */
+@media (max-width: 360px) {
+  /**
+   * Y si aun así no caben, la barra pasa a dos líneas.
+   *
+   * Son siete piezas —el menú, la iglesia, el buscador, la campanita, la
+   * cuenta y el botón de salir— y en 320 px no entran en una sola línea por
+   * mucho que se aprieten. Ninguna se puede sacar: «Cerrar sesión» no está en
+   * ninguna otra parte del sistema, y esconderlo dejaría a alguien sin poder
+   * salir. Así que se dobla, que cuesta una línea de alto y no cuesta nada más.
+   */
+  .topbar { padding: 9px 8px; gap: 5px; flex-wrap: wrap; }
+  .topbar .btn { padding: 7px 9px; }
+  /* «.elegible» tiene dos clases y por eso le ganaba a esta: se nombran las dos */
+  .iglesia-local, .iglesia-local.elegible {
+    padding: 6px 8px 6px 7px; min-width: 0; max-width: 30vw;
+  }
+  .buscador-global .bg-abrir { min-width: 36px; }
 }

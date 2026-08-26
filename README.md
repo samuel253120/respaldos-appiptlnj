@@ -420,7 +420,7 @@ A mano se puede anotar cualquier otra cosa: la fundación, una inauguración, un
 
 ## Panel de control 📊
 
-La pantalla de inicio muestra los totales del sistema, el resumen financiero del mes (a quien tenga acceso a Tesorería), las últimas asistencias y las solicitudes recientes.
+La pantalla de inicio muestra los totales del sistema, el resumen financiero del mes (a quien tenga acceso a Tesorería), los próximos cumpleaños, las solicitudes recientes y los datos que faltan por completar.
 
 ### Datos por completar 📝
 
@@ -1619,6 +1619,7 @@ En la oficina no cambia nada —ahí nunca fue el problema—. La diferencia est
 npm run humo            # todas las pantallas abren bien, en computador y en teléfono
 npm run movil           # y además se VEN bien en un teléfono: nada cortado, tapado ni chico
 ANCHO=360 npm run movil # en uno angosto
+ANCHO=320 npm run movil # y en uno de los antiguos
 npm run credencial      # la credencial impresa mide lo que tiene que medir y su QR se lee
 npm run aceptacion      # las diecinueve pruebas de aceptación de la credencial pastoral
 npm run concurrencia    # dos personas sobre la misma ficha y sobre la misma lista
@@ -1648,7 +1649,10 @@ Cada registro se dibuja como una tarjeta, con el dato que lo identifica arriba �
 - **Una tabla que se corre de lado lo dice.** La planilla de cuotas son doce columnas y esconde trescientos píxeles: ahora lleva la sombra de siempre en el borde, que aparece y desaparece según se corra.
 - **Un texto larguísimo ya no arruina un listado.** Un dato con cien mil letras seguidas —basta pegar el contenido de un correo en una nota— estiraba la fila casi un millón de píxeles. El listado es un resumen: se recorta a ciento veinte letras y lo entero se lee en la ficha.
 
-Todo esto se comprueba solo, en las ochenta y una pantallas, con `npm run movil` (ver **Comprobarlo**).
+- **La barra de arriba cabe hasta en un teléfono de 320 px.** Sus siete piezas pedían 338 px y «Cerrar sesión» se salía por el borde; como la página se podía correr de lado, el botón estaba pero había que descubrir que había que arrastrar. Ahora se aprieta, y si aun así no cabe, se dobla en dos líneas: nada se esconde, porque salir del sistema no se ofrece en ninguna otra parte.
+- **El botón del menú ☰ medía 20×26 px**, el control que más se toca en un teléfono era el más chico de todos. Ahora mide 40×40.
+
+Todo esto se comprueba solo, en las ochenta y una pantallas y a tres anchos, con `npm run movil` (ver **Comprobarlo**).
 
 | | Antes | Ahora |
 |---|---|---|

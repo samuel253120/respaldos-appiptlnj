@@ -1812,16 +1812,6 @@ async function viewDashboard() {
     <div class="dash-cols">
       ${MOD['miembros'] ? cumpleHtml : ''}
       <div class="card">
-        <h3>📋 Últimas asistencias</h3>
-        <ul class="mini-list">
-          ${d.ultimasAsistencias.length ? d.ultimasAsistencias.map((a) => `
-            <li data-ir="#/asistencia?actividad=${a.id}">
-              <span>${esc(a.tipo_reunion)}${a.cuerpo ? ` <span class="mut">— ${esc(a.cuerpo)}</span>` : ''}</span>
-              <span class="mut">${fechaCorta(a.fecha)} · ${a.marcados ? `${a.presentes} de ${a.marcados}` : 'sin lista'}</span>
-            </li>`).join('') : '<li class="mut">Sin registros aún</li>'}
-        </ul>
-      </div>
-      <div class="card">
         <h3>📨 Solicitudes recientes</h3>
         <ul class="mini-list">
           ${d.solicitudesRecientes.length ? d.solicitudesRecientes.map((s) => `

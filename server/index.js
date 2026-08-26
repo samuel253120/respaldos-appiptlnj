@@ -444,55 +444,10 @@ app.get('/api/dashboard', authRequired, (req, res) => {
   const cumpleanos = require('./cumpleanos').proximosCumpleanos(
     susIglesias, susCuerpos, ajustes.numero('cumpleanos_cantidad', 1, 20));
 
+  // Solo las iglesias que alcanza quien está mirando
   const marcas2 = susIglesias.map(() => '?').join(',');
   const w2 = susIglesias.length ? `WHERE iglesia_id IN (${marcas2})` : '';
   const p2 = susIglesias;
-  /**
-   * Las cinco últimas listas pasadas, con cuánta gente asistió.
-   *
-   * Se eligen PRIMERO las cinco reuniones y recién después se cuentan sus
-   * marcas. Escrito al revés —unir las dos tablas y agrupar— la base recorre
-   * y agrupa todas las marcas que existen para después botar todas menos
-   * cinco: con 86.400 marcas eso costaba 17 ms en vez de 0,3 ms, y como
-   * SQLite es sincrónico esos 17 ms no los pagaba solo quien abrió el panel,
-   * los pagaban todos los que estaban esperando su turno.
-   *
-   * El desempate por `id` tampoco es adorno. Varias iglesias pasan lista el
-   * mismo día, así que pedir «las cinco últimas por fecha» no alcanza para
-   * saber cuáles cinco: con doce reuniones de la misma fecha, cuáles salían
-   * lo decidía el camino que la base eligiera esa vez, y podía cambiar solo
-   * con que se agregara un índice. Ahora, a igual fecha, sale primero la
-   * que se anotó después.
-   */
-  const ultimasAsistencias = db
-    .prepare(
-      `WITH ultimas AS (
-         SELECT id, fecha, tipo_reunion, cuerpos
-           FROM asistencias
-          ${w2}
-          ORDER BY fecha DESC, id DESC LIMIT 5
-       )
-       SELECT u.id, u.fecha, u.tipo_reunion, u.cuerpos,
-              COALESCE(SUM(CASE WHEN d.estado = 'Presente' THEN 1 ELSE 0 END), 0) AS presentes,
-              COUNT(d.id) AS marcados
-         FROM ultimas u
-         LEFT JOIN asistencia_detalle d ON d.asistencia_id = u.id
-        GROUP BY u.id ORDER BY u.fecha DESC, u.id DESC`
-    )
-    .all(...p2)
-    .map((a) => {
-      // Los cuerpos convocados se guardan como lista: se resuelven sus nombres
-      let ids = [];
-      try {
-        ids = JSON.parse(a.cuerpos || '[]').map(Number).filter(Boolean);
-      } catch (e) {
-        ids = [];
-      }
-      const nombres = ids
-        .map((id) => (db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(id) || {}).nombre)
-        .filter(Boolean);
-      return { ...a, cuerpo: nombres.join(' + ') || null };
-    });
   const solicitudesRecientes = db
     .prepare(`SELECT id, fecha, solicitante, asunto, estado FROM solicitudes ${w2} ORDER BY fecha DESC LIMIT 5`)
     .all(...p2);
@@ -513,7 +468,7 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     ? getModule('credenciales').porVencer(req.user)
     : [];
 
-  res.json({ counts, finanzas, cumpleanos, ultimasAsistencias, solicitudesRecientes, credencialesPorVencer });
+  res.json({ counts, finanzas, cumpleanos, solicitudesRecientes, credencialesPorVencer });
 });
 
 

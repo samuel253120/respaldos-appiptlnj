@@ -49,7 +49,11 @@ const MIRAR = `
     return el.tagName.toLowerCase() + c + (t ? ' «' + t + '»' : '');
   };
   const DE_ESCRIBIR = ['INPUT', 'TEXTAREA', 'SELECT'];
-  const zona = document.getElementById('content') || document.body;
+  // Toda la página, no solo el contenido: la barra de arriba, el menú y el
+  // panel de avisos también se ven mal si se salen, y mirando solo #content
+  // esta revisión no los veía. Apareció así: en un teléfono de 320 px
+  // «Cerrar sesión» se salía dieciocho píxeles y nada lo decía.
+  const zona = document.body;
 
   /**
    * ¿Se está dibujando de verdad?
@@ -62,6 +66,11 @@ const MIRAR = `
    */
   const seDibuja = (el) => {
     const r = el.getBoundingClientRect();
+    // Lo que está del todo fuera de la pantalla no se está viendo: el menú
+    // lateral cuando está cerrado vive a la izquierda del borde, y el panel de
+    // avisos arriba del techo. Nada de eso se pisa con nada ni hay que tocarlo.
+    if (r.right <= 0 || r.left >= window.innerWidth) return false;
+    if (r.bottom <= 0 && r.top <= 0) return false;
     for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
       const e2 = getComputedStyle(p);
       if (['hidden', 'clip', 'auto', 'scroll'].includes(e2.overflowY)
