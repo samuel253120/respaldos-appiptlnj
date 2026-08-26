@@ -1639,6 +1639,7 @@ Cada registro se dibuja como una tarjeta, con el dato que lo identifica arriba �
 - **Imprimir y borrar van en la esquina de la tarjeta**, no en una fila propia, y el dato de arriba les deja el sitio: en un listado largo, una fila entera para dos botones chicos es media pantalla desperdiciada.
 - **Los filtros llegan plegados.** A la vista queda el buscador, que es lo que se usa siempre; el resto se abre con un botón que dice cuántos filtros hay puestos. Si se llega con alguno puesto, se abre solo: una lista recortada sin que se vea por qué es peor que un botón de más.
 - **El nombre del dato cede antes que el dato.** Una etiqueta larga se recorta con puntos suspensivos —se puede adivinar— y el dato se queda entero.
+- **El editor de permisos también se dibuja como tarjetas.** Su tabla tiene seis columnas y mide 635 px: en un teléfono se cortaba a media palabra y las cuatro columnas de acciones —ver, crear, editar, eliminar— quedaban fuera de la pantalla sin manera de llegar a ellas. Ahora cada módulo lleva su nombre arriba, los escalones debajo y las cuatro casillas al final, cada una con su nombre al lado.
 
 | | Antes | Ahora |
 |---|---|---|

@@ -1346,6 +1346,55 @@ table.planilla-mes tfoot .pie.no td  { color: #b91c1c; }
 .perm-tabla .marca { color: var(--accent); font-size: 18px; line-height: 0; vertical-align: middle; }
 .perm-tabla input[type=checkbox] { width: auto; cursor: pointer; }
 
+/* ---------- El editor de permisos en el teléfono ---------- */
+/**
+ * La tabla de permisos no cabe, y no cabía de una manera que no se notaba.
+ *
+ * Son seis columnas —el módulo, los cinco escalones y las cuatro acciones— y
+ * miden 635 px. En un teléfono la caja tiene 312, así que sobraban trescientos:
+ * los escalones salían cortados a media palabra («Ver, agregar y corre…») y
+ * las cuatro columnas de acciones quedaban del todo fuera de la pantalla.
+ *
+ * El deslizamiento lateral que se había previsto —«.permisos-editor» con
+ * overflow-x— no llegaba a funcionar: cada grupo recorta lo suyo para
+ * redondear sus esquinas, así que la tabla se cortaba ahí y nunca alcanzaba a
+ * la caja que sí deslizaba. Y aunque hubiera deslizado, tener que arrastrar de
+ * lado para llegar a «Eliminar» no es manera de repartir permisos.
+ *
+ * Así que en pantalla chica cada módulo deja de ser una fila y pasa a ser una
+ * tarjeta: el nombre arriba, los escalones debajo —que son el control que se
+ * usa— y las cuatro casillas al final en una sola línea, cada una con su
+ * nombre al lado, porque el encabezado de la tabla ya no está para decirlo.
+ */
+@media (max-width: 700px) {
+  .perm-tabla, .perm-tabla tbody, .perm-tabla tr, .perm-tabla td { display: block; width: auto; }
+  .perm-tabla thead { display: none; }
+  .perm-tabla tr { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  .perm-tabla tr:last-child { border-bottom: none; }
+  .perm-tabla td { border-bottom: none; padding: 0; }
+  /* El nombre del módulo encabeza su tarjeta, y puede ocupar dos líneas:
+     «Documentos de Miembros» no cabe en una sola a este ancho */
+  .perm-tabla td.nom {
+    white-space: normal; font-weight: 600; color: var(--text);
+    font-size: 13.5px; line-height: 1.3; padding-bottom: 7px;
+  }
+  .perm-tabla tr.personalizado td.nom { color: var(--marca-azul); }
+  .perm-tabla td.nom .nota { display: block; margin: 2px 0 0; }
+  .perm-tabla td.atajos { padding-bottom: 8px; }
+  /* Las cuatro acciones, en una línea y diciendo cada una cómo se llama */
+  .perm-tabla td.c {
+    display: inline-flex; align-items: center; gap: 5px; width: auto;
+    margin-right: 14px; font-size: 12px; color: var(--muted); text-align: left;
+  }
+  .perm-tabla td.c::before { content: attr(data-label); order: 2; }
+  .perm-tabla td.c input[type=checkbox] { order: 1; margin: 0; }
+  /* Y la acción que acá no significa nada, no se nombra siquiera. En el
+     computador va una raya bajo su columna, que dice «esta no aplica»; suelta
+     en una línea de tarjeta —«— Crear — Editar — Eliminar» debajo de una llave
+     que solo se tiene o no se tiene— es ruido puro. */
+  .perm-tabla td.c.sin-sentido { display: none; }
+}
+
 /* La lista para ponerle un perfil a varios usuarios de una vez */
 ul.perfil-elegir { list-style: none; padding: 4px 0; margin: 0; }
 ul.perfil-elegir li { border-bottom: 1px solid #f1f5f9; }

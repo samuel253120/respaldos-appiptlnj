@@ -119,6 +119,7 @@ async function revisarUnMedio(navegador, medio, ancho) {
   const anchos = {};
   const repetidos = [];
   const tapados = [];
+  const recortados = [];
 
   const revisar = async (ruta) => {
     await pagina.goto(URL + '/' + ruta);
@@ -205,6 +206,46 @@ async function revisarUnMedio(navegador, medio, ancho) {
         return [...new Set(choques)];
       });
       if (encima.length) tapados.push(`${ruta} → ${encima.slice(0, 3).join(' · ')}`);
+
+      /*
+       * Contenido RECORTADO por una caja que no deja llegar a él.
+       *
+       * El editor de permisos tenía una tabla de 635 px metida en una caja de
+       * 312: los escalones salían cortados a media palabra y las cuatro
+       * columnas de acciones —ver, crear, editar, eliminar— quedaban del todo
+       * fuera de la pantalla. Había un deslizamiento lateral previsto para eso,
+       * pero no llegaba a funcionar: el grupo de más adentro recorta lo suyo
+       * para redondear sus esquinas, así que la tabla se cortaba ahí y nunca
+       * alcanzaba a la caja que sí deslizaba.
+       *
+       * Y no lo veía ninguna prueba, justamente porque estaba recortado: la
+       * página NO se sale de lado —para eso servía el recorte—, no hay error,
+       * no hay pantalla en blanco. Simplemente falta media pantalla de
+       * controles y no hay manera de llegar a ellos.
+       *
+       * Así que acá se busca lo contrario de lo que se buscaba: una caja que
+       * esconde parte de lo suyo Y que no se puede deslizar. Si se puede
+       * deslizar está bien —una tabla ancha que se arrastra es una decisión—;
+       * lo que no puede ser es que esté escondido y sin salida.
+       */
+      const escondido = await pagina.evaluate(() => {
+        const presos = [];
+        // Una caja de escribir esconde lo suyo por naturaleza —el texto se
+        // corre solo al mover el cursor— y eso no es un defecto de nadie
+        const DE_ESCRIBIR = ['INPUT', 'TEXTAREA', 'SELECT'];
+        for (const el of document.querySelectorAll('#content *')) {
+          if (DE_ESCRIBIR.includes(el.tagName) || el.isContentEditable) continue;
+          const est = getComputedStyle(el);
+          if (est.overflowX !== 'hidden' && est.overflowX !== 'clip') continue;
+          // Lo que se recorta con puntos suspensivos se recorta a propósito
+          if (est.textOverflow === 'ellipsis') continue;
+          const sobra = el.scrollWidth - el.clientWidth;
+          if (sobra <= 4 || !el.clientWidth) continue;
+          presos.push(`${el.tagName.toLowerCase()}${el.className ? '.' + String(el.className).split(' ')[0] : ''} esconde ${sobra} px`);
+        }
+        return [...new Set(presos)];
+      });
+      if (escondido.length) recortados.push(`${ruta} → ${escondido.slice(0, 3).join(' · ')}`);
     }
   };
 
@@ -299,11 +340,13 @@ async function revisarUnMedio(navegador, medio, ancho) {
       ` · pegados en "Cargando…": ${pegados.length ? pegados.join(', ') : 'ninguno'}` +
       ` · campos repetidos: ${repetidos.length ? repetidos.join(' | ') : 'ninguno'}` +
       (ancho <= 700 ? ` · datos tapados por los botones: ${tapados.length ? tapados.join(' | ') : 'ninguno'}` : '') +
+      (ancho <= 700 ? ` · recortado sin salida: ${recortados.length ? recortados.join(' | ') : 'nada'}` : '') +
       ` · se salen de lado: ${Object.keys(anchos).length ? JSON.stringify(anchos) : 'ninguna'}` +
       ` · errores: ${distintos.length ? distintos.slice(0, 4).join(' | ') : 'ninguno'}`
   );
   await pagina.close();
-  return pegados.length + Object.keys(anchos).length + distintos.length + repetidos.length + tapados.length;
+  return pegados.length + Object.keys(anchos).length + distintos.length + repetidos.length
+    + tapados.length + recortados.length;
 }
 
 (async () => {

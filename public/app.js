@@ -8620,14 +8620,23 @@ function initPermisos(f, row, rolActual) {
                         <button type="button" class="chip ${mismasAcciones(a.acciones, efectivos) ? 'on' : ''}"
                           data-mod="${m.name}" data-atajo="${a.clave}" title="${esc(a.titulo)}">${esc(a.texto)}</button>`).join('')}
                     </td>
-                    ${acciones.map((a) => `
-                      <td class="c">
-                        ${acepta(m).includes(a.value)
+                    ${acciones.map((a) => {
+                      // La celda dice a qué acción corresponde y si acá tiene
+                      // sentido. En el computador esto no hace falta —la
+                      // columna lo dice arriba— pero en el teléfono la tabla se
+                      // dibuja como tarjetas y el encabezado ya no está, así
+                      // que cada casilla lleva su nombre al lado y las que no
+                      // aplican se guardan (ver styles.css).
+                      const aplica = acepta(m).includes(a.value);
+                      return `
+                      <td class="c${aplica ? '' : ' sin-sentido'}" data-label="${esc(a.label)}">
+                        ${aplica
                           ? `<input type="checkbox" class="perm-acc" data-mod="${m.name}" data-acc="${a.value}"
                                aria-label="${esc(a.label)} · ${esc(m.label)}"
                                ${efectivos.includes(a.value) ? 'checked' : ''} />`
                           : '<span class="no-aplica" title="Esta acción no tiene sentido acá">—</span>'}
-                      </td>`).join('')}
+                      </td>`;
+                    }).join('')}
                   </tr>`;
                 }).join('')}
               </tbody>
