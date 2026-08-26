@@ -32,7 +32,7 @@ const { exigirBaseDescartable } = require('./aislada');
 exigirBaseDescartable();
 
 const { db } = require('../../server/db');
-const { MOTIVO_SALIDA } = require('../../server/directiva');
+const { MOTIVO_DE_FABRICA: MOTIVO_SALIDA } = require('../../server/directiva');
 const { devolverLosQueLaDirectivaSaco } = require('../../server/migraciones');
 
 // La reparación solo mira lo retirado desde que la regla existe en el

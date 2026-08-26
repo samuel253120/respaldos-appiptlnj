@@ -4379,6 +4379,20 @@ async function viewForm(name, id, precarga) {
     });
   }
 
+  /*
+   * El certificado también estrena su número, por iglesia. Se escribía entero
+   * a mano, y es un documento que se firma y se entrega: dos con el mismo
+   * número son dos papeles que dicen ser el mismo.
+   */
+  if (name === 'certificados') {
+    proponerElNumeroDeActa(isNew, {
+      ruta: '/certificados/proximo-numero',
+      depende: ['iglesia_id', 'fecha_emision'],
+      clave: 'iglesia_id',
+      campo: 'numero',
+    });
+  }
+
   // Al traspasar, se muestra cuánto hay en la cuenta de origen
   if (name === 'traspasos') mostrarSaldoOrigen();
 
@@ -4450,9 +4464,18 @@ async function viewForm(name, id, precarga) {
   }
 
   const foot = document.getElementById('formFoot');
-  // Los formatos de certificado y los certificados se pueden mirar antes de
-  // guardar: lo que se imprime se firma y se entrega
-  const conPrevia = name === 'formatos_certificado' || name === 'certificados';
+  /**
+   * Los formatos de certificado y los certificados se pueden mirar antes de
+   * guardar: lo que se imprime se firma y se entrega.
+   *
+   * La del CERTIFICADO pide la misma llave que Imprimir: muestra la hoja con
+   * los datos de esa persona, así que dejarla sin llave sería una manera de
+   * sacar por pantalla justo lo que esa llave existe para no dejar sacar.
+   * La del FORMATO no la pide: ahí la hoja va con datos de relleno, y quien
+   * administra los formatos tiene que poder ver lo que está diseñando.
+   */
+  const conPrevia = name === 'formatos_certificado'
+    || (name === 'certificados' && tieneLlave('datos_impresion'));
   foot.innerHTML = `
     ${!isNew && m.printable && tieneLlave('datos_impresion') ? `<button type="button" class="btn secondary left" id="btnPrint">🖨️ Imprimir</button>` : ''}
     ${conPrevia ? `<button type="button" class="btn secondary${!isNew && m.printable && tieneLlave('datos_impresion') ? '' : ' left'}" id="btnPrevia">👁️ Vista previa</button>` : ''}
@@ -11045,11 +11068,11 @@ function prepararElActa(id, row, isNew) {
  * diez veces. Sin esa distinción, el sistema le borraría a alguien lo que
  * acaba de escribir, que es la peor manera de ayudar.
  */
-function proponerElNumeroDeActa(isNew, { ruta, depende, clave }) {
-  if (!isNew) return; // un acta ya guardada conserva el número que tenga
+function proponerElNumeroDeActa(isNew, { ruta, depende, clave, campo: cual = 'numero_acta' }) {
+  if (!isNew) return; // lo ya guardado conserva el número que tenga
   const form = document.getElementById('recForm');
   if (!form) return;
-  const campo = form.querySelector('[name="numero_acta"]');
+  const campo = form.querySelector(`[name="${cual}"]`);
   if (!campo) return;
 
   let loQuePropuso = null;

@@ -617,3 +617,10 @@ module.exports = {
     },
   },
 };
+
+/**
+ * Las categorías, aparte de la definición del módulo: las usa el ajuste que
+ * decide cuál de ellas compone la directiva (ver server/ajustes.js). Teniendo
+ * una sola lista, agregar una categoría la deja ofrecida también ahí.
+ */
+module.exports.TIPOS_DE_MIEMBRO = TIPOS_DE_MIEMBRO;

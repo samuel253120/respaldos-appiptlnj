@@ -20,6 +20,9 @@ module.exports = {
   labelSingular: 'Integrante del cuerpo',
   icon: '🧑‍🤝‍🧑',
   group: 'Organización',
+  ayudaPermiso:
+    'Quién pertenece a cada cuerpo. Al cuerpo marcado como directiva entran y salen solos los de ' +
+    'la categoría configurada, y esas fichas las maneja el sistema.',
   order: 58,
   menu: false,
   display: '{miembro_id} — {cuerpo_id}',

@@ -255,6 +255,8 @@ Los **miembros líderes** de una iglesia **son** su directiva. No es una lista q
 
 Llevarlo a mano significaba acordarse dos veces por cada cambio —una en la ficha de la persona y otra en la del cuerpo—, y bastaba olvidar una para que la lista dejara de decir la verdad. Eso no se nota: la lista sigue ahí, completa a la vista, solo que le falta alguien o le sobra.
 
+**Cuál es la categoría** se elige en **Configuración → Organización**. De fábrica es *Miembro Líder*, que es como estuvo fija dentro del programa hasta la 1.112.0. Cambiarla **no mueve a nadie en el momento**: la regla corre al guardar la ficha de cada persona, así que los cambios se van aplicando a medida que se guardan las fichas. Mover de golpe a toda la congregación desde una pantalla de configuración es justo la clase de cambio silencioso y masivo que este sistema evita.
+
 **Cuál es el cuerpo de la directiva** se marca una vez, en su ficha: *«Este cuerpo reúne a los miembros líderes de su iglesia»*. Se marca en **uno solo por iglesia** —con dos, un líder quedaría en los dos y ninguno sería «la directiva»—, y el sistema avisa cuál lo tiene ya si se intenta marcar otro. A las iglesias que ya tenían su cuerpo de directiva registrado se les pone sola al actualizar, deduciéndola del nombre: no hay nada que configurar.
 
 | Lo que pasa en la ficha del miembro | Lo que hace el sistema |
@@ -308,6 +310,8 @@ El que no tenga dato queda en blanco: una llave impresa tal cual obligaría a re
 En el formato la muestra va con datos de relleno que se nota que lo son —*«Nombre Del Titular Apellido»*, *«CERT-000-0000»*—, para que a nadie se le pase imprimir la prueba creyendo que es el certificado de alguien. El nombre de la iglesia sí es el real, porque de otro modo no se puede juzgar si el texto entra en un renglón. Al emitir, la muestra usa los datos que ya se escribieron.
 
 > No se guarda nada ni queda ningún certificado emitido por mirar la vista previa. En un teléfono la hoja se achica **entera**, conservando sus proporciones: una vista previa que reacomoda el texto muestra otra cosa que la que va a salir impresa.
+
+**El número lo propone el sistema.** Al elegir la iglesia, el certificado estrena el número que le toca —*CERT-001-2026*—, por iglesia y por año, con el prefijo que se fija en **Configuración → Organización**. Se puede cambiar siempre: hay certificados que vienen numerados de antes. Antes se escribía entero a mano, con los mismos dos problemas que tenían las actas —ir a mirar cuál fue el último, y repetir uno por una distracción—, y en un papel que se firma y se entrega dos números iguales son dos documentos que dicen ser el mismo.
 
 > Al actualizar se crean solos los **ocho** tipos que traía el sistema, con sus mismos textos, para que nada cambie de aspecto ese día. Desde ahí se editan, se agregan otros o se sacan de uso.
 

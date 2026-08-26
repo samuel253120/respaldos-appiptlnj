@@ -19,6 +19,9 @@ module.exports = {
   labelSingular: 'Motivo',
   icon: '🤒',
   group: 'Sistema',
+  ayudaPermiso:
+    'Los motivos que se ofrecen al justificar una ausencia, y cuáles exigen explicación. Mismo ' +
+    'caso que los tipos de actividad.',
   order: 76,
   display: '{nombre}',
   searchFields: ['nombre', 'notas'],

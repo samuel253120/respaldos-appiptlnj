@@ -21,6 +21,9 @@ module.exports = {
   labelSingular: 'Tipo de actividad',
   icon: '🗓️',
   group: 'Sistema',
+  ayudaPermiso:
+    'Las clases de actividad que se ofrecen al crear una en Asistencia. Quien pasa lista ' +
+    'necesita poder agregar una en el momento; si no, todo termina anotado como «Otro».',
   order: 75,
   display: '{nombre}',
   searchFields: ['nombre', 'notas'],

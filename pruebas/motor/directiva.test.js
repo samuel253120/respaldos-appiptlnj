@@ -133,7 +133,7 @@ test('al dejar de ser líder, sale de la directiva', () => {
   correr(quien);
   const f = ficha(dir, quien);
   assert.equal(f.estado, 'Retirado');
-  assert.equal(f.motivo_retiro, directiva.MOTIVO_SALIDA);
+  assert.equal(f.motivo_retiro, directiva.motivoDeSalida());
   assert.ok(f.fecha_retiro, 'salió sin fecha de retiro');
 });
 
@@ -365,7 +365,7 @@ test('la entrada y la salida quedan anotadas en su bitácora', () => {
   assert.match(entrada.descripcion, /Directiva/);
   assert.match(entrada.descripcion, /Miembro Líder/);
   assert.match(salida.descripcion, /Directiva/);
-  assert.match(salida.descripcion, new RegExp(directiva.MOTIVO_SALIDA));
+  assert.match(salida.descripcion, new RegExp(directiva.motivoDeSalida()));
 });
 
 test('correrla dos veces no anota dos veces ni cambia nada', () => {

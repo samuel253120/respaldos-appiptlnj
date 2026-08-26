@@ -392,6 +392,16 @@ const MATRIX = {
     usuarios: [],
     perfiles_permisos: [],
     registro_cambios: [],
+    /*
+     * Las listas que la iglesia mantiene: quien pasa lista y lleva las actas
+     * necesita poder agregar un tipo de actividad o un motivo de ausencia en el
+     * momento, o termina anotando todo como «Otro motivo» —que es no anotar—.
+     * Los formatos de certificado NO: cambiarlos altera cómo se imprimen todos
+     * los certificados de la iglesia, incluidos los ya emitidos.
+     */
+    tipos_actividad: RW,
+    motivos_ausencia: RW,
+    formatos_certificado: RO,
   },
   tesorero: {
     '*': RO,
@@ -408,6 +418,10 @@ const MATRIX = {
     usuarios: [],
     perfiles_permisos: [],
     registro_cambios: RO, // puede revisarlo, no escribirlo
+    // Las listas de la iglesia no son de tesorería: las mira, no las mantiene
+    tipos_actividad: RO,
+    motivos_ausencia: RO,
+    formatos_certificado: RO,
   },
   consulta: {
     '*': RO,
@@ -425,6 +439,10 @@ const MATRIX = {
     usuarios: [],
     perfiles_permisos: [],
     registro_cambios: [],
+    // Quien consulta no mantiene ninguna de las listas de la iglesia
+    tipos_actividad: RO,
+    motivos_ausencia: RO,
+    formatos_certificado: RO,
   },
 };
 
@@ -525,7 +543,12 @@ function todoLoQueSePuedePermitir() {
   const acciones = ACCIONES.map((a) => a.value);
   return [
     ...allModules().map((m) => ({
-      name: m.name, label: m.label, group: m.group, acciones, ayuda: null, esLlave: false,
+      name: m.name, label: m.label, group: m.group, acciones,
+      // Un módulo puede explicar qué significa concederlo. Hace falta donde el
+      // nombre no alcanza: «Formatos de Certificado» no dice que cambiarlos
+      // altera cómo se imprimen los certificados YA emitidos.
+      ayuda: m.ayudaPermiso || null,
+      esLlave: false,
     })),
     ...LLAVES.map((l) => ({
       name: l.name, label: l.label, group: l.group, acciones: l.acciones, ayuda: l.ayuda, esLlave: true,

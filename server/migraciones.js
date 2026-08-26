@@ -1729,7 +1729,7 @@ function devolverLosQueLaDirectivaSaco() {
   const deCuerpos = new Set(db.prepare('PRAGMA table_info("cuerpos")').all().map((c) => c.name));
   if (!deCuerpos.has('reune_lideres')) return;
 
-  const MOTIVO = require('./directiva').MOTIVO_SALIDA;
+  const MOTIVO = require('./directiva').MOTIVO_DE_FABRICA;
   const bitacora = require('./bitacora');
 
   /**

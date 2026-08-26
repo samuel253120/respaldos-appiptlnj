@@ -137,6 +137,27 @@ const OPCIONES = [
         ayuda: 'Lo mismo para las asambleas. De fábrica «AS-», que propone «AS-001-2026».',
       },
       {
+        clave: 'certificado_prefijo', label: 'Prefijo del número de los certificados', tipo: 'text',
+        defecto: 'CERT-',
+        ayuda:
+          'Lo mismo para los certificados, que se numeran por iglesia. De fábrica «CERT-», que propone ' +
+          '«CERT-001-2026». Antes el número se escribía entero a mano, y en un documento que se firma y se ' +
+          'entrega dos números repetidos son dos papeles que dicen ser el mismo.',
+      },
+      {
+        clave: 'directiva_categoria', label: 'Categoría que compone la directiva', tipo: 'select',
+        // Las del propio módulo de miembros, para que no se desincronicen
+        get opciones() {
+          return require('./modules/miembros').TIPOS_DE_MIEMBRO.map((t) => ({ valor: t, label: t }));
+        },
+        defecto: 'Miembro Líder',
+        ayuda:
+          'Quien esté en esta categoría entra solo al cuerpo marcado como directiva de su iglesia, y al ' +
+          'dejarla sale solo. Estaba fija en «Miembro Líder» dentro del programa. Cambiarla NO mueve a nadie ' +
+          'en el momento: la regla corre al guardar la ficha de cada persona, así que los cambios se van ' +
+          'aplicando a medida que se guardan las fichas.',
+      },
+      {
         clave: 'cuota_registra_tesoreria', label: 'Registrar las cuotas en tesorería', tipo: 'boolean', defecto: '1',
         ayuda:
           'Cada cuota que se marca como pagada entra como ingreso a la tesorería del propio cuerpo. Apáguelo si ' +

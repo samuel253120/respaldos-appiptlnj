@@ -18,7 +18,13 @@
  *
  *   · las actas de reunión se numeran POR CUERPO —el coro lleva su libro y las
  *     dorcas el suyo—, y salen «001-2026»;
- *   · las de asamblea, POR IGLESIA, y salen «AS-001-2026».
+ *   · las de asamblea, POR IGLESIA, y salen «AS-001-2026»;
+ *   · los certificados, POR IGLESIA, y salen «CERT-001-2026».
+ *
+ * El certificado se sumó después, y por el mismo motivo que las actas: su
+ * número se escribía a mano, y es un documento que se firma y se entrega. Dos
+ * certificados con el mismo número son dos papeles en circulación que dicen
+ * ser el mismo.
  *
  * De lo que ya está guardado se miran solo los números que siguen el formato:
  * si alguien numeró a su manera —«Acta de marzo»—, no se cuenta ni estorba, y
@@ -32,8 +38,14 @@ const { db } = require('./db');
  * Se lee en cada propuesta y no al arrancar: es un ajuste de la pantalla de
  * configuración y tiene que valer en cuanto se cambia.
  */
+const CLAVE_DEL_PREFIJO = {
+  actas_reuniones: 'acta_reunion_prefijo',
+  actas_asambleas: 'acta_asamblea_prefijo',
+  certificados: 'certificado_prefijo',
+};
+
 function prefijoDe(cual) {
-  const clave = cual === 'actas_asambleas' ? 'acta_asamblea_prefijo' : 'acta_reunion_prefijo';
+  const clave = CLAVE_DEL_PREFIJO[cual] || 'acta_reunion_prefijo';
   return String(require('./ajustes').obtener(clave) || '').trim();
 }
 
@@ -52,6 +64,15 @@ const SERIES = {
     campo: 'numero_acta',
     acotadaPor: 'iglesia_id', // la asamblea es de la congregación entera
     // «AS-001-2026» de fábrica, y el prefijo se puede cambiar
+    arma: (n, anio, prefijo) => `${prefijo}${String(n).padStart(3, '0')}-${anio}`,
+    lee: (valor, anio, prefijo) => leerNumero(valor, anio, prefijo),
+  },
+  certificados: {
+    tabla: 'certificados',
+    campo: 'numero',
+    // Por iglesia, que es como el módulo exige que no se repita
+    acotadaPor: 'iglesia_id',
+    // «CERT-001-2026» de fábrica, y el prefijo se puede cambiar
     arma: (n, anio, prefijo) => `${prefijo}${String(n).padStart(3, '0')}-${anio}`,
     lee: (valor, anio, prefijo) => leerNumero(valor, anio, prefijo),
   },

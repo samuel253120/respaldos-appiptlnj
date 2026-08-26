@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.112.0", fecha: "2026-08-26", titulo: "Configuración y permisos al día: el certificado estrena número, la categoría de la directiva se elige, y cada rol dice qué hace con las listas de la iglesia" },
   { version: "1.111.0", fecha: "2026-08-26", titulo: "Vista previa del certificado, en el formato y al emitirlo, sin guardar nada" },
   { version: "1.110.0", fecha: "2026-08-26", titulo: "Los formatos de los certificados los mantiene la iglesia: su texto, qué muestra la hoja y su diseño" },
   { version: "1.109.0", fecha: "2026-08-26", titulo: "La asistencia se lleva por cuerpo: quien está en dos puede quedar justificado en uno y ausente en el otro" },

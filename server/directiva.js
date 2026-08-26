@@ -52,21 +52,54 @@
 const bitacora = require('./bitacora');
 const { fichaDeIntegrante } = require('./integrantes');
 
-/** La categoría que da entrada a la directiva. */
-const CATEGORIA_LIDER = 'Miembro Líder';
+/**
+ * La categoría que da entrada a la directiva.
+ *
+ * Se lee en cada corrida y no al arrancar: es un ajuste de la pantalla de
+ * configuración y tiene que valer en cuanto se cambia, sin reiniciar. De
+ * fábrica es «Miembro Líder», que es como estuvo fija hasta la 1.112.0.
+ *
+ * Cambiarla NO mueve a nadie en el momento, y eso es a propósito: la regla
+ * corre al guardar la ficha de cada persona. Mover de golpe a toda la
+ * congregación desde una pantalla de configuración es justo la clase de cambio
+ * silencioso y masivo que este sistema evita.
+ */
+const CATEGORIA_DE_FABRICA = 'Miembro Líder';
+
+function categoriaQueCompone() {
+  try {
+    const puesta = String(require('./ajustes').obtener('directiva_categoria') || '').trim();
+    return puesta || CATEGORIA_DE_FABRICA;
+  } catch (e) {
+    return CATEGORIA_DE_FABRICA;   // sin ajustes todavía, la de siempre
+  }
+}
 
 /** Estados en los que una persona ya no compone la directiva. */
 const YA_NO_ESTA = ['Fallecido', 'Trasladado'];
 
-/** El motivo con que se retira a quien deja de ser líder. */
-const MOTIVO_SALIDA = 'Dejó de ser Miembro Líder';
+/**
+ * El motivo con que se retira a quien deja la categoría.
+ *
+ * Nombra la categoría, así que sigue al ajuste: si la iglesia decide que la
+ * directiva la componen los «Miembro Activo», una salida anotada como «Dejó de
+ * ser Miembro Líder» diría algo que no pasó, y la bitácora se lee años después.
+ *
+ * `MOTIVO_DE_FABRICA` es el texto que se escribió mientras la categoría estuvo
+ * fija en el código. Se conserva porque la reparación de la 1.107.2 busca
+ * exactamente ese texto para dar con lo que la regla equivocada retiró (ver
+ * server/migraciones.js): esas filas están escritas y no cambian.
+ */
+const MOTIVO_DE_FABRICA = 'Dejó de ser Miembro Líder';
+
+const motivoDeSalida = () => `Dejó de ser ${categoriaQueCompone()}`;
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 
 /** ¿Esta ficha compone hoy la directiva de su iglesia? */
 function componeLaDirectiva(miembro) {
   if (!miembro || !miembro.iglesia_id) return false;
-  if (miembro.tipo_miembro !== CATEGORIA_LIDER) return false;
+  if (miembro.tipo_miembro !== categoriaQueCompone()) return false;
   return !YA_NO_ESTA.includes(miembro.estado);
 }
 
@@ -135,7 +168,7 @@ function entra(db, cuerpo, miembroId, usuario) {
 
   bitacora.anotar({
     miembroId, tipo: 'Ingreso a cuerpo', iglesiaId: cuerpo.iglesia_id, usuario,
-    descripcion: `Entra a "${cuerpo.nombre}" por pasar a ${CATEGORIA_LIDER}.`,
+    descripcion: `Entra a "${cuerpo.nombre}" por pasar a ${categoriaQueCompone()}.`,
   });
   return true;
 }
@@ -193,7 +226,7 @@ function alGuardarUnMiembro(db, miembro, usuario) {
       ? 'Cambió de iglesia'
       : YA_NO_ESTA.includes(miembro.estado)
         ? `Figura como ${String(miembro.estado).toLowerCase()}`
-        : MOTIVO_SALIDA;
+        : motivoDeSalida();
     if (sale(db, cuerpo, miembro.id, usuario, motivo)) salio.push(cuerpo.nombre);
   }
   return { entro, salio };
@@ -214,13 +247,14 @@ function alMarcarUnCuerpo(db, cuerpo, usuario) {
         WHERE iglesia_id = ? AND tipo_miembro = ?
           AND (estado IS NULL OR estado NOT IN (${YA_NO_ESTA.map(() => '?').join(',')}))`
     )
-    .all(cuerpo.iglesia_id, CATEGORIA_LIDER, ...YA_NO_ESTA);
+    .all(cuerpo.iglesia_id, categoriaQueCompone(), ...YA_NO_ESTA);
   let cuantos = 0;
   for (const l of lideres) if (entra(db, cuerpo, l.id, usuario)) cuantos++;
   return cuantos;
 }
 
 module.exports = {
-  CATEGORIA_LIDER, MOTIVO_SALIDA, YA_NO_ESTA,
+  CATEGORIA_DE_FABRICA, categoriaQueCompone,
+  MOTIVO_DE_FABRICA, motivoDeSalida, YA_NO_ESTA,
   componeLaDirectiva, cuerposDeDirectiva, alGuardarUnMiembro, alMarcarUnCuerpo,
 };

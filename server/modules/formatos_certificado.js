@@ -53,6 +53,10 @@ module.exports = {
   labelSingular: 'Formato de certificado',
   icon: '🎗️',
   group: 'Documentación',
+  ayudaPermiso:
+    'De qué clases de certificado se emite, qué dice cada uno y cómo se ve la hoja. Cambiar un ' +
+    'formato altera cómo se imprimen TAMBIÉN los certificados ya emitidos, porque la hoja se ' +
+    'arma al imprimir.',
   order: 64,
   display: '{nombre}',
   searchFields: ['nombre', 'texto', 'titulo', 'notas'],

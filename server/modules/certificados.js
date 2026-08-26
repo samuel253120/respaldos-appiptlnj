@@ -12,6 +12,9 @@ module.exports = {
   labelSingular: 'Certificado',
   icon: '📜',
   group: 'Documentación',
+  ayudaPermiso:
+    'Los certificados emitidos. Crear uno es emitir un documento que se firma y se entrega; su ' +
+    'número lo propone el sistema y no se puede repetir dentro de la iglesia.',
   order: 63,
   display: '{tipo} — {numero}',
   dateField: 'fecha_emision',
@@ -22,7 +25,8 @@ module.exports = {
   fields: [
     {
       name: 'numero', label: 'Número', type: 'text', required: true, unique: 'iglesia_id',
-      help: 'Ej. CERT-001-2026. No puede repetirse dentro de la misma iglesia.',
+      help: 'Lo propone el sistema al elegir la iglesia, y se puede cambiar. No puede repetirse ' +
+        'dentro de la misma iglesia. El prefijo se fija en Configuración.',
     },
     {
       name: 'tipo', label: 'Tipo de certificado', type: 'select', required: true,
@@ -48,4 +52,29 @@ module.exports = {
     },
     { name: 'notas', label: 'Notas internas', type: 'textarea' },
   ],
+
+  extraRoutes(router, { requirePerm }) {
+    /**
+     * Qué número le toca al próximo certificado de esta iglesia.
+     *
+     * ES UNA PROPUESTA. Se escribía entero a mano, y eso tiene los mismos dos
+     * problemas que tenía en las actas: hay que ir a mirar cuál fue el último,
+     * y basta una distracción para repetir uno. En un certificado pesa más:
+     * se firma, se sella y se entrega, y dos con el mismo número son dos
+     * papeles en circulación que dicen ser el mismo.
+     *
+     * El campo se deja escribir igual, siempre: hay certificados que vienen
+     * numerados de antes, y libros que empiezan en otro número.
+     */
+    router.get('/certificados/proximo-numero', requirePerm('certificados', 'create'), (req, res) => {
+      const iglesiaId = Number(req.query.iglesia_id) || 0;
+      if (!iglesiaId) return res.json({ numero: null });
+      if (!require('../alcance').alcanzaIglesia(req.user, iglesiaId)) {
+        return res.status(403).json({ error: 'Esa iglesia no está entre las que tiene asignadas' });
+      }
+      res.json({
+        numero: require('../numeracion').proximoNumero('certificados', iglesiaId, req.query.fecha_emision),
+      });
+    });
+  },
 };
