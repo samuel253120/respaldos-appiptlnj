@@ -59,9 +59,19 @@ function cuerposQueLeTocan(actividad, usuario) {
 }
 
 /**
- * Integrantes de los cuerpos que le tocan a este usuario en esta actividad,
- * con el cuerpo por el que entra cada uno. Quien está en dos de esos cuerpos
- * aparece una sola vez, en el primero.
+ * Integrantes de los cuerpos que le tocan a este usuario en esta actividad.
+ *
+ * Quien está en dos de esos cuerpos aparece UNA SOLA VEZ en la lista —si no,
+ * habría que marcarlo dos veces y contaría doble en los informes—, y cuenta
+ * para el primero de ellos. Eso es `cuerpo_id`: el cuerpo por el que entra.
+ *
+ * Pero además se guardan TODOS los cuerpos convocados a los que pertenece, en
+ * `cuerpos`. La diferencia importa para el filtro de la pantalla: la tesorera
+ * de la directiva puede ser también de Damas, y entonces entra por Damas; si
+ * el filtro mirara solo `cuerpo_id`, al elegir «Directiva» ella no aparecería.
+ * Una iglesia con veintisiete integrantes en su directiva veía tres —los
+ * únicos que no estaban en ningún otro cuerpo convocado— y la pantalla no daba
+ * ninguna pista de dónde estaban los otros veinticuatro.
  */
 function integrantesConvocados(actividad, db, usuario) {
   const { idsDeIntegrantes } = require('../integrantes');
@@ -70,7 +80,9 @@ function integrantesConvocados(actividad, db, usuario) {
     const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
     if (!cuerpo) continue;
     for (const id of idsDeIntegrantes(db, cuerpo.id)) {
-      if (!mapa.has(id)) mapa.set(id, { cuerpo_id: cuerpo.id, cuerpo: cuerpo.nombre });
+      const ya = mapa.get(id);
+      if (ya) ya.cuerpos.push(cuerpo.id);
+      else mapa.set(id, { cuerpo_id: cuerpo.id, cuerpo: cuerpo.nombre, cuerpos: [cuerpo.id] });
     }
   }
   return mapa;
@@ -418,6 +430,7 @@ module.exports = {
         convocados.set(m.miembro_id, {
           cuerpo_id: m.cuerpo_id || null,
           cuerpo: cuerpo ? `${cuerpo.nombre} (ya no figura)` : 'Sin cuerpo',
+          cuerpos: m.cuerpo_id ? [Number(m.cuerpo_id)] : [],
         });
       }
 
@@ -433,6 +446,9 @@ module.exports = {
             foto: p.foto || null,
             cuerpo_id: donde.cuerpo_id,
             cuerpo: donde.cuerpo,
+            // Todos los cuerpos convocados a los que pertenece: con esto la
+            // pantalla filtra por cuerpo sin perder a quien está en varios
+            cuerpos: donde.cuerpos || (donde.cuerpo_id ? [donde.cuerpo_id] : []),
             estado: marca.estado || null,
             motivo: marca.motivo || null,
             detalle: marca.detalle || null,
@@ -739,3 +755,10 @@ module.exports = {
     });
   },
 };
+
+/**
+ * Aparte de la definición del módulo, para no mezclarla con ella: es la pieza
+ * que decide quién aparece al pasar lista, y el reparto entre cuerpos que hace
+ * no se puede comprobar desde afuera sin levantar media aplicación.
+ */
+module.exports.integrantesConvocados = integrantesConvocados;

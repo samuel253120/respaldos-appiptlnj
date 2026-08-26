@@ -9476,12 +9476,18 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
    * cuerpo por cuerpo, no persona por persona salteando entre grupos.
    */
   const cuerposDeLaLista = (() => {
+    const nombreDe = new Map((datos.actividad.cuerpos || []).map((c) => [Number(c.id), c.nombre]));
     const porId = new Map();
     for (const p of datos.personas) {
-      if (!p.cuerpo_id) continue;
-      const ya = porId.get(p.cuerpo_id);
-      if (ya) ya.cuantos++;
-      else porId.set(p.cuerpo_id, { id: p.cuerpo_id, nombre: p.cuerpo || 'Sin cuerpo', cuantos: 1 });
+      // Se cuenta en CADA cuerpo al que pertenece, no solo en aquel por el que
+      // entra a la lista: quien está en Damas y en la Directiva tiene que
+      // aparecer en los dos filtros, y sumar en los dos números
+      const suyos = (p.cuerpos && p.cuerpos.length) ? p.cuerpos : (p.cuerpo_id ? [p.cuerpo_id] : []);
+      for (const id of suyos) {
+        const ya = porId.get(id);
+        if (ya) ya.cuantos++;
+        else porId.set(id, { id, nombre: nombreDe.get(Number(id)) || p.cuerpo || 'Sin cuerpo', cuantos: 1 });
+      }
     }
     return [...porId.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
   })();
@@ -9500,12 +9506,30 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     ? String(ASIS.cuerpo_id)
     : '';
 
+  /**
+   * Los cuerpos de una persona en esta lista, todos.
+   *
+   * Antes se mostraba solo aquel por el que entra a la lista, y al filtrar por
+   * un cuerpo aparecían filas etiquetadas con OTRO —la tesorera de la
+   * directiva rotulada «Damas»—, que es justo lo que hace dudar de si el
+   * filtro funciona. Diciendo los dos, se entiende: está en los dos.
+   */
+  const etiquetasDeCuerpo = (p) => {
+    const nombreDe = new Map((datos.actividad.cuerpos || []).map((c) => [Number(c.id), c.nombre]));
+    const suyos = (p.cuerpos && p.cuerpos.length ? p.cuerpos : [p.cuerpo_id]).filter(Boolean);
+    const nombres = suyos.map((id) => nombreDe.get(Number(id))).filter(Boolean);
+    if (!nombres.length) return p.cuerpo ? `<span class="pl-cuerpo-chip">${esc(p.cuerpo)}</span>` : '';
+    return nombres.map((n) => `<span class="pl-cuerpo-chip">${esc(n)}</span>`).join('');
+  };
+
   const fila = (p) => `
-    <li data-id="${p.miembro_id}" data-cuerpo="${esc(String(p.cuerpo_id || ''))}" data-buscar="${esc(textoBuscable(`${p.nombre} ${p.rut || ''}`))}"
+    <li data-id="${p.miembro_id}" data-cuerpo="${esc(String(p.cuerpo_id || ''))}"
+        data-cuerpos="${esc(((p.cuerpos && p.cuerpos.length ? p.cuerpos : [p.cuerpo_id]).filter(Boolean)).join(','))}"
+        data-buscar="${esc(textoBuscable(`${p.nombre} ${p.rut || ''}`))}"
         class="${p.estado ? 'marcado' : ''}">
       <div class="pl-quien">
         <b>${esc(p.nombre)}</b>
-        ${p.cuerpo ? `<span class="pl-cuerpo-chip">${esc(p.cuerpo)}</span>` : ''}
+        ${etiquetasDeCuerpo(p)}
         ${p.rut ? `<span class="mut">${esc(rutFormatear(p.rut))}</span>` : ''}
       </div>
       <div class="pl-botones">
@@ -9655,9 +9679,20 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
    * uno. Quien está pasando lista de su cuerpo quiere saber cuánto le falta a
    * él, no a la actividad entera.
    */
+  /**
+   * ¿Esta fila pertenece al cuerpo elegido en el filtro?
+   *
+   * Se mira la lista completa de cuerpos de la persona, no el único por el que
+   * entró a la lista. Quien está en Damas y en la Directiva aparece al filtrar
+   * por cualquiera de los dos, que es lo que uno espera al elegir «ver solo
+   * los integrantes de un cuerpo».
+   */
+  const esDelCuerpo = (li, cuerpo) =>
+    !cuerpo || (li.dataset.cuerpos || li.dataset.cuerpo || '').split(',').includes(cuerpo);
+
   const filasQueCuentan = () => {
     const cuerpo = (document.getElementById('plCuerpo') || {}).value || '';
-    return cuerpo ? filas().filter((li) => li.dataset.cuerpo === cuerpo) : filas();
+    return cuerpo ? filas().filter((li) => esDelCuerpo(li, cuerpo)) : filas();
   };
 
   const resumen = () => {
@@ -9835,7 +9870,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
       const marcado = li.querySelector('.pl-b.on');
       const estado = marcado ? marcado.dataset.estado : '';
       const porEstado = filtro === 'todos' || (filtro === 'sin' ? !estado : estado === filtro);
-      const delCuerpo = !cuerpo || li.dataset.cuerpo === cuerpo;
+      const delCuerpo = esDelCuerpo(li, cuerpo);
       const mostrar = calza && porEstado && delCuerpo;
       li.hidden = !mostrar;
       if (mostrar) visibles++;
