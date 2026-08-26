@@ -1,6 +1,6 @@
 {
   "name": "sistema-gestion-iglesias",
-  "version": "1.104.1",
+  "version": "1.105.0",
   "description": "Sistema integral para la gestión de múltiples iglesias: miembros, cuerpos, asistencias, tesorería, inventarios, actas, documentos, ayudas sociales, certificados, credenciales, solicitudes y usuarios.",
   "main": "server/index.js",
   "scripts": {
@@ -16,7 +16,8 @@
     "aceptacion": "node pruebas/aceptacion-credenciales.js",
     "impresos": "node pruebas/documentos-impresos.js",
     "acceso": "node pruebas/acceso.js",
-    "aislamiento": "node pruebas/aislamiento.js"
+    "aislamiento": "node pruebas/aislamiento.js",
+    "movil": "node pruebas/movil.js"
   },
   "engines": {
     "node": "22.x"

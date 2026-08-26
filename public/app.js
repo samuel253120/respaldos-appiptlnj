@@ -2194,10 +2194,30 @@ async function viewList(name, filtrosIniciales) {
        * nombre y con su propio sitio reservado.
        */
       const COLUMNAS_DE_NOMBRE = ['nombres', 'nombre', 'apellidos'];
-      const primeraDeLaTarjeta = cols.find(
-        (c) => !(fieldsBy[c] && fieldsBy[c].type === 'file') && c !== 'tratamiento'
-      );
       const llevaNombre = cols.some((c) => COLUMNAS_DE_NOMBRE.includes(c));
+
+      /**
+       * Cuál dato encabeza la tarjeta, EN ESTA FILA.
+       *
+       * Se decide fila por fila y no una vez para todo el módulo, porque un
+       * dato en blanco no ocupa lugar en la tarjeta: si el primero viene vacío,
+       * el que queda arriba —y por lo tanto el que tiene que dejarle sitio a
+       * imprimir y borrar— es el siguiente.
+       *
+       * Pasaba en Credenciales: la primera columna es el número de serie, y un
+       * borrador todavía no tiene número. Su celda quedaba escondida, el sitio
+       * reservado se iba con ella, y los botones se sentaban encima de los
+       * apellidos Y del nombre.
+       *
+       * La foto no cuenta: va arriba de todo por su cuenta y no llega al borde
+       * derecho. El trato tampoco: ya se dibuja aparte, con su propio sitio.
+       */
+      const primeraConDato = (fila, valores) =>
+        cols.find((c) => {
+          if (fieldsBy[c] && fieldsBy[c].type === 'file') return false;
+          if (c === 'tratamiento') return false;
+          return String(valores[c] || '').trim() !== '';
+        });
       wrap.innerHTML = `
         <table class="grid grid-lista">
           <thead><tr>
@@ -2220,7 +2240,13 @@ async function viewList(name, filtrosIniciales) {
             <th class="no-sort"></th>
           </tr></thead>
           <tbody>
-            ${data.rows.map((r) => `
+            ${data.rows.map((r) => {
+              // Se dibuja cada celda primero, para saber cuáles quedan vacías:
+              // la que encabeza la tarjeta es la primera que traiga algo
+              const dibujadas = {};
+              for (const c of cols) dibujadas[c] = cellValue(fieldsBy[c], r, c);
+              const encabeza = primeraConDato(r, dibujadas);
+              return `
               <tr data-id="${r.id}">
                 ${cols.map((c) => {
                   const f = fieldsBy[c];
@@ -2228,12 +2254,12 @@ async function viewList(name, filtrosIniciales) {
                   if (f && f.type === 'file') clases.push('col-mini');
                   else if (f && ['money', 'number'].includes(f.type)) clases.push('num');
                   else if (f && ['rut', 'date', 'time'].includes(f.type)) clases.push('cifra');
-                  if (c === primeraDeLaTarjeta) {
+                  if (c === encabeza) {
                     clases.push('col-primera');
                     if (!llevaNombre) clases.push('col-titular');
                   }
                   return `<td data-col="${esc(c)}" data-label="${esc(etiquetaCol(c))}"${
-                    clases.length ? ` class="${clases.join(' ')}"` : ''}>${cellValue(f, r, c)}</td>`;
+                    clases.length ? ` class="${clases.join(' ')}"` : ''}>${dibujadas[c]}</td>`;
                 }).join('')}
                 <td class="acciones" style="white-space:nowrap;text-align:right">
                   ${m.printable && tieneLlave('datos_impresion') ? `<button class="btn secondary sm act-print" data-id="${r.id}" title="Imprimir">🖨️</button>` : ''}
@@ -2241,7 +2267,8 @@ async function viewList(name, filtrosIniciales) {
                     ? `<button class="btn danger sm act-del" data-id="${r.id}" title="Eliminar">🗑️</button>`
                     : ''}
                 </td>
-              </tr>`).join('')}
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>`;
 
@@ -2402,9 +2429,36 @@ function cellValue(f, row, col) {
         : `<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`;
     }
     default:
-      return esc(v);
+      return acortarEnLista(v);
   }
 }
+
+/**
+ * Un texto en un listado no puede ser infinito.
+ *
+ * El listado es un resumen para encontrar la ficha; lo entero se lee en la
+ * ficha. Iba tal cual venía, y bastaba UN valor largo para arruinar la
+ * pantalla entera: en Bitácora, un dato con cien mil letras seguidas estiraba
+ * la fila casi un millón de píxeles. La tabla se podía correr de lado —así que
+ * la página no se salía y ninguna prueba se quejaba— pero había que arrastrar
+ * un millón de píxeles para llegar al final de una sola fila.
+ *
+ * No es un caso rebuscado: basta que alguien pegue una dirección de internet
+ * larga en una nota, o el contenido de un correo en una descripción.
+ *
+ * El tope es holgado a propósito —ciento veinte letras son más de lo que mide
+ * cualquier concepto, motivo o descripción normal— para que en el uso de todos
+ * los días no se note, y solo se recorte lo que de verdad se fue de las manos.
+ * Los textos con formato ya se recortaban así desde antes.
+ */
+const TOPE_DE_TEXTO_EN_LISTA = 120;
+function acortarEnLista(v) {
+  const texto = String(v == null ? '' : v);
+  return texto.length > TOPE_DE_TEXTO_EN_LISTA
+    ? `<span class="texto-largo" title="${esc(texto.slice(0, 400))}">${esc(texto.slice(0, TOPE_DE_TEXTO_EN_LISTA))}…</span>`
+    : esc(texto);
+}
+
 function selectLabel(f, v) {
   for (const o of f.options || []) {
     if (typeof o === 'object' && String(o.value) === String(v)) return o.label;
@@ -6145,7 +6199,13 @@ async function renderInformeAsistencia(contenedor, precarga) {
       <h3>${titulo}</h3>
       ${filas.length ? `
       <div style="overflow-x:auto">
-      <table class="grid informe">
+      <!-- «grid-lista» es lo que hace que en el teléfono cada fila se dibuje
+           como una tarjeta en vez de una tabla de ocho columnas: ver
+           styles.css. Sin eso se veían tres columnas y las otras cinco —los
+           tres porcentajes y el reparto, que es lo que se viene a mirar—
+           quedaban seiscientos píxeles a la derecha, sin nada que lo dijera.
+           En el computador la tabla es la misma de siempre. -->
+      <table class="grid informe grid-lista">
         <thead><tr>
           <th>${columna}</th><th>Presentes</th><th>Ausentes</th><th>Justificados</th>
           <th>Asistencia</th><th>Inasistencia</th><th>Justificación</th><th class="no-sort">Reparto</th>
@@ -6153,10 +6213,14 @@ async function renderInformeAsistencia(contenedor, precarga) {
         <tbody>
           ${filas.map((f) => `
             <tr ${verMas ? `data-ver="${verMas(f)}" style="cursor:pointer"` : ''}>
-              <td>${esc(f.etiqueta)}</td>
-              <td class="num">${esc(fmtNumero(f.presentes))}</td><td class="num">${esc(fmtNumero(f.ausentes))}</td><td class="num">${esc(fmtNumero(f.justificados))}</td>
-              <td><b>${pct(f.pct_presente)}</b></td><td>${pct(f.pct_ausente)}</td><td>${pct(f.pct_justificado)}</td>
-              <td style="min-width:140px">${barra(f)}</td>
+              <td class="col-primera col-titular" data-label="${esc(columna)}">${esc(f.etiqueta)}</td>
+              <td class="num" data-label="Presentes">${esc(fmtNumero(f.presentes))}</td>
+              <td class="num" data-label="Ausentes">${esc(fmtNumero(f.ausentes))}</td>
+              <td class="num" data-label="Justificados">${esc(fmtNumero(f.justificados))}</td>
+              <td data-label="Asistencia"><b>${pct(f.pct_presente)}</b></td>
+              <td data-label="Inasistencia">${pct(f.pct_ausente)}</td>
+              <td data-label="Justificación">${pct(f.pct_justificado)}</td>
+              <td class="reparto" data-label="Reparto" style="min-width:140px">${barra(f)}</td>
             </tr>`).join('')}
         </tbody>
       </table></div>` : '<div class="empty-state" style="padding:22px">Sin datos en este período.</div>'}

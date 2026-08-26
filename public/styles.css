@@ -516,6 +516,13 @@ table.grid th.col-mini { font-size: 15px; }
   table.grid-lista thead { display: none; }
   table.grid-lista tr {
     position: relative;
+    /* Lo que miden los botones de la esquina, dicho UNA vez: de acá salen
+       tanto el sitio que se les reserva a lo ancho como el alto que tiene que
+       medir la primera línea para que la segunda no se les meta debajo. Sin
+       esto quedaban dos números sueltos y agrandar los botones —para poder
+       tocarlos con el dedo— dejó corto el hueco sin que nadie lo notara. */
+    --acciones-alto: 34px;
+    --acciones-ancho: 78px;
     border: 1px solid var(--border); border-radius: 12px; margin: 7px 10px; padding: 8px 12px;
     background: var(--card); box-shadow: var(--shadow);
   }
@@ -523,7 +530,14 @@ table.grid th.col-mini { font-size: 15px; }
   table.grid-lista td {
     border: 0; padding: 2px 0; display: flex; gap: 12px; align-items: baseline;
     justify-content: space-between; text-align: right; font-size: 13.5px; line-height: 1.32;
+    /* Y si el dato es una sola palabra larguísima —una dirección de internet
+       pegada en una nota— se parte, en vez de estirar la tarjeta a lo ancho */
+    min-width: 0; overflow-wrap: break-word;
   }
+  /* Al que ya venía recortado por largo se le deja partir donde sea: es una
+     sola palabra sin espacios, así que «break-word» no le encuentra por dónde
+     y la tarjeta se estiraba igual (ver acortarEnLista, en app.js) */
+  table.grid-lista .texto-largo { min-width: 0; overflow-wrap: anywhere; }
   /* El nombre del dato cede antes que el dato.
      Iba fijo («flex: none»), así que una etiqueta larga —«Total general de
      asistencia»— se llevaba media línea y empujaba el número al renglón
@@ -569,14 +583,16 @@ table.grid th.col-mini { font-size: 15px; }
      («col-primera», que la pone app.js). */
   table.grid-lista td.col-primera,
   table.grid-lista td[data-col="tratamiento"], table.grid-lista td[data-col="nombres"],
-  table.grid-lista td[data-col="nombre"], table.grid-lista td[data-col="apellidos"] { padding-right: 78px; }
+  table.grid-lista td[data-col="nombre"], table.grid-lista td[data-col="apellidos"] {
+    padding-right: var(--acciones-ancho);
+  }
   /* Y esa primera línea mide por lo menos lo que miden los botones, para que
      la SEGUNDA empiece por debajo de ellos y no a un pelo. Sin esto quedaba un
      píxel de aire: cualquier cosa que estirara los botones o acortara el
      título —y son dos cosas que se tocan seguido— metía el segundo dato
      debajo. Se vio midiendo: en Iglesias, Cuerpos, Categorías, Perfiles y
      Asistencia el segundo dato ya se estaba pisando con ellos. */
-  table.grid-lista td.col-primera { min-height: 27px; }
+  table.grid-lista td.col-primera { min-height: var(--acciones-alto); }
   /* Cuando el listado no lleva ningún nombre, ese primer dato ES el título de
      la tarjeta —la fecha del servicio, el número del acta— y se lee como tal,
      no como una línea más con su etiqueta al lado. */
@@ -588,6 +604,27 @@ table.grid th.col-mini { font-size: 15px; }
   /* Y se ven siempre: en el teléfono no hay ratón que pasar por encima */
   table.grid-lista .btn.sm { border-color: var(--border); background: #fff; color: var(--text); }
   table.grid-lista .thumb { width: 46px; height: 46px; }
+
+  /**
+   * Las tablas de informe, con la misma forma de tarjeta.
+   *
+   * Son ocho columnas —el nombre, tres cuentas, tres porcentajes y la barra de
+   * reparto— y miden mil píxeles. En un teléfono se veían tres y las otras
+   * cinco quedaban seiscientos a la derecha, sin nada que avisara de que
+   * seguían. Justamente las cinco que se vienen a mirar.
+   *
+   * Como tarjeta caben enteras. Hay que deshacerles el «nowrap» que llevan
+   * para la tabla del computador, donde una fecha partida en dos líneas se ve
+   * mal; en la tarjeta es al revés.
+   */
+  table.grid.informe th, table.grid.informe td { white-space: normal; }
+  table.grid.informe tr { cursor: pointer; }
+  /* La barra de reparto ocupa el ancho de la tarjeta, debajo de su nombre:
+     es un dibujo, no un dato de una línea */
+  table.grid.informe td.reparto {
+    display: block; text-align: left; min-width: 0 !important; padding-top: 4px;
+  }
+  table.grid.informe td.reparto::before { display: block; margin-bottom: 3px; }
 }
 
 /* ---------- La ficha: todos los datos de un registro, para leerlos ---------- */
@@ -1675,7 +1712,7 @@ ul.mov-list .monto-egreso { color: var(--danger); font-variant-numeric: tabular-
   position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 3px);
   list-style: none; margin: 0; padding: 4px; max-height: 268px; overflow-y: auto;
   background: #fff; border: 1px solid var(--border); border-radius: 10px;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.24);
 }
 .refbuscar .rb-lista li {
   padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13.5px;
@@ -2190,3 +2227,64 @@ input.fuera-de-rango { border-color: var(--danger); background: #fff5f5; }
    todos: buscar «tesor» dejaba en pantalla el menú entero. */
 .sidebar .side-link[hidden],
 .sidebar .side-group[hidden] { display: none; }
+
+
+/* ---------- Lo que hay que tocar, del tamaño de un dedo ---------- */
+/**
+ * Va al FINAL de la hoja a propósito.
+ *
+ * Estas reglas ajustan cosas que se definen repartidas por todo el archivo —los
+ * botones arriba, las casillas de los permisos por la mitad, la cruz del
+ * selector con buscador casi al final—. Puestas donde correspondía por tema,
+ * las reglas que vienen después les ganaban con la misma especificidad y el
+ * ajuste no se notaba. Acá no le gana nadie.
+ *
+ * Con el ratón un botón de 26 px se acierta siempre; con el pulgar, no. Y las
+ * casillas de marcar venían del tamaño que les da el navegador —trece por trece
+ * píxeles— que en un teléfono es casi imposible de dar sin equivocarse de fila.
+ * No se rediseña nada: se les pone un alto mínimo cómodo, solo en pantalla
+ * chica.
+ */
+@media (max-width: 700px) {
+  .btn.sm { min-height: 34px; padding: 6px 12px; }
+  table.grid-lista .btn.sm { min-width: 38px; min-height: var(--acciones-alto); padding: 5px 9px; }
+  /* Se nombran una por una las reglas que les ponían «width: auto» —que en una
+     casilla son trece píxeles— porque cada una gana por especificidad */
+  input[type="checkbox"], input[type="radio"],
+  .fld.check input[type="checkbox"], .multiref .mr-item input[type="checkbox"],
+  .perm-tabla input[type="checkbox"], ul.perfil-elegir input[type="checkbox"] {
+    width: 22px; height: 22px; flex: none;
+  }
+  /* Los iconos de corregir y borrar de un historial */
+  ul.historial li .ha .ico, .aa-acc .ico { min-width: 36px; min-height: 34px; padding: 6px 9px; }
+  /* Y los de la barra del editor de texto */
+  .rico-barra button { min-width: 34px; min-height: 32px; }
+
+  /**
+   * Una tabla que se corre de lado, diciéndolo.
+   *
+   * La planilla de cuotas son doce columnas —una por mes— y esconde trescientos
+   * píxeles a la derecha. Se puede arrastrar, pero nada avisaba de que seguía:
+   * quien la mira en el teléfono ve hasta julio y se queda con que el año
+   * termina ahí.
+   *
+   * Esto es la sombra de siempre, hecha con puro CSS: dos capas blancas que se
+   * mueven CON el contenido («local») tapan dos sombras que se quedan quietas
+   * («scroll»). Cuando la tabla está al tope de un lado, la capa blanca tapa su
+   * sombra; al correrla, se destapa. Sin programa que la atienda.
+   */
+  .table-scroll {
+    background:
+      linear-gradient(to right, var(--card) 30%, rgba(255, 255, 255, 0)) left center / 22px 100% no-repeat local,
+      linear-gradient(to left, var(--card) 30%, rgba(255, 255, 255, 0)) right center / 22px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(15, 23, 42, 0.24), rgba(15, 23, 42, 0)) left center / 14px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(15, 23, 42, 0.24), rgba(15, 23, 42, 0)) right center / 14px 100% no-repeat scroll;
+  }
+  .perm-tabla .chip, .pg-cab .chip { min-height: 30px; padding: 5px 11px; }
+  .pg-cab .chip.sm { min-height: 28px; padding: 4px 9px; }
+  /* La cruz que vacía un selector con buscador: iba de 23 px y se falla */
+  .refbuscar .rb-x { top: 3px; right: 4px; padding: 6px 9px; font-size: 20px; }
+  .refbuscar .rb-txt { padding-right: 44px; }
+  /* Los números de página: van uno al lado del otro y se toca el de al lado */
+  .pager button { min-width: 36px; min-height: 34px; padding: 6px 11px; }
+}

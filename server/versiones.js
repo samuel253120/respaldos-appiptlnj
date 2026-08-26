@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.105.0", fecha: "2026-08-26", titulo: "Revisión de todas las pantallas en el teléfono: 540 cosas que se veían mal, y una prueba nueva que las vigila" },
   { version: "1.104.1", fecha: "2026-08-26", titulo: "El editor de permisos cabía a medias en el teléfono: faltaban las cuatro columnas de acciones" },
   { version: "1.104.0", fecha: "2026-08-26", titulo: "En el teléfono, los botones ya no tapan la fecha y los filtros dejan ver los registros" },
   { version: "1.103.0", fecha: "2026-08-26", titulo: "Optimización completa: entrar pesa 155 KB menos y con señal mala el panel aparece antes" },
