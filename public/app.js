@@ -8909,6 +8909,7 @@ const ASIS = {
   tipo: '',
   actividadId: null,
   agenda: null,
+  bajadoA: null,      // a qué lista ya se bajó la pantalla: ver renderPasarLista
 };
 
 const ISO = (f) => `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
@@ -9034,7 +9035,7 @@ function pintarAcciones() {
     hoy.addEventListener('click', () => {
       ASIS.dia = HOY();
       ASIS.mes = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-      ASIS.actividadId = null;
+      ASIS.actividadId = null; ASIS.bajadoA = null;
       cargarAgenda();
     });
   }
@@ -9163,7 +9164,7 @@ function pintarCalendario() {
   document.querySelectorAll('.cal-dia').forEach((b) => {
     b.addEventListener('click', () => {
       ASIS.dia = b.dataset.dia;
-      ASIS.actividadId = null;
+      ASIS.actividadId = null; ASIS.bajadoA = null;
       pintarCalendario();
       pintarDelDia();
     });
@@ -9233,7 +9234,7 @@ function pintarDelDia() {
   if (ASIS.actividadId && !delDia.some((a) => a.id === ASIS.actividadId)) {
     const suya = ((ASIS.agenda && ASIS.agenda.actividades) || []).find((a) => a.id === ASIS.actividadId);
     if (suya) ASIS.dia = suya.fecha;
-    else ASIS.actividadId = null;
+    else { ASIS.actividadId = null; ASIS.bajadoA = null; }
   }
 
   const puedeEditar = ASIS.agenda && ASIS.agenda.puede_editar;
@@ -9293,7 +9294,7 @@ function pintarDelDia() {
         try {
           await api('DELETE', `/asistencias/${a.id}`);
           toast('Actividad eliminada');
-          if (ASIS.actividadId === a.id) ASIS.actividadId = null;
+          if (ASIS.actividadId === a.id) { ASIS.actividadId = null; ASIS.bajadoA = null; }
           cargarAgenda();
         } catch (e) {
           toast(e.message, true);
@@ -9534,9 +9535,6 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
                </span>`
             : ''}
         </div>
-        ${puedeEditar && datos.personas.length
-          ? '<button class="btn secondary sm" id="plTodos">✓ Todos presentes</button>'
-          : ''}
       </div>
       ${datos.personas.length ? `
         ${recuperadas ? `<div class="pl-recuperado">📵 Se recuperaron ${recuperadas} marca(s) que habían quedado sin guardar en este teléfono. Revíselas y guarde.</div>` : ''}
@@ -9569,7 +9567,11 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
         <div class="pl-barra">
           <div class="pl-resumen" id="plResumen"></div>
           <div class="pl-estado" id="plEstado"></div>
-          ${puedeEditar ? '<button class="btn" id="plGuardar">💾 Guardar lista</button>' : ''}
+          ${puedeEditar ? `
+            <div class="pl-acciones">
+              <button class="btn secondary" id="plTodos">✓ Todos presentes</button>
+              <button class="btn" id="plGuardar">💾 Guardar lista</button>
+            </div>` : ''}
         </div>`
       : `<div class="empty-state" style="padding:26px">
            ${(datos.actividad.cuerpos || []).length
@@ -9577,6 +9579,34 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
              : 'De los cuerpos convocados a esta actividad, ninguno es de los que tiene asignados.'}
          </div>`}
     </div>`;
+
+  /**
+   * Al abrir una lista, la pantalla baja hasta ella.
+   *
+   * En un teléfono la tarjeta de la lista queda entera debajo del borde: uno
+   * toca la actividad, la lista se arma... y sigue viendo el calendario, sin
+   * señal de que pasó algo. Hay que bajar a ciegas.
+   *
+   * Y hay algo peor que lo incómodo. La barra de «Guardar lista» va pegada
+   * abajo, y cuando la tarjeta está casi toda por debajo del borde, esa barra
+   * no tiene hasta dónde bajar y se apoya contra el techo de la tarjeta:
+   * queda justo encima del botón «Todos presentes», tapándolo. En esa franja
+   * —unos sesenta píxeles de desplazamiento— tocar «Todos presentes» guarda
+   * la lista en blanco. Dejando la tarjeta arriba, la barra tiene todo el alto
+   * de la pantalla para apoyarse y las dos cosas nunca se pisan.
+   *
+   * Se baja UNA vez por lista: si se bajara en cada refresco, a quien está
+   * marcando se le movería la pantalla bajo el dedo.
+   */
+  if (ASIS.bajadoA !== asistenciaId) {
+    ASIS.bajadoA = asistenciaId;
+    const tarjeta = contenedor.querySelector('.pl-card');
+    // Solo si de verdad quedó abajo: en un computador la tarjeta entra en
+    // pantalla y mover la página sin motivo desorienta más de lo que ayuda
+    if (tarjeta && tarjeta.scrollIntoView && tarjeta.getBoundingClientRect().top > window.innerHeight * 0.4) {
+      tarjeta.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  }
 
   const lista = contenedor.querySelector('ul.pasar-lista');
   if (!lista) return;

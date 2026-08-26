@@ -269,6 +269,10 @@ Llevarlo a mano significaba acordarse dos veces por cada cambio —una en la fic
 
 Si a un cuerpo se le marca la casilla cuando la iglesia ya tenía sus líderes registrados, **entran todos de una vez**: la directiva no arranca vacía.
 
+**La regla manda sobre los líderes, y sobre nadie más.** El cuerpo de la directiva suele tener también gente puesta a mano que no es líder —la tesorera, el secretario, alguien que la iglesia decidió que estuviera—. A esa gente **no se le toca la ficha nunca**: no está ahí por su categoría, está porque alguien la puso. A quien sí es líder, en cambio, la regla lo maneja aunque lo hubieran anotado a mano.
+
+> ⚠️ **La primera versión de esta regla (1.107.0) no hacía esa distinción** y retiraba a todo integrante que no fuera líder, en silencio y de a uno, a medida que se guardaban fichas por otros motivos. Un cuerpo de veintisiete podía quedar en tres, y solo se notaba al pasar lista. **La 1.107.1 lo repara sola al actualizar**: devuelve a su cuerpo a los que retiró —con su fecha de ingreso original, y en *En prueba* si les quedaba plazo por delante— y le deja a cada uno la explicación en su bitácora. A quien salió como correspondía no se le toca.
+
 ### Histórico de directivas 🏅
 
 Cada cuerpo elige su directiva por períodos, y el módulo **Directivas de Cuerpos** guarda todas: la vigente y las anteriores, con su período, sus fechas, sus integrantes y el acta de elección adjunta.
@@ -777,8 +781,9 @@ Arriba, dos filtros: por **cuerpo** y por **tipo de actividad**.
 - **Filtros**: *Todos · Presentes · Ausentes · Justificados · Sin marcar (N)*, para revisar al final quiénes faltan.
 - **Elegir el cuerpo**: cuando a la actividad la convocan varios, un desplegable con cada cuerpo y cuánta gente trae —*Coro (28)*, *Dorcas (34)*— deja ver **solo a los integrantes de ese cuerpo**. Uno pasa lista cuerpo por cuerpo, no saltando entre grupos, y el progreso pasa a contar el de ese cuerpo: *«12/28»* de los suyos, no de la actividad entera. Con un solo cuerpo convocado no aparece, porque no haría falta.
 - **Progreso de marcado**: *«12/28 (43%)»* con su barra, siempre a la vista.
-- **✓ Todos presentes**: marca a los que están a la vista y **sin marcar**, sin pisar lo ya decidido. Con un filtro puesto, solo a esos.
-- **Barra pegada abajo**: el recuento en vivo y el botón **Guardar lista**, sin tener que volver arriba.
+- **Barra pegada abajo**: el recuento en vivo y las dos acciones —**✓ Todos presentes** y **Guardar lista**—, siempre a la vista, sin tener que volver arriba. *Todos presentes* marca a los que están a la vista y **sin marcar**, sin pisar lo ya decidido; con un filtro puesto, solo a esos.
+
+> Las dos acciones viven **juntas en esa barra** desde la 1.107.1. *Todos presentes* estaba arriba, en el encabezado, y en un teléfono eso se pagaba caro: la barra de abajo no puede salirse de su tarjeta, así que mientras la tarjeta todavía asomaba desde abajo se quedaba sin lugar donde bajar y terminaba **apoyada justo encima de *Todos presentes***. En esa franja el botón se veía pero el toque se lo llevaba *Guardar*: uno creía marcar a todos y guardaba la lista en blanco. Con una sola barra de acciones el problema no puede existir, y la prueba de teléfono ahora lo calcula sola en vez de esperar a tropezárselo.
 
 **5. Nada se pierde.** Lo marcado queda guardado **en el propio teléfono** al instante, y **se guarda solo** unos segundos después de la última marca: la barra dice *«Guardado a las 19:42»*, y el contador de la actividad se actualiza al tiro. Si se corta la señal, se cierra la pantalla o se apaga el teléfono a media lista, al volver a abrirla aparece el aviso *«Se recuperaron 8 marcas que habían quedado sin guardar en este teléfono»* y se sigue donde se iba.
 

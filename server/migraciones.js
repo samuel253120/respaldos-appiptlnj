@@ -1672,6 +1672,97 @@ function directivaDeCadaIglesia() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Devuelve a su cuerpo a quienes la regla de la directiva sacó por error.
+ *
+ * La primera versión de esa regla (1.107.0) trataba la directiva como
+ * EXACTAMENTE el conjunto de los miembros líderes, así que al guardar la ficha
+ * de cualquier integrante que no lo fuera —el secretario, la tesorera,
+ * cualquiera que la iglesia hubiera puesto a mano— lo retiraba del cuerpo. En
+ * silencio y de a uno, a medida que se iban guardando fichas por otros
+ * motivos: un cuerpo de veintisiete quedó en tres sin que nada lo dijera, y se
+ * notó al ir a pasar la lista.
+ *
+ * A quiénes se devuelve: a los que llevan EXACTAMENTE el motivo de retiro que
+ * escribía esa regla y que ya estaban en el cuerpo desde antes del día en que
+ * se los retiró. Esa segunda condición es la que separa los dos casos:
+ *
+ *   · Alguien que estaba desde antes y que la regla echó → se devuelve. Su
+ *     fecha de ingreso es anterior al día del retiro.
+ *   · Alguien a quien la regla metió y después sacó el mismo día por dejar de
+ *     ser líder → se queda retirado, que es lo correcto. Su fecha de ingreso
+ *     ES el día del retiro.
+ *
+ * En qué estado vuelve: en el que tenía. Si le quedó una fecha de fin de
+ * prueba por delante, estaba en prueba; si no, era integrante activo. Eso se
+ * puede reconstruir porque la regla solo cambió el estado y el retiro, y no
+ * tocó nada más de la ficha.
+ *
+ * Y se anota en la bitácora de cada persona, porque la salida también quedó
+ * anotada: sin esto, su historial diría que salió del cuerpo y nunca volvió.
+ */
+function devolverLosQueLaDirectivaSaco() {
+  const NOMBRE = 'devolver los que la directiva sacó';
+  if (yaAplicada(NOMBRE)) return;
+
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('integrantes_cuerpo')) return marcarAplicada(NOMBRE);
+
+  const columnas = new Set(db.prepare('PRAGMA table_info("integrantes_cuerpo")').all().map((c) => c.name));
+  if (!columnas.has('automatico')) return; // la columna se crea al arrancar; se intentará de nuevo
+
+  const MOTIVO = require('./directiva').MOTIVO_SALIDA;
+  const bitacora = require('./bitacora');
+
+  const echados = db
+    .prepare(
+      `SELECT i.id, i.miembro_id, i.cuerpo_id, i.iglesia_id, i.fecha_fin_prueba, c.nombre AS cuerpo
+         FROM integrantes_cuerpo i
+         LEFT JOIN cuerpos c ON c.id = i.cuerpo_id
+        WHERE i.estado = 'Retirado'
+          AND i.motivo_retiro = ?
+          AND (i.automatico IS NULL OR i.automatico = 0)
+          AND i.fecha_ingreso IS NOT NULL
+          AND i.fecha_retiro IS NOT NULL
+          AND i.fecha_ingreso < i.fecha_retiro`
+    )
+    .all(MOTIVO);
+
+  if (!echados.length) return marcarAplicada(NOMBRE);
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  db.transaction(() => {
+    const devolver = db.prepare(
+      `UPDATE integrantes_cuerpo
+          SET estado = ?, fecha_retiro = NULL, motivo_retiro = NULL,
+              updated_at = datetime('now','localtime')
+        WHERE id = ?`
+    );
+    for (const e of echados) {
+      // El que tenía prueba por delante vuelve a prueba; el resto, activo
+      const enPrueba = e.fecha_fin_prueba && e.fecha_fin_prueba > hoy;
+      devolver.run(enPrueba ? 'En prueba' : 'Activo', e.id);
+    }
+  }).immediate();
+
+  // Las anotaciones van fuera de la transacción: si una fallara, no puede
+  // deshacer la devolución, que es lo que de verdad importa
+  for (const e of echados) {
+    bitacora.anotar({
+      miembroId: e.miembro_id, tipo: 'Ingreso a cuerpo', iglesiaId: e.iglesia_id, usuario: null,
+      descripcion: `Vuelve a "${e.cuerpo || 'su cuerpo'}": el sistema lo había retirado por error ` +
+        'al agregar la regla de la directiva, y no correspondía porque no había entrado por ella.',
+    });
+  }
+
+  console.log(
+    `🔁 directiva: ${echados.length} integrante(s) volvieron a su cuerpo. ` +
+      'La regla los había retirado por error; ahora solo saca a los que ella misma metió.'
+  );
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -1698,6 +1789,7 @@ function ejecutarMigraciones() {
     ['categorías de tesorería', categoriasDeTesoreria],
     ['tipos de actividad y motivos de ausencia', listasDeAsistenciaComoDatos],
     ['directiva de cada iglesia', directivaDeCadaIglesia],
+    ['devolver los que la directiva sacó', devolverLosQueLaDirectivaSaco],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],
@@ -1944,4 +2036,7 @@ function solicitudesConSeguimiento() {
 // Estas dos se exponen aparte para poder probarlas solas: son las únicas que
 // crean fichas nuevas a partir de datos escritos a mano, y equivocarse ahí
 // significa duplicar personas, perder ayudas o repetir un número de solicitud.
-module.exports = { ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento };
+module.exports = {
+  ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
+  devolverLosQueLaDirectivaSaco,
+};

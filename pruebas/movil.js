@@ -206,10 +206,88 @@ const MIRAR = `
         return ry.left >= rx.right - relleno - 1;
       };
       if (enElHueco(a, b) || enElHueco(b, a)) continue;
+      /**
+       * Una barra pegada al borde con lo de abajo pasándole por debajo no es
+       * un defecto: es para qué existe. La barra de «Guardar lista» se queda a
+       * la vista mientras la lista corre detrás, con su fondo opaco tapando lo
+       * que va pasando; el que queda debajo reaparece al seguir deslizando, y
+       * la última fila nunca queda tapada porque la barra ocupa su lugar en el
+       * texto igual que cualquier otra cosa.
+       *
+       * Lo que sí hay que mirar —y esta prueba lo mira— es que dos cosas de la
+       * MISMA capa se pisen: ahí una tapa a la otra y no hay deslizar que lo
+       * arregle.
+       */
+      const bajoUnaBarraPegada = (x, y) => {
+        for (let e = y; e && e !== document.body; e = e.parentElement) {
+          if (getComputedStyle(e).position !== 'sticky' || e.contains(x)) continue;
+          /**
+           * Pero solo si la barra está donde tiene que estar. Cuando la
+           * tarjeta queda casi toda por debajo del borde, la barra no tiene
+           * hasta dónde bajar y se apoya contra el TECHO de su tarjeta: ahí
+           * deja de ser una barra pegada abajo y pasa a ser una cosa encima de
+           * otra, tapando lo que haya en el encabezado. Eso sí es un defecto,
+           * y es exactamente el que hubo que arreglar.
+           */
+          const dela = e.getBoundingClientRect();
+          const suya = e.parentElement.getBoundingClientRect();
+          if (Math.abs(dela.top - suya.top) <= 1) return false; // apoyada contra el techo
+          return true;
+        }
+        return false;
+      };
+      if (bajoUnaBarraPegada(a, b) || bajoUnaBarraPegada(b, a)) continue;
       const x = a.getBoundingClientRect(), y = b.getBoundingClientRect();
       const dx = Math.min(x.right, y.right) - Math.max(x.left, y.left);
       const dy = Math.min(x.bottom, y.bottom) - Math.max(x.top, y.top);
       if (dx > 2 && dy > 2) hallazgos.sePisan.push(nombre(a) + ' ∩ ' + nombre(b));
+    }
+  }
+
+  /**
+   * 4b · una barra pegada abajo que puede terminar encima de un botón.
+   *
+   * Esto no se ve mirando la pantalla quieta: aparece solo mientras se
+   * desliza, en una franja angosta, y por eso se calcula en vez de buscarlo.
+   *
+   * Una barra «pegada» al borde de abajo se queda a la vista mientras lo demás
+   * le pasa por debajo —para eso está—, pero no puede salirse de su tarjeta:
+   * cuando la tarjeta va quedando por debajo del borde de la pantalla, la
+   * barra se queda sin lugar donde bajar y termina apoyada contra el TECHO de
+   * su tarjeta. Ahí ya no es una barra de abajo: es una cosa encima de otra, y
+   * tapa lo que haya en el encabezado. Un toque en el botón tapado se lo lleva
+   * la barra. Fue exactamente lo que pasó con «Guardar lista» encima de «Todos
+   * presentes»: uno creía marcar a todos y guardaba la lista en blanco.
+   *
+   * Se calcula dónde quedaría la barra apoyada contra el techo, y se mira si
+   * ahí hay algo que se pueda tocar. No hace falta deslizar hasta verlo.
+   */
+  for (const barra of zona.querySelectorAll('*')) {
+    const cs = getComputedStyle(barra);
+    if (cs.position !== 'sticky' || cs.bottom === 'auto') continue;
+    const suya = barra.parentElement;
+    if (!suya) continue;
+    const caja = suya.getBoundingClientRect();
+    // Si la tarjeta cabe entera en la pantalla, la barra nunca se despega de
+    // su lugar y no hay nada que calcular
+    if (caja.height <= window.innerHeight) continue;
+    /**
+     * Se mide DENTRO de la tarjeta, no en la pantalla: la barra y lo que está
+     * en la tarjeta se mueven juntos, así que la distancia entre ellos no
+     * cambia con el deslizamiento. Apoyada contra el techo, la barra ocupa los
+     * primeros píxeles de la tarjeta; lo que caiga ahí queda tapado.
+     */
+    const alto = barra.getBoundingClientRect().height;
+    for (const el of suya.querySelectorAll('button, a[href], input, select, .chip')) {
+      if (barra.contains(el)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4 || !seDibuja(el)) continue;
+      const desde = r.top - caja.top, hasta = r.bottom - caja.top;
+      if (Math.min(alto, hasta) - Math.max(0, desde) > 2) {
+        hallazgos.sePisan.push(
+          nombre(barra) + ' (pegada abajo) termina encima de ' + nombre(el) + ' al deslizar'
+        );
+      }
     }
   }
 

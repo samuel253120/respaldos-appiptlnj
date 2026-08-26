@@ -1949,9 +1949,30 @@ ul.pasar-lista .pl-just input { flex: 1; }
 }
 .pl-resumen { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .pl-estado { flex: 1; font-size: 12.5px; color: var(--muted); text-align: right; }
+/* Mientras no tiene nada que decir no ocupa lugar: en un teléfono esa línea
+   vacía le sumaba alto a una barra que está siempre a la vista */
+.pl-estado:empty { display: none; }
 .pl-estado .aviso-texto { color: #b45309; font-weight: 600; }
 .pl-estado .ok-texto { color: #16a34a; font-weight: 600; }
 .pl-barra .btn { min-height: 44px; }
+/**
+ * Las dos acciones de la lista viven juntas en la barra de abajo.
+ *
+ * «Todos presentes» estaba arriba, en el encabezado de la tarjeta. En un
+ * teléfono eso se pagaba caro: la barra de abajo va pegada al borde inferior
+ * y, mientras la tarjeta todavía asoma desde abajo, no tiene hasta dónde
+ * bajar y se apoya contra el techo de la tarjeta —justo encima de «Todos
+ * presentes»—. En esa franja el botón se ve pero el toque lo recibe
+ * «Guardar»: uno cree que marca a todos y lo que hace es guardar la lista en
+ * blanco. Con una sola barra de acciones el problema no puede existir.
+ */
+.pl-acciones { display: flex; gap: 10px; align-items: center; }
+.pl-acciones .btn { white-space: nowrap; }
+/**
+ * Alto de esa barra. Tiene nombre porque hay otra regla que depende de él:
+ * ver «.pl-cab» en el bloque del teléfono.
+ */
+:root { --pl-barra-alto: 96px; }
 
 @media (max-width: 700px) {
   .tabs button { padding: 12px 8px; font-size: 13.5px; }
@@ -1966,7 +1987,17 @@ ul.pasar-lista .pl-just input { flex: 1; }
   .pa-dia { min-width: 0; flex: 1 1 100%; display: flex; align-items: baseline; gap: 8px; }
   .pa-estado { flex: 0 0 auto; text-align: right; }
   .pl-cab, .pl-filtros, .pl-avance { padding-left: 14px; padding-right: 14px; }
-  .pl-cab .btn { width: 100%; min-height: 44px; }
+  /**
+   * El encabezado reserva al menos el alto de la barra de abajo.
+   *
+   * La barra va pegada al borde inferior, pero no puede salirse de su tarjeta:
+   * cuando la tarjeta queda casi toda por debajo de la pantalla, la barra se
+   * queda sin lugar donde bajar y se apoya contra el techo de la tarjeta. Con
+   * esta reserva, lo que queda debajo de ella en esa franja es el título —que
+   * no se toca— y no el buscador ni los filtros. La prueba de teléfono lo
+   * comprueba sola: ver «pegada abajo» en pruebas/movil.js.
+   */
+  .pl-cab { min-height: var(--pl-barra-alto); box-sizing: border-box; }
   /* Los cinco filtros se ven de una vez, en dos líneas: nada de deslizar
      para descubrir que hay más */
   .pl-chips { width: 100%; flex-wrap: wrap; }
@@ -1996,7 +2027,10 @@ ul.pasar-lista .pl-just input { flex: 1; }
   .pl-resumen::-webkit-scrollbar { display: none; }
   .pl-resumen .badge { white-space: nowrap; }
   .pl-estado { flex: 1 1 100%; text-align: left; order: 3; }
-  .pl-barra .btn { flex: 1 1 100%; }
+  /* Las dos acciones comparten una fila: apiladas se comerían un quinto de la
+     pantalla, y esta barra está siempre a la vista */
+  .pl-acciones { flex: 1 1 100%; order: 4; gap: 8px; }
+  .pl-acciones .btn { flex: 1 1 0; min-width: 0; padding-left: 6px; padding-right: 6px; }
   .modal-fila { grid-template-columns: 1fr; }
 }
 

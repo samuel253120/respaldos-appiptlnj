@@ -92,6 +92,16 @@ module.exports = {
     { name: 'observaciones', label: 'Observaciones', type: 'textarea', seccion: 'Notas' },
     // Se toma del cuerpo, para que los permisos por iglesia funcionen igual
     { name: 'iglesia_id', type: 'number', oculto: true, readonly: true },
+    /**
+     * Esta ficha la puso la regla de la directiva, no una persona.
+     *
+     * Importa para una sola cosa, y no es menor: la regla solo puede RETIRAR a
+     * quien ella misma metió. Un integrante que alguien agregó a mano —el
+     * secretario, la tesorera, alguien que la iglesia decidió que estuviera—
+     * no se toca aunque no esté en la categoría «Miembro Líder». Sin esta
+     * marca la regla los echaba a todos, que es justo lo que pasó.
+     */
+    { name: 'automatico', type: 'boolean', oculto: true, readonly: true },
   ],
 
   hooks: {
