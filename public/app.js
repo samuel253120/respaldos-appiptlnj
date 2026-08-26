@@ -2585,6 +2585,12 @@ function valorFicha(f, row) {
     }
     case 'time':
       return vacio ? '' : esc(String(v).slice(0, 5));
+    case 'color': {
+      // Un código hexadecimal no se lee: se muestra la muestra del color,
+      // y el código al lado para quien lo necesite copiar
+      if (vacio || !/^#[0-9a-f]{6}$/i.test(String(v))) return '';
+      return `<span class="dato-color"><i style="background:${esc(v)}"></i>${esc(String(v).toLowerCase())}</span>`;
+    }
     case 'rut':
       return vacio ? '' : esc(rutFormatear(v));
     case 'tel': {
@@ -4342,6 +4348,7 @@ async function viewForm(name, id, precarga) {
     if (f.type === 'multiref') initMultiref(f, row);
     if (f.type === 'money' || f.type === 'number') initNumero(f);
     if (f.type === 'richtext') initTextoRico(f);
+    if (f.type === 'color') initColor(f);
     if (f.type === 'file') initFileField(f);
     if (f.type === 'rut') {
       const el = document.querySelector(`#recForm [name="${f.name}"]`);
@@ -4998,6 +5005,30 @@ function fieldHtml(f, row, isNew) {
     case 'time':
       input = `<input type="time" name="${f.name}" value="${esc(val)}" />`;
       break;
+    case 'color': {
+      /**
+       * Un color se elige viéndolo, no escribiendo «#16265c».
+       *
+       * Van los dos controles juntos y atados: el cuadrito del navegador para
+       * elegir, y la caja de texto para pegar el color exacto de la marca de
+       * la iglesia, que es como llega cuando alguien lo trae de una imagen.
+       * Vacío significa «el del sistema», y por eso hay un botón para volver
+       * a dejarlo así: sin él, una vez tocado el cuadrito ya no habría manera
+       * de deshacerlo.
+       */
+      const puesto = /^#[0-9a-f]{6}$/i.test(String(val || '')) ? String(val) : '';
+      input = `
+        <div class="colorcampo" data-name="${f.name}">
+          <input type="color" class="cc-pico" value="${esc(puesto || f.porDefecto || '#16265c')}"
+                 aria-label="Elegir el color de ${esc(f.label)}" />
+          <input type="text" class="cc-texto" name="${f.name}" value="${esc(puesto)}"
+                 aria-label="${esc(f.label)}, en código hexadecimal"
+                 placeholder="${esc(f.porDefecto || 'del sistema')}" spellcheck="false" autocomplete="off" />
+          <button type="button" class="cc-quitar" title="Dejar el color del sistema"
+                  aria-label="Dejar el color del sistema en ${esc(f.label)}">Quitar</button>
+        </div>`;
+      break;
+    }
     case 'email':
       input = `<input type="email" name="${f.name}" value="${esc(val)}" ${f.required ? 'required' : ''} />`;
       break;
@@ -5036,6 +5067,34 @@ function textoPlano(html) {
  * que es lo que viaja al guardar. El servidor lo vuelve a limpiar antes de
  * guardarlo (server/textorico.js): acá no se confía en nada de lo que llegue.
  */
+/**
+ * Ata el cuadrito de color con la caja de texto.
+ *
+ * Lo que se guarda es SIEMPRE la caja de texto —vacía quiere decir «el color
+ * del sistema»—, y el cuadrito solo la escribe. Al revés no sirve: el control
+ * del navegador no tiene estado «sin color», siempre devuelve uno, así que si
+ * mandara él, abrir la ficha ya dejaría el color puesto sin que nadie lo
+ * eligiera.
+ */
+function initColor(f) {
+  const caja = document.querySelector(`.colorcampo[data-name="${f.name}"]`);
+  if (!caja) return;
+  const pico = caja.querySelector('.cc-pico');
+  const texto = caja.querySelector('.cc-texto');
+  const quitar = caja.querySelector('.cc-quitar');
+
+  const alDia = () => {
+    const puesto = /^#[0-9a-f]{6}$/i.test(texto.value.trim());
+    if (puesto) pico.value = texto.value.trim().toLowerCase();
+    quitar.hidden = !texto.value.trim();
+  };
+
+  pico.addEventListener('input', () => { texto.value = pico.value; alDia(); });
+  texto.addEventListener('input', alDia);
+  quitar.addEventListener('click', () => { texto.value = ''; alDia(); texto.focus(); });
+  alDia();
+}
+
 function initTextoRico(f) {
   const caja = document.getElementById('rico_' + f.name);
   if (!caja) return;
@@ -6600,8 +6659,21 @@ async function viewPrint(name, id) {
     ).catch(() => null); // sin permiso para ver asistencia, el acta se imprime igual
   }
 
+  /*
+   * El certificado se imprime con SU formato: el texto, qué partes se muestran
+   * y el diseño salen de ahí. Si no se puede traer —sin permiso, sin señal, o
+   * su tipo ya no tiene formato— la hoja sale con lo que traía el sistema, que
+   * es preferible a no salir cuando alguien necesita imprimir.
+   */
+  let formatoCert = null;
+  if (name === 'certificados' && row.tipo) {
+    formatoCert = await api(
+      'GET', `/formatos_certificado/para?tipo=${encodeURIComponent(row.tipo)}`
+    ).catch(() => null);
+  }
+
   let sheet;
-  if (name === 'certificados') sheet = printCertificado(row);
+  if (name === 'certificados') sheet = printCertificado(row, formatoCert);
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
   else sheet = printGenerico(m, row);
@@ -6618,37 +6690,119 @@ async function viewPrint(name, id) {
   if (bajarPdf) bajarPdf.addEventListener('click', () => descargarActaEnPdf(id, bajarPdf));
 }
 
-function certTextoEstandar(row) {
-  const tipo = row.tipo || '';
-  const iglesia = iglesiaDeTrabajo(row.iglesia_id_label) || 'la iglesia';
-  const map = {
-    'Bautismo': `Certifica que fue bautizado(a) en las aguas, en obediencia al mandato de nuestro Señor Jesucristo, el día ${fechaLarga(row.fecha_evento)}, en ${iglesia}.`,
-    'Presentación de niños': `Certifica que fue presentado(a) al Señor el día ${fechaLarga(row.fecha_evento)}, en ${iglesia}, conforme a la enseñanza de las Sagradas Escrituras.`,
-    'Matrimonio': `Certifica la celebración del matrimonio efectuado el día ${fechaLarga(row.fecha_evento)}, en ${iglesia}, delante de Dios y de los testigos presentes.`,
-    'Membresía': `Certifica que es miembro en plena comunión de ${iglesia}.`,
-    'Traslado': `Certifica que ha sido miembro en plena comunión de ${iglesia} y se extiende la presente para los fines de traslado a la congregación que lo(a) reciba.`,
+/**
+ * Reemplaza los datos entre llaves de un formato por los del certificado.
+ *
+ * Es lo que hace que un formato sirva para todos: el texto se escribe una vez
+ * —«bautizado(a) … el día {fecha_evento}, en {iglesia}»— y cada hoja sale con
+ * lo suyo. Un dato que no esté queda en blanco y no deja la llave a la vista,
+ * que es peor que el hueco: un certificado entregado que diga «{fecha_evento}»
+ * hay que rehacerlo.
+ */
+function certRellenar(texto, row) {
+  if (!texto) return '';
+  const datos = {
+    titular: row.nombre_titular || '',
+    tipo: row.tipo || '',
+    numero: row.numero || '',
+    iglesia: iglesiaDeTrabajo(row.iglesia_id_label) || '',
+    institucion: IGLESIA.nombre || '',
+    fecha_evento: row.fecha_evento ? fechaLarga(row.fecha_evento) : '',
+    fecha_emision: row.fecha_emision ? fechaLarga(row.fecha_emision) : '',
+    oficiante: row.oficiante_id_label || '',
+    rut: row.miembro_id_label && row.rut ? rutFormatear(row.rut) : (row.rut ? rutFormatear(row.rut) : ''),
   };
-  return map[tipo] || `Se extiende el presente certificado de ${tipo.toLowerCase()} en constancia de lo actuado en ${iglesia}.`;
+  return String(texto).replace(/\{(\w+)\}/g, (entero, clave) =>
+    Object.prototype.hasOwnProperty.call(datos, clave) ? datos[clave] : entero
+  );
 }
 
-function printCertificado(row) {
+/** Las tipografías que ofrece el formato, en lo que el navegador entiende. */
+const CERT_TIPOGRAFIAS = {
+  'Con serifa (Georgia)': "Georgia, 'Times New Roman', serif",
+  'Sin serifa': "'Segoe UI', system-ui, -apple-system, sans-serif",
+  'Manuscrita': "'Segoe Script', 'Brush Script MT', cursive",
+};
+
+const CERT_MARCOS = {
+  'Doble línea': '3px double',
+  'Línea simple': '1px solid',
+  'Sin marco': '0 none',
+};
+
+/**
+ * La hoja del certificado, armada con su formato.
+ *
+ * El formato manda sobre lo que dice, sobre qué partes aparecen y sobre cómo
+ * se ve. Cuando no hay formato —un certificado de un tipo que después se
+ * borró— la hoja sale igual, con lo que traía el sistema: es preferible una
+ * hoja con el aspecto de siempre a una pantalla en blanco cuando alguien
+ * necesita imprimir.
+ */
+function printCertificado(row, formato) {
+  const f = formato || {};
+  const conNumero = f.muestra_numero === undefined ? true : !!f.muestra_numero;
+  const puesto = (v, sino) => (String(v || '').trim() ? String(v).trim() : sino);
+
+  const titulo = certRellenar(puesto(f.titulo, `Certificado de ${row.tipo || ''}`), row);
+  const rotulo = certRellenar(puesto(f.rotulo_titular, 'Otorgado a:'), row);
+  const cuerpo = certRellenar(row.texto || f.texto || '', row);
+  const lineaFecha = f.muestra_fecha === 0 ? '' : certRellenar(
+    puesto(f.texto_fecha, row.fecha_emision ? `Dado el ${fechaLarga(row.fecha_emision)}` : ''), row
+  );
+  const firma1 = certRellenar(puesto(f.firma_izquierda, row.oficiante_id_label || 'Oficiante'), row);
+  const firma2 = certRellenar(puesto(f.firma_derecha, 'Secretaría'), row);
+
+  /* El diseño, acotado a lo que se puede imprimir (el servidor ya lo acotó al
+     guardar; acá se repite porque un formato viejo puede traer cualquier cosa) */
+  const entre = (v, min, max, sino) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : sino;
+  };
+  const color = (v, sino) => (/^#[0-9a-f]{6}$/i.test(String(v || '')) ? v : sino);
+
+  const estiloHoja = [
+    `--cert-color-titulo:${color(f.color_titulo, '#16265c')}`,
+    `--cert-color-texto:${color(f.color_texto, '#44403c')}`,
+    `--cert-color-marco:${color(f.color_marco, '#e8b52c')}`,
+    `--cert-fuente-titulo:${CERT_TIPOGRAFIAS[f.tipografia_titulo] || CERT_TIPOGRAFIAS['Con serifa (Georgia)']}`,
+    `--cert-fuente-texto:${CERT_TIPOGRAFIAS[f.tipografia_texto] || CERT_TIPOGRAFIAS['Sin serifa']}`,
+    `--cert-tam-titulo:${entre(f.tamano_titulo, 12, 96, 34)}px`,
+    `--cert-tam-texto:${entre(f.tamano_texto, 8, 40, 15)}px`,
+    `--cert-margen:${entre(f.margen, 0, 40, 18)}mm`,
+    `--cert-marco:${CERT_MARCOS[f.marco] || CERT_MARCOS['Doble línea']}`,
+    `--cert-fondo-opacidad:${entre(f.fondo_opacidad, 5, 100, 100) / 100}`,
+  ].join(';');
+
+  const horizontal = f.orientacion === 'Horizontal' ? ' apaisado' : '';
+  const fondo = f.fondo && /\.(jpe?g|png|webp)$/i.test(f.fondo)
+    ? `<img class="cert-fondo" src="/uploads/${esc(f.fondo)}" alt="" />`
+    : '';
+
+  const encabezado = [
+    f.muestra_logo === 0 || !IGLESIA.logo ? '' : `<img class="cert-logo" src="${IGLESIA.logo}" alt="" />`,
+    f.muestra_institucion === 0 ? '' : `<div class="church">${esc(IGLESIA.nombre)}${
+      IGLESIA.lema ? `<br><span class="lema">${esc(IGLESIA.lema)}</span>` : ''}</div>`,
+    f.muestra_iglesia === 0 ? '' : `<div class="local">${esc(iglesiaDeTrabajo(row.iglesia_id_label))}</div>`,
+  ].join('');
+
   return `
-    <div class="print-sheet cert-sheet">
+    <div class="print-sheet cert-sheet${horizontal}" style="${esc(estiloHoja)}">
+      ${fondo}
       <div class="cert-inner">
-        <img class="cert-logo" src="${IGLESIA.logo}" alt="" />
-        <div class="church">${esc(IGLESIA.nombre)}${IGLESIA.lema ? `<br><span class="lema">${esc(IGLESIA.lema)}</span>` : ''}</div>
-        <div class="local">${esc(iglesiaDeTrabajo(row.iglesia_id_label))}</div>
-        <h1>Certificado de ${esc(row.tipo || '')}</h1>
-        <div class="cert-no">N.º ${esc(row.numero || '')}</div>
-        <div class="otorgado">Otorgado a:</div>
+        ${encabezado}
+        ${titulo ? `<h1>${esc(titulo)}</h1>` : ''}
+        ${conNumero && row.numero ? `<div class="cert-no">N.º ${esc(row.numero)}</div>` : ''}
+        ${rotulo ? `<div class="otorgado">${esc(rotulo)}</div>` : ''}
         <div class="titular">${esc(row.nombre_titular || '')}</div>
-        <div class="texto">${esc(row.texto || certTextoEstandar(row))}</div>
-        <div class="cert-firmas">
-          <div class="firma">${esc(row.oficiante_id_label || 'Oficiante')}<br><span style="font-size:11px;color:#a8a29e">Firma</span></div>
-          <div class="firma">Secretaría<br><span style="font-size:11px;color:#a8a29e">Firma y sello</span></div>
-        </div>
-        <div class="cert-fecha">Dado el ${fechaLarga(row.fecha_emision)}</div>
-        ${pieDeLaInstitucion() ? `<div class="cert-pie">${esc(pieDeLaInstitucion())}</div>` : ''}
+        ${cuerpo ? `<div class="texto">${esc(cuerpo)}</div>` : ''}
+        ${f.muestra_firmas === 0 ? '' : `
+          <div class="cert-firmas">
+            <div class="firma">${esc(firma1)}<br><span class="rotulo">Firma</span></div>
+            <div class="firma">${esc(firma2)}<br><span class="rotulo">Firma y sello</span></div>
+          </div>`}
+        ${lineaFecha ? `<div class="cert-fecha">${esc(lineaFecha)}</div>` : ''}
+        ${f.muestra_pie === 0 || !pieDeLaInstitucion() ? '' : `<div class="cert-pie">${esc(pieDeLaInstitucion())}</div>`}
       </div>
     </div>`;
 }

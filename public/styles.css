@@ -980,23 +980,67 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
   background: #fff; border: 1px solid var(--border); box-shadow: var(--shadow);
   margin: 0 auto; padding: 0;
 }
+/**
+ * El certificado impreso.
+ *
+ * Todo lo que el formato puede cambiar entra por variables —los colores, las
+ * tipografías, los tamaños, el margen y el marco—, y la hoja las declara en su
+ * propio atributo `style`. Los valores de abajo son los de fábrica: son los que
+ * valen cuando un certificado no tiene formato, y los que se ven en la ficha de
+ * un formato recién creado.
+ */
 .cert-sheet {
-  max-width: 900px; padding: 26px; position: relative;
+  --cert-color-titulo: #16265c;
+  --cert-color-texto: #44403c;
+  --cert-color-marco: #e8b52c;
+  --cert-fuente-titulo: Georgia, 'Times New Roman', serif;
+  --cert-fuente-texto: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --cert-tam-titulo: 34px;
+  --cert-tam-texto: 15px;
+  --cert-margen: 18mm;
+  --cert-marco: 3px double;
+  --cert-fondo-opacidad: 1;
+
+  max-width: 900px; padding: var(--cert-margen); position: relative; overflow: hidden;
+}
+/* Apaisado: la hoja se da vuelta al imprimir y se ensancha en pantalla */
+.cert-sheet.apaisado { max-width: 1200px; }
+@page { size: auto; }
+
+/* El fondo va DETRÁS de todo y no se lleva ningún toque ni ninguna selección */
+.cert-fondo {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; opacity: var(--cert-fondo-opacidad);
+  pointer-events: none; user-select: none; z-index: 0;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 .cert-inner {
-  border: 3px double var(--marca-oro); padding: 40px 48px; text-align: center; position: relative;
+  border: var(--cert-marco) var(--cert-color-marco);
+  padding: 40px 48px; text-align: center; position: relative; z-index: 1;
 }
 .cert-logo { width: 92px; height: 92px; object-fit: contain; margin-bottom: 10px; }
 .cert-inner .church { font-size: 13.5px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--marca-azul); font-weight: 700; line-height: 1.5; }
 .cert-inner .church .lema { font-size: 12px; letter-spacing: 1px; color: var(--marca-oro-oscuro); }
 .cert-inner .local { font-size: 12.5px; color: #78716c; margin-top: 4px; }
-.cert-inner h1 { font-family: Georgia, 'Times New Roman', serif; font-size: 34px; color: var(--marca-azul); margin: 18px 0 6px; }
+.cert-inner h1 {
+  font-family: var(--cert-fuente-titulo); font-size: var(--cert-tam-titulo);
+  color: var(--cert-color-titulo); margin: 18px 0 6px; line-height: 1.2;
+}
 .cert-inner .cert-no { font-size: 12px; color: var(--marca-oro-oscuro); letter-spacing: 1px; }
 .cert-inner .otorgado { margin-top: 26px; font-size: 14px; color: #57534e; }
-.cert-inner .titular { font-family: Georgia, serif; font-size: 30px; font-style: italic; color: var(--marca-azul); margin: 10px 0 4px; border-bottom: 1px solid var(--marca-oro); display: inline-block; padding: 0 30px 6px; }
-.cert-inner .texto { max-width: 620px; margin: 18px auto 0; font-size: 14.5px; line-height: 1.7; color: #44403c; white-space: pre-wrap; }
+.cert-inner .titular {
+  font-family: var(--cert-fuente-titulo); font-size: calc(var(--cert-tam-titulo) * 0.88);
+  font-style: italic; color: var(--cert-color-titulo); margin: 10px 0 4px;
+  border-bottom: 1px solid var(--cert-color-marco); display: inline-block; padding: 0 30px 6px;
+}
+.cert-inner .texto {
+  max-width: 620px; margin: 18px auto 0;
+  font-family: var(--cert-fuente-texto); font-size: var(--cert-tam-texto);
+  line-height: 1.7; color: var(--cert-color-texto); white-space: pre-wrap;
+}
 .cert-firmas { display: flex; justify-content: space-around; margin-top: 60px; }
 .cert-firmas .firma { width: 220px; border-top: 1px solid #78716c; padding-top: 6px; font-size: 13px; color: #57534e; }
+.cert-firmas .firma .rotulo { font-size: 11px; color: #a8a29e; }
 .cert-fecha { margin-top: 30px; font-size: 13px; color: #78716c; }
 
 .cred-card {
@@ -2399,3 +2443,23 @@ input.fuera-de-rango { border-color: var(--danger); background: #fff5f5; }
   }
   .buscador-global .bg-abrir { min-width: 36px; }
 }
+
+/* ── Campo de color ───────────────────────────────────────────────────
+   El cuadrito para elegirlo y la caja para pegar el código exacto de la
+   marca, que es como llega cuando alguien lo saca de una imagen. */
+.colorcampo { display: flex; align-items: center; gap: 8px; }
+.colorcampo .cc-pico {
+  width: 46px; height: 40px; padding: 2px; flex: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--card);
+}
+.colorcampo .cc-texto { flex: 1 1 auto; min-width: 0; font-family: ui-monospace, monospace; }
+.colorcampo .cc-quitar {
+  flex: none; min-height: 40px; padding: 0 12px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); color: var(--muted); font: inherit; font-size: 13px;
+}
+.colorcampo .cc-quitar:hover { color: var(--text); border-color: var(--marca-azul); }
+.colorcampo .cc-quitar[hidden] { display: none; }
+
+.dato-color { display: inline-flex; align-items: center; gap: 7px; font-family: ui-monospace, monospace; font-size: 12px; }
+.dato-color i { width: 15px; height: 15px; border-radius: 4px; border: 1px solid var(--border); flex: none; }

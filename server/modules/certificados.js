@@ -1,4 +1,11 @@
-/** Módulo: Certificados (bautismo, presentación, matrimonio, membresía…). Imprimible. */
+/**
+ * Módulo: Certificados (bautismo, presentación, matrimonio, membresía…).
+ * Imprimible.
+ *
+ * De qué clases hay, qué dice cada una y cómo se ve la hoja NO está acá: lo
+ * mantiene la iglesia en «Formatos de Certificado». Acá queda cada certificado
+ * emitido, con su número, su titular y sus fechas.
+ */
 module.exports = {
   name: 'certificados',
   label: 'Certificados',
@@ -18,8 +25,11 @@ module.exports = {
       help: 'Ej. CERT-001-2026. No puede repetirse dentro de la misma iglesia.',
     },
     {
-      name: 'tipo', label: 'Tipo de certificado', type: 'select', required: true, default: 'Bautismo',
-      options: ['Bautismo', 'Presentación de niños', 'Matrimonio', 'Membresía', 'Traslado', 'Buena conducta', 'Reconocimiento', 'Otro'],
+      name: 'tipo', label: 'Tipo de certificado', type: 'select', required: true,
+      // Los mantiene la iglesia (módulo «Formatos de Certificado»): de ahí sale
+      // también el texto y el diseño de la hoja al imprimir
+      optionsRoute: '/formatos_certificado/opciones',
+      help: 'Se administran en Formatos de Certificado, junto con su texto y su diseño.',
     },
     { name: 'iglesia_id', label: 'Iglesia que emite', type: 'ref', ref: 'iglesias', required: true },
     { name: 'miembro_id', label: 'Miembro (si está registrado)', type: 'ref', ref: 'miembros' },
@@ -27,7 +37,11 @@ module.exports = {
     { name: 'fecha_evento', label: 'Fecha del evento (bautismo, boda, etc.)', type: 'date' },
     { name: 'fecha_emision', label: 'Fecha de emisión', type: 'date', required: true },
     { name: 'oficiante_id', label: 'Oficiante / Firma', type: 'ref', ref: 'pastores' },
-    { name: 'texto', label: 'Texto del certificado', type: 'textarea', help: 'Texto central que aparecerá impreso. Si se deja vacío se usa un texto estándar según el tipo.' },
+    {
+      name: 'texto', label: 'Texto del certificado', type: 'textarea',
+      help: 'Solo si este certificado tiene que decir algo distinto. Vacío usa el texto del formato, ' +
+        'que es lo habitual: así, corregir una redacción se hace una vez en el formato y no certificado por certificado.',
+    },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Emitido',
       options: ['Emitido', 'Anulado'],

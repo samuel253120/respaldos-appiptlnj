@@ -19,7 +19,7 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 | **Personas** | Miembros · Bitácora de Miembros · Documentos de Miembros |
 | **Asistencia** | Asistencia: calendario, actividades, toma de lista e informes en una sola pantalla, pensada para el teléfono |
 | **Finanzas** | Cuentas de Tesorería (corporación e iglesias) · Tesorería (ingresos/egresos con resumen y balance) · Traspasos entre Cuentas · Ayudas Sociales · Inventarios (de iglesia y de cuerpos) |
-| **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · Documentos · Certificados · Credenciales · Solicitudes |
+| **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · Documentos · Certificados (con sus **formatos** administrables) · Credenciales · Solicitudes |
 | **Administración** | Usuarios (roles y permisos) |
 
 Todos los módulos tienen: listado con búsqueda, filtros, ordenamiento y paginación; formularios generados automáticamente; y (donde aplica) filtro por rango de fechas, adjuntos y vista de impresión.
@@ -276,6 +276,34 @@ Si a un cuerpo se le marca la casilla cuando la iglesia ya tenía sus líderes r
 > Se devuelve solo a quien cumple las cuatro cosas: está retirado con el motivo exacto que escribía la regla, su ficha no lleva la marca de automática, está en un cuerpo marcado como directiva, y se lo retiró **después** del día en que la regla empezó a existir en ese servidor. Una salida que una persona escribió con esas mismas palabras antes de todo esto no se toca.
 >
 > **La reparación de la 1.107.1 no devolvió a nadie.** Exigía que la ficha tuviera fecha de ingreso y que fuera anterior al retiro; pero las fichas de los integrantes que venían de antes las creó la migración *«integrantes con su ficha»*, que no se la puso, así que quedó en nulo. La condición dejaba fuera justo a toda la gente que había que devolver: la reparación corrió, no encontró a nadie, se dio por aplicada y el cuerpo siguió mostrando tres. La de la 1.107.2 lleva otro nombre a propósito, para que vuelva a correr donde aquella ya se dio por hecha.
+
+### Los formatos de los certificados los mantiene la iglesia 🎗️
+
+De qué clases de certificado se emiten, qué dice cada uno y cómo se ve la hoja está en **Formatos de Certificado**. Antes las tres cosas estaban escritas dentro del programa —los tipos, en una lista fija de ocho; los textos, en el navegador— y cambiar una coma del certificado de bautismo era publicar una versión nueva.
+
+Cada formato manda sobre tres cosas, que son las secciones de su ficha:
+
+| Sección | Qué decide |
+|---|---|
+| **El texto** | El título, el rótulo sobre el nombre, el cuerpo del certificado y la línea de la fecha |
+| **Qué se muestra en la hoja** | Si aparecen el logo, el nombre de la institución, la iglesia local, el número, las firmas (con sus dos rótulos), la fecha y el pie |
+| **El diseño de la hoja** | Orientación, imagen de fondo con su intensidad, colores del título, del texto y del marco, tipografías, tamaños, margen y tipo de marco |
+
+**Los datos se rellenan solos.** En el texto y en el título se ponen entre llaves y cada hoja sale con lo suyo:
+
+`{titular}` · `{tipo}` · `{numero}` · `{iglesia}` · `{institucion}` · `{fecha_evento}` · `{fecha_emision}` · `{oficiante}` · `{rut}`
+
+> *«Certifica que fue bautizado(a) en las aguas … el día `{fecha_evento}`, en `{iglesia}`.»*
+
+El que no tenga dato queda en blanco: una llave impresa tal cual obligaría a rehacer un certificado ya firmado.
+
+**Lo que no está acá, a propósito.** El nombre de la institución, su lema y su logo salen de la configuración: son los mismos en todo lo que la iglesia imprime, y tenerlos en cada formato sería tener cuatro membretes distintos el día que cambien.
+
+**Un formato que ya se usó no se borra sin aviso**: es el tipo con que quedaron emitidos certificados ya firmados y entregados. El sistema lo impide y sugiere la salida: desmarcarlo en *En uso*, y deja de ofrecerse al emitir sin tocar los que ya existen.
+
+**Un certificado puede decir algo distinto.** Su propio campo de texto manda sobre el del formato, para el caso puntual. Vacío —lo habitual— usa el del formato, así una redacción se corrige una vez y no certificado por certificado.
+
+> Al actualizar se crean solos los **ocho** tipos que traía el sistema, con sus mismos textos, para que nada cambie de aspecto ese día. Desde ahí se editan, se agregan otros o se sacan de uso.
 
 ### Histórico de directivas 🏅
 

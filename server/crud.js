@@ -302,6 +302,16 @@ function coerce(field, value) {
       return require('./textorico').limpiar(value);
     case 'rut':
       return rut.canonico(value);
+    case 'color': {
+      /**
+       * Un color y nada más. Llega del navegador, así que no se guarda tal
+       * cual: lo que se escriba acá va a parar a un atributo `style` de la
+       * hoja impresa, y ahí cualquier cosa que no sea un color es una puerta.
+       * Lo que no calce se descarta, que equivale a «el color del sistema».
+       */
+      const v = String(value).trim().toLowerCase();
+      return /^#[0-9a-f]{6}$/.test(v) ? v : null;
+    }
     case 'persona':
       return String(value).trim() || null;
     case 'permisos': {

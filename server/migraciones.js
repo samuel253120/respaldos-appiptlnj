@@ -1860,6 +1860,77 @@ function marcasDeAsistenciaConSuCuerpo() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Los formatos de certificado que traía el sistema, ahora administrables.
+ *
+ * Los ocho tipos y sus textos estaban escritos dentro del programa —los tipos
+ * en una lista fija del módulo, los textos en el navegador—, así que cambiar
+ * una redacción era publicar una versión. Ahora son fichas que la iglesia
+ * edita, y esta migración los pasa tal cual: los mismos ocho nombres y los
+ * mismos textos, para que nada cambie de aspecto el día que se actualiza.
+ *
+ * Los que no tenían texto propio —«Buena conducta», «Reconocimiento», «Otro»—
+ * llevan el texto genérico que armaba el sistema para ellos.
+ *
+ * Se siembra UNA vez y solo si la tabla está vacía: si la iglesia ya creó sus
+ * formatos, no se le mete nada encima.
+ */
+function formatosDeCertificadoQueTraiaElSistema() {
+  const NOMBRE = 'formatos de certificado';
+  if (yaAplicada(NOMBRE)) return;
+
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('formatos_certificado')) return;   // se crea al arrancar; se intentará de nuevo
+
+  if (db.prepare('SELECT COUNT(*) c FROM formatos_certificado').get().c) return marcarAplicada(NOMBRE);
+
+  /* Los mismos textos que armaba el navegador, con los datos entre llaves. */
+  const traidos = [
+    ['Bautismo', 10,
+      'Certifica que fue bautizado(a) en las aguas, en obediencia al mandato de nuestro Señor Jesucristo, ' +
+      'el día {fecha_evento}, en {iglesia}.'],
+    ['Presentación de niños', 20,
+      'Certifica que fue presentado(a) al Señor el día {fecha_evento}, en {iglesia}, conforme a la ' +
+      'enseñanza de las Sagradas Escrituras.'],
+    ['Matrimonio', 30,
+      'Certifica la celebración del matrimonio efectuado el día {fecha_evento}, en {iglesia}, delante de ' +
+      'Dios y de los testigos presentes.'],
+    ['Membresía', 40, 'Certifica que es miembro en plena comunión de {iglesia}.'],
+    ['Traslado', 50,
+      'Certifica que ha sido miembro en plena comunión de {iglesia} y se extiende la presente para los ' +
+      'fines de traslado a la congregación que lo(a) reciba.'],
+    ['Buena conducta', 60,
+      'Se extiende el presente certificado de buena conducta en constancia de lo actuado en {iglesia}.'],
+    ['Reconocimiento', 70,
+      'Se extiende el presente certificado de reconocimiento en constancia de lo actuado en {iglesia}.'],
+    ['Otro', 80, 'Se extiende el presente certificado en constancia de lo actuado en {iglesia}.'],
+  ];
+
+  const nuevo = db.prepare(
+    `INSERT INTO formatos_certificado
+       (nombre, activo, orden, texto, notas,
+        muestra_logo, muestra_institucion, muestra_iglesia, muestra_numero, muestra_firmas,
+        muestra_fecha, muestra_pie,
+        orientacion, fondo_opacidad, tipografia_titulo, tipografia_texto,
+        tamano_titulo, tamano_texto, margen, marco)
+     VALUES (?, 1, ?, ?, ?, 1, 1, 1, 1, 1, 1, 1, 'Vertical', 100,
+             'Con serifa (Georgia)', 'Sin serifa', 34, 15, 18, 'Doble línea')`
+  );
+
+  db.transaction(() => {
+    for (const [nombre, orden, texto] of traidos) {
+      nuevo.run(nombre, orden, texto, 'Venía con el sistema. Se puede editar o sacar de uso.');
+    }
+  }).immediate();
+
+  console.log(
+    `📜 certificados: se crearon ${traidos.length} formato(s) con los textos que traía el sistema. ` +
+      'Ahora se editan desde «Formatos de Certificado».'
+  );
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -1888,6 +1959,7 @@ function ejecutarMigraciones() {
     ['directiva de cada iglesia', directivaDeCadaIglesia],
     ['devolver los que la directiva sacó (corregida)', devolverLosQueLaDirectivaSaco],
     ['marcas de asistencia con su cuerpo', marcasDeAsistenciaConSuCuerpo],
+    ['formatos de certificado', formatosDeCertificadoQueTraiaElSistema],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],
@@ -2137,4 +2209,5 @@ function solicitudesConSeguimiento() {
 module.exports = {
   ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo,
+  formatosDeCertificadoQueTraiaElSistema,
 };
