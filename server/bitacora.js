@@ -100,6 +100,15 @@ const MODULOS_VIGILADOS = [
   // Los documentos de identidad ministerial: quién la creó, la emitió, la
   // revocó y la volvió a imprimir tiene que poder consultarse después
   'credenciales',
+  /*
+   * La actividad, no sus marcas.
+   *
+   * Cambiarle la fecha o los cuerpos convocados a una actividad que ya tiene
+   * lista pasada mueve o deja huérfanas las marcas de mucha gente, y eso no
+   * dejaba rastro en ninguna parte. Son unas ciento cincuenta al año: cabe de
+   * sobra en el registro.
+   */
+  'asistencias',
 ];
 
 /**
@@ -109,6 +118,13 @@ const MODULOS_VIGILADOS = [
  * corrige una lista, y anotarlas una por una sepultaría el registro. El
  * propio Registro de Cambios no se puede borrar, así que la línea sobra,
  * pero se deja escrita para que nadie la agregue por descuido.
+ *
+ * Que no se anote MARCA POR MARCA no significa que corregir una lista pase sin
+ * dejar rastro: la toma de lista anota UNA línea por corrección —«Corrigió 2
+ * marca(s) de la lista de Damas: Juan Pérez: Presente → Ausente»—, que es lo
+ * que de verdad se quiere poder consultar después. Ver `anotarLaCorreccion` en
+ * server/modules/asistencias.js. Por lo mismo, `asistencia_detalle` tampoco
+ * puede entrar en MODULOS_VIGILADOS: serían treinta mil líneas.
  */
 const BORRADOS_QUE_NO_SE_ANOTAN = ['asistencia_detalle', 'registro_cambios'];
 
@@ -157,6 +173,26 @@ function legible(campo, valor) {
       if (fila) return displayOf(refDef, fila);
     } catch (e) {
       /* si no se puede resolver, queda el número */
+    }
+  }
+  /*
+   * Un campo de varios enlaces se guarda como JSON —`[2,5]`—, y así salía
+   * escrito en el registro: «Cuerpos convocados: [2]». Acá se resuelve a los
+   * nombres, que es lo que el registro existe para poder leer después.
+   */
+  if (campo.type === 'multiref' && campo.ref) {
+    try {
+      const { getModule, displayOf } = require('./registry');
+      const refDef = getModule(campo.ref);
+      const ids = Array.isArray(valor) ? valor : JSON.parse(valor || '[]');
+      if (refDef && Array.isArray(ids)) {
+        const nombres = ids
+          .map((id) => db.prepare(`SELECT * FROM "${refDef.name}" WHERE id = ?`).get(Number(id)))
+          .map((fila, i) => (fila ? displayOf(refDef, fila) : `#${ids[i]}`));
+        return nombres.length ? nombres.join(', ') : '(ninguno)';
+      }
+    } catch (e) {
+      /* si no se puede resolver, queda el texto tal cual */
     }
   }
   if (campo.type === 'boolean') return String(valor) === '1' ? 'Sí' : 'No';

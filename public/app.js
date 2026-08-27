@@ -2534,6 +2534,27 @@ function fechaCorta(iso) {
   return y && m && d ? `${d}-${m}-${y}` : s;
 }
 
+/**
+ * QUIÉN PASÓ ESTA LISTA Y CUÁNDO, en una frase.
+ *
+ * Guardar una lista borra y vuelve a escribir la marca de cada persona —es lo
+ * que permite que dos personas marquen a la vez—, así que del día en que se
+ * tomó no quedaba nada: la fecha de la marca pasaba a ser la de la última
+ * corrección. Ahora la primera vez queda guardada aparte, y la lista lo dice.
+ */
+function quienPasoLaLista(t) {
+  if (!t || !t.en) return '';
+  const cuando = (iso) => {
+    const s = String(iso || '');
+    const hora = s.slice(11, 16);
+    return `${fechaCorta(s)}${hora ? ` a las ${hora}` : ''}`;
+  };
+  const tomo = t.por ? `Lista tomada por ${t.por}` : 'Lista tomada';
+  if (!t.corregida_en) return `${tomo} el ${cuando(t.en)}`;
+  const corrigio = t.corregida_por ? `corregida por ${t.corregida_por}` : 'corregida';
+  return `${tomo} el ${cuando(t.en)} · ${corrigio} el ${cuando(t.corregida_en)}`;
+}
+
 /** "2026-08": el mes como se nombra, no como lo guarda el computador. */
 function mesLegible(aaaaMm) {
   const [y, m] = String(aaaaMm || '').split('-');
@@ -10880,6 +10901,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
                  Le toca pasar lista solo a ${(datos.actividad.cuerpos || []).length === 1 ? 'su cuerpo' : 'sus cuerpos'}
                </span>`
             : ''}
+          <span class="pl-tomada" id="plTomada" ${quienPasoLaLista(datos.tomada) ? '' : 'hidden'}>🖊️ ${esc(quienPasoLaLista(datos.tomada))}</span>
         </div>
       </div>
       ${datos.personas.length ? `
@@ -11071,6 +11093,15 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     return ajenas;
   };
 
+  /** Deja al día el sello de quién pasó la lista, sin repintar la pantalla. */
+  const pintarQuienLaPaso = (tomada) => {
+    const sello = document.getElementById('plTomada');
+    if (!sello) return;
+    const frase = quienPasoLaLista(tomada);
+    sello.textContent = frase ? `🖊️ ${frase}` : '';
+    sello.hidden = !frase;
+  };
+
   const guardar = async (automatico) => {
     const mias = marcasTocadas();
     if (!mias.length) {
@@ -11107,6 +11138,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
         ajenas ? `Guardado a las ${hora} · ${ajenas} marca(s) de otra persona` : `Guardado a las ${hora}`,
         'ok-texto'
       );
+      pintarQuienLaPaso(r.tomada);
       if (alGuardar) alGuardar(r);
       if (!automatico) {
         toast(`Lista guardada: ${r.presentes} presentes, ${r.ausentes} ausentes, ${r.justificados} justificados`);

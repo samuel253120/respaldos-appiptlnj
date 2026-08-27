@@ -965,6 +965,20 @@ Arriba, dos filtros: por **cuerpo** y por **tipo de actividad**.
 
 En **Cuerpos convocados** se elige uno o varios: a una actividad conjunta pueden asistir Damas y Caballeros a la vez.
 
+### Queda constancia de quién pasó la lista y cuándo
+
+Arriba de la lista, la pantalla lo dice: *«🖊️ Lista tomada por Ana Soto Vera el 12-03-2026 a las 20:15»*. Y si alguien la corrigió después, lo dice también: *«· corregida por Luz Fuentes Ríos el 14-06-2026 a las 09:02»*. Quien lleva un cuerpo ve quién pasó **su** lista, no la del otro cuerpo convocado.
+
+**Corregir una lista ya pasada deja su línea en el Registro de Cambios**, con quién, de qué lista y qué cambió: *«Corrigió 2 marca(s) de la lista de Damas: Juan Pérez: Presente → Ausente · Ana Díaz: Presente → Justificado (Enfermedad)»*. De una corrección grande se nombran los cinco primeros y se cuentan los demás. Pasar la lista por primera vez **no** deja línea: eso ya queda en las propias marcas.
+
+> Lo que **no** se anota marca por marca es a propósito. Vigilar la tabla de marcas serían treinta mil líneas en una iglesia mediana, y de a montones cada vez que alguien guarda: el registro quedaría sepultado justo cuando hay que consultarlo. Se anota lo que se quiere poder buscar después, que es la corrección.
+>
+> ⚠️ **Hasta la 1.126.0 no quedaba nada de esto.** Guardar una lista borra y vuelve a escribir la marca de cada persona —es lo que permite que dos personas marquen a la vez sin pisarse—, así que la fecha de la marca pasaba a ser la de la última corrección y del día en que se tomó la lista no quedaba rastro. Y cambiar a alguien de presente a ausente tres meses después no dejaba huella en ninguna parte. Comprobado: corregir una marca dejaba las cuatro con horas distintas y ninguna era la del día.
+>
+> A las listas que ya estaban se les puso la fecha y el autor de su última escritura, que para toda marca que nadie corrigió **es** exactamente la de la toma. Desde ahora se guarda aparte y se conserva al corregir.
+
+**La actividad también se vigila.** Cambiarle la fecha o los cuerpos convocados a una actividad que ya tiene lista pasada mueve o deja huérfanas las marcas de mucha gente, y ahora deja su línea: *«Cuerpos convocados: Damas, Jóvenes → Damas»*.
+
 ### La asistencia se lleva por cuerpo, no por persona
 
 Quien pertenece a **dos** de los cuerpos convocados aparece **una vez en cada uno**, y se le marca **por separado** en cada lista.
@@ -1839,7 +1853,7 @@ Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesi
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro. Con `PREPARAR=1` llena la base con 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos para que la medición diga algo — y por eso **se niega a hacerlo si la base tiene fichas que no generó ella**: esos datos van directo a la base, sin pasar por el sistema, y una base con datos de una iglesia no se toca. Para medir, use una base aparte: `DATA_DIR=/tmp/carga`.
 
   `LIMPIAR=1 npm run carga` dice cuántos datos de prueba hay en una base y cuántas fichas son de verdad, sin borrar nada; `LIMPIAR=borrar` los borra. Se reconocen por sus señas: los RUT del 30.000.000 en adelante —un tramo que no está en uso—, los cuerpos «Cuerpo de prueba N» y los movimientos «Movimiento de prueba N».
-- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 916 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 940 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
 
   Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
 
@@ -1951,7 +1965,9 @@ La regla tiene dos partes, y la diferencia es a propósito:
 
 **Todo lo que se borra, en cualquier módulo.** Borrar es raro y no se deshace, y con la ficha se va también su propio historial: si mañana falta un miembro de la lista, el Registro de Cambios es el único lugar donde puede quedar quién lo borró y qué decía. Por eso la eliminación se anota siempre, en todos los módulos.
 
-**Las creaciones y los cambios, solo donde importan**: el dinero —tesorería, cuentas, traspasos, cuotas y ayudas sociales—, las llaves del sistema —usuarios y perfiles de permisos— y lo que no lleva historial propio —los cuerpos, sus directivas, sus actas y quiénes los integran—. Miembros, pastores e iglesias no están ahí porque cada uno tiene su **bitácora**, que cuenta lo mismo con más detalle y en el lugar donde se busca.
+**Las creaciones y los cambios, solo donde importan**: el dinero —tesorería, cuentas, traspasos, cuotas y ayudas sociales—, las llaves del sistema —usuarios y perfiles de permisos—, las credenciales, las actividades de asistencia y lo que no lleva historial propio —los cuerpos, sus directivas, sus actas y quiénes los integran—. Miembros, pastores e iglesias no están ahí porque cada uno tiene su **bitácora**, que cuenta lo mismo con más detalle y en el lugar donde se busca.
+
+Las **marcas** de asistencia quedan fuera a propósito: son la tabla que más crece de todo el sistema —una fila por persona y por actividad— y se reescriben de a montones cada vez que alguien guarda una lista. En su lugar, corregir una lista deja **una** línea con lo que cambió (ver *Queda constancia de quién pasó la lista*).
 
 De cada anotación queda la fecha y la hora, quién fue, qué registro era y qué cambió exactamente:
 

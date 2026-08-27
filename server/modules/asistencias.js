@@ -232,6 +232,118 @@ function avanceDeUna(actividad, db, usuario, recuerdo) {
   return av;
 }
 
+/**
+ * QUEDA CONSTANCIA DE QUIEN CORRIGIÓ UNA LISTA YA PASADA.
+ *
+ * Cambiar a alguien de presente a ausente tres meses después no dejaba rastro
+ * en ninguna parte: la asistencia no está entre los módulos que vigila el
+ * Registro de Cambios, y no puede estarlo. Vigilar la tabla de marcas
+ * significaría una línea por persona y por actividad —treinta mil líneas en
+ * una iglesia mediana, y de a montones cada vez que alguien guarda—, y eso
+ * sepultaría el registro en vez de servirlo.
+ *
+ * Así que se anota lo que de verdad se quiere poder consultar después: una
+ * línea por corrección, con quién la hizo, de qué lista y qué cambió. Pasar
+ * una lista por primera vez NO se anota —eso queda en las propias marcas, en
+ * `tomada_en` y `tomada_por`—; lo que se anota es haber cambiado lo que ya
+ * estaba puesto.
+ */
+function anotarLaCorreccion(actividad, corregidas, db, usuario) {
+  if (!corregidas.length) return;
+  const { anotarCambio } = require('../bitacora');
+  const nombres = require('../nombres');
+  const { personaDeClave } = require('../integrantes');
+
+  const nombreDe = (clave) => {
+    const { miembro_id: miembroId, no_miembro_id: noMiembroId } = personaDeClave(String(clave).split(':')[0]);
+    const f = noMiembroId
+      ? db.prepare('SELECT nombres, apellidos FROM no_miembros WHERE id = ?').get(noMiembroId)
+      : db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(miembroId);
+    return f ? nombres.paraMostrar(f.nombres, f.apellidos) : 'Alguien que ya no está';
+  };
+  const comoQueda = (estado, motivo) => {
+    if (!estado) return 'sin marcar';
+    return motivo ? `${estado} (${motivo})` : estado;
+  };
+
+  /*
+   * Se nombra a los primeros y se cuentan los demás. Una corrección de tres
+   * marcas se lee entera; una de ochenta —alguien que rehízo la lista— dejaría
+   * una línea de dos mil caracteres que nadie va a leer, así que se resume.
+   */
+  const ALCANZAN = 5;
+  const detalle = corregidas.slice(0, ALCANZAN)
+    .map((c) => `${nombreDe(c.clave)}: ${comoQueda(c.antes.estado, c.antes.motivo)} → ${comoQueda(c.ahora.estado, c.ahora.motivo)}`)
+    .join(' · ');
+  const resto = corregidas.length - ALCANZAN;
+
+  const cuerposTocados = [...new Set(corregidas.map((c) => Number(c.cuerpoId) || 0))]
+    .map((id) => (id ? (db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(id) || {}).nombre : null))
+    .filter(Boolean);
+  const deQuien = cuerposTocados.length ? ` de ${cuerposTocados.join(' y ')}` : '';
+
+  anotarCambio({
+    def: module.exports,
+    accion: 'Corrección de lista',
+    fila: actividad,
+    usuario,
+    detalle: `Corrigió ${corregidas.length} marca(s) de la lista${deQuien}`
+      + `: ${detalle}${resto > 0 ? ` · y ${resto} más` : ''}`,
+  });
+}
+
+/**
+ * QUIÉN PASÓ ESTA LISTA Y CUÁNDO, y quién la corrigió después.
+ *
+ * Se saca de las propias marcas: la primera que se puso —`tomada_en` más
+ * antiguo— dice cuándo se tomó la lista y quién la tomó; el `updated_at` más
+ * reciente que no coincida con su `tomada_en` dice que alguien la corrigió
+ * después, y quién.
+ *
+ * Acotado a los cuerpos que le tocan a quien pregunta: quien lleva Damas ve
+ * quién pasó la lista de Damas, no la del otro cuerpo convocado.
+ */
+function quienLaPaso(actividad, db, usuario) {
+  const leTocan = cuerposQueLeTocan(actividad, usuario).map(Number);
+  const suyos = require('../alcance').cuerposDe(usuario).map(Number);
+  const cuales = suyos.length ? leTocan : null; // sin cuerpos asignados, toda la actividad
+  const acota = cuales ? ` AND cuerpo_id IN (${cuales.map(() => '?').join(',')})` : '';
+  if (cuales && !cuales.length) return null;
+
+  const nombreDe = (id) => {
+    if (!id) return null;
+    const u = db.prepare('SELECT nombre FROM usuarios WHERE id = ?').get(id);
+    return u ? require('../nombres').acortar(u.nombre) : null;
+  };
+
+  const primera = db.prepare(
+    `SELECT tomada_en, tomada_por FROM asistencia_detalle
+      WHERE asistencia_id = ?${acota} AND tomada_en IS NOT NULL
+      ORDER BY tomada_en ASC, id ASC LIMIT 1`
+  ).get(actividad.id, ...(cuales || []));
+  if (!primera) return null;
+
+  /*
+   * Una corrección es una marca que se volvió a escribir DESPUÉS de puesta:
+   * su última escritura es posterior a la primera vez que se marcó. No hace
+   * falta margen ninguno, porque las dos horas las pone el mismo reloj en la
+   * misma transacción: en la pasada original salen iguales.
+   */
+  const ultima = db.prepare(
+    `SELECT updated_at, created_by FROM asistencia_detalle
+      WHERE asistencia_id = ?${acota} AND updated_at IS NOT NULL
+        AND tomada_en IS NOT NULL AND updated_at > tomada_en
+      ORDER BY updated_at DESC, id DESC LIMIT 1`
+  ).get(actividad.id, ...(cuales || []));
+
+  return {
+    en: primera.tomada_en,
+    por: nombreDe(primera.tomada_por),
+    corregida_en: ultima ? ultima.updated_at : null,
+    corregida_por: ultima ? nombreDe(ultima.created_by) : null,
+  };
+}
+
 /** Cuenta las marcas de una actividad. */
 function conteo(asistenciaId, db, cuerpos) {
   const acota = cuerpos && cuerpos.length ? ` AND cuerpo_id IN (${cuerpos.map(() => '?').join(',')})` : '';
@@ -661,6 +773,8 @@ module.exports = {
           cuerpos_convocados: convocadosEnTotal,
         },
         personas,
+        // Quién pasó esta lista y cuándo, y quién la corrigió después
+        tomada: quienLaPaso(actividad, db, req.user),
         motivos_con_detalle: motivosConDetalle(),
         puede_marcar: can(req.user, 'asistencia_detalle', 'create') && can(req.user, 'asistencia_detalle', 'edit'),
       });
@@ -790,6 +904,21 @@ module.exports = {
             : `${nombre} no está en ninguno de los cuerpos convocados a esta actividad.`,
         });
       }
+      /*
+       * Cómo estaba cada marca ANTES de guardar.
+       *
+       * Sirve para dos cosas que no se pueden hacer después de borrar: saber
+       * qué cambió de verdad —para anotarlo en el Registro de Cambios— y
+       * arrastrar cuándo se marcó por primera vez y quién la marcó.
+       */
+      const comoEstaba = new Map(
+        db.prepare(
+          `SELECT miembro_id, no_miembro_id, cuerpo_id, estado, motivo, tomada_en, tomada_por
+             FROM asistencia_detalle WHERE asistencia_id = ?`
+        ).all(actividad.id).map((m) => [claveDe(m, m.cuerpo_id), m])
+      );
+
+      const corregidas = [];   // lo que ya estaba puesto y quedó distinto
       const guardar = db.transaction(() => {
         /**
          * Se borra y se inserta por PAR persona-cuerpo.
@@ -807,9 +936,11 @@ module.exports = {
         const insertar = db.prepare(
           `INSERT INTO asistencia_detalle (asistencia_id, persona_tipo, miembro_id, no_miembro_id,
                                            estado, motivo, detalle,
-                                           cuerpo_id, fecha, iglesia_id, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                           cuerpo_id, fecha, iglesia_id, created_by,
+                                           tomada_en, tomada_por, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         );
+        const ahora = db.prepare("SELECT datetime('now','localtime') AS t").get().t;
         let guardadas = 0;
         for (const m of marcas) {
           const clave = claveDe(m, m.cuerpo_id);
@@ -818,6 +949,10 @@ module.exports = {
           // La marca es de UNO de los dos registros: el otro lado va en blanco
           const noMiembroId = Number(m.no_miembro_id) || null;
           const miembroId = noMiembroId ? null : Number(m.miembro_id) || null;
+          const antes = comoEstaba.get(clave);
+          if (antes && (antes.estado !== (m.estado || null) || (antes.motivo || null) !== (m.motivo || null))) {
+            corregidas.push({ clave, cuerpoId, antes, ahora: m });
+          }
           borrar.run(actividad.id, miembroId || 0, noMiembroId || 0, Number(cuerpoId) || 0);
           if (!m.estado) continue; // sin marcar: no queda fila
           const justificado = m.estado === 'Justificado';
@@ -825,7 +960,23 @@ module.exports = {
             actividad.id, noMiembroId ? 'No miembro' : 'Miembro', miembroId, noMiembroId, m.estado,
             justificado ? m.motivo : null,
             justificado && motivosConDetalle().includes(m.motivo) ? String(m.detalle).trim() : null,
-            cuerpoId, actividad.fecha, actividad.iglesia_id || null, req.user.id
+            cuerpoId, actividad.fecha, actividad.iglesia_id || null, req.user.id,
+            // La marca se vuelve a escribir, pero se queda con la fecha y el
+            // nombre de la primera vez: es lo único que dice cuándo se tomó
+            // esta lista, porque `created_at` pasa a ser el de la corrección.
+            (antes && antes.tomada_en) || ahora,
+            (antes && antes.tomada_por) || req.user.id,
+            /*
+             * La hora de ESTA escritura, puesta a mano y con el mismo reloj
+             * que `tomada_en`. Dejarla en el valor por omisión de la columna
+             * la calcula en otro momento, y una lista larga podía cruzar el
+             * cambio de segundo: la marca quedaba escrita «después» de haber
+             * sido puesta, y la pantalla anunciaba una corrección que nadie
+             * había hecho. Con las dos del mismo reloj, en la primera pasada
+             * son iguales y una corrección es exactamente lo que se ve
+             * distinto.
+             */
+            ahora
           );
           guardadas++;
         }
@@ -833,6 +984,7 @@ module.exports = {
       });
 
       const guardadas = guardar.immediate();
+      anotarLaCorreccion(actividad, corregidas, db, req.user);
       // Se devuelve cómo quedó la lista completa: así, si mientras esta
       // persona marcaba lo suyo otra marcó lo de ella, la pantalla lo muestra
       // en vez de quedarse con una foto vieja.
@@ -840,6 +992,7 @@ module.exports = {
         ok: true,
         guardadas,
         marcas: marcasVisibles(actividad, db, req.user),
+        tomada: quienLaPaso(actividad, db, req.user),
         ...conteo(actividad.id, db, suyos),
       });
     });

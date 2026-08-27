@@ -2415,6 +2415,50 @@ function solicitudesNumeradasPorIglesia() {
   }
 }
 
+/**
+ * LAS MARCAS QUE YA ESTABAN, CON LA FECHA EN QUE SE MARCARON.
+ *
+ * Guardar una lista borra y vuelve a insertar la marca de cada persona, así
+ * que `created_at` es la de la ÚLTIMA escritura, no la del día en que se tomó
+ * la lista. Desde la 1.126.0 eso se guarda aparte —`tomada_en` y
+ * `tomada_por`—, y se arrastra al reinsertar.
+ *
+ * A lo que ya estaba guardado no se le puede devolver un dato que nunca se
+ * anotó, pero sí se le puede poner el mejor que hay: la fecha y el autor de su
+ * última escritura. Para toda marca que nadie corrigió —la enorme mayoría— esa
+ * ES la de la toma, exactamente. Para las que sí se corrigieron queda la de la
+ * corrección, que es lo único que quedó de ellas.
+ *
+ * Dejarlas en nulo sería peor que aproximarlas: una lista vieja a la que
+ * después se le agrega UNA marca nueva se leería como «tomada hoy por quien
+ * agregó esa marca», que sí es falso.
+ */
+function marcasDeAsistenciaConSuFechaDeToma() {
+  const NOMBRE = 'marcas de asistencia con su fecha de toma';
+  if (yaAplicada(NOMBRE)) return;
+
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('asistencia_detalle')) return marcarAplicada(NOMBRE);
+
+  const columnas = new Set(db.prepare('PRAGMA table_info(asistencia_detalle)').all().map((c) => c.name));
+  if (!columnas.has('tomada_en') || !columnas.has('tomada_por')) return marcarAplicada(NOMBRE);
+
+  const cuantas = db
+    .prepare('SELECT COUNT(*) AS n FROM asistencia_detalle WHERE tomada_en IS NULL')
+    .get().n;
+  if (!cuantas) return marcarAplicada(NOMBRE);
+
+  db.prepare(
+    `UPDATE asistencia_detalle
+        SET tomada_en  = COALESCE(created_at, updated_at, fecha),
+            tomada_por = created_by
+      WHERE tomada_en IS NULL`
+  ).run();
+  console.log(`🖊️  ${cuantas} marca(s) de asistencia quedaron con la fecha en que se marcaron.`);
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2466,6 +2510,7 @@ function ejecutarMigraciones() {
     ['seguimiento de las solicitudes', solicitudesConSeguimiento],
     ['solicitudes numeradas por iglesia', solicitudesNumeradasPorIglesia],
     ['texto con formato saneado de nuevo', textoConFormatoSaneadoDeNuevo],
+    ['marcas de asistencia con su fecha de toma', marcasDeAsistenciaConSuFechaDeToma],
   ];
 
   for (const [nombre, paso] of pasos) {

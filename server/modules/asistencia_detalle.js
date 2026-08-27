@@ -116,6 +116,27 @@ module.exports = {
     { name: 'cuerpo_id', label: 'Cuerpo / Grupo', type: 'ref', ref: 'cuerpos', readonly: true },
     { name: 'fecha', label: 'Fecha', type: 'date', readonly: true },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true },
+
+    /*
+     * CUÁNDO SE MARCÓ ESTO POR PRIMERA VEZ, Y QUIÉN LO MARCÓ.
+     *
+     * Guardar una lista BORRA y vuelve a insertar la marca de cada persona.
+     * Es lo correcto para que dos personas puedan marcar a la vez —cada una
+     * manda solo lo suyo y nadie borra en blanco lo del otro—, pero tenía un
+     * costo que no se veía: `created_at` y `created_by` pasaban a ser los de
+     * la última corrección, así que del día en que se tomó la lista no
+     * quedaba nada. Comprobado: corregir una marca tres meses después dejaba
+     * las cuatro marcas con fechas distintas y ninguna era la del día.
+     *
+     * Estos dos se ARRASTRAN al reinsertar: la marca se vuelve a escribir,
+     * pero se queda con la fecha y el nombre de la primera vez. Entre los dos
+     * pares se lee la historia completa de cada marca: `tomada_en` cuándo se
+     * marcó, `updated_at` cuándo se corrigió por última vez.
+     *
+     * Van ocultos porque no se llenan a mano: los pone la toma de lista.
+     */
+    { name: 'tomada_en', label: 'Marcada el', type: 'text', readonly: true, oculto: true },
+    { name: 'tomada_por', label: 'Marcada por', type: 'ref', ref: 'usuarios', readonly: true, oculto: true },
   ],
 
   hooks: {
