@@ -9,9 +9,27 @@
  * donde tiene sentido mirarla. La regla de quién pertenece hoy vive en
  * server/integrantes.js, y de ahí la toman la asistencia, las directivas, los
  * oficiales y los permisos.
+ *
+ * ---------------------------------------------------------------------------
+ * DE QUÉ REGISTRO SALE LA PERSONA
+ *
+ * La ficha empieza preguntándolo, porque no todos los que sirven en la iglesia
+ * están inscritos en la membresía:
+ *
+ *   Miembro de la iglesia   Lo de siempre, y lo normal. Se busca en el
+ *                           registro oficial de miembros.
+ *   No es miembro           Un hermano o una hermana que sirve en un grupo sin
+ *                           estar inscrito. Se busca en el registro aparte
+ *                           (módulo «No Miembros»), donde lo único obligatorio
+ *                           es el nombre.
+ *
+ * Y esto SOLO VALE EN LOS GRUPOS. Un cuerpo es una entidad formal: tiene
+ * reglamento, deberes y derechos, y de sus integrantes sale su directiva. No
+ * puede componerse de gente que no pertenece a la iglesia, así que en un
+ * cuerpo la opción ni se ofrece y el servidor la rechaza aunque llegue.
  */
 const {
-  ESTADOS, finDelPeriodoDePrueba, fichaDeIntegrante,
+  ESTADOS, REGISTROS, finDelPeriodoDePrueba, fichaDePersona,
 } = require('../integrantes');
 
 module.exports = {
@@ -21,15 +39,16 @@ module.exports = {
   icon: '🧑‍🤝‍🧑',
   group: 'Organización',
   ayudaPermiso:
-    'Quién pertenece a cada cuerpo. Al cuerpo marcado como directiva entran y salen solos los de ' +
-    'la categoría configurada, y esas fichas las maneja el sistema.',
+    'Quién pertenece a cada cuerpo y a cada grupo. Al cuerpo marcado como directiva entran y salen ' +
+    'solos los de la categoría configurada, y esas fichas las maneja el sistema. Para sumar a un ' +
+    'GRUPO a alguien que no está inscrito en la membresía hace falta, además, poder ver No Miembros.',
   order: 58,
   menu: false,
-  display: '{miembro_id} — {cuerpo_id}',
+  display: '{persona} — {cuerpo_id}',
   dateField: 'fecha_ingreso',
-  searchFields: ['motivo_retiro', 'exento_motivo', 'observaciones'],
-  listFields: ['cuerpo_id', 'miembro_id', 'estado', 'fecha_ingreso', 'fecha_fin_prueba', 'paga_cuota'],
-  filterFields: ['cuerpo_id', 'estado'],
+  searchFields: ['persona', 'motivo_retiro', 'exento_motivo', 'observaciones'],
+  listFields: ['cuerpo_id', 'persona', 'persona_tipo', 'estado', 'fecha_ingreso', 'fecha_fin_prueba', 'paga_cuota'],
+  filterFields: ['cuerpo_id', 'persona_tipo', 'estado'],
   defaultSort: { field: 'fecha_ingreso', dir: 'desc' },
 
   computed: [
@@ -49,8 +68,27 @@ module.exports = {
       seccion: 'Quién y dónde',
     },
     {
+      name: 'persona_tipo', label: '¿Quién entra al cuerpo o grupo?', type: 'select',
+      required: true, default: 'Miembro', options: REGISTROS,
+      help: 'La segunda opción es para el hermano o la hermana que sirve en un grupo sin estar '
+        + 'inscrito en la membresía. Solo se admite en los GRUPOS: un cuerpo se compone de miembros.',
+    },
+    {
       name: 'miembro_id', label: 'Miembro', type: 'ref', ref: 'miembros', required: true, buscador: true,
+      showIf: { field: 'persona_tipo', equals: 'Miembro' },
       help: 'Búsquelo por su nombre, su apellido o su RUT.',
+    },
+    {
+      name: 'no_miembro_id', label: 'Persona no inscrita', type: 'ref', ref: 'no_miembros',
+      required: true, buscador: true,
+      showIf: { field: 'persona_tipo', equals: 'No miembro' },
+      help: 'Se busca en el registro de No Miembros. Si todavía no tiene ficha, créela ahí: '
+        + 'basta con el nombre.',
+    },
+    {
+      name: 'persona', label: 'Persona', type: 'text', readonly: true,
+      help: 'Lo copia el sistema de la ficha elegida, para que la pertenencia diga siempre el '
+        + 'mismo nombre que el registro de donde salió.',
     },
     {
       name: 'estado', label: 'Estado', type: 'select', required: true, default: 'En prueba',
@@ -111,17 +149,61 @@ module.exports = {
     beforeSave(data, { existing, id, db }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
       const cuerpoId = Number(dato('cuerpo_id'));
-      const miembroId = Number(dato('miembro_id'));
+      const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
 
-      // Una persona no puede tener dos fichas en el mismo cuerpo
-      const otra = fichaDeIntegrante(db, cuerpoId, miembroId);
-      if (otra && Number(otra.id) !== Number(id)) {
-        const m = db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(miembroId);
-        const quien = m ? `${m.nombres} ${m.apellidos}` : 'esa persona';
-        return `${quien} ya tiene su ficha en este cuerpo. Ábrala en vez de crear otra.`;
+      /**
+       * De qué registro sale la persona, y solo de uno.
+       *
+       * Se suelta el enlace del lado que no corresponde. Si alguien crea la
+       * ficha apuntando a un miembro y después la corrige a un no miembro, el
+       * enlace viejo quedaría ahí señalando a alguien que no pertenece al
+       * grupo, y las cuotas y la asistencia lo seguirían contando.
+       */
+      const tipo = REGISTROS.includes(dato('persona_tipo')) ? dato('persona_tipo') : 'Miembro';
+      data.persona_tipo = tipo;
+      const deDonde = tipo === 'No miembro'
+        ? { tabla: 'no_miembros', campo: 'no_miembro_id', otro: 'miembro_id', que: 'La persona' }
+        : { tabla: 'miembros', campo: 'miembro_id', otro: 'no_miembro_id', que: 'El miembro' };
+
+      /**
+       * Un CUERPO no admite gente de fuera de la membresía.
+       *
+       * No es una preferencia de pantalla: es lo que distingue a un cuerpo de
+       * un grupo. El cuerpo tiene reglamento, deberes y derechos, y su
+       * directiva sale de sus propios integrantes. La pantalla ya no ofrece la
+       * opción cuando el destino es un cuerpo, pero la regla se comprueba acá
+       * igual, porque lo que la pantalla no ofrece el servidor lo tiene que
+       * rechazar de todas maneras.
+       */
+      if (tipo === 'No miembro' && cuerpo && cuerpo.tipo !== 'Grupo') {
+        return `«${cuerpo.nombre}» es un cuerpo, no un grupo, y se compone de miembros inscritos. `
+          + 'Para sumar a alguien que no está en la membresía, hágalo en un grupo.';
       }
 
-      const cuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
+      const personaId = Number(dato(deDonde.campo));
+      if (!personaId) return `${deDonde.que} de esta ficha no está indicado.`;
+      const ficha = db
+        .prepare(`SELECT nombres, apellidos, iglesia_id FROM "${deDonde.tabla}" WHERE id = ?`)
+        .get(personaId);
+      if (!ficha) return `${deDonde.que} de esta ficha ya no está en el sistema.`;
+
+      // La gente del registro aparte es de una iglesia: no se presta entre iglesias
+      if (tipo === 'No miembro' && cuerpo && ficha.iglesia_id
+          && Number(ficha.iglesia_id) !== Number(cuerpo.iglesia_id)) {
+        return 'Esa persona está registrada en otra iglesia. Cada iglesia lleva las suyas.';
+      }
+
+      data[deDonde.campo] = personaId;
+      data[deDonde.otro] = null;
+      data.persona = `${ficha.nombres || ''} ${ficha.apellidos || ''}`.trim();
+
+      // Una persona no puede tener dos fichas en el mismo cuerpo
+      const otra = fichaDePersona(db, cuerpoId, { [deDonde.campo]: personaId });
+      if (otra && Number(otra.id) !== Number(id)) {
+        return `${data.persona || 'Esa persona'} ya tiene su ficha en este cuerpo. `
+          + 'Ábrala en vez de crear otra.';
+      }
+
       data.iglesia_id = cuerpo ? cuerpo.iglesia_id : null;
 
       // El fin de la prueba se calcula solo, con los meses que define el cuerpo

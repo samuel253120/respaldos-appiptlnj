@@ -326,6 +326,12 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
     const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(despues.cuerpo_id);
     const nombre = cuerpo ? cuerpo.nombre : 'un cuerpo';
     const quien = Number(despues.miembro_id);
+    /*
+     * La bitácora es el historial del MIEMBRO. En los grupos ahora también
+     * sirve gente que no está inscrita en la membresía, y esa gente no tiene
+     * bitácora: su pertenencia queda en la ficha del grupo y nada más.
+     */
+    if (!quien) return;
     const estado = despues.estado;
     if (isNew) {
       anotar({ miembroId: quien, tipo: 'Ingreso a cuerpo', iglesiaId: iglesia, usuario: user,

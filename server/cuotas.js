@@ -41,8 +41,16 @@ function sincronizarConLaTesoreria(fila, conexion) {
     return;
   }
 
-  const miembro = conexion.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(fila.miembro_id);
-  const quien = miembro ? `${miembro.nombres} ${miembro.apellidos}` : 'un integrante';
+  /*
+   * El nombre lo trae la propia cuota. Buscarlo por el número de miembro
+   * dejaba el movimiento diciendo «un integrante» cuando quien paga es alguien
+   * de un grupo que no está inscrito en la membresía: no tiene ese número.
+   */
+  const miembro = fila.miembro_id
+    ? conexion.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(fila.miembro_id)
+    : null;
+  const quien = fila.persona
+    || (miembro ? `${miembro.nombres} ${miembro.apellidos}` : 'un integrante');
   const concepto = `Cuota de ${nombreDelMes(fila.mes).toLowerCase()} de ${fila.anio} — ${quien}`;
 
   if (guardado) {

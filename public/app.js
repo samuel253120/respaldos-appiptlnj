@@ -2821,6 +2821,7 @@ async function viewFicha(name, id, pestana) {
     if (name === 'credenciales') alPie(renderEmisionCredencial, Number(id));
     if (name === 'pastores') alPie(renderFichaMiembroPastor, Number(id), row);
     if (name === 'miembros') alPie(renderAccesoMiembro, Number(id));
+    if (name === 'no_miembros') alPie(renderInscribirNoMiembro, Number(id), row);
   };
 
   pintarPestanasDeLaFicha(name, Number(id), row, pintarLosDatos, pestana);
@@ -2852,6 +2853,64 @@ async function viewFicha(name, id, pestana) {
  * mismos permisos que ya decidían si el panel se pintaba (ver LLAVES en
  * server/permissions.js).
  */
+/**
+ * «Ahora sí se inscribió»: de No Miembro a miembro de la iglesia.
+ *
+ * Es el paso que evita el problema que trae dejar entrar gente de fuera a los
+ * grupos. Alguien empieza sirviendo en el equipo de sonido sin estar inscrito,
+ * se convierte, se bautiza y se inscribe. Sin este botón termina con dos
+ * fichas —una en cada registro— y su historial de grupo colgando de la que ya
+ * no se usa; con él, la ficha nueva hereda sus grupos y su asistencia.
+ *
+ * La ficha de acá NO se borra: queda apuntando a la nueva, porque las ayudas
+ * que se le entregaron cuando no era miembro cuelgan de ella y siguen siendo
+ * ciertas.
+ */
+async function renderInscribirNoMiembro(id, row, caja) {
+  const yaEsMiembro = !!row.miembro_id;
+  // Inscribir a alguien es entrar al registro oficial: hace falta poder crear
+  // miembros, no basta con administrar este registro
+  const puede = !yaEsMiembro && MOD['miembros'] && MOD['miembros'].perms.create && MOD['no_miembros'].perms.edit;
+  if (!puede && !yaEsMiembro) return;
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar"><b>📇 Registro oficial de miembros</b></div>
+      <div class="card-body">
+        ${yaEsMiembro
+          ? `<p>Esta persona <b>ya se inscribió</b> como miembro de la iglesia. Su ficha viva es la del
+               registro oficial; esta queda como constancia de lo que se le entregó antes.</p>
+             <a class="btn" href="#/m/miembros/ficha/${row.miembro_id}">👤 Ver su ficha de miembro</a>`
+          : `<p>Si esta persona se inscribió como miembro de la iglesia, acá se le crea su ficha en el
+               registro oficial con lo que ya se sabe de ella. <b>Se lleva sus grupos y su asistencia</b>,
+               con las fechas de siempre, y esta ficha queda apuntando a la nueva sin borrarse.</p>
+             <button class="btn" id="btnInscribir">📇 Inscribir como miembro</button>
+             <div id="inscribirDice" class="mut" style="margin-top:8px"></div>`}
+      </div>
+    </div>`;
+
+  const boton = document.getElementById('btnInscribir');
+  if (!boton) return;
+  boton.addEventListener('click', async () => {
+    const nombre = `${row.nombres || ''} ${row.apellidos || ''}`.trim();
+    if (!confirm(
+      `¿Inscribir a ${nombre} en el registro oficial de miembros?\n\n`
+      + 'Se le crea su ficha de miembro y se le llevan sus grupos y su asistencia, '
+      + 'con las fechas de siempre. Esta ficha no se borra: queda apuntando a la nueva.'
+    )) return;
+    boton.disabled = true;
+    const dice = document.getElementById('inscribirDice');
+    try {
+      const r = await api('POST', `/no_miembros/${id}/inscribir`, {});
+      toast(`Quedó inscrita. Se le pasaron ${r.grupos} grupo(s) y ${r.marcas} marca(s) de asistencia.`);
+      location.hash = `#/m/miembros/ficha/${r.miembroId}`;
+    } catch (e) {
+      boton.disabled = false;
+      if (dice) dice.innerHTML = `<span style="color:var(--danger)">${esc(e.message)}</span>`;
+    }
+  });
+}
+
 function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
   const suyas = [{ clave: 'datos', titulo: 'Datos', icono: '📋', pinta: pintarLosDatos }];
   const sumar = (clave, titulo, icono, pinta) => suyas.push({ clave, titulo, icono, pinta });
@@ -4374,6 +4433,9 @@ async function viewForm(name, id, precarga) {
   // Campos que solo aplican según el valor de otro (showIf)
   aplicarCondiciones();
   renumerarBloques();
+
+  // Un cuerpo se compone de miembros; un grupo, no necesariamente
+  if (name === 'integrantes_cuerpo') prepararElIntegrante();
 
   // El acta: traer el texto del documento adjunto, y ver a quién enlaza
   if (name === 'actas_reuniones') prepararElActa(id, row, isNew);
@@ -6233,6 +6295,10 @@ async function renderInformeAsistencia(contenedor, precarga) {
     tipo: (precarga && precarga.tipo) || 'general',
     cuerpo_id: (precarga && precarga.cuerpo_id) || '',
     miembro_id: (precarga && precarga.miembro_id) || '',
+    // El informe por persona también sirve para quien sirve en un grupo sin
+    // estar inscrito: ese llega por el número del OTRO registro
+    no_miembro_id: (precarga && precarga.no_miembro_id) || '',
+    no_miembro_nombre: (precarga && precarga.no_miembro_nombre) || '',
     /*
      * Se abre en el AÑO EN CURSO, no en todo lo registrado.
      *
@@ -6288,7 +6354,12 @@ async function renderInformeAsistencia(contenedor, precarga) {
       <option value="">— Elija el cuerpo —</option>
       ${cuerpos.map((c) => `<option value="${c.id}" ${String(st.cuerpo_id) === String(c.id) ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
     </select>
-    <div class="refbuscar inf-persona" id="rb_miembro_id" data-ruta="miembros" ${st.tipo === 'persona' ? '' : 'hidden'}>
+    <span class="badge inf-no-inscrito" id="infNoInscrito" ${st.tipo === 'persona' && st.no_miembro_id ? '' : 'hidden'}>
+      ${esc(st.no_miembro_nombre || 'Persona no inscrita')} (no inscrito)
+      <button type="button" id="infNoInscritoX" aria-label="Quitar a esta persona del informe">×</button>
+    </span>
+    <div class="refbuscar inf-persona" id="rb_miembro_id" data-ruta="miembros"
+         ${st.tipo === 'persona' && !st.no_miembro_id ? '' : 'hidden'}>
       <input type="hidden" name="miembro_id" value="${esc(st.miembro_id)}" />
       <input type="text" class="rb-txt" aria-label="Persona de la que se quiere el informe"
              placeholder="Busque a la persona por nombre o RUT…" autocomplete="off" />
@@ -6310,11 +6381,15 @@ async function renderInformeAsistencia(contenedor, precarga) {
     st.tipo = document.getElementById('infTipo').value;
     // La planilla mensual también se pide por cuerpo, pero por mes y no por rango
     document.getElementById('infCuerpo').hidden = st.tipo !== 'cuerpo' && st.tipo !== 'planilla';
-    document.getElementById('rb_miembro_id').hidden = st.tipo !== 'persona';
+    document.getElementById('rb_miembro_id').hidden = st.tipo !== 'persona' || !!st.no_miembro_id;
+    document.getElementById('infNoInscrito').hidden = st.tipo !== 'persona' || !st.no_miembro_id;
     document.getElementById('infMesCaja').hidden = st.tipo !== 'planilla';
     filtros.querySelectorAll('.rango-fechas').forEach((l) => { l.hidden = st.tipo === 'planilla'; });
     st.cuerpo_id = document.getElementById('infCuerpo').value;
-    st.miembro_id = document.querySelector('#rb_miembro_id input[type=hidden]').value;
+    const elegido = document.querySelector('#rb_miembro_id input[type=hidden]').value;
+    // Elegir a un miembro suelta a la persona no inscrita que se estuviera viendo
+    if (elegido) { st.no_miembro_id = ''; st.no_miembro_nombre = ''; }
+    st.miembro_id = elegido;
     st.desde = document.getElementById('infDesde').value;
     st.hasta = document.getElementById('infHasta').value;
     st.mes = document.getElementById('infMes').value;
@@ -6322,6 +6397,10 @@ async function renderInformeAsistencia(contenedor, precarga) {
   document.getElementById('infTipo').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infCuerpo').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('rb_miembro_id').addEventListener('change', () => { sincronizar(); cargar(); });
+  document.getElementById('infNoInscritoX').addEventListener('click', () => {
+    st.no_miembro_id = ''; st.no_miembro_nombre = '';
+    sincronizar(); cargar();
+  });
   document.getElementById('infDesde').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infHasta').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infMes').addEventListener('change', () => { sincronizar(); cargar(); });
@@ -6493,7 +6572,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
       caja.innerHTML = '<div class="card"><div class="empty-state" style="padding:26px">Elija un cuerpo para ver su informe.</div></div>';
       return;
     }
-    if (st.tipo === 'persona' && !st.miembro_id) {
+    if (st.tipo === 'persona' && !st.miembro_id && !st.no_miembro_id) {
       caja.innerHTML = '<div class="card"><div class="empty-state" style="padding:26px">Busque a la persona para ver su informe.</div></div>';
       return;
     }
@@ -6502,7 +6581,8 @@ async function renderInformeAsistencia(contenedor, precarga) {
     if (st.desde) params.set('desde', st.desde);
     if (st.hasta) params.set('hasta', st.hasta);
     if (st.tipo === 'cuerpo' && st.cuerpo_id) params.set('cuerpo_id', st.cuerpo_id);
-    if (st.tipo === 'persona' && st.miembro_id) params.set('miembro_id', st.miembro_id);
+    if (st.tipo === 'persona' && st.no_miembro_id) params.set('no_miembro_id', st.no_miembro_id);
+    else if (st.tipo === 'persona' && st.miembro_id) params.set('miembro_id', st.miembro_id);
 
     let d;
     try {
@@ -6591,7 +6671,13 @@ async function renderInformeAsistencia(contenedor, precarga) {
           ${tabla('Actividad por actividad', d.porActividad.map((x) => ({
               ...x, etiqueta: `${fechaCorta(x.fecha)} · ${x.actividad || ''}`,
             })), 'Actividad')}
-          ${tabla('Promedio por miembro', conEtiqueta(d.porMiembro, 'miembro'), 'Miembro', (f) => f.miembro_id)}
+          ${tabla('Promedio por persona', conEtiqueta(d.porMiembro.map((f) => ({
+              ...f,
+              miembro: f.persona_tipo === 'No miembro' ? `${f.miembro} (no inscrito)` : f.miembro,
+            })), 'miembro'), 'Persona',
+            // Con la letra del registro: el miembro n.º 7 y el no miembro n.º 7
+            // son dos personas, y sin ella el informe abría la de otra
+            (f) => (f.no_miembro_id ? `n${f.no_miembro_id}` : `m${f.miembro_id}`))}
           ${motivos}`}
         <div class="informe-pie mut">
           ${pieDelDocumento()} · Verde: presentes · Azul: justificados · Rojo: ausentes.<br>
@@ -6600,11 +6686,17 @@ async function renderInformeAsistencia(contenedor, precarga) {
         </div>
       </div>`;
 
-    // Desde el promedio por miembro se salta a su informe personal
+    // Desde el promedio por persona se salta a su informe personal
     caja.querySelectorAll('tr[data-ver]').forEach((tr) => {
       tr.addEventListener('click', () => {
+        const quien = String(tr.dataset.ver || '');
+        const numero = quien.slice(1);
         renderInformeAsistencia(contenedor, {
-          tipo: 'persona', miembro_id: tr.dataset.ver, desde: st.desde, hasta: st.hasta,
+          tipo: 'persona',
+          miembro_id: quien[0] === 'n' ? '' : numero,
+          no_miembro_id: quien[0] === 'n' ? numero : '',
+          no_miembro_nombre: quien[0] === 'n' ? (tr.querySelector('td') || {}).textContent || '' : '',
+          desde: st.desde, hasta: st.hasta,
         });
       });
     });
@@ -9937,8 +10029,9 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   let recuperadas = 0;
   const recuperadasIds = [];
   // La clave de cada fila es la persona Y el cuerpo: la asistencia se lleva
-  // por cuerpo, así que quien está en dos tiene dos filas y dos marcas
-  const claveDe = (p) => p.clave || `${p.miembro_id}:${p.cuerpo_id || 0}`;
+  // por cuerpo, así que quien está en dos tiene dos filas y dos marcas. La
+  // arma el servidor —dice de qué registro sale la persona—, y acá solo se usa.
+  const claveDe = (p) => p.clave || `m${p.miembro_id}:${p.cuerpo_id || 0}`;
   if (borrador) {
     for (const p of datos.personas) {
       const b = borrador[claveDe(p)];
@@ -10009,12 +10102,16 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     : '';
 
   const fila = (p) => `
-    <li data-clave="${esc(claveDe(p))}" data-id="${p.miembro_id}" data-cuerpo="${esc(String(p.cuerpo_id || ''))}"
+    <li data-clave="${esc(claveDe(p))}" data-id="${p.miembro_id || ''}"
+        data-no-miembro="${p.no_miembro_id || ''}" data-cuerpo="${esc(String(p.cuerpo_id || ''))}"
         data-buscar="${esc(textoBuscable(`${p.nombre} ${p.rut || ''}`))}"
         class="${p.estado ? 'marcado' : ''}">
       <div class="pl-quien">
         <b>${esc(p.nombre)}</b>
         ${p.cuerpo ? `<span class="pl-cuerpo-chip">${esc(p.cuerpo)}</span>` : ''}
+        ${p.persona_tipo === 'No miembro'
+          ? '<span class="badge" title="Sirve en este grupo sin estar inscrita en la membresía">No inscrito(a)</span>'
+          : ''}
         ${p.rut ? `<span class="mut">${esc(rutFormatear(p.rut))}</span>` : ''}
       </div>
       <div class="pl-botones">
@@ -10120,7 +10217,9 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   const lista = contenedor.querySelector('ul.pasar-lista');
   if (!lista) return;
 
-  const filas = () => [...lista.querySelectorAll('li[data-id]')];
+  // Por la clave y no por el id: quien no está inscrito no tiene número de
+  // miembro, y con `li[data-id]` sus filas quedaban fuera de la lista entera
+  const filas = () => [...lista.querySelectorAll('li[data-clave]')];
 
   /**
    * A quiénes tocó esta persona desde que abrió la lista.
@@ -10137,7 +10236,10 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     const on = li.querySelector('.pl-b.on');
     return {
       clave: li.dataset.clave,
-      miembro_id: Number(li.dataset.id),
+      // Uno de los dos, nunca los dos: o es un miembro inscrito o es alguien
+      // que sirve en el grupo sin estarlo
+      miembro_id: Number(li.dataset.id) || null,
+      no_miembro_id: Number(li.dataset.noMiembro) || null,
       // Sin el cuerpo, el servidor no sabría a cuál de las dos marcas de esta
       // persona corresponde, y una le borraría la otra
       cuerpo_id: Number(li.dataset.cuerpo) || null,
@@ -10210,9 +10312,9 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
    */
   const ponerseAlDia = (marcas) => {
     if (!Array.isArray(marcas)) return;
-    const porPar = new Map(
-      marcas.map((m) => [`${Number(m.miembro_id)}:${Number(m.cuerpo_id) || 0}`, m])
-    );
+    // La clave la arma el servidor y viene en cada marca: acá no se rehace,
+    // porque el formato tiene que ser exactamente el mismo de las filas
+    const porPar = new Map(marcas.filter((m) => m.clave).map((m) => [m.clave, m]));
     let ajenas = 0;
     for (const li of filas()) {
       const clave = li.dataset.clave;
@@ -10950,10 +11052,17 @@ async function renderIntegrantesCuerpo(cuerpoId, caja, filtro) {
     <div class="card" style="margin-top:18px">
       <div class="toolbar">
         <b>🧑‍🤝‍🧑 Integrantes</b>
-        <span style="color:var(--muted);font-size:13px">${fmtNumero(d.resumen.activos)} activo(s) · ${fmtNumero(d.resumen.en_prueba)} en prueba</span>
+        <span style="color:var(--muted);font-size:13px">${fmtNumero(d.resumen.activos)} activo(s) · ${fmtNumero(d.resumen.en_prueba)} en prueba${
+          d.resumen.no_inscritos ? ` · ${fmtNumero(d.resumen.no_inscritos)} sin inscribir` : ''}</span>
         <span class="spacer"></span>
         ${d.puede_agregar
           ? `<a class="btn sm" href="#/m/integrantes_cuerpo/new?cuerpo_id=${cuerpoId}">➕ Sumar integrante</a>`
+          : ''}
+        ${d.puede_agregar && d.admite_no_inscritos
+          ? `<a class="btn secondary sm" href="#/m/integrantes_cuerpo/new?cuerpo_id=${cuerpoId}&persona_tipo=No%20miembro"
+                title="Para el hermano o la hermana que sirve en este grupo sin estar inscrito en la membresía">
+               ➕ Sumar a alguien no inscrito
+             </a>`
           : ''}
       </div>
       ${aviso}
@@ -10984,6 +11093,9 @@ async function renderIntegrantesCuerpo(cuerpoId, caja, filtro) {
               </div>
               <div class="marcas">
                 ${g.lidera ? '<span class="badge blue">Lidera</span>' : ''}
+                ${g.persona_tipo === 'No miembro'
+                  ? '<span class="badge" title="Sirve en este grupo sin estar inscrito(a) en el registro de miembros">No inscrito(a)</span>'
+                  : ''}
                 ${g.exento_cuota ? `<span class="badge" title="${esc(g.exento_motivo || '')}">Exento de cuota</span>` : ''}
                 <span class="badge ${e.clase}">${esc(e.texto)}</span>
               </div>
@@ -10991,7 +11103,9 @@ async function renderIntegrantesCuerpo(cuerpoId, caja, filtro) {
                 ${g.estado === 'En prueba' && d.puede_editar
                   ? `<a class="btn secondary sm" href="#/m/evaluaciones_integrantes/new?integrante_id=${g.id}">📋 Evaluar</a>`
                   : ''}
-                <a class="btn secondary sm" href="#/m/miembros/ficha/${g.miembro_id}" title="Ver su ficha">👤</a>
+                ${g.persona_tipo === 'No miembro'
+                  ? `<a class="btn secondary sm" href="#/m/no_miembros/ficha/${g.no_miembro_id}" title="Ver su ficha">👤</a>`
+                  : `<a class="btn secondary sm" href="#/m/miembros/ficha/${g.miembro_id}" title="Ver su ficha">👤</a>`}
                 ${d.puede_editar ? `<a class="btn secondary sm" href="#/m/integrantes_cuerpo/edit/${g.id}" title="Editar su pertenencia">✏️</a>` : ''}
               </div>
             </li>`;
@@ -11220,6 +11334,52 @@ async function descargarActaEnPdf(id, boton) {
  * adjunto quedaba como un archivo cerrado que no se busca ni se lee sin
  * bajarlo. Estas dos cosas los juntan.
  */
+/**
+ * En un CUERPO solo entran miembros inscritos; en un GRUPO, cualquiera.
+ *
+ * Es la distinción de siempre entre las dos cosas: el cuerpo es formal —tiene
+ * reglamento, deberes y derechos, y su directiva sale de sus integrantes— y el
+ * grupo es una agrupación de servicio, donde sirve gente que no necesariamente
+ * está inscrita en la membresía.
+ *
+ * Acá se apaga la opción cuando el destino elegido es un cuerpo, y se dice por
+ * qué. No es la comprobación de verdad —esa la hace el servidor al guardar,
+ * porque lo que la pantalla no ofrece hay que rechazarlo igual—, es para no
+ * dejar elegir algo que va a terminar en un error.
+ */
+function prepararElIntegrante() {
+  const tipo = document.querySelector('#recForm [name="persona_tipo"]');
+  const cuerpo = document.querySelector('#recForm [name="cuerpo_id"]');
+  if (!tipo || !cuerpo) return;
+
+  const opcionSuelta = [...tipo.options].find((o) => o.value === 'No miembro');
+  if (!opcionSuelta) return;
+
+  const nota = document.createElement('div');
+  nota.className = 'mut';
+  nota.style.cssText = 'font-size:12px;margin-top:4px';
+  nota.hidden = true;
+  nota.textContent = 'Este es un cuerpo, no un grupo: se compone de miembros inscritos.';
+  tipo.parentElement.appendChild(nota);
+
+  const mirar = async () => {
+    const id = Number(cuerpo.value);
+    if (!id) { opcionSuelta.disabled = false; nota.hidden = true; return; }
+    const fila = await api('GET', `/cuerpos/${id}`).catch(() => null);
+    const esGrupo = !fila || fila.tipo === 'Grupo';
+    opcionSuelta.disabled = !esGrupo;
+    nota.hidden = esGrupo;
+    // Si venía elegida y el cuerpo no la admite, se vuelve a lo normal
+    if (!esGrupo && tipo.value === 'No miembro') {
+      tipo.value = 'Miembro';
+      tipo.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  };
+
+  cuerpo.addEventListener('change', mirar);
+  mirar();
+}
+
 function prepararElActa(id, row, isNew) {
   ponerBotonDeTranscribir(id, row, isNew);
   ponerPanelDeAsistencia(row);

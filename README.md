@@ -249,6 +249,25 @@ Al elegir **Cuerpo** aparecen los campos que solo tienen sentido en una entidad 
 
 La directiva no se guarda en el cuerpo, sino en su propio módulo, para conservar también las anteriores (ver más abajo).
 
+### En los grupos también sirve gente que no está inscrita 🙋
+
+Un **cuerpo se compone de miembros inscritos** en el registro oficial: tiene reglamento, deberes y derechos, y su directiva sale de sus propios integrantes. Un **grupo no exige membresía**, y en la práctica en muchos sirve gente que no está inscrita: el hermano que ayuda con el sonido, la hermana que cocina para la once.
+
+Por eso la ficha de integrante empieza preguntando **de qué registro sale la persona**:
+
+| Opción | De dónde se busca | Dónde se admite |
+|---|---|---|
+| *Miembro de la iglesia* | Registro oficial de **Miembros** | En cuerpos y en grupos |
+| *No es miembro* | Registro aparte de **No Miembros** (basta el nombre) | **Solo en grupos** |
+
+En un cuerpo la segunda opción **ni se ofrece**, y el servidor la rechaza aunque el dato llegue armado a mano. La persona no inscrita aparece en el grupo, se le pasa lista, sale en la planilla mensual del grupo y puede pagar cuota si el grupo la cobra —pero **no entra al registro de miembros, ni a los conteos de la membresía, ni al panel de datos que faltan**, y no puede recibir credencial ni certificados, que son documentos que acreditan pertenencia a la iglesia.
+
+Hace falta el permiso de **No Miembros** para poder buscarla: son fichas de gente en situación vulnerable y no se le abren a cualquiera.
+
+**Cuando se inscribe.** En su ficha de No Miembro hay un botón *«Inscribir como miembro»*: le crea su ficha en el registro oficial con lo que ya se sabía de ella y **le lleva sus grupos y su asistencia, con las fechas de siempre**. Sin ese paso, cada inscripción dejaba dos fichas y el recorrido de la persona colgando de la que ya no se usa. Su ficha del registro aparte **no se borra**: queda apuntando a la nueva, porque de ella cuelgan las ayudas que se le entregaron cuando todavía no era miembro.
+
+> **Por qué el número no alcanza.** El miembro n.º 7 y el no miembro n.º 7 son dos personas distintas. Todo lo que identifica gente —una lista de asistencia, el alcance de un usuario, el cuerpo de oficiales— lo hace ahora por su registro **y** su número. Lo que sigue trabajando solo con miembros —quién puede ver qué, quién es oficial, quién compone una directiva— sigue devolviendo únicamente miembros, a propósito.
+
 ### La directiva de la iglesia se llena sola 🏛️
 
 Los **miembros líderes** de una iglesia **son** su directiva. No es una lista que alguien mantenga: quien pasa a la categoría *Miembro Líder* entra solo al cuerpo de la directiva, y quien deja esa categoría sale solo.

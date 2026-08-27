@@ -25,6 +25,24 @@
  * El RUT es opcional, pero cuando se escribe se valida y no puede repetirse:
  * es lo único que permite darse cuenta de que la persona que viene hoy ya
  * tiene ficha de la vez pasada.
+ *
+ * ---------------------------------------------------------------------------
+ * TAMBIÉN SIRVEN EN LOS GRUPOS
+ *
+ * Un grupo de la iglesia —el equipo de aseo, el de sonido, el apoyo social— no
+ * exige estar inscrito en la membresía, y de hecho en muchos sirve gente que
+ * no lo está. Esa gente entra al grupo desde acá: la ficha de integrante
+ * pregunta de qué registro sale la persona y la busca en este. En los CUERPOS
+ * no, porque un cuerpo es formal y se compone de miembros (ver
+ * server/integrantes.js).
+ *
+ * Y de acá se sale, cuando la persona se inscribe: el botón «Inscribir como
+ * miembro» le crea su ficha en el registro oficial con lo que ya se sabía de
+ * ella y le lleva sus grupos y su asistencia, conservando las fechas. Sin ese
+ * paso, cada inscripción obligaba a rehacer el historial a mano —y en la
+ * práctica se perdía—. Esta ficha NO se borra: queda apuntando a la nueva,
+ * porque las ayudas que se le entregaron cuando no era miembro cuelgan de
+ * ella y siguen siendo ciertas.
  */
 
 /** Años cumplidos a la fecha de hoy, o nada si la fecha no sirve. */
@@ -48,6 +66,10 @@ module.exports = {
   labelSingular: 'No Miembro',
   icon: '👤',
   group: 'Personas',
+  ayudaPermiso:
+    'Fichas de personas que la iglesia atiende sin que pertenezcan a la membresía: quienes reciben '
+    + 'ayudas sociales y quienes sirven en un grupo sin estar inscritos. Son datos de gente en '
+    + 'situación vulnerable. Sin este permiso no se puede sumar a un grupo a alguien no inscrito.',
   order: 21, // justo debajo de Miembros, que es el 20
   display: '{nombres} {apellidos}',
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono', 'email', 'direccion'],
@@ -98,5 +120,132 @@ module.exports = {
     { name: 'conocido_desde', label: 'Se le conoce desde', type: 'date' },
 
     { name: 'notas', label: 'Notas', type: 'textarea', seccion: 'Notas' },
+
+    /*
+     * Se inscribió, y esta es su ficha de miembro.
+     *
+     * La ficha de acá no se borra al inscribirse: las ayudas que se le
+     * entregaron cuando no era miembro cuelgan de ella. Queda marcada y
+     * apuntando a la nueva, para que nadie la vuelva a usar por error.
+     */
+    {
+      name: 'miembro_id', label: 'Se inscribió como miembro', type: 'ref', ref: 'miembros',
+      readonly: true,
+      help: 'Lo escribe el sistema al inscribirla. Desde ese momento su ficha viva es la de Miembros.',
+    },
   ],
+
+  hooks: {
+    /**
+     * Una ficha que ya se inscribió no se borra: es de donde cuelgan las
+     * ayudas que se le entregaron cuando todavía no era miembro.
+     */
+    beforeDelete(fila, { db }) {
+      if (fila.miembro_id) {
+        return 'Esta persona ya se inscribió como miembro. Su ficha de acá queda como constancia '
+          + 'de las ayudas que se le entregaron antes: no se elimina.';
+      }
+      const enGrupos = db
+        .prepare("SELECT COUNT(*) c FROM integrantes_cuerpo WHERE no_miembro_id = ? AND estado != 'Retirado'")
+        .get(fila.id).c;
+      if (enGrupos) {
+        return `No se puede eliminar: pertenece a ${enGrupos} grupo(s). `
+          + 'Sáquela de ellos primero, o márquela como retirada.';
+      }
+      return null;
+    },
+  },
+
+  extraRoutes(router, { db, requirePerm }) {
+    /**
+     * «Ahora sí se inscribió»: de No Miembro a miembro de la iglesia.
+     *
+     * Es el paso que evita el problema que trae permitir gente de fuera en los
+     * grupos: alguien empieza sirviendo en el equipo de sonido, se convierte,
+     * se bautiza y se inscribe. Sin esto termina con dos fichas —una en cada
+     * registro— y su historial de grupo colgando de la que ya no se usa.
+     *
+     * Lo que hace, todo en una transacción:
+     *   1. crea su ficha en Miembros con lo que ya se sabía de ella
+     *   2. le pasa sus pertenencias a grupos, con las fechas y los estados
+     *   3. le pasa sus marcas de asistencia, para que su porcentaje no parta de cero
+     *   4. deja la ficha de acá apuntando a la nueva, sin borrarla
+     *
+     * Pide los dos permisos: crear miembros y editar el registro aparte. Crear
+     * un miembro es entrar al registro oficial de la iglesia, y eso no lo hace
+     * quien solo administra las ayudas.
+     */
+    router.post('/no_miembros/:id(\\d+)/inscribir', requirePerm('miembros', 'create'), (req, res) => {
+      const { can } = require('../permissions');
+      if (!can(req.user, 'no_miembros', 'edit')) {
+        return res.status(403).json({ error: 'No tiene permiso para modificar el registro de No Miembros.' });
+      }
+      const ficha = db.prepare('SELECT * FROM no_miembros WHERE id = ?').get(req.params.id);
+      if (!ficha) return res.status(404).json({ error: 'Esa ficha no existe.' });
+      if (!require('../alcance').alcanza(module.exports, ficha, req.user)) {
+        return res.status(403).json({ error: 'Esa ficha está fuera de lo que tiene asignado.' });
+      }
+      if (ficha.miembro_id) {
+        return res.status(409).json({
+          error: 'Esta persona ya está inscrita como miembro.',
+          miembro_id: ficha.miembro_id,
+        });
+      }
+      // Apellidos: Miembros los exige, y acá son opcionales a propósito
+      if (!String(ficha.apellidos || '').trim()) {
+        return res.status(400).json({
+          error: 'Para inscribirla como miembro falta su apellido. Complételo en esta ficha y vuelva a intentarlo.',
+        });
+      }
+      // El RUT no se puede repetir en el registro oficial
+      if (ficha.rut) {
+        const ya = db.prepare('SELECT id FROM miembros WHERE rut = ?').get(ficha.rut);
+        if (ya) {
+          return res.status(409).json({
+            error: 'Ya hay un miembro inscrito con ese RUT. Revise si es la misma persona.',
+            miembro_id: ya.id,
+          });
+        }
+      }
+
+      const inscribir = db.transaction(() => {
+        const nuevo = db
+          .prepare(
+            `INSERT INTO miembros (iglesia_id, nombres, apellidos, rut, fecha_nacimiento, genero,
+                                   telefono, direccion, email, estado, tipo_miembro, fecha_ingreso,
+                                   notas, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', 'Miembro Nuevo', ?, ?, ?)`
+          )
+          .run(
+            ficha.iglesia_id, ficha.nombres, ficha.apellidos, ficha.rut || null,
+            ficha.fecha_nacimiento || null, ficha.genero || null,
+            ficha.telefono || null, ficha.direccion || null, ficha.email || null,
+            new Date().toISOString().slice(0, 10),
+            `Inscrita desde el registro de No Miembros${ficha.notas ? `. ${ficha.notas}` : ''}`,
+            req.user.id
+          );
+        const miembroId = Number(nuevo.lastInsertRowid);
+
+        // Sus grupos, con sus fechas y sus estados intactos
+        const grupos = db
+          .prepare('UPDATE integrantes_cuerpo SET miembro_id = ?, no_miembro_id = NULL, persona_tipo = ? WHERE no_miembro_id = ?')
+          .run(miembroId, 'Miembro', ficha.id).changes;
+
+        // Y su asistencia, para que su porcentaje no parta de cero
+        const marcas = db
+          .prepare('UPDATE asistencia_detalle SET miembro_id = ?, no_miembro_id = NULL, persona_tipo = ? WHERE no_miembro_id = ?')
+          .run(miembroId, 'Miembro', ficha.id).changes;
+
+        db.prepare('UPDATE no_miembros SET miembro_id = ? WHERE id = ?').run(miembroId, ficha.id);
+        return { miembroId, grupos, marcas };
+      });
+
+      const hecho = inscribir.immediate();
+      require('../bitacora').anotar({
+        miembroId: hecho.miembroId, tipo: 'Anotación', iglesiaId: ficha.iglesia_id, usuario: req.user,
+        descripcion: 'Queda inscrita en el registro de miembros. Venía del registro de No Miembros.',
+      });
+      res.json({ ok: true, ...hecho });
+    });
+  },
 };

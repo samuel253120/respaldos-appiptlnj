@@ -25,6 +25,9 @@
  */
 const CON_DETALLE_DE_FABRICA = ['Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
 
+/** De qué registro sale la persona: miembro inscrito o no. */
+const { REGISTROS } = require('../integrantes');
+
 function motivosQuePidenDetalle() {
   try {
     const { db } = require('../db');
@@ -48,8 +51,8 @@ module.exports = {
   menu: false,
   display: '{estado}',
   searchFields: ['detalle'],
-  listFields: ['asistencia_id', 'miembro_id', 'estado', 'motivo', 'detalle'],
-  filterFields: ['estado', 'motivo', 'cuerpo_id'],
+  listFields: ['asistencia_id', 'persona_tipo', 'miembro_id', 'no_miembro_id', 'estado', 'motivo', 'detalle'],
+  filterFields: ['estado', 'motivo', 'cuerpo_id', 'persona_tipo'],
   /*
    * La fecha del módulo. No es una etiqueta: es lo que hace que la base cree
    * su índice sola (ver indexar() en server/db.js).
@@ -66,7 +69,28 @@ module.exports = {
   defaultSort: { field: 'id', dir: 'desc' },
   fields: [
     { name: 'asistencia_id', label: 'Actividad', type: 'ref', ref: 'asistencias', required: true },
-    { name: 'miembro_id', label: 'Miembro', type: 'ref', ref: 'miembros', required: true },
+    /*
+     * De qué registro sale la persona de esta marca.
+     *
+     * En los grupos también sirve gente que no está inscrita en la membresía
+     * —ver server/integrantes.js—, y a esa gente hay que poder marcarla
+     * presente o ausente igual que a los demás, o la lista del grupo queda
+     * incompleta. Cada marca apunta a uno de los dos registros, nunca a los
+     * dos: el número solo no alcanza, porque el miembro n.º 7 y el no miembro
+     * n.º 7 son dos personas distintas.
+     */
+    {
+      name: 'persona_tipo', label: 'Registro de la persona', type: 'select',
+      required: true, default: 'Miembro', options: REGISTROS,
+    },
+    {
+      name: 'miembro_id', label: 'Miembro', type: 'ref', ref: 'miembros', required: true,
+      showIf: { field: 'persona_tipo', equals: 'Miembro' },
+    },
+    {
+      name: 'no_miembro_id', label: 'Persona no inscrita', type: 'ref', ref: 'no_miembros',
+      required: true, showIf: { field: 'persona_tipo', equals: 'No miembro' },
+    },
     {
       name: 'estado', label: 'Estado', type: 'select', required: true, default: 'Presente',
       options: ['Presente', 'Ausente', 'Justificado'],
@@ -98,10 +122,19 @@ module.exports = {
     beforeSave(data, { id, existing, db }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
       const asistenciaId = dato('asistencia_id');
-      const miembroId = dato('miembro_id');
 
       const actividad = db.prepare('SELECT * FROM asistencias WHERE id = ?').get(asistenciaId);
       if (!actividad) return 'La actividad indicada no existe';
+
+      // La marca apunta a uno de los dos registros, y se suelta el otro lado
+      const tipo = REGISTROS.includes(dato('persona_tipo')) ? dato('persona_tipo') : 'Miembro';
+      data.persona_tipo = tipo;
+      const campo = tipo === 'No miembro' ? 'no_miembro_id' : 'miembro_id';
+      const otro = tipo === 'No miembro' ? 'miembro_id' : 'no_miembro_id';
+      const personaId = Number(dato(campo));
+      if (!personaId) return 'Falta indicar a quién corresponde esta marca';
+      data[campo] = personaId;
+      data[otro] = null;
 
       /**
        * Una sola marca por persona EN CADA CUERPO de la actividad.
@@ -114,9 +147,9 @@ module.exports = {
       const repetida = db
         .prepare(
           `SELECT id FROM asistencia_detalle
-            WHERE asistencia_id = ? AND miembro_id = ? AND COALESCE(cuerpo_id, 0) = ? AND id != ?`
+            WHERE asistencia_id = ? AND "${campo}" = ? AND COALESCE(cuerpo_id, 0) = ? AND id != ?`
         )
-        .get(asistenciaId, miembroId, Number(cuerpoId) || 0, id || 0);
+        .get(asistenciaId, personaId, Number(cuerpoId) || 0, id || 0);
       if (repetida) return 'Esa persona ya tiene su marca en este cuerpo para esta actividad';
 
       // Lo que no es justificación no lleva motivo ni detalle

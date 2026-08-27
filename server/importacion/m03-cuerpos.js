@@ -134,15 +134,21 @@ module.exports = function importarCuerpos(origen, { lote, prueba, iglesiaId }) {
       // llevan tiempo en su cuerpo y no corresponde mandarlos a un período de
       // prueba que ya cumplieron.
       const yaTiene = db.prepare('SELECT id FROM integrantes_cuerpo WHERE cuerpo_id = ? AND miembro_id = ?');
+      // Todo lo que llega de la importación es gente inscrita: el registro
+      // aparte —quienes sirven en un grupo sin estar en la membresía— no viene
+      // del sistema de origen, se lleva acá (ver server/integrantes.js).
       const nuevaFicha = db.prepare(
-        `INSERT INTO integrantes_cuerpo (cuerpo_id, miembro_id, estado, fecha_ingreso, iglesia_id, observaciones)
-         VALUES (?, ?, 'Activo', ?, ?, ?)`
+        `INSERT INTO integrantes_cuerpo (cuerpo_id, miembro_id, persona_tipo, persona, estado,
+                                         fecha_ingreso, iglesia_id, observaciones)
+         VALUES (?, ?, 'Miembro',
+                 (SELECT TRIM(COALESCE(nombres, '') || ' ' || COALESCE(apellidos, '')) FROM miembros WHERE id = ?),
+                 'Activo', ?, ?, ?)`
       );
       for (const id of integrantes) {
         if (yaTiene.get(cuerpoId, id)) continue;
         const suya = suyas.find((m) => miembro(m.memberId) === id && m.status === 'active');
         nuevaFicha.run(
-          cuerpoId, id, fecha(suya && (suya.joinDate || suya.createdAt)), iglesiaId,
+          cuerpoId, id, id, fecha(suya && (suya.joinDate || suya.createdAt)), iglesiaId,
           'Venía del sistema anterior.'
         );
       }

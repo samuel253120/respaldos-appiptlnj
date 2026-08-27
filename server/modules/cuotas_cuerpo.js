@@ -29,10 +29,10 @@ module.exports = {
   group: 'Finanzas',
   order: 44,
   menu: false,
-  display: '{mes}/{anio} — {miembro_id}',
+  display: '{mes}/{anio} — {persona}',
   dateField: 'fecha_pago',
-  searchFields: ['notas'],
-  listFields: ['fecha_pago', 'cuerpo_id', 'miembro_id', 'anio', 'mes', 'monto'],
+  searchFields: ['persona', 'notas'],
+  listFields: ['fecha_pago', 'cuerpo_id', 'persona', 'anio', 'mes', 'monto'],
   filterFields: ['cuerpo_id', 'anio', 'mes'],
   defaultSort: { field: 'fecha_pago', dir: 'desc' },
 
@@ -56,6 +56,15 @@ module.exports = {
     // Se toman del integrante, para poder filtrar y para los permisos
     { name: 'cuerpo_id', type: 'number', oculto: true, readonly: true },
     { name: 'miembro_id', type: 'number', oculto: true, readonly: true },
+    /*
+     * Quién pagó, escrito.
+     *
+     * El número de miembro ya no alcanza: en un grupo también paga cuota gente
+     * que no está inscrita en la membresía, y esa no tiene número de miembro
+     * (ver server/integrantes.js). El nombre se copia de la ficha de
+     * integrante, que es la que sabe de qué registro sale la persona.
+     */
+    { name: 'persona', label: 'Quién pagó', type: 'text', readonly: true },
     { name: 'iglesia_id', type: 'number', oculto: true, readonly: true },
     { name: 'movimiento_id', type: 'number', oculto: true, readonly: true },
   ],
@@ -66,7 +75,8 @@ module.exports = {
       const ficha = db.prepare('SELECT * FROM integrantes_cuerpo WHERE id = ?').get(dato('integrante_id'));
       if (!ficha) return 'No encuentro la ficha del integrante que está pagando.';
       data.cuerpo_id = ficha.cuerpo_id;
-      data.miembro_id = ficha.miembro_id;
+      data.miembro_id = ficha.miembro_id || null;
+      data.persona = ficha.persona || null;
       data.iglesia_id = ficha.iglesia_id;
 
       const anio = Number(dato('anio'));

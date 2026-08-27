@@ -15,7 +15,7 @@
  *   · qué pasa cuando a alguien no se le marcó nada en un día que sí hubo lista
  */
 const { tratamientoDe } = require('./tratamiento');
-const { VIGENTES } = require('./integrantes');
+const { personasDelCuerpo, clavePersona } = require('./integrantes');
 
 /**
  * Con qué se queda un día que tuvo más de una actividad.
@@ -59,38 +59,35 @@ function armar(db, cuerpo, mes) {
   const primero = `${mes}-01`;
   const ultimo = `${mes}-${String(cuantosDias).padStart(2, '0')}`;
 
-  const gente = db
-    .prepare(
-      `SELECT m.* FROM integrantes_cuerpo ic
-         JOIN miembros m ON m.id = ic.miembro_id
-        WHERE ic.cuerpo_id = ? AND ic.estado IN (${VIGENTES.map(() => '?').join(',')})
-        ORDER BY m.apellidos, m.nombres`
-    )
-    .all(cuerpo.id, ...VIGENTES);
+  // Los dos registros: en un grupo también sirve gente que no está inscrita
+  // en la membresía, y la planilla del grupo tiene que traerla igual
+  const gente = personasDelCuerpo(db, cuerpo.id);
 
   const filas = db
     .prepare(
-      `SELECT miembro_id, fecha, estado FROM asistencia_detalle
+      `SELECT miembro_id, no_miembro_id, fecha, estado FROM asistencia_detalle
         WHERE cuerpo_id = ? AND fecha >= ? AND fecha <= ?`
     )
     .all(cuerpo.id, primero, ultimo);
 
   /** Un día tiene reunión si ese día se le pasó lista al cuerpo. */
   const conReunion = new Set();
-  const porPersona = new Map(); // miembro_id -> { día -> estado }
+  const porPersona = new Map(); // clave de persona -> { día -> estado }
   for (const f of filas) {
     const dia = Number(String(f.fecha).slice(8, 10));
     if (!dia) continue;
     conReunion.add(dia);
-    if (!porPersona.has(f.miembro_id)) porPersona.set(f.miembro_id, {});
-    const suyas = porPersona.get(f.miembro_id);
+    const quien = clavePersona(f);
+    if (!quien) continue;
+    if (!porPersona.has(quien)) porPersona.set(quien, {});
+    const suyas = porPersona.get(quien);
     if (!suyas[dia] || PESO[f.estado] > PESO[suyas[dia]]) suyas[dia] = f.estado;
   }
   const diasConReunion = [...conReunion].sort((a, b) => a - b);
   const porcentaje = (n, total) => (total ? Math.round((n / total) * 100) : 0);
 
   const integrantes = gente.map((m, i) => {
-    const suyas = porPersona.get(m.id) || {};
+    const suyas = porPersona.get(m.clave) || {};
     const marcas = {};
     let presentes = 0, justificados = 0, ausentes = 0;
     for (const dia of diasConReunion) {
@@ -103,10 +100,20 @@ function armar(db, cuerpo, mes) {
       else ausentes++;
     }
     const total = diasConReunion.length;
-    const trato = tratamientoDe(m, db);
+    /*
+     * El trato sale de la ficha de miembro entera —su género, su ficha
+     * ministerial, la de su cónyuge—, así que hay que ir a buscarla. Quien no
+     * está inscrito no lleva trato: no tiene ficha de donde sacarlo.
+     */
+    const suFicha = m.miembro_id
+      ? db.prepare('SELECT * FROM miembros WHERE id = ?').get(m.miembro_id)
+      : null;
+    const trato = suFicha ? tratamientoDe(suFicha, db) : '';
     return {
       n: i + 1,
-      miembro_id: m.id,
+      miembro_id: m.miembro_id || null,
+      no_miembro_id: m.no_miembro_id || null,
+      persona_tipo: m.persona_tipo,
       trato: ABREVIADO[trato] || trato,
       nombre: `${m.nombres || ''} ${m.apellidos || ''}`.trim(),
       marcas, total,

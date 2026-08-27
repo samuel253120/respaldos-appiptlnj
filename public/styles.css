@@ -2585,3 +2585,31 @@ table.libro tbody tr:nth-child(even) td { background: #fafbfe; }
   .libro-sub { gap: 10px; font-size: 12px; }
   table.libro { font-size: 11.5px; min-width: 720px; }
 }
+
+/* ---------------------------------------------------------------------------
+   El informe por persona también sirve para quien no está inscrito: cuando se
+   está viendo a alguien del registro aparte, el buscador de miembros se
+   reemplaza por su nombre, con una × para soltarlo.
+   --------------------------------------------------------------------------- */
+.inf-no-inscrito {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  /* A la altura de los demás controles de la barra de filtros, que en un
+     teléfono tienen que poder tocarse con el dedo */
+  min-height: 44px;
+  padding: 0 2px 0 12px;
+}
+.inf-no-inscrito button {
+  background: none;
+  border: 0;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  /* 44 px: lo que mide un dedo. Es lo que exige la auditoría del teléfono */
+  min-width: 44px;
+  min-height: 44px;
+}
+.inf-no-inscrito button:hover { opacity: .7; }

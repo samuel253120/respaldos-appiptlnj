@@ -2029,6 +2029,83 @@ function documentosALaOficinaDePartes() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * El nombre de la persona queda escrito en su ficha de integrante.
+ *
+ * Hasta ahora la ficha solo guardaba el número del miembro, y el nombre se iba
+ * a buscar cada vez. Con los dos registros —miembros y no miembros— eso ya no
+ * alcanza: la lista de integrantes tiene que poder decir de quién es cada
+ * ficha sin ir a preguntar a dos tablas distintas, y los buscadores tienen que
+ * encontrar por nombre.
+ *
+ * Se copia el nombre de donde corresponda y se deja escrito de qué registro
+ * sale. Todas las fichas que existen hoy son de miembros: los grupos con gente
+ * no inscrita empiezan a partir de esta versión.
+ */
+function fichasDeIntegranteConSuNombre() {
+  const NOMBRE = 'fichas de integrante con su nombre';
+  if (yaAplicada(NOMBRE)) return;
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('integrantes_cuerpo') || !hayTabla('miembros')) return marcarAplicada(NOMBRE);
+
+  const columnas = new Set(db.prepare('PRAGMA table_info("integrantes_cuerpo")').all().map((c) => c.name));
+  if (!columnas.has('persona') || !columnas.has('persona_tipo')) return marcarAplicada(NOMBRE);
+
+  let escritas = 0;
+  db.transaction(() => {
+    // Lo que ya existe es de miembros, sin excepción
+    db.prepare("UPDATE integrantes_cuerpo SET persona_tipo = 'Miembro' WHERE persona_tipo IS NULL OR persona_tipo = ''").run();
+    escritas = db
+      .prepare(
+        `UPDATE integrantes_cuerpo
+            SET persona = TRIM(COALESCE(
+                  (SELECT (COALESCE(m.nombres, '') || ' ' || COALESCE(m.apellidos, ''))
+                     FROM miembros m WHERE m.id = integrantes_cuerpo.miembro_id), ''))
+          WHERE (persona IS NULL OR persona = '') AND miembro_id IS NOT NULL`
+      )
+      .run().changes;
+  }).immediate();
+
+  // Y las cuotas ya cobradas, que también dicen a nombre de quién se pagaron
+  if (hayTabla('cuotas_cuerpo')
+      && db.prepare('PRAGMA table_info("cuotas_cuerpo")').all().some((c) => c.name === 'persona')) {
+    db.prepare(
+      `UPDATE cuotas_cuerpo
+          SET persona = (SELECT i.persona FROM integrantes_cuerpo i WHERE i.id = cuotas_cuerpo.integrante_id)
+        WHERE persona IS NULL OR persona = ''`
+    ).run();
+  }
+
+  if (escritas) console.log(`🧑‍🤝‍🧑 Integrantes: ${escritas} ficha(s) quedaron con el nombre de su persona escrito.`);
+  marcarAplicada(NOMBRE);
+}
+
+/**
+ * Las marcas de asistencia que ya existen son de miembros.
+ *
+ * La columna nueva —de qué registro sale la persona— nace vacía en las filas
+ * que ya estaban, y una marca sin registro no se sabe leer: el informe la
+ * agruparía por su cuenta y la planilla no la encontraría. Se deja escrito lo
+ * que todas ellas son.
+ */
+function marcasDeAsistenciaConSuRegistro() {
+  const NOMBRE = 'marcas de asistencia con su registro';
+  if (yaAplicada(NOMBRE)) return;
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('asistencia_detalle')) return marcarAplicada(NOMBRE);
+
+  const columnas = new Set(db.prepare('PRAGMA table_info("asistencia_detalle")').all().map((c) => c.name));
+  if (!columnas.has('persona_tipo')) return marcarAplicada(NOMBRE);
+
+  const puestas = db
+    .prepare("UPDATE asistencia_detalle SET persona_tipo = 'Miembro' WHERE persona_tipo IS NULL OR persona_tipo = ''")
+    .run().changes;
+  if (puestas) console.log(`✔️ Asistencia: ${puestas} marca(s) quedaron anotadas como de miembros inscritos.`);
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2059,6 +2136,8 @@ function ejecutarMigraciones() {
     ['marcas de asistencia con su cuerpo', marcasDeAsistenciaConSuCuerpo],
     ['formatos de certificado', formatosDeCertificadoQueTraiaElSistema],
     ['documentos a la oficina de partes', documentosALaOficinaDePartes],
+    ['fichas de integrante con su nombre', fichasDeIntegranteConSuNombre],
+    ['marcas de asistencia con su registro', marcasDeAsistenciaConSuRegistro],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],
@@ -2309,4 +2388,5 @@ module.exports = {
   ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo,
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
+  fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
 };

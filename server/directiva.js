@@ -96,6 +96,12 @@ const motivoDeSalida = () => `Dejó de ser ${categoriaQueCompone()}`;
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 
+/** El nombre del miembro, para dejarlo escrito en su ficha de integrante. */
+function nombreDe(db, miembroId) {
+  const m = db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(miembroId);
+  return m ? `${m.nombres || ''} ${m.apellidos || ''}`.trim() : null;
+}
+
 /** ¿Esta ficha compone hoy la directiva de su iglesia? */
 function componeLaDirectiva(miembro) {
   if (!miembro || !miembro.iglesia_id) return false;
@@ -156,14 +162,22 @@ function entra(db, cuerpo, miembroId, usuario) {
     db.prepare(
       `UPDATE integrantes_cuerpo
           SET estado = 'Activo', fecha_retiro = NULL, motivo_retiro = NULL, automatico = 1,
+              persona_tipo = 'Miembro', persona = COALESCE(NULLIF(persona, ''), ?),
               updated_at = datetime('now','localtime')
         WHERE id = ?`
-    ).run(ficha.id);
+    ).run(nombreDe(db, miembroId), ficha.id);
   } else {
+    /*
+     * La ficha dice de qué registro sale su persona y lleva su nombre escrito.
+     * Estas las escribe la regla directamente con SQL, sin pasar por el hook
+     * del módulo, así que hay que ponérselos acá: si no, la directiva quedaba
+     * con fichas en blanco donde las demás dicen quién es.
+     */
     db.prepare(
-      `INSERT INTO integrantes_cuerpo (cuerpo_id, miembro_id, estado, fecha_ingreso, fecha_oficial, iglesia_id, automatico)
-       VALUES (?, ?, 'Activo', ?, ?, ?, 1)`
-    ).run(cuerpo.id, miembroId, hoy(), hoy(), cuerpo.iglesia_id);
+      `INSERT INTO integrantes_cuerpo (cuerpo_id, miembro_id, persona_tipo, persona, estado,
+                                       fecha_ingreso, fecha_oficial, iglesia_id, automatico)
+       VALUES (?, ?, 'Miembro', ?, 'Activo', ?, ?, ?, 1)`
+    ).run(cuerpo.id, miembroId, nombreDe(db, miembroId), hoy(), hoy(), cuerpo.iglesia_id);
   }
 
   bitacora.anotar({

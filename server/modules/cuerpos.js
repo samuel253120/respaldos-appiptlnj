@@ -265,7 +265,9 @@ module.exports = {
 
       const gente = integrantesDe(db, cuerpo.id, { conRetirados: true }).map((f) => ({
         id: f.id,
-        miembro_id: f.miembro_id,
+        persona_tipo: f.persona_tipo,
+        miembro_id: f.miembro_id || null,
+        no_miembro_id: f.no_miembro_id || null,
         nombre: require('../nombres').paraMostrar(f.nombres, f.apellidos),
         rut: f.rut || null,
         foto: f.foto || null,
@@ -296,9 +298,18 @@ module.exports = {
           en_prueba: gente.filter((g) => g.estado === 'En prueba').length,
           retirados: gente.filter((g) => g.estado === 'Retirado').length,
           prueba_vencida: gente.filter((g) => g.prueba_vencida).length,
+          no_inscritos: gente.filter((g) => g.persona_tipo === 'No miembro' && g.estado !== 'Retirado').length,
         },
         puede_editar: can(req.user, 'integrantes_cuerpo', 'edit'),
         puede_agregar: can(req.user, 'integrantes_cuerpo', 'create'),
+        /*
+         * Solo en un GRUPO se puede sumar a alguien que no está inscrito en la
+         * membresía, y solo si además puede mirar ese registro: la lista de No
+         * Miembros no se le abre a cualquiera (son fichas de gente en situación
+         * vulnerable). La regla de verdad la aplica el servidor al guardar;
+         * esto es para que la pantalla no ofrezca lo que va a ser rechazado.
+         */
+        admite_no_inscritos: cuerpo.tipo === 'Grupo' && can(req.user, 'no_miembros', 'view'),
       });
     });
 
@@ -323,7 +334,9 @@ module.exports = {
         for (const p of suyos) meses[p.mes] = { monto: p.monto, fecha: p.fecha_pago };
         return {
           id: f.id,
-          miembro_id: f.miembro_id,
+          persona_tipo: f.persona_tipo,
+          miembro_id: f.miembro_id || null,
+          no_miembro_id: f.no_miembro_id || null,
           nombre: require('../nombres').paraMostrar(f.nombres, f.apellidos),
           estado: f.estado,
           exento: !!f.exento_cuota,

@@ -75,17 +75,35 @@ function cuerposQueLeTocan(actividad, usuario) {
  * puede andar al día y en otro no»), pero los datos no daban para eso.
  *
  * Se devuelve una entrada por CADA par persona-cuerpo, con su clave.
+ *
+ * Y la persona se identifica por su REGISTRO más su número, no por el número
+ * solo: en los grupos también sirve gente que no está inscrita en la membresía
+ * (ver server/integrantes.js), y el miembro n.º 7 y el no miembro n.º 7 son
+ * dos personas distintas. De ahí la letra que abre la clave: `m7:3` y `n7:3`
+ * son dos filas de la lista, no una.
  */
-const claveDe = (miembroId, cuerpoId) => `${Number(miembroId)}:${Number(cuerpoId) || 0}`;
+const { clavePersona } = require('../integrantes');
+
+const claveDe = (quien, cuerpoId) => `${clavePersona(quien)}:${Number(cuerpoId) || 0}`;
 
 function integrantesConvocados(actividad, db, usuario) {
-  const { idsDeIntegrantes } = require('../integrantes');
+  const { personasDelCuerpo } = require('../integrantes');
   const mapa = new Map();
   for (const cuerpoId of cuerposQueLeTocan(actividad, usuario)) {
     const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
     if (!cuerpo) continue;
-    for (const id of idsDeIntegrantes(db, cuerpo.id)) {
-      mapa.set(claveDe(id, cuerpo.id), { miembro_id: id, cuerpo_id: cuerpo.id, cuerpo: cuerpo.nombre });
+    for (const p of personasDelCuerpo(db, cuerpo.id)) {
+      mapa.set(claveDe(p, cuerpo.id), {
+        persona_tipo: p.persona_tipo,
+        miembro_id: p.miembro_id,
+        no_miembro_id: p.no_miembro_id,
+        nombres: p.nombres,
+        apellidos: p.apellidos,
+        rut: p.rut,
+        foto: p.foto,
+        cuerpo_id: cuerpo.id,
+        cuerpo: cuerpo.nombre,
+      });
     }
   }
   return mapa;
@@ -101,10 +119,13 @@ function marcasVisibles(actividad, db, usuario) {
   const acota = suyos.length ? ` AND cuerpo_id IN (${suyos.map(() => '?').join(',')})` : '';
   return db
     .prepare(
-      `SELECT miembro_id, cuerpo_id, estado, motivo, detalle FROM asistencia_detalle
+      `SELECT miembro_id, no_miembro_id, cuerpo_id, estado, motivo, detalle FROM asistencia_detalle
         WHERE asistencia_id = ?${acota}`
     )
-    .all(actividad.id, ...(acota ? suyos : []));
+    .all(actividad.id, ...(acota ? suyos : []))
+    // La clave la arma el servidor: es él quien manda sobre el formato, y así
+    // la pantalla no tiene que saber cómo se identifica a alguien de cada registro
+    .map((m) => ({ ...m, clave: claveDe(m, m.cuerpo_id) }));
 }
 
 /** Cuenta las marcas de una actividad. */
@@ -421,18 +442,30 @@ module.exports = {
       const leTocan = cuerposQueLeTocan(actividad, req.user);
       const convocados = integrantesConvocados(actividad, db, req.user);
       const marcas = db.prepare('SELECT * FROM asistencia_detalle WHERE asistencia_id = ?').all(actividad.id);
-      const porPar = new Map(marcas.map((m) => [claveDe(m.miembro_id, m.cuerpo_id), m]));
+      const porPar = new Map(marcas.map((m) => [claveDe(m, m.cuerpo_id), m]));
 
       // Quien ya tiene marca pero salió del cuerpo se sigue mostrando, siempre
       // que su marca sea de un cuerpo que a esta persona le toque pasar
       const suyos = require('../alcance').cuerposDe(req.user);
       for (const m of marcas) {
-        const clave = claveDe(m.miembro_id, m.cuerpo_id);
+        const clave = claveDe(m, m.cuerpo_id);
+        if (!clave || clave.startsWith(':')) continue; // marca sin persona: no se muestra
         if (convocados.has(clave)) continue;
         if (suyos.length && !suyos.includes(Number(m.cuerpo_id))) continue;
         const cuerpo = m.cuerpo_id ? db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(m.cuerpo_id) : null;
+        const esNo = !!Number(m.no_miembro_id);
+        const ficha = esNo
+          ? db.prepare('SELECT id, nombres, apellidos, rut FROM no_miembros WHERE id = ?').get(m.no_miembro_id)
+          : db.prepare('SELECT id, nombres, apellidos, rut, foto FROM miembros WHERE id = ?').get(m.miembro_id);
+        if (!ficha) continue;
         convocados.set(clave, {
-          miembro_id: Number(m.miembro_id),
+          persona_tipo: esNo ? 'No miembro' : 'Miembro',
+          miembro_id: esNo ? null : Number(m.miembro_id),
+          no_miembro_id: esNo ? Number(m.no_miembro_id) : null,
+          nombres: ficha.nombres,
+          apellidos: ficha.apellidos,
+          rut: ficha.rut || null,
+          foto: ficha.foto || null,
           cuerpo_id: m.cuerpo_id || null,
           cuerpo: cuerpo ? `${cuerpo.nombre} (ya no figura)` : 'Sin cuerpo',
         });
@@ -449,16 +482,15 @@ module.exports = {
        */
       const personas = [...convocados.entries()]
         .map(([clave, donde]) => {
-          const p = db.prepare('SELECT id, nombres, apellidos, rut, foto FROM miembros WHERE id = ?')
-            .get(donde.miembro_id);
-          if (!p) return null;
           const marca = porPar.get(clave) || {};
           return {
             clave,
-            miembro_id: p.id,
-            nombre: nombres.paraMostrar(p.nombres, p.apellidos),
-            rut: p.rut || null,
-            foto: p.foto || null,
+            persona_tipo: donde.persona_tipo,
+            miembro_id: donde.miembro_id || null,
+            no_miembro_id: donde.no_miembro_id || null,
+            nombre: nombres.paraMostrar(donde.nombres, donde.apellidos),
+            rut: donde.rut || null,
+            foto: donde.foto || null,
             cuerpo_id: donde.cuerpo_id,
             cuerpo: donde.cuerpo,
             estado: marca.estado || null,
@@ -517,7 +549,9 @@ module.exports = {
 
       const validos = ['Presente', 'Ausente', 'Justificado'];
       for (const m of marcas) {
-        if (!m.miembro_id) return res.status(400).json({ error: 'Falta indicar a quién corresponde una de las marcas' });
+        if (!m.miembro_id && !m.no_miembro_id) {
+          return res.status(400).json({ error: 'Falta indicar a quién corresponde una de las marcas' });
+        }
         if (m.estado && !validos.includes(m.estado)) {
           return res.status(400).json({ error: `Estado no válido: ${m.estado}` });
         }
@@ -567,39 +601,41 @@ module.exports = {
        * esa persona pertenece, que es exactamente lo que hacía el sistema
        * antes; los demás cuerpos quedan sin marcar, como quedaban entonces.
        */
-      const primerCuerpoDe = (miembroId) => {
+      const primerCuerpoDe = (quien) => {
         for (const cuerpoId of cuerposQueLeTocan(actividad, req.user)) {
-          if (convocados.has(claveDe(miembroId, cuerpoId))) return cuerpoId;
+          if (convocados.has(claveDe(quien, cuerpoId))) return cuerpoId;
         }
         return null;
       };
       for (const m of marcas) {
         if (m.cuerpo_id === undefined || m.cuerpo_id === null || m.cuerpo_id === '') {
-          m.cuerpo_id = primerCuerpoDe(Number(m.miembro_id));
+          m.cuerpo_id = primerCuerpoDe(m);
         }
       }
 
       const suyos = require('../alcance').cuerposDe(req.user);
       const yaMarcados = new Map(
-        db.prepare('SELECT miembro_id, cuerpo_id FROM asistencia_detalle WHERE asistencia_id = ?')
+        db.prepare('SELECT miembro_id, no_miembro_id, cuerpo_id FROM asistencia_detalle WHERE asistencia_id = ?')
           .all(actividad.id)
-          .map((m) => [claveDe(m.miembro_id, m.cuerpo_id), Number(m.cuerpo_id)])
+          .map((m) => [claveDe(m, m.cuerpo_id), Number(m.cuerpo_id)])
       );
       // La comprobación es por PAR persona-cuerpo: marcar a alguien en un
       // cuerpo al que no pertenece es tan ajeno como marcar a un desconocido
       const ajeno = marcas.find((m) => {
-        const clave = claveDe(m.miembro_id, m.cuerpo_id);
+        const clave = claveDe(m, m.cuerpo_id);
         if (convocados.has(clave)) return false;
         if (!yaMarcados.has(clave)) return true; // ni convocado ni marcado antes
         return suyos.length ? !suyos.includes(yaMarcados.get(clave)) : false;
       });
       if (ajeno) {
-        const quien = db
-          .prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?')
-          .get(Number(ajeno.miembro_id));
+        const esNo = !!Number(ajeno.no_miembro_id);
+        const quien = esNo
+          ? db.prepare('SELECT nombres, apellidos FROM no_miembros WHERE id = ?').get(Number(ajeno.no_miembro_id))
+          : db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(Number(ajeno.miembro_id));
         if (!quien) {
           return res.status(400).json({
-            error: `Hay una marca de una persona que no está en el sistema (n.º ${ajeno.miembro_id}).`,
+            error: `Hay una marca de una persona que no está en el sistema `
+              + `(n.º ${esNo ? ajeno.no_miembro_id : ajeno.miembro_id}).`,
           });
         }
         const nombre = require('../nombres').paraMostrar(quien.nombres, quien.apellidos);
@@ -619,23 +655,29 @@ module.exports = {
          * quedar justificada en uno y ausente en el otro.
          */
         const borrar = db.prepare(
-          'DELETE FROM asistencia_detalle WHERE asistencia_id = ? AND miembro_id = ? AND COALESCE(cuerpo_id, 0) = ?'
+          `DELETE FROM asistencia_detalle
+            WHERE asistencia_id = ? AND COALESCE(miembro_id, 0) = ? AND COALESCE(no_miembro_id, 0) = ?
+              AND COALESCE(cuerpo_id, 0) = ?`
         );
         const insertar = db.prepare(
-          `INSERT INTO asistencia_detalle (asistencia_id, miembro_id, estado, motivo, detalle,
+          `INSERT INTO asistencia_detalle (asistencia_id, persona_tipo, miembro_id, no_miembro_id,
+                                           estado, motivo, detalle,
                                            cuerpo_id, fecha, iglesia_id, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         );
         let guardadas = 0;
         for (const m of marcas) {
-          const clave = claveDe(m.miembro_id, m.cuerpo_id);
+          const clave = claveDe(m, m.cuerpo_id);
           const donde = convocados.get(clave);
           const cuerpoId = (donde && donde.cuerpo_id) || yaMarcados.get(clave) || null;
-          borrar.run(actividad.id, m.miembro_id, Number(cuerpoId) || 0);
+          // La marca es de UNO de los dos registros: el otro lado va en blanco
+          const noMiembroId = Number(m.no_miembro_id) || null;
+          const miembroId = noMiembroId ? null : Number(m.miembro_id) || null;
+          borrar.run(actividad.id, miembroId || 0, noMiembroId || 0, Number(cuerpoId) || 0);
           if (!m.estado) continue; // sin marcar: no queda fila
           const justificado = m.estado === 'Justificado';
           insertar.run(
-            actividad.id, m.miembro_id, m.estado,
+            actividad.id, noMiembroId ? 'No miembro' : 'Miembro', miembroId, noMiembroId, m.estado,
             justificado ? m.motivo : null,
             justificado && MOTIVOS_CON_DETALLE.includes(m.motivo) ? String(m.detalle).trim() : null,
             cuerpoId, actividad.fecha, actividad.iglesia_id || null, req.user.id
@@ -692,6 +734,10 @@ module.exports = {
       const { tipo = 'general', desde, hasta } = req.query;
       const cuerpoId = req.query.cuerpo_id ? Number(req.query.cuerpo_id) : null;
       const miembroId = req.query.miembro_id ? Number(req.query.miembro_id) : null;
+      const noMiembroId = req.query.no_miembro_id ? Number(req.query.no_miembro_id) : null;
+      // El informe por persona sirve para las dos: quien está inscrito y quien
+      // sirve en un grupo sin estarlo
+      const unaPersona = noMiembroId || miembroId;
 
       const cond = ['1 = 1'];
       const params = [];
@@ -709,7 +755,8 @@ module.exports = {
       if (desde) { cond.push('d.fecha >= ?'); params.push(desde); }
       if (hasta) { cond.push('d.fecha <= ?'); params.push(hasta); }
       if (cuerpoId) { cond.push('d.cuerpo_id = ?'); params.push(cuerpoId); }
-      if (miembroId) { cond.push('d.miembro_id = ?'); params.push(miembroId); }
+      if (noMiembroId) { cond.push('d.no_miembro_id = ?'); params.push(noMiembroId); }
+      else if (miembroId) { cond.push('d.miembro_id = ?'); params.push(miembroId); }
       const where = 'WHERE ' + cond.join(' AND ');
 
       const porcentajes = (f) => {
@@ -727,9 +774,16 @@ module.exports = {
         COALESCE(SUM(CASE WHEN d.estado = 'Ausente'     THEN 1 ELSE 0 END), 0) AS ausentes,
         COALESCE(SUM(CASE WHEN d.estado = 'Justificado' THEN 1 ELSE 0 END), 0) AS justificados`;
 
+      /*
+       * Cuántas personas distintas. Se cuenta por registro y número —'m7',
+       * 'n7'—, no por número: el miembro n.º 7 y el no miembro n.º 7 son dos
+       * personas, y contarlas como una dejaba corto el total de los grupos.
+       */
+      const QUIEN = `CASE WHEN d.no_miembro_id IS NOT NULL THEN 'n' || d.no_miembro_id
+                          ELSE 'm' || d.miembro_id END`;
       const general = porcentajes(
         db.prepare(`SELECT ${SUMAS}, COUNT(DISTINCT d.asistencia_id) AS actividades,
-                           COUNT(DISTINCT d.miembro_id) AS personas
+                           COUNT(DISTINCT ${QUIEN}) AS personas
                       FROM asistencia_detalle d ${where}`).get(...params)
       );
 
@@ -757,12 +811,22 @@ module.exports = {
         .all(...params)
         .map(porcentajes);
 
+      // Una fila por persona, salga del registro que salga
       const porMiembro = db
-        .prepare(`SELECT d.miembro_id, m.nombres, m.apellidos, m.rut, ${SUMAS}
-                    FROM asistencia_detalle d LEFT JOIN miembros m ON m.id = d.miembro_id
-                   ${where} GROUP BY d.miembro_id ORDER BY m.apellidos, m.nombres`)
+        .prepare(`SELECT d.miembro_id, d.no_miembro_id,
+                         COALESCE(m.nombres, n.nombres) AS nombres,
+                         COALESCE(m.apellidos, n.apellidos) AS apellidos,
+                         COALESCE(m.rut, n.rut) AS rut, ${SUMAS}
+                    FROM asistencia_detalle d
+                    LEFT JOIN miembros m ON m.id = d.miembro_id
+                    LEFT JOIN no_miembros n ON n.id = d.no_miembro_id
+                   ${where} GROUP BY ${QUIEN} ORDER BY apellidos, nombres`)
         .all(...params)
-        .map((f) => porcentajes({ ...f, miembro: nombres.paraMostrar(f.nombres, f.apellidos) }));
+        .map((f) => porcentajes({
+          ...f,
+          miembro: nombres.paraMostrar(f.nombres, f.apellidos),
+          persona_tipo: f.no_miembro_id ? 'No miembro' : 'Miembro',
+        }));
 
       const porMotivo = db
         .prepare(`SELECT COALESCE(d.motivo, 'Sin motivo') AS motivo, COUNT(*) AS n
@@ -773,7 +837,7 @@ module.exports = {
       // Cuando alguien pertenece a varios cuerpos, su porcentaje se abre por
       // cuerpo: en uno puede andar al día y en otro no.
       let porMiembroCuerpo = [];
-      if (miembroId) {
+      if (unaPersona) {
         porMiembroCuerpo = db
           .prepare(`SELECT d.cuerpo_id, c.nombre AS cuerpo, ${SUMAS},
                            COUNT(DISTINCT d.asistencia_id) AS actividades
@@ -785,7 +849,7 @@ module.exports = {
 
       // En el informe por persona se detallan sus marcas una por una
       let marcas = [];
-      if (tipo === 'persona' && miembroId) {
+      if (tipo === 'persona' && unaPersona) {
         marcas = db
           .prepare(`SELECT d.fecha, d.estado, d.motivo, d.detalle, a.tipo_reunion AS actividad, c.nombre AS cuerpo
                       FROM asistencia_detalle d
