@@ -678,6 +678,9 @@ module.exports = {
       res.json({
         actividades,
         tipos: TIPOS_DE_ACTIVIDAD,
+        // Cada cuánto se puede repetir una actividad. Va desde acá y no escrito
+        // en la pantalla: quien manda sobre las reglas es quien las calcula.
+        reglas_de_repeticion: require('../asistencia-repeticion').REGLAS,
         puede_marcar: can(req.user, 'asistencia_detalle', 'create') && can(req.user, 'asistencia_detalle', 'edit'),
         puede_crear: can(req.user, 'asistencias', 'create'),
         puede_editar: can(req.user, 'asistencias', 'edit'),
@@ -994,6 +997,106 @@ module.exports = {
         marcas: marcasVisibles(actividad, db, req.user),
         tomada: quienLaPaso(actividad, db, req.user),
         ...conteo(actividad.id, db, suyos),
+      });
+    });
+
+    /**
+     * REPITE UNA ACTIVIDAD EN LAS FECHAS QUE LE SIGUEN.
+     *
+     * Se copia una actividad QUE YA EXISTE, no unos datos que llegan sueltos.
+     * Es a propósito: esa actividad ya pasó por el motor —sus cuerpos son de
+     * los que esta persona alcanza, su iglesia es una de las suyas, su tipo
+     * está en uso—, así que copiarla no puede colar nada que crearla a mano no
+     * dejaría pasar. Nada de eso hay que volver a comprobar acá.
+     *
+     * Cada fecha da una actividad INDEPENDIENTE. No se arma una serie con
+     * dueño: cambiarle el lugar a un domingo o suspender otro es lo que pasa de
+     * verdad, y una serie obligaría a preguntar en cada pantalla si el cambio
+     * es de una o de todas.
+     */
+    router.post('/asistencias/:id(\\d+)/repetir', requirePerm('asistencias', 'create'), (req, res) => {
+      const repeticion = require('../asistencia-repeticion');
+      const actividad = db.prepare('SELECT * FROM asistencias WHERE id = ?').get(req.params.id);
+      if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada' });
+      if (!require('../alcance').alcanza(module.exports, actividad, req.user)) {
+        return res.status(403).json({ error: 'Esa actividad está fuera de lo que tiene asignado' });
+      }
+
+      const regla = String((req.body && req.body.regla) || '');
+      const hasta = String((req.body && req.body.hasta) || '').slice(0, 10);
+      if (!repeticion.REGLAS.some((r) => r.valor === regla)) {
+        return res.status(400).json({ error: 'Indique cada cuánto se repite.' });
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
+        return res.status(400).json({ error: 'Indique hasta qué fecha se repite.' });
+      }
+      if (hasta <= actividad.fecha) {
+        return res.status(400).json({ error: 'La fecha de término tiene que ser posterior a la de la actividad.' });
+      }
+
+      const fechas = repeticion.fechasQueSiguen(actividad.fecha, regla, hasta);
+      if (!fechas.length) {
+        return res.status(400).json({ error: 'Entre esas dos fechas no se repite ninguna vez.' });
+      }
+
+      /*
+       * Un día que ya tiene esta misma actividad no se duplica.
+       *
+       * Pasa al repetir dos veces lo mismo —se probó, se borró la mitad y se
+       * volvió a intentar—, y una lista duplicada es peor que no tenerla: la
+       * gente marca en una y el informe cuenta las dos.
+       */
+      const mismaYa = db.prepare(
+        `SELECT fecha FROM asistencias
+          WHERE tipo_reunion = ? AND fecha IN (${fechas.map(() => '?').join(',')})
+            AND COALESCE(iglesia_id, 0) = ? AND COALESCE(cuerpos, '') = COALESCE(?, '')`
+      ).all(actividad.tipo_reunion, ...fechas, actividad.iglesia_id || 0, actividad.cuerpos);
+      const yaEstaban = new Set(mismaYa.map((f) => f.fecha));
+      const porCrear = fechas.filter((f) => !yaEstaban.has(f));
+
+      const crear = db.prepare(
+        `INSERT INTO asistencias (fecha, hora_inicio, tipo_reunion, nombre, cuerpos, lugar, observaciones,
+                                  iglesia_id, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      const creadas = db.transaction(() => {
+        const ids = [];
+        for (const fecha of porCrear) {
+          ids.push(crear.run(
+            fecha, actividad.hora_inicio || null, actividad.tipo_reunion, actividad.nombre || null,
+            actividad.cuerpos, actividad.lugar || null, actividad.observaciones || null,
+            actividad.iglesia_id || null, req.user.id
+          ).lastInsertRowid);
+        }
+        return ids;
+      }).immediate();
+
+      /*
+       * UNA línea en el Registro de Cambios, no cuarenta.
+       *
+       * Las actividades se vigilan —cambiarle la fecha o los cuerpos a una que
+       * ya tiene lista pasada no puede pasar en silencio—, pero armar el
+       * calendario del año escribiría cuarenta líneas iguales y taparía todo lo
+       * demás. Se anota el acto, que es lo que se va a buscar después.
+       */
+      if (creadas.length) {
+        require('../bitacora').anotarCambio({
+          def: module.exports,
+          accion: 'Repetición',
+          fila: actividad,
+          usuario: req.user,
+          detalle: `Creó ${creadas.length} actividad(es) más, ${repeticion.comoSeLee(actividad.fecha, regla)}`
+            + `, hasta el ${hasta}`,
+        });
+      }
+
+      res.json({
+        ok: true,
+        creadas: creadas.length,
+        ya_estaban: yaEstaban.size,
+        hasta: porCrear.length ? porCrear[porCrear.length - 1] : actividad.fecha,
+        tope: fechas.length >= repeticion.TOPE,
+        como_se_lee: repeticion.comoSeLee(actividad.fecha, regla),
       });
     });
 

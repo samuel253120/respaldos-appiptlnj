@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.127.0", fecha: "2026-08-27", titulo: "Una actividad que se repite se crea de una vez: «todos los domingos hasta fin de año», y cada una queda independiente para editarla o borrarla sola" },
   { version: "1.126.0", fecha: "2026-08-27", titulo: "Queda constancia de quién pasó cada lista y cuándo, y corregirla después deja una línea en el Registro de Cambios con lo que cambió" },
   { version: "1.125.0", fecha: "2026-08-27", titulo: "El avance «marcados de convocados» cuenta la lista que uno va a abrir, y el porcentaje se reparte entre los convocados: una lista a medio pasar se dice como tal" },
   { version: "1.124.0", fecha: "2026-08-27", titulo: "La pantalla de Asistencia ofrece los tipos y los motivos que mantiene la iglesia, y una actividad ya creada se puede volver a editar" },

@@ -946,6 +946,25 @@ Arriba, dos filtros: por **cuerpo** y por **tipo de actividad**.
 
 **3. ➕ Actividad.** Se crea sin salir de la pantalla: fecha (viene puesta la del día elegido), hora, tipo, **cuerpos convocados** —se tocan los que van—, lugar y observaciones. Al guardar queda elegida y con su lista lista para marcar.
 
+### 🔁 La que se repite se crea de una vez
+
+El servicio del domingo, el estudio del miércoles y el ensayo del sábado son los mismos todas las semanas. En el mismo diálogo, abajo, se dice **cada cuánto se repite** y **hasta cuándo**:
+
+| Se repite | Quiere decir |
+|---|---|
+| **Cada semana** | Todos los domingos, todos los miércoles… |
+| **Cada dos semanas** | Un sábado por medio |
+| **Cada mes, el mismo día de la semana** | El primer sábado de cada mes |
+| **Cada mes, el mismo día del mes** | El 12 de cada mes |
+
+La fecha de término viene puesta en el **31 de diciembre** de ese año, que es como se arma el calendario en enero. Antes de guardar, el diálogo dice cuántas van a quedar: *«Se crearán 42 actividad(es) más, hasta el 31-12-2026»*.
+
+**Cada fecha es una actividad independiente**, no una «serie» con dueño: se le cambia el lugar a un domingo, se suspende otro, se borra el de la semana de vacaciones, y las demás ni se enteran. Es lo que pasa de verdad, y una serie obligaría a preguntar en cada pantalla si el cambio es de una o de todas.
+
+Dos resguardos: un día que **ya tiene esa misma actividad no se duplica** —repetir dos veces lo mismo solo repone lo que falte, y una lista duplicada es peor que no tenerla—, y hay un **tope de 200** por vez, para que un año mal escrito (2926 en vez de 2026) no llene el calendario de mil actividades que después hay que borrar una por una. En el Registro de Cambios queda **una** línea, no cuarenta: *«Creó 42 actividad(es) más, todos los domingos, hasta el 2026-12-31»*.
+
+> ⚠️ **Hasta la 1.127.0 había que crearlas una por una.** Más de **150 al año** para una iglesia con tres reuniones semanales, cada una con su diálogo, su fecha y sus cuerpos marcados de nuevo.
+
 **4. La lista.** Al elegir una actividad, la pantalla baja sola a su lista:
 
 - Cada persona en su fila, con **el cuerpo por el que va** y tres botones grandes —**Presente**, **Ausente**, **Justificado**— de 46 píxeles de alto, cómodos para el pulgar. Volver a pulsar el mismo botón la desmarca.
@@ -1853,7 +1872,7 @@ Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesi
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro. Con `PREPARAR=1` llena la base con 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos para que la medición diga algo — y por eso **se niega a hacerlo si la base tiene fichas que no generó ella**: esos datos van directo a la base, sin pasar por el sistema, y una base con datos de una iglesia no se toca. Para medir, use una base aparte: `DATA_DIR=/tmp/carga`.
 
   `LIMPIAR=1 npm run carga` dice cuántos datos de prueba hay en una base y cuántas fichas son de verdad, sin borrar nada; `LIMPIAR=borrar` los borra. Se reconocen por sus señas: los RUT del 30.000.000 en adelante —un tramo que no está en uso—, los cuerpos «Cuerpo de prueba N» y los movimientos «Movimiento de prueba N».
-- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 940 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 971 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
 
   Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
 
@@ -1885,6 +1904,7 @@ DELETE /api/<modulo>/:id
 GET    /api/asistencias/agenda      actividades de un período, con su avance
 GET    /api/asistencias/:id/lista   integrantes convocados con su marca
 POST   /api/asistencias/:id/lista   guarda todas las marcas de una vez
+POST   /api/asistencias/:id/repetir copia la actividad en las fechas que le siguen
 GET    /api/asistencias/informe     informes y promedios
 GET    /api/tesoreria/resumen       ingresos, egresos, balance y por categoría
 POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importación masiva

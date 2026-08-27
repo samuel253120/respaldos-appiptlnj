@@ -10714,6 +10714,7 @@ function abrirActividad(actividad) {
           <input type="text" id="acLugar" value="${esc(editando ? actividad.lugar || '' : '')}" /></div>
         <div class="fld" style="margin-top:12px"><label>Observaciones</label>
           <textarea id="acObs">${esc(editando ? actividad.observaciones || '' : '')}</textarea></div>
+        ${editando ? '' : bloqueDeRepeticion()}
         <div class="form-error" id="acError" style="padding:0"></div>
       </div>
       <div class="modal-foot">
@@ -10746,7 +10747,33 @@ function abrirActividad(actividad) {
       const guardada = editando
         ? await api('PUT', `/asistencias/${actividad.id}`, datos)
         : await api('POST', '/asistencias', datos);
-      toast(editando ? 'Actividad actualizada' : 'Actividad creada');
+
+      /*
+       * Las que se repiten se piden DESPUÉS y aparte, copiando la que se acaba
+       * de crear. Así la primera pasa por todas las comprobaciones de siempre
+       * —sus cuerpos, su iglesia, su tipo— y las copias heredan una actividad
+       * ya revisada, sin que haya que comprobar nada dos veces.
+       */
+      let repetidas = null;
+      if (!editando) {
+        const pedido = loQueSeRepite(fondo);
+        if (pedido) {
+          try {
+            repetidas = await api('POST', `/asistencias/${guardada.id}/repetir`, pedido);
+          } catch (e) {
+            // La actividad SÍ quedó creada: se dice lo uno y lo otro, en vez de
+            // dejar a la persona creyendo que no se guardó nada
+            toast(`Se creó la actividad, pero no se pudo repetir: ${e.message}`, true);
+          }
+        }
+      }
+
+      if (repetidas && repetidas.creadas) {
+        toast(`Actividad creada, y ${fmtNumero(repetidas.creadas)} más ${repetidas.como_se_lee}`
+          + (repetidas.ya_estaban ? ` (${fmtNumero(repetidas.ya_estaban)} ya estaban)` : ''));
+      } else if (!repetidas) {
+        toast(editando ? 'Actividad actualizada' : 'Actividad creada');
+      }
       cerrar();
       ASIS.dia = datos.fecha;
       ASIS.mes = new Date(datos.fecha + 'T00:00:00');
@@ -10756,6 +10783,123 @@ function abrirActividad(actividad) {
       fondo.querySelector('#acError').textContent = e.message;
     }
   });
+
+  if (!editando) prepararRepeticion(fondo);
+}
+
+/**
+ * «Esta se repite todos los domingos hasta fin de año.»
+ *
+ * El servicio del domingo, el estudio del miércoles y el ensayo del sábado son
+ * los mismos todas las semanas. Se creaban de a una: más de 150 al año para
+ * una iglesia con tres reuniones semanales.
+ *
+ * Cada fecha da una actividad independiente —se edita o se borra por separado,
+ * como cualquier otra—, no una «serie» con dueño.
+ */
+function bloqueDeRepeticion() {
+  const reglas = (ASIS.agenda && ASIS.agenda.reglas_de_repeticion) || [];
+  if (!reglas.length) return '';
+  return `
+    <div class="fld ac-repite" style="margin-top:14px">
+      <label for="acRepite">🔁 Se repite</label>
+      <div class="modal-fila">
+        <select id="acRepite">
+          <option value="">No se repite</option>
+          ${reglas.map((r) => `<option value="${esc(r.valor)}">${esc(r.label)}</option>`).join('')}
+        </select>
+        <input type="date" id="acRepiteHasta" aria-label="Hasta qué fecha se repite" hidden />
+      </div>
+      <div class="help" id="acRepiteAviso" hidden></div>
+    </div>`;
+}
+
+/** Lo que hay que pedirle al servidor, o null si no se repite. */
+function loQueSeRepite(fondo) {
+  const regla = fondo.querySelector('#acRepite');
+  const hasta = fondo.querySelector('#acRepiteHasta');
+  if (!regla || !regla.value || !hasta || !hasta.value) return null;
+  return { regla: regla.value, hasta: hasta.value };
+}
+
+/** Muestra el «hasta» al elegir una regla, y dice cuántas se van a crear. */
+function prepararRepeticion(fondo) {
+  const regla = fondo.querySelector('#acRepite');
+  if (!regla) return;
+  const hasta = fondo.querySelector('#acRepiteHasta');
+  const aviso = fondo.querySelector('#acRepiteAviso');
+  const fecha = fondo.querySelector('#acFecha');
+
+  // De fábrica, hasta el 31 de diciembre del año de la actividad: es el año
+  // eclesiástico que la iglesia arma en enero
+  const finDeAno = () => `${String(fecha.value || HOY()).slice(0, 4)}-12-31`;
+
+  const contar = () => {
+    const hay = !!regla.value;
+    hasta.hidden = !hay;
+    aviso.hidden = !hay;
+    if (!hay) return;
+    if (!hasta.value || hasta.value <= (fecha.value || '')) hasta.value = finDeAno();
+    /*
+     * La cuenta se hace acá para poder decirla ANTES de guardar —nadie quiere
+     * enterarse de que creó cuarenta actividades después de crearlas—, pero el
+     * servidor la vuelve a hacer y es él quien manda: esto es un aviso, no la
+     * decisión.
+     */
+    const cuantas = cuantasVecesSeRepite(fecha.value, regla.value, hasta.value);
+    aviso.textContent = cuantas
+      ? `Se crearán ${fmtNumero(cuantas)} actividad(es) más, hasta el ${fechaCorta(hasta.value)}. Cada una se edita y se borra por separado.`
+      : 'Entre esas dos fechas no se repite ninguna vez.';
+  };
+
+  regla.addEventListener('change', contar);
+  hasta.addEventListener('change', contar);
+  fecha.addEventListener('change', () => { if (regla.value) contar(); });
+  contar();
+}
+
+/**
+ * Cuántas veces se repite entre dos fechas. Es el mismo cálculo que hace el
+ * servidor (server/asistencia-repeticion.js), acá solo para poder avisarlo
+ * antes de guardar; la que vale es la del servidor.
+ */
+function cuantasVecesSeRepite(desde, regla, hasta) {
+  const bien = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+  if (!bien(desde) || !bien(hasta) || hasta <= desde) return 0;
+  const dia = (iso) => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+  const texto = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const DIA = 86400000;
+  const fin = dia(hasta);
+  const inicio = dia(desde);
+  const TOPE = 200;
+
+  if (regla === 'semanal' || regla === 'quincenal') {
+    const salto = (regla === 'semanal' ? 7 : 14) * DIA;
+    return Math.min(TOPE, Math.floor((fin - inicio) / salto));
+  }
+  const [anio, mes, numero] = desde.split('-').map(Number);
+  const diasDelMes = (a, m) => new Date(Date.UTC(a, m, 0)).getUTCDate();
+  let cuantas = 0;
+  for (let i = 1; cuantas < TOPE; i++) {
+    const m = mes - 1 + i;
+    const a = anio + Math.floor(m / 12);
+    const mm = (m % 12) + 1;
+    if (Date.UTC(a, mm - 1, 1) > fin) break;
+    let cae = null;
+    if (regla === 'mensual_dia') {
+      if (numero <= diasDelMes(a, mm)) cae = texto(Date.UTC(a, mm - 1, numero));
+    } else if (regla === 'mensual_semana') {
+      const diaSemana = new Date(inicio).getUTCDay();
+      const cual = Math.floor((numero - 1) / 7) + 1;
+      const primero = new Date(Date.UTC(a, mm - 1, 1)).getUTCDay();
+      const d = 1 + ((diaSemana - primero + 7) % 7) + (cual - 1) * 7;
+      if (d <= diasDelMes(a, mm)) cae = texto(Date.UTC(a, mm - 1, d));
+    } else {
+      return 0;
+    }
+    if (cae && dia(cae) > inicio && dia(cae) <= fin) cuantas++;
+  }
+  return cuantas;
 }
 
 /* ---------------- pasar lista ---------------- */
