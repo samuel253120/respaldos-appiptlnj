@@ -28,7 +28,21 @@
  */
 const nombres = require('../nombres');
 
-const MOTIVOS_CON_DETALLE = ['Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
+/**
+ * Qué motivos exigen que se escriba el detalle.
+ *
+ * No es una lista escrita acá: cada motivo lo dice en su ficha (módulo
+ * «Motivos de Ausencia»), así que al agregar «Viaje» la iglesia decide si hay
+ * que explicarlo o no, sin tocar el programa.
+ *
+ * Estaba fija, y eso hacía que el módulo se contradijera consigo mismo: la
+ * ficha de una marca suelta respetaba lo configurado —lo lee de la tabla— y la
+ * toma de lista, que es por donde entran todas, seguía exigiendo los tres de
+ * fábrica. Coincidían por casualidad; el día que la iglesia marcara «Trabajo»
+ * como que pide explicación, no iba a pasar nada. Se pide en el momento y no
+ * al cargar el archivo, para que un cambio valga en cuanto se guarda.
+ */
+const motivosConDetalle = () => require('./asistencia_detalle').motivosQuePidenDetalle();
 
 /** Las actividades a las que la iglesia toma asistencia. */
 const { TIPOS_DE_ACTIVIDAD } = require('../actividades');
@@ -516,7 +530,7 @@ module.exports = {
           cuerpos_convocados: convocadosEnTotal,
         },
         personas,
-        motivos_con_detalle: MOTIVOS_CON_DETALLE,
+        motivos_con_detalle: motivosConDetalle(),
         puede_marcar: can(req.user, 'asistencia_detalle', 'create') && can(req.user, 'asistencia_detalle', 'edit'),
       });
     });
@@ -557,7 +571,7 @@ module.exports = {
         }
         if (m.estado === 'Justificado') {
           if (!m.motivo) return res.status(400).json({ error: 'Indique el motivo de cada justificación' });
-          if (MOTIVOS_CON_DETALLE.includes(m.motivo) && !String(m.detalle || '').trim()) {
+          if (motivosConDetalle().includes(m.motivo) && !String(m.detalle || '').trim()) {
             return res.status(400).json({ error: `El motivo "${m.motivo}" necesita que se especifique el detalle` });
           }
         }
@@ -679,7 +693,7 @@ module.exports = {
           insertar.run(
             actividad.id, noMiembroId ? 'No miembro' : 'Miembro', miembroId, noMiembroId, m.estado,
             justificado ? m.motivo : null,
-            justificado && MOTIVOS_CON_DETALLE.includes(m.motivo) ? String(m.detalle).trim() : null,
+            justificado && motivosConDetalle().includes(m.motivo) ? String(m.detalle).trim() : null,
             cuerpoId, actividad.fecha, actividad.iglesia_id || null, req.user.id
           );
           guardadas++;

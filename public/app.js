@@ -553,6 +553,35 @@ function opcionesDe(f, valores) {
   return (optionsCache[rutaOpciones(f, valores)] || []).map((o) => o.label);
 }
 
+/**
+ * Las opciones de un campo de OTRO módulo, listas para usar.
+ *
+ * Un campo puede traer su lista de dos maneras: escrita en el módulo
+ * (`options`) o pedida a una ruta (`optionsRoute`), que es como vienen todas
+ * las que mantiene la iglesia —los tipos de actividad, los motivos de
+ * ausencia, las categorías de tesorería—.
+ *
+ * Los formularios del sistema ya resuelven las dos por su cuenta. Las
+ * pantallas hechas a mano —la de Asistencia— leían `f.options` a secas, así
+ * que con un campo del segundo tipo recibían una lista VACÍA y no lo decían:
+ * el desplegable salía sin nada. Se midió lo que eso costaba: con doce tipos
+ * de actividad configurados, el filtro del calendario no ofrecía ninguno, una
+ * actividad nueva quedaba siempre con el tipo de fábrica, y editar una ya
+ * creada era imposible —el diálogo mandaba el tipo en blanco y el servidor,
+ * con razón, lo rechazaba—.
+ *
+ * Esto lo resuelve una vez: pide la ruta si hace falta y devuelve las
+ * etiquetas. Hay que esperarlo, porque puede tener que preguntar.
+ */
+async function opcionesDelCampo(modulo, campo) {
+  const f = MOD[modulo] && (MOD[modulo].fields || []).find((x) => x.name === campo);
+  if (!f) return [];
+  if (!f.optionsRoute) return f.options || [];
+  const ruta = rutaOpciones(f, {});
+  await getOptions(ruta).catch(() => []);
+  return opcionesDe(f, {});
+}
+
 /** Campos de los que depende el selector de otro campo. */
 function camposDeLaRuta(f) {
   const ruta = f.optionsRoute || '';
@@ -10160,6 +10189,10 @@ const ASIS = {
   actividadId: null,
   agenda: null,
   bajadoA: null,      // a qué lista ya se bajó la pantalla: ver renderPasarLista
+  // Las listas que mantiene la iglesia, pedidas una vez al abrir la pantalla:
+  // los tipos de actividad y los motivos de ausencia (ver opcionesDelCampo)
+  tipos: null,
+  motivos: null,
 };
 
 const ISO = (f) => `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
@@ -10259,6 +10292,12 @@ async function viewAsistencia(precarga) {
   });
 
   await getOptions('cuerpos').catch(() => []);
+  // Las listas que mantiene la iglesia, de una vez: el filtro, el diálogo de
+  // la actividad y los motivos al justificar salen de acá
+  [ASIS.tipos, ASIS.motivos] = await Promise.all([
+    opcionesDelCampo('asistencias', 'tipo_reunion'),
+    opcionesDelCampo('asistencia_detalle', 'motivo'),
+  ]);
   pintarAcciones();
   pintarFiltros();
   await cargarAgenda();
@@ -10293,7 +10332,9 @@ function pintarAcciones() {
 
 function pintarFiltros() {
   const cuerpos = optionsCache['cuerpos'] || [];
-  const tipos = (MOD['asistencias'].fields.find((f) => f.name === 'tipo_reunion') || {}).options || [];
+  // Los tipos los mantiene la iglesia, así que vienen de su ruta y no del
+  // campo. Ya están pedidos al abrir la pantalla (ver viewAsistencia).
+  const tipos = ASIS.tipos || [];
   const zona = document.getElementById('asisFiltros');
   zona.innerHTML = `
     <!-- El «title» es la explicación que sale al pasar por encima; el nombre
@@ -10575,7 +10616,17 @@ function refrescarAvance(resumen) {
 
 function abrirActividad(actividad) {
   const editando = !!actividad;
-  const tipos = (MOD['asistencias'].fields.find((f) => f.name === 'tipo_reunion') || {}).options || [];
+  const tipos = ASIS.tipos || [];
+  /*
+   * Al crear, viene marcado el tipo que la iglesia fijó en Configuración; al
+   * editar, el que la actividad tenga. Antes no venía marcado ninguno porque
+   * la lista salía vacía, y ahí estaba el problema de fondo: el diálogo
+   * mandaba el tipo en blanco y una actividad ya creada no se podía guardar.
+   */
+  const campoTipo = (MOD['asistencias'].fields || []).find((f) => f.name === 'tipo_reunion') || {};
+  const tipoPuesto = editando
+    ? actividad.tipo_reunion
+    : (tipos.includes(campoTipo.default) ? campoTipo.default : tipos[0] || '');
   const cuerpos = optionsCache['cuerpos'] || [];
   const elegidos = new Set(editando ? actividad.cuerpos.map((c) => c.id) : (ASIS.cuerpo_id ? [Number(ASIS.cuerpo_id)] : []));
 
@@ -10592,7 +10643,13 @@ function abrirActividad(actividad) {
             <input type="time" id="acHora" value="${esc(editando ? actividad.hora_inicio || '' : '')}" /></div>
         </div>
         <div class="fld" style="margin-top:12px"><label>Actividad <span class="req">*</span></label>
-          <select id="acTipo">${tipos.map((t) => `<option value="${esc(t)}" ${editando && actividad.tipo_reunion === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+          <select id="acTipo">${tipos.length
+            ? tipos.map((t) => `<option value="${esc(t)}" ${t === tipoPuesto ? 'selected' : ''}>${esc(t)}</option>`).join('')
+            // Sin ningún tipo en uso no se inventa uno: se dice, y el guardado
+            // avisa igual. Callarlo es lo que hacía que el diálogo pareciera
+            // andar y no anduviera.
+            : '<option value="">— No hay tipos de actividad en uso —</option>'}</select>
+          ${tipos.length ? '' : '<div class="help">Agregue uno en Tipos de Actividad, o vuelva a activar los que había.</div>'}
         </div>
         <div class="fld" style="margin-top:12px">
           <label>Cuerpos convocados <span class="req">*</span></label>
@@ -10671,9 +10728,12 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   // Pasar lista depende del permiso de "Toma de Asistencia", no del de crear
   // actividades: el servidor lo resuelve y lo dice aquí.
   const puedeEditar = !!datos.puede_marcar;
-  const MOTIVOS = (MOD['asistencia_detalle']
-    ? (MOD['asistencia_detalle'].fields.find((f) => f.name === 'motivo') || {}).options
-    : null) || ['Trabajo', 'Enfermedad', 'Emergencia', 'Otra actividad de la iglesia', 'Otro motivo'];
+  // Los motivos los mantiene la iglesia. Se leen de donde ya quedaron pedidos
+  // al abrir la pantalla; si esta lista se abre desde otro lado —la ficha de un
+  // acta—, se piden acá mismo.
+  const MOTIVOS = (ASIS.motivos && ASIS.motivos.length)
+    ? ASIS.motivos
+    : await opcionesDelCampo('asistencia_detalle', 'motivo');
   const CON_DETALLE = datos.motivos_con_detalle || [];
   const CLAVE = `pasarlista:${asistenciaId}`;
 
