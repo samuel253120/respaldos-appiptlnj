@@ -76,6 +76,16 @@ module.exports = {
   listFields: ['nombres', 'apellidos', 'rut', 'telefono', 'asistencia', 'iglesia_id'],
   filterFields: ['asistencia', 'iglesia_id'],
   defaultSort: { field: 'apellidos', dir: 'asc' },
+
+  /**
+   * El `miembro_id` de esta ficha NO dice de quién es: dice en qué ficha de
+   * miembro se convirtió al inscribirse. Con la regla general del alcance por
+   * cuerpo, a quien tiene un cuerpo asignado se le escondía todo el registro
+   * salvo las poquísimas fichas de gente que además se inscribió y quedó en
+   * uno de sus cuerpos. Estas fichas se acotan por iglesia y nada más, que es
+   * como estaban antes de que existiera esa columna.
+   */
+  alcance: { porMiembro: false },
   computed: [
     {
       name: 'edad', label: 'Edad', type: 'texto',

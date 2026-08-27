@@ -165,8 +165,21 @@ function condiciones(def, usuario, params) {
   }
 
   // ---- Por cuerpo ----
+  const suAlcance = def.alcance || {};
   if (cuerpos.length) {
-    if (def.name === 'cuerpos') {
+    if (suAlcance.comoSuPadre) {
+      /*
+       * «Lo mío se ve exactamente donde se ve mi solicitud.»
+       *
+       * Lo que cuelga de un trámite —las personas que involucra, sus
+       * documentos, su seguimiento— no tiene alcance propio: se ve si se ve
+       * aquello de lo que cuelga, y no si se ve la persona que aparece dentro.
+       */
+      const { modulo, campo } = suAlcance.comoSuPadre;
+      const padre = require('./registry').getModule(modulo);
+      const suyas = padre ? condiciones(padre, usuario, params) : null;
+      if (suyas) partes.push(`"${campo}" IN (SELECT id FROM "${modulo}" WHERE ${suyas})`);
+    } else if (def.name === 'cuerpos') {
       partes.push(enLista('id', cuerpos, params));
     } else if (def.name === 'asistencias') {
       // Los cuerpos convocados se guardan como lista
@@ -177,8 +190,23 @@ function condiciones(def, usuario, params) {
       partes.push(enLista('cuerpo_id', cuerpos, params));
     } else if (def.name === 'miembros') {
       partes.push(enLista('id', miembrosDeCuerpos(cuerpos), params) || '1 = 0');
-    } else if (tieneCampo('miembro_id')) {
-      partes.push(enLista('miembro_id', miembrosDeCuerpos(cuerpos), params) || '1 = 0');
+    } else if (tieneCampo('miembro_id') && suAlcance.porMiembro !== false) {
+      const deSuGente = enLista('miembro_id', miembrosDeCuerpos(cuerpos), params) || '1 = 0';
+      if (suAlcance.tambienSuyo && usuario && usuario.id) {
+        /*
+         * «…o lo tengo yo a cargo.»
+         *
+         * En una solicitud el `miembro_id` no dice de quién es el registro:
+         * dice quién la presentó. De la solicitud es responsable otra persona,
+         * y a esa el sistema le avisa, la persigue si no responde y le pone un
+         * enlace. Sin esta parte, ese enlace le contestaba que la solicitud
+         * está fuera de lo que tiene asignado.
+         */
+        params.push(usuario.id);
+        partes.push(`(${deSuGente} OR "${suAlcance.tambienSuyo}" = ?)`);
+      } else {
+        partes.push(deSuGente);
+      }
     }
   }
 
@@ -228,14 +256,29 @@ function alcanza(def, fila, usuario) {
     }
   }
 
+  const suAlcance = def.alcance || {};
   if (cuerpos.length) {
+    // La misma regla que el listado, fila por fila: si acá dijera otra cosa,
+    // se vería en la lista algo que después no se deja abrir, o al revés
+    if (suAlcance.comoSuPadre) {
+      const { modulo, campo } = suAlcance.comoSuPadre;
+      const padre = require('./registry').getModule(modulo);
+      if (!padre || !fila[campo]) return false;
+      const suya = db.prepare(`SELECT * FROM "${modulo}" WHERE id = ?`).get(fila[campo]);
+      return !!suya && alcanza(padre, suya, usuario);
+    }
     if (def.name === 'cuerpos') return cuerpos.includes(Number(fila.id));
     if (def.name === 'asistencias') return lista(fila.cuerpos).some((c) => cuerpos.includes(c));
     if (fila.cuerpo_id !== undefined && def.fields.some((f) => f.name === 'cuerpo_id')) {
       return cuerpos.includes(Number(fila.cuerpo_id));
     }
     if (def.name === 'miembros') return miembrosDeCuerpos(cuerpos).includes(Number(fila.id));
-    if (fila.miembro_id !== undefined && def.fields.some((f) => f.name === 'miembro_id')) {
+    if (suAlcance.tambienSuyo && usuario && usuario.id
+        && Number(fila[suAlcance.tambienSuyo]) === Number(usuario.id)) {
+      return true; // lo tiene a cargo: es suyo aunque el solicitante no sea de los suyos
+    }
+    if (suAlcance.porMiembro !== false
+        && fila.miembro_id !== undefined && def.fields.some((f) => f.name === 'miembro_id')) {
       return miembrosDeCuerpos(cuerpos).includes(Number(fila.miembro_id));
     }
   }

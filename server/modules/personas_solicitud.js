@@ -25,6 +25,15 @@ module.exports = {
   searchFields: ['persona', 'relacion', 'observaciones'],
   listFields: ['solicitud_id', 'persona', 'persona_tipo', 'relacion'],
   defaultSort: { field: 'id', dir: 'asc' },
+  /**
+   * Se ve exactamente donde se ve su solicitud.
+   *
+   * Sin esto, el alcance por cuerpo miraba a la persona que aparece dentro y
+   * no al trámite del que cuelga: en una solicitud que sí se puede abrir,
+   * desaparecían de la pestaña las personas que no fueran de sus cuerpos.
+   */
+  alcance: { comoSuPadre: { modulo: 'solicitudes', campo: 'solicitud_id' } },
+
   fields: [
     { name: 'solicitud_id', label: 'Solicitud', type: 'ref', ref: 'solicitudes', required: true },
     {

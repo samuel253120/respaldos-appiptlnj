@@ -25,6 +25,15 @@ module.exports = {
   searchFields: ['nombre', 'observaciones'],
   listFields: ['solicitud_id', 'tipo', 'nombre', 'fecha', 'archivo'],
   defaultSort: { field: 'fecha', dir: 'desc' },
+  /**
+   * Se ve exactamente donde se ve su solicitud.
+   *
+   * Sin esto, el alcance por cuerpo miraba a la persona que aparece dentro y
+   * no al trámite del que cuelga: en una solicitud que sí se puede abrir,
+   * los antecedentes quedaban acotados por una regla que no tiene nada que ver con ellos.
+   */
+  alcance: { comoSuPadre: { modulo: 'solicitudes', campo: 'solicitud_id' } },
+
   fields: [
     { name: 'solicitud_id', label: 'Solicitud', type: 'ref', ref: 'solicitudes', required: true },
     {

@@ -28,6 +28,15 @@ module.exports = {
   searchFields: ['descripcion', 'tipo'],
   listFields: ['fecha', 'solicitud_id', 'tipo', 'descripcion', 'registrado_por', 'origen'],
   defaultSort: { field: 'id', dir: 'desc' },
+  /**
+   * Se ve exactamente donde se ve su solicitud.
+   *
+   * Sin esto, el alcance por cuerpo miraba a la persona que aparece dentro y
+   * no al trámite del que cuelga: en una solicitud que sí se puede abrir,
+   * el seguimiento quedaba acotado por una regla que no tiene nada que ver con él.
+   */
+  alcance: { comoSuPadre: { modulo: 'solicitudes', campo: 'solicitud_id' } },
+
   fields: [
     { name: 'solicitud_id', label: 'Solicitud', type: 'ref', ref: 'solicitudes', required: true },
     // No va marcada como obligatoria: el sistema la pone sola si viene en

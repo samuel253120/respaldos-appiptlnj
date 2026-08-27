@@ -96,6 +96,28 @@ module.exports = {
   printable: true,
   ESTADOS,
   CERRADOS,
+
+  /**
+   * QUIÉN VE UNA SOLICITUD, cuando quien mira tiene cuerpos asignados.
+   *
+   * El alcance por cuerpo tiene una regla general que casi siempre acierta: si
+   * un módulo lleva `miembro_id`, ese campo dice DE QUIÉN ES la ficha, y se
+   * muestra solo lo de la gente de sus cuerpos. Vale para la bitácora de un
+   * miembro, para sus documentos, para sus certificados.
+   *
+   * Acá no. En una solicitud el `miembro_id` dice quién la PRESENTÓ; de la
+   * solicitud responde otra persona. Con la regla general, a quien tiene un
+   * cuerpo asignado se le escondían las solicitudes que llevaba él mismo si el
+   * solicitante era de otro cuerpo —y TODAS las de gente no inscrita, que ni
+   * siquiera tienen ese número—. El sistema le avisaba «quedó a su cargo la
+   * solicitud 0002», lo perseguía por no responderla, y al abrir el enlace le
+   * contestaba que está fuera de lo que tiene asignado. Medido: de tres
+   * solicitudes a su nombre, veía una.
+   *
+   * Así que además de las de su gente, ve las que tiene a cargo. No se abre
+   * nada más: lo que se deja de esconder es lo que ya era suyo.
+   */
+  alcance: { tambienSuyo: 'responsable_id' },
   fields: [
     {
       name: 'numero', label: 'N.º de solicitud', type: 'text', readonly: true, unique: true,

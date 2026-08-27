@@ -223,7 +223,19 @@ En la ficha de cada usuario, el administrador decide **hasta dónde llega**:
 | **Iglesia principal** | Con cuál trabaja por omisión (la que se propone al crear registros). Tiene que estar entre las de arriba; con una sola asignada, queda esa. |
 | **Cuerpos que administra** | Uno o varios. Marcando alguno, dentro de sus iglesias **solo ve lo de esos cuerpos**. Sin ninguno, ve todos los de sus iglesias. |
 
-**Con cuerpos asignados**, el usuario ve únicamente: esos cuerpos, **sus integrantes** (y de ellos su bitácora, documentos, certificados, solicitudes…), sus **actividades y asistencias**, sus **directivas**, sus **actas** y su **inventario**. Lo demás de la iglesia —los otros cuerpos, los miembros que no son de los suyos, la tesorería general— no le aparece.
+**Con cuerpos asignados**, el usuario ve únicamente: esos cuerpos, **sus integrantes** (y de ellos su bitácora, documentos y certificados), sus **actividades y asistencias**, sus **directivas**, sus **actas** y su **inventario**. Lo demás de la iglesia —los otros cuerpos, los miembros que no son de los suyos, la tesorería general— no le aparece.
+
+**Tres excepciones, donde el número de miembro no dice de quién es el registro.** La regla de arriba se apoya en que un módulo con `miembro_id` guarda fichas *de esa persona*. En tres casos no es así, y aplicarla escondía datos sin que nada lo dijera:
+
+| Dónde | Qué dice ahí el número de miembro | Cómo se acota |
+|---|---|---|
+| **Solicitudes** | Quién la **presentó** — de responderla se encarga otra persona | Las de su gente **y las que tiene a cargo** |
+| **Personas, documentos e historial de una solicitud** | La persona que aparece dentro, no el trámite del que cuelgan | Se ven **donde se ve su solicitud** |
+| **No Miembros** | En qué ficha de miembro se **convirtió al inscribirse** | Por iglesia y nada más |
+
+> Sin la primera, a quien tenía un cuerpo asignado se le escondían las solicitudes que llevaba él mismo si el solicitante era de otro cuerpo —y **todas las de gente no inscrita**, que ni siquiera tienen ese número—. El sistema le avisaba «quedó a su cargo la solicitud 0002», lo perseguía por no responderla, y al abrir el enlace le contestaba que está fuera de lo que tiene asignado.
+>
+> **No se abre nada más:** lo que se deja de esconder es lo que ya era suyo. Una solicitud que no lleva él y que no es de su gente sigue sin aparecerle.
 
 Todo esto **lo verifica el servidor en cada consulta y en cada guardado**, no solo la pantalla: quien tiene dos iglesias asignadas no puede crear un registro en una tercera («Esa iglesia no está entre las que tiene asignadas»), y quien tiene un cuerpo asignado no puede abrir la ficha de un miembro de otro («Ese registro está fuera de lo que tiene asignado»).
 

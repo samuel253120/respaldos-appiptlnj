@@ -232,3 +232,106 @@ test('un usuario que no existe no alcanza nada', () => {
   assert.deepEqual(alcance.cuerposDe(null), []);
   assert.deepEqual(alcance.iglesiasDe(null), []);
 });
+
+/* ─────────────────────────────────────────────────────────────────────
+   CUANDO EL `miembro_id` NO DICE DE QUIÉN ES EL REGISTRO
+
+   El alcance por cuerpo tiene una regla general que casi siempre acierta:
+   si un módulo lleva `miembro_id`, ese campo dice de quién es la ficha, y a
+   quien tiene cuerpos asignados se le muestra solo lo de su gente. Vale para
+   la bitácora de un miembro, para sus documentos, para sus certificados.
+
+   Hay tres módulos donde no vale, y en los tres el resultado era el mismo:
+   datos que desaparecían sin que nada lo dijera.
+
+     SOLICITUDES          su `miembro_id` es quien la PRESENTÓ; de la solicitud
+                          responde otra persona. Se le escondían a quien las
+                          llevaba, y el sistema igual le avisaba y le ponía un
+                          enlace que contestaba 403.
+     LO QUE CUELGA DE     las personas, los documentos y el seguimiento de una
+     UNA SOLICITUD        solicitud se acotaban mirando a la persona que
+                          aparece dentro, no al trámite del que cuelgan.
+     NO MIEMBROS          su `miembro_id` dice en qué ficha de miembro se
+                          convirtió al inscribirse. Con la regla general se
+                          escondía el registro entero.
+
+   Lo que se cuida acá es que la excepción sea EXACTAMENTE esa: que se deje de
+   esconder lo que ya era suyo, y que no se abra nada más.
+   ───────────────────────────────────────────────────────────────────── */
+
+const SOLICITUDES = {
+  ...modulo('solicitudes', ['iglesia_id', 'miembro_id', 'responsable_id', 'asunto']),
+  alcance: { tambienSuyo: 'responsable_id' },
+};
+const PERSONAS_SOL = {
+  ...modulo('personas_solicitud', ['iglesia_id', 'miembro_id', 'solicitud_id']),
+  alcance: { comoSuPadre: { modulo: 'solicitudes', campo: 'solicitud_id' } },
+};
+const NO_MIEMBROS = {
+  ...modulo('no_miembros', ['iglesia_id', 'miembro_id', 'nombres']),
+  alcance: { porMiembro: false },
+};
+const BITACORA = modulo('bitacora', ['iglesia_id', 'miembro_id', 'descripcion']);
+
+const conCuerpo = usuario({ id: 7, iglesias: '[1]', cuerpos: '[3]' });
+
+test('una solicitud también es suya si la tiene a cargo', () => {
+  const params = [];
+  const sql = alcance.condiciones(SOLICITUDES, conCuerpo, params);
+  assert.ok(/responsable_id" = \?/.test(sql), `falta la parte de «o la llevo yo»: ${sql}`);
+  assert.ok(/ OR /.test(sql), 'tiene que SUMARSE a lo de su gente, no reemplazarlo');
+  assert.equal(params[params.length - 1], 7, 'el último parámetro es su id de usuario');
+});
+
+test('y fila por fila dice lo mismo que el listado', () => {
+  // Si acá dijera otra cosa, se vería en la lista algo que no se deja abrir
+  const deSuGente = { iglesia_id: 1, miembro_id: 999, responsable_id: 99 };
+  const suya = { iglesia_id: 1, miembro_id: 999, responsable_id: 7 };
+  const ajena = { iglesia_id: 1, miembro_id: 999, responsable_id: 99 };
+  assert.equal(alcance.alcanza(SOLICITUDES, suya, conCuerpo), true, 'la que lleva él, sí');
+  assert.equal(alcance.alcanza(SOLICITUDES, ajena, conCuerpo), false, 'la que no es suya ni de su gente, no');
+  assert.equal(alcance.alcanza(SOLICITUDES, deSuGente, conCuerpo), false);
+});
+
+test('NO SE ABRE NADA MÁS: sin cuerpos asignados nada de esto cambia', () => {
+  const params = [];
+  const sinCuerpos = usuario({ id: 7, iglesias: '[1]', cuerpos: '[]' });
+  const sql = alcance.condiciones(SOLICITUDES, sinCuerpos, params);
+  assert.ok(!/responsable_id/.test(sql), 'sin cuerpos no hace falta la excepción');
+});
+
+test('la regla general sigue valiendo donde sí acierta', () => {
+  /*
+   * La bitácora de un miembro SÍ se acota por su miembro. En esta base el
+   * cuerpo 3 no tiene a nadie, así que la condición correcta es «ninguna
+   * fila» —no «todas»—: es la misma regla, con la lista vacía.
+   */
+  const params = [];
+  const sql = alcance.condiciones(BITACORA, conCuerpo, params);
+  assert.ok(/"miembro_id" IN|1 = 0/.test(sql), `tendría que acotar por su gente, y quedó: ${sql}`);
+  assert.ok(!/responsable_id/.test(sql), 'la bitácora no tiene responsable: la excepción no le toca');
+  assert.equal(alcance.alcanza(BITACORA, { iglesia_id: 1, miembro_id: 999 }, conCuerpo), false,
+    'un miembro que no es de sus cuerpos sigue quedando fuera');
+});
+
+test('lo que cuelga de una solicitud se ve donde se ve su solicitud', () => {
+  const params = [];
+  const sql = alcance.condiciones(PERSONAS_SOL, conCuerpo, params);
+  assert.ok(/solicitud_id" IN \(SELECT id FROM "solicitudes"/.test(sql),
+    `tendría que seguir a su solicitud, y quedó: ${sql}`);
+  // Y NO por la persona que aparece dentro
+  assert.ok(!/"miembro_id" IN/.test(sql),
+    'acotarlo por la persona escondía a los involucrados de una solicitud que sí se puede abrir');
+});
+
+test('el registro de No Miembros no se acota por su ficha de miembro', () => {
+  const params = [];
+  const sql = alcance.condiciones(NO_MIEMBROS, conCuerpo, params);
+  assert.ok(/iglesia_id/.test(sql), 'por iglesia sí, como siempre');
+  assert.ok(!/"miembro_id" IN|1 = 0/.test(sql),
+    `su miembro_id dice en qué ficha se convirtió al inscribirse, no de quién es: ${sql}`);
+  // La que nunca se inscribió, y la que se inscribió en un cuerpo ajeno: las dos se ven
+  assert.equal(alcance.alcanza(NO_MIEMBROS, { iglesia_id: 1, miembro_id: null }, conCuerpo), true);
+  assert.equal(alcance.alcanza(NO_MIEMBROS, { iglesia_id: 1, miembro_id: 999 }, conCuerpo), true,
+    'con la regla general puesta, esta ficha desaparecía del registro');
+});
