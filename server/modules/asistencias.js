@@ -142,6 +142,96 @@ function marcasVisibles(actividad, db, usuario) {
     .map((m) => ({ ...m, clave: claveDe(m, m.cuerpo_id) }));
 }
 
+/**
+ * QUIÉNES son los integrantes de un cuerpo, en clave y sin sus datos.
+ *
+ * `integrantesConvocados` arma la persona entera —nombre, RUT, foto— porque
+ * eso es lo que necesita la lista para marcar. Para CONTAR no hace falta nada
+ * de eso, y armarlo es justo lo que hacía cara la agenda: los integrantes de
+ * cada cuerpo se recorrían una vez por cada actividad que lo convoca, y en un
+ * año son ciento cincuenta y tres actividades sobre los mismos doce cuerpos.
+ *
+ * El `recuerdo` es un Map de cuerpo → claves que dura lo que dura una
+ * respuesta. Así cada cuerpo se recorre UNA vez, no una por actividad.
+ */
+function clavesDelCuerpo(db, cuerpoId, recuerdo) {
+  const id = Number(cuerpoId) || 0;
+  const donde = `asistencia:cuerpo:${id}`; // el recuerdo es de todos: cada uno usa su propio espacio
+  if (recuerdo && recuerdo.has(donde)) return recuerdo.get(donde);
+  const { personasDelCuerpo } = require('../integrantes');
+  const claves = new Set(personasDelCuerpo(db, id).map((p) => clavePersona(p)).filter(Boolean));
+  if (recuerdo) recuerdo.set(donde, claves);
+  return claves;
+}
+
+/**
+ * EL AVANCE DE UNA ACTIVIDAD, TAL COMO LO VA A VER QUIEN PREGUNTA.
+ *
+ * «Marcados de convocados» solo quiere decir algo si las dos mitades cuentan
+ * la misma gente que la lista que esa persona va a abrir. Antes no lo hacían:
+ * el contador de la agenda sumaba TODOS los cuerpos convocados, sin mirar
+ * quién preguntaba. A una encargada de un cuerpo de 49 personas, una actividad
+ * que convoca a dos cuerpos le decía «200 / 98» —marcas ajenas arriba, gente
+ * ajena abajo— y la barra quedaba en 204 %. Medido.
+ *
+ * Acá se cuenta exactamente lo que `/asistencias/:id/lista` va a mostrar:
+ *
+ *   · los integrantes de los cuerpos que le TOCAN (los convocados que además
+ *     tiene asignados; todos, si no tiene ninguno asignado);
+ *   · más quien ya tiene marca aunque haya salido del cuerpo —la lista lo
+ *     sigue mostrando, con la etiqueta «(ya no figura)»—, con la misma regla
+ *     que usa la lista para decidir si se lo muestra o no.
+ *
+ * De ahí sale que `marcados` nunca pueda pasar de `convocados`: toda marca que
+ * se cuenta arriba tiene su fila abajo.
+ */
+function avanceDe(actividad, db, usuario, marcas, recuerdo) {
+  const leTocan = cuerposQueLeTocan(actividad, usuario).map(Number);
+  const suyos = require('../alcance').cuerposDe(usuario).map(Number);
+
+  let convocados = 0;
+  for (const cuerpoId of leTocan) convocados += clavesDelCuerpo(db, cuerpoId, recuerdo).size;
+
+  const cuenta = { presentes: 0, ausentes: 0, justificados: 0 };
+  for (const m of marcas) {
+    const quien = clavePersona(m);
+    if (!quien) continue; // marca sin persona: la lista tampoco la muestra
+    const cuerpoId = Number(m.cuerpo_id) || 0;
+    const estaEnElCuerpo = leTocan.includes(cuerpoId) && clavesDelCuerpo(db, cuerpoId, recuerdo).has(quien);
+    if (!estaEnElCuerpo) {
+      // Salió del cuerpo después de que le marcaran. La lista lo muestra
+      // igual, siempre que ese cuerpo sea de los que esta persona pasa.
+      if (suyos.length && !suyos.includes(cuerpoId)) continue;
+      convocados += 1;
+    }
+    if (m.estado === 'Presente') cuenta.presentes += 1;
+    else if (m.estado === 'Ausente') cuenta.ausentes += 1;
+    else if (m.estado === 'Justificado') cuenta.justificados += 1;
+  }
+
+  const marcados = cuenta.presentes + cuenta.ausentes + cuenta.justificados;
+  return { convocados, marcados, ...cuenta };
+}
+
+/**
+ * El avance de UNA actividad, buscando sus marcas.
+ *
+ * Es lo que usan los campos calculados del listado, donde no hay una tanda de
+ * actividades por la que repartir una sola consulta. El resultado se guarda en
+ * el recuerdo de la respuesta: las cuatro columnas —presentes, ausentes,
+ * justificados y el porcentaje— preguntan lo mismo, y así se calcula una vez.
+ */
+function avanceDeUna(actividad, db, usuario, recuerdo) {
+  const donde = `asistencia:avance:${actividad.id}`;
+  if (recuerdo && recuerdo.has(donde)) return recuerdo.get(donde);
+  const marcas = db
+    .prepare('SELECT miembro_id, no_miembro_id, cuerpo_id, estado FROM asistencia_detalle WHERE asistencia_id = ?')
+    .all(actividad.id);
+  const av = avanceDe(actividad, db, usuario, marcas, recuerdo);
+  if (recuerdo) recuerdo.set(donde, av);
+  return av;
+}
+
 /** Cuenta las marcas de una actividad. */
 function conteo(asistenciaId, db, cuerpos) {
   const acota = cuerpos && cuerpos.length ? ` AND cuerpo_id IN (${cuerpos.map(() => '?').join(',')})` : '';
@@ -175,15 +265,32 @@ module.exports = {
   defaultSort: { field: 'fecha', dir: 'desc' },
 
   computed: [
-    { name: 'presentes', label: 'Presentes', type: 'texto', calc: (r, { db }) => String(conteo(r.id, db).presentes) },
-    { name: 'ausentes', label: 'Ausentes', type: 'texto', calc: (r, { db }) => String(conteo(r.id, db).ausentes) },
-    { name: 'justificados', label: 'Justificados', type: 'texto', calc: (r, { db }) => String(conteo(r.id, db).justificados) },
+    { name: 'presentes', label: 'Presentes', type: 'texto', calc: (r, o) => String(avanceDeUna(r, o.db, o.usuario, o.recuerdo).presentes) },
+    { name: 'ausentes', label: 'Ausentes', type: 'texto', calc: (r, o) => String(avanceDeUna(r, o.db, o.usuario, o.recuerdo).ausentes) },
+    { name: 'justificados', label: 'Justificados', type: 'texto', calc: (r, o) => String(avanceDeUna(r, o.db, o.usuario, o.recuerdo).justificados) },
     {
+      /**
+       * EL PORCENTAJE ES SOBRE LOS CONVOCADOS, NO SOBRE LOS MARCADOS.
+       *
+       * Antes se dividía por los marcados, así que una lista recién empezada
+       * —una persona de cuarenta y nueve, presente— salía «100 %» y en verde,
+       * y la misma marca puesta en ausente la dejaba en «0 %». Ninguno de los
+       * dos números describía lo que pasó en esa reunión. Medido.
+       *
+       * Y una lista a medio pasar ahora se dice como tal —«12 de 49
+       * marcados»— en vez de disfrazarse de resultado: el porcentaje recién
+       * significa algo cuando están todos marcados. El módulo ya distinguía
+       * «Sin lista»; faltaba distinguir «a medias».
+       */
       name: 'porcentaje', label: 'Asistencia', type: 'badge',
-      calc: (r, { db }) => {
-        const c = conteo(r.id, db);
-        if (!c.total) return { texto: 'Sin lista', nivel: 'gris' };
-        const pct = Math.round((c.presentes / c.total) * 100);
+      calc: (r, { db, usuario, recuerdo }) => {
+        const av = avanceDeUna(r, db, usuario, recuerdo);
+        if (!av.convocados) return { texto: 'Sin integrantes', nivel: 'gris' };
+        if (!av.marcados) return { texto: 'Sin lista', nivel: 'gris' };
+        if (av.marcados < av.convocados) {
+          return { texto: `${av.marcados} de ${av.convocados} marcados`, nivel: 'parcial' };
+        }
+        const pct = Math.round((av.presentes / av.convocados) * 100);
         return { texto: `${pct}%`, nivel: pct >= 80 ? 'ok' : pct >= 60 ? 'medio' : 'bajo' };
       },
     },
@@ -411,9 +518,33 @@ module.exports = {
         )
         .all(...params);
 
+      /*
+       * Las marcas de todas las actividades de una vez, y los integrantes de
+       * cada cuerpo una sola vez.
+       *
+       * Antes esto era una consulta por actividad y un recorrido de los
+       * integrantes por cada cuerpo de cada actividad: la agenda de un año
+       * —153 actividades sobre 12 cuerpos— costaba 300 ms. Ahora es una
+       * consulta y doce recorridos.
+       */
+      const ids = filas.map((a) => a.id);
+      const porActividad = new Map(ids.map((id) => [id, []]));
+      for (let i = 0; i < ids.length; i += 400) {
+        const tanda = ids.slice(i, i + 400);
+        if (!tanda.length) break;
+        const marcas = db
+          .prepare(
+            `SELECT asistencia_id, miembro_id, no_miembro_id, cuerpo_id, estado
+               FROM asistencia_detalle WHERE asistencia_id IN (${tanda.map(() => '?').join(',')})`
+          )
+          .all(...tanda);
+        for (const m of marcas) porActividad.get(m.asistencia_id).push(m);
+      }
+      const recuerdo = new Map();
+
       const nombreCuerpo = db.prepare('SELECT id, nombre FROM cuerpos WHERE id = ?');
       const actividades = filas.map((a) => {
-        const c = conteo(a.id, db);
+        const av = avanceDe(a, db, req.user, porActividad.get(a.id) || [], recuerdo);
         return {
           id: a.id,
           fecha: a.fecha,
@@ -424,11 +555,11 @@ module.exports = {
           observaciones: a.observaciones || null,
           iglesia_id: a.iglesia_id || null,
           cuerpos: idsDeCuerpos(a.cuerpos).map((id) => nombreCuerpo.get(id)).filter(Boolean),
-          convocados: integrantesConvocados(a, db).size,
-          marcados: c.total,
-          presentes: c.presentes,
-          ausentes: c.ausentes,
-          justificados: c.justificados,
+          convocados: av.convocados,
+          marcados: av.marcados,
+          presentes: av.presentes,
+          ausentes: av.ausentes,
+          justificados: av.justificados,
         };
       });
 
@@ -817,6 +948,38 @@ module.exports = {
         .all(...params)
         .map(porcentajes);
 
+      /*
+       * A CUÁNTA GENTE SE CONVOCÓ, para poder decir cuándo la lista quedó a
+       * medio pasar.
+       *
+       * Los porcentajes de este informe se reparten entre los MARCADOS: de
+       * quienes quedaron anotados, tanto por ciento estuvo. Es lo que
+       * corresponde para un promedio de un período, pero en la fila de UNA
+       * actividad engaña: una lista recién empezada —una persona de cuarenta
+       * y nueve, presente— salía «100 %», y ese 100 % no describe nada de lo
+       * que pasó en esa reunión. Medido.
+       *
+       * Con el padrón al lado, la pantalla puede decirlo: «1 de 49 marcados».
+       * El porcentaje se deja como está —cambiarlo cambiaría el significado de
+       * todas las demás filas—; lo que se agrega es con qué compararlo.
+       *
+       * En el informe de UNA PERSONA no se agrega: ahí «marcados» es ella
+       * sola, y compararla con el padrón del cuerpo no diría nada.
+       */
+      if (!unaPersona) {
+        const recuerdo = new Map();
+        const traerActividad = db.prepare('SELECT * FROM asistencias WHERE id = ?');
+        for (const f of porActividad) {
+          const act = traerActividad.get(f.asistencia_id);
+          if (!act) continue;
+          const leTocan = cuerposQueLeTocan(act, req.user).map(Number);
+          const cuales = cuerpoId ? leTocan.filter((c) => c === cuerpoId) : leTocan;
+          let convocados = 0;
+          for (const c of cuales) convocados += clavesDelCuerpo(db, c, recuerdo).size;
+          f.convocados = convocados;
+        }
+      }
+
       const porCuerpo = db
         .prepare(`SELECT d.cuerpo_id, c.nombre AS cuerpo, ${SUMAS},
                          COUNT(DISTINCT d.asistencia_id) AS actividades
@@ -882,8 +1045,10 @@ module.exports = {
 };
 
 /**
- * Aparte de la definición del módulo, para no mezclarla con ella: es la pieza
- * que decide quién aparece al pasar lista, y el reparto entre cuerpos que hace
- * no se puede comprobar desde afuera sin levantar media aplicación.
+ * Aparte de la definición del módulo, para no mezclarla con ella: son las
+ * piezas que deciden quién aparece al pasar lista y cuánto lleva marcado esa
+ * lista, y lo que hacen no se puede comprobar desde afuera sin levantar media
+ * aplicación.
  */
 module.exports.integrantesConvocados = integrantesConvocados;
+module.exports.avanceDe = avanceDe;

@@ -6572,6 +6572,9 @@ async function renderInformeAsistencia(contenedor, precarga) {
   });
 
   const pct = (n) => `${String(n).replace('.', ',')}%`;
+  const aMedioPasar = (f) => (loQueFaltaMarcar(f)
+    ? ` <span class="badge yellow" title="El porcentaje se reparte solo entre los ${f.total} ya marcados">${esc(loQueFaltaMarcar(f))}</span>`
+    : '');
   const barra = (f) => `
     <div class="barra" title="${f.presentes} presentes, ${f.ausentes} ausentes, ${f.justificados} justificados">
       <span class="p" style="width:${f.pct_presente}%"></span>
@@ -6598,7 +6601,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
         <tbody>
           ${filas.map((f) => `
             <tr ${verMas ? `data-ver="${verMas(f)}" style="cursor:pointer"` : ''}>
-              <td class="col-primera col-titular" data-label="${esc(columna)}">${esc(f.etiqueta)}</td>
+              <td class="col-primera col-titular" data-label="${esc(columna)}">${esc(f.etiqueta)}${aMedioPasar(f)}</td>
               <td class="num" data-label="Presentes">${esc(fmtNumero(f.presentes))}</td>
               <td class="num" data-label="Ausentes">${esc(fmtNumero(f.ausentes))}</td>
               <td class="num" data-label="Justificados">${esc(fmtNumero(f.justificados))}</td>
@@ -6866,6 +6869,26 @@ async function renderInformeAsistencia(contenedor, precarga) {
  * Baja el informe que se está viendo como planilla (CSV, que Excel abre sin
  * más). Se arma con lo mismo que muestra la pantalla, para que cuadre.
  */
+/*
+ * CUANDO LA LISTA QUEDÓ A MEDIO PASAR, SE DICE.
+ *
+ * Los porcentajes de este informe se reparten entre los MARCADOS, que para el
+ * promedio de un período es lo que corresponde. En la fila de UNA actividad
+ * no: una lista con una marca de cuarenta y nueve salía «100 %», y ese número
+ * no describe nada de lo que pasó en esa reunión. Medido.
+ *
+ * El servidor manda ahora a cuánta gente se convocó, y con eso la fila puede
+ * decirlo. El porcentaje se deja donde está —quitarlo cambiaría el significado
+ * de todas las demás filas—; lo que se agrega es con qué compararlo.
+ *
+ * Vive acá afuera porque lo usan la pantalla y la planilla que se baja, y
+ * tienen que decir lo mismo.
+ */
+function loQueFaltaMarcar(f) {
+  if (!f || !f.convocados || !(f.total < f.convocados)) return '';
+  return `${fmtNumero(f.total)} de ${fmtNumero(f.convocados)} marcados`;
+}
+
 function exportarInformeCSV() {
   if (!INFORME) return toast('Primero vea un informe.', true);
   if (INFORME.planilla) return exportarPlanillaCSV(INFORME.planilla);
@@ -6895,7 +6918,11 @@ function exportarInformeCSV() {
   bloque('Resumen general', 'Total', [d.general], () => 'Todo');
   bloque('Por cuerpo', 'Cuerpo / Grupo', d.porCuerpo, (f) => f.cuerpo || '—');
   bloque('Por día', 'Fecha', d.porDia, (f) => f.fecha);
-  bloque('Actividad por actividad', 'Actividad', d.porActividad, (f) => `${f.fecha} ${f.actividad || ''}`.trim());
+  bloque('Actividad por actividad', 'Actividad', d.porActividad, (f) => {
+    const nombre = `${f.fecha} ${f.actividad || ''}`.trim();
+    const falta = loQueFaltaMarcar(f);
+    return falta ? `${nombre} (${falta})` : nombre;
+  });
   bloque('Por miembro', 'Miembro', d.porMiembro, (f) => f.miembro || '—');
   if (d.porMotivo && d.porMotivo.length) {
     lineas.push([comilla('Motivos de las justificaciones')].join(';'));

@@ -510,6 +510,16 @@ function expandRows(def, filas, usuario) {
     return texto === undefined ? `#${id}` : texto;
   };
 
+  /*
+   * Memoria que dura lo que dura esta respuesta, para los campos calculados.
+   *
+   * Un cálculo que necesita algo caro y siempre igual —los integrantes de un
+   * cuerpo, por ejemplo— lo guarda acá con una clave suya y no lo vuelve a
+   * buscar en las demás filas del listado. No se guarda entre respuestas: al
+   * terminar esta, se olvida, y así no puede quedar mostrando algo viejo.
+   */
+  const recuerdo = new Map();
+
   // 3) Se arman las filas ya resueltas
   const resueltas = filas.map((row) => {
     const out = { ...row };
@@ -544,7 +554,7 @@ function expandRows(def, filas, usuario) {
     // Campos calculados: no se guardan, se resuelven al leer
     for (const c of def.computed || []) {
       try {
-        out[c.name] = c.calc(row, { db });
+        out[c.name] = c.calc(row, { db, usuario, recuerdo });
       } catch (e) {
         // El valor queda en blanco —una pantalla no se rompe por un campo—
         // pero se anota. Antes se callaba, y un cálculo roto podía llevar

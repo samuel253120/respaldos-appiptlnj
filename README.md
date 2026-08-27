@@ -940,6 +940,10 @@ Arriba, dos filtros: por **cuerpo** y por **tipo de actividad**.
 
 **2. Las actividades del día.** Al tocar un día se abren sus actividades, cada una con su tipo, su hora, su lugar, los cuerpos convocados y **cuánto lleva**: *«12/28 — Faltan 16»*, *«Lista completa»* o *«Sin tomar»*. Se editan (✏️) y se eliminan (🗑️) ahí mismo. Si el día tiene una sola actividad, se abre sola.
 
+> **Ese «12/28» cuenta la lista que usted va a abrir, y nada más.** Los cuerpos que le tocan, la gente de esos cuerpos, y las marcas de esa gente —incluida la de quien salió del cuerpo después de que le marcaran, que la lista sigue mostrando—. De ahí sale que lo marcado nunca pueda pasar del total.
+>
+> ⚠️ **Hasta la 1.124.0 contaba todos los cuerpos convocados, sin mirar quién preguntaba.** A una encargada de un cuerpo de **49** personas, una actividad que convocaba a dos cuerpos le decía *«200 / 98»*: marcas ajenas arriba, gente ajena abajo, la barra en **204 %** y *«Faltan»* en negativo. Su lista tenía 49 filas. De 25 actividades cotejadas contra la lista que abría, **22 no cuadraban**; al administrador le fallaban 24 de 25. De paso costaba caro: la agenda de un año recorría los integrantes de cada cuerpo una vez por cada actividad que lo convoca —**300 ms**—; ahora los recorre una vez y son **106 ms**.
+
 **3. ➕ Actividad.** Se crea sin salir de la pantalla: fecha (viene puesta la del día elegido), hora, tipo, **cuerpos convocados** —se tocan los que van—, lugar y observaciones. Al guardar queda elegida y con su lista lista para marcar.
 
 **4. La lista.** Al elegir una actividad, la pantalla baja sola a su lista:
@@ -1043,6 +1047,8 @@ Cada informe muestra arriba los **promedios**: de **asistencia**, de **inasisten
 | **Por miembro** | Cómo va cada persona |
 
 Cada fila lleva una barra de tres colores (presentes, justificados, ausentes) para comparar de un vistazo, y desde el promedio por miembro se salta al informe personal de esa persona con un clic. El informe por persona agrega el **detalle de todas sus marcas** —fecha, actividad, estado, motivo y detalle— y el recuento de **motivos de justificación**. Todo se imprime con el membrete de la iglesia.
+
+> **Los porcentajes se reparten entre los marcados, y cuando la lista quedó a medio pasar se dice.** Para el promedio de un período repartir entre los marcados es lo que corresponde: de quienes quedaron anotados, tanto por ciento estuvo. En la fila de **una** actividad no: una lista con **una marca de cuarenta y nueve** salía *«100 %»*, y ese 100 % no describe nada de lo que pasó en esa reunión. Ahora esa fila lleva al lado **«1 de 49 marcados»**, en la pantalla y en la planilla que se baja, así que se ve de inmediato que el porcentaje todavía no significa lo que parece. El porcentaje se deja donde está: quitarlo cambiaría el significado de todas las demás filas.
 
 ## Pastores y Guías 🧑‍💼
 
@@ -1675,7 +1681,7 @@ En la ficha del usuario el editor lo dice en la cabecera: *«Acá van solo las e
 
 A una actividad puede asistir más de un cuerpo. Quien tiene **cuerpos asignados** pasa lista **solo a los suyos**: aunque la actividad convoque a siete, ve y marca únicamente a los de su cuerpo, y la pantalla se lo dice —*«Le toca pasar lista solo a su cuerpo»*—.
 
-No es solo lo que se muestra: si llegara una marca de alguien de otro cuerpo, el servidor la rechaza. Y el progreso de marcado que se ve es el de su parte, no el de toda la actividad.
+No es solo lo que se muestra: si llegara una marca de alguien de otro cuerpo, el servidor la rechaza. Y el progreso de marcado que se ve es el de su parte, no el de toda la actividad —el de la agenda también, desde la 1.125.0—.
 
 Sin cuerpos asignados —el caso del administrador— le tocan todos los convocados.
 
@@ -1833,7 +1839,7 @@ Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesi
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro. Con `PREPARAR=1` llena la base con 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos para que la medición diga algo — y por eso **se niega a hacerlo si la base tiene fichas que no generó ella**: esos datos van directo a la base, sin pasar por el sistema, y una base con datos de una iglesia no se toca. Para medir, use una base aparte: `DATA_DIR=/tmp/carga`.
 
   `LIMPIAR=1 npm run carga` dice cuántos datos de prueba hay en una base y cuántas fichas son de verdad, sin borrar nada; `LIMPIAR=borrar` los borra. Se reconocen por sus señas: los RUT del 30.000.000 en adelante —un tramo que no está en uso—, los cuerpos «Cuerpo de prueba N» y los movimientos «Movimiento de prueba N».
-- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 885 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 916 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
 
   Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
 
