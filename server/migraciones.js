@@ -1912,10 +1912,10 @@ function formatosDeCertificadoQueTraiaElSistema() {
        (nombre, activo, orden, texto, notas,
         muestra_logo, muestra_institucion, muestra_iglesia, muestra_numero, muestra_firmas,
         muestra_fecha, muestra_pie,
-        orientacion, fondo_opacidad, tipografia_titulo, tipografia_texto,
-        tamano_titulo, tamano_texto, margen, marco)
-     VALUES (?, 1, ?, ?, ?, 1, 1, 1, 1, 1, 1, 1, 'Vertical', 100,
-             'Con serifa (Georgia)', 'Sin serifa', 34, 15, 18, 'Doble línea')`
+        disposicion, orientacion, fondo_opacidad, tipografia_titulo, tipografia_texto,
+        tamano_titulo, tamano_texto, margen, marco, grosor_marco)
+     VALUES (?, 1, ?, ?, ?, 1, 1, 1, 1, 1, 1, 1, 'Clásica', 'Vertical', 100,
+             'Con serifa (Georgia)', 'Sin serifa', 34, 15, 18, 'Doble línea', 3)`
   );
 
   db.transaction(() => {
@@ -2128,6 +2128,141 @@ function marcasDeAsistenciaConSuRegistro() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Las hojas de presentación de niños y de matrimonio, como las usa la iglesia.
+ *
+ * Los ocho formatos que traía el sistema eran todos «un título, un nombre y un
+ * párrafo». Dos de ellos no son así en papel y nunca lo fueron: el de
+ * PRESENTACIÓN DE NIÑOS dice cuándo nació el niño, quién lo presentó, sus
+ * padres y sus dos parejas de padrinos; el de MATRIMONIO nombra a los dos
+ * cónyuges en una frase corrida, con el versículo al pie. Se les pone su
+ * disposición, su versículo y el texto con los espacios en blanco.
+ *
+ * SOLO SE TOCAN LOS QUE SIGUEN COMO VINIERON. Si la iglesia ya editó el texto
+ * de uno de los dos, ese texto es suyo y no se pisa: se le deja la disposición
+ * clásica y lo cambia desde la ficha del formato cuando quiera. Cambiar un
+ * formato cambia cómo se imprimen TAMBIÉN los certificados ya emitidos, así
+ * que no es algo que una actualización pueda hacer por encima de una decisión.
+ */
+function hojasDePresentacionYMatrimonio() {
+  const NOMBRE = 'hojas de presentación y matrimonio';
+  if (yaAplicada(NOMBRE)) return;
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('formatos_certificado')) return; // se crea al arrancar; se intenta de nuevo
+
+  const columnas = new Set(db.prepare('PRAGMA table_info("formatos_certificado")').all().map((c) => c.name));
+  if (!columnas.has('disposicion') || !columnas.has('epigrafe')) return marcarAplicada(NOMBRE);
+
+  /* El texto exacto con que se sembraron: si sigue igual, nadie lo editó. */
+  const COMO_VINO = {
+    'Presentación de niños':
+      'Certifica que fue presentado(a) al Señor el día {fecha_evento}, en {iglesia}, conforme a la ' +
+      'enseñanza de las Sagradas Escrituras.',
+    Matrimonio:
+      'Certifica la celebración del matrimonio efectuado el día {fecha_evento}, en {iglesia}, delante de ' +
+      'Dios y de los testigos presentes.',
+  };
+
+  const HOJAS = {
+    'Presentación de niños': {
+      disposicion: 'Presentación de niños',
+      orientacion: 'Horizontal',
+      titulo: 'Certificado de Presentación de Niños',
+      rotulo_titular: 'SE CERTIFICA QUE EL NIÑO(A):',
+      epigrafe: '«Dejad a los niños venir a mí, y no se lo impidáis;\nporque de los tales es el reino de Dios.»',
+      epigrafe_cita: 'San Marcos 10:14',
+      texto:
+        'Nacido(a) el {nac_dia} de {nac_mes} del año {nac_anio}. Fue presentado(a) al Señor en un acto ' +
+        'solemne y público, conforme a las Sagradas Escrituras y a los estatutos de nuestra Iglesia, ' +
+        'por el Pastor: {oficiante} con fecha: {ev_dia} de {ev_mes} del año {ev_anio}.',
+      texto_fecha: 'FECHA DE EMISIÓN: {ciudad}, {em_dia} de {em_mes} del año {em_anio}',
+      firma_izquierda: 'Firma Pastor',
+      firma_derecha: 'Timbre Iglesia',
+      muestra_institucion: 0,
+      muestra_iglesia: 0,
+      color_titulo: '#002060',
+      color_texto: '#3f3f46',
+      color_marco: '#f2a015',
+      tipografia_titulo: 'Sin serifa',
+      tipografia_texto: 'Sin serifa',
+      tamano_titulo: 40,
+      tamano_texto: 15,
+      margen: 10,
+      marco: 'Doble línea',
+      grosor_marco: 7,
+    },
+    Matrimonio: {
+      disposicion: 'Matrimonio',
+      orientacion: 'Horizontal',
+      titulo: 'Matrimonio',
+      rotulo_titular: 'Certificado de',
+      epigrafe: 'Por tanto, dejará el hombre a su padre y a su madre, y se unirá a su mujer, y serán una sola carne',
+      epigrafe_cita: 'Génesis 2:24',
+      texto:
+        'Certifico que {titular} y {conyuge} recibieron la bendición de Dios y se unieron en el Santo ' +
+        'estado de matrimonio, según el libro de Génesis 2:24, el día {ev_dia} de {ev_mes} de {ev_anio}, ' +
+        'en libre voluntad, delante de Dios, de sus testigos, y del ministro de Dios, el Pastor: {oficiante}.',
+      texto_fecha: 'Certificado entregado en {ciudad} el {em_dia} de {em_mes} de {em_anio}',
+      firma_izquierda: 'Sello Iglesia',
+      firma_derecha: 'Firma Pastor',
+      muestra_institucion: 1,
+      muestra_iglesia: 1,
+      color_titulo: '#1f3864',
+      color_texto: '#3f3f46',
+      color_marco: '#9db3d6',
+      tipografia_titulo: 'Con serifa (Georgia)',
+      tipografia_texto: 'Sin serifa',
+      tamano_titulo: 44,
+      tamano_texto: 15,
+      margen: 8,
+      marco: 'Línea simple',
+      grosor_marco: 1,
+    },
+  };
+
+  let puestas = 0;
+  const respetados = [];
+  db.transaction(() => {
+    /*
+     * Los formatos que ya existían nacieron sin decir qué forma tienen: la
+     * columna es nueva. Todos son la de siempre, y dejarlo escrito es lo que
+     * hace que la ficha lo muestre y que se pueda filtrar por eso.
+     */
+    db.prepare("UPDATE formatos_certificado SET disposicion = 'Clásica' WHERE disposicion IS NULL OR disposicion = ''").run();
+    if (columnas.has('grosor_marco')) {
+      db.prepare('UPDATE formatos_certificado SET grosor_marco = 3 WHERE grosor_marco IS NULL').run();
+    }
+
+    for (const [nombre, campos] of Object.entries(HOJAS)) {
+      const suyo = db.prepare('SELECT * FROM formatos_certificado WHERE nombre = ?').get(nombre);
+      if (!suyo) continue;
+      const intacto = String(suyo.texto || '').trim() === COMO_VINO[nombre];
+      if (!intacto) { respetados.push(nombre); continue; }
+
+      const claves = Object.keys(campos).filter((c) => columnas.has(c));
+      db.prepare(
+        `UPDATE formatos_certificado SET ${claves.map((c) => `"${c}" = ?`).join(', ')} WHERE id = ?`
+      ).run(...claves.map((c) => campos[c]), suyo.id);
+      puestas++;
+    }
+  }).immediate();
+
+  if (puestas) {
+    console.log(
+      `📜 certificados: ${puestas} formato(s) quedaron con la hoja que la iglesia usa en papel ` +
+        '(presentación de niños y matrimonio).'
+    );
+  }
+  if (respetados.length) {
+    console.log(
+      `📜 certificados: no se tocó «${respetados.join('», «')}» porque su texto ya estaba editado. ` +
+        'La disposición se puede elegir en la ficha del formato.'
+    );
+  }
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2160,6 +2295,7 @@ function ejecutarMigraciones() {
     ['documentos a la oficina de partes', documentosALaOficinaDePartes],
     ['fichas de integrante con su nombre', fichasDeIntegranteConSuNombre],
     ['marcas de asistencia con su registro', marcasDeAsistenciaConSuRegistro],
+    ['hojas de presentación y matrimonio', hojasDePresentacionYMatrimonio],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],
@@ -2411,4 +2547,5 @@ module.exports = {
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo,
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
+  hojasDePresentacionYMatrimonio,
 };

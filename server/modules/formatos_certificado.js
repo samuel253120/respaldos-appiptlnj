@@ -12,8 +12,17 @@
  *                   solos —{titular}, {fecha_evento}, {iglesia}—.
  *   La hoja         Qué partes aparecen: el título, el rótulo del nombre, el
  *                   número, las dos firmas, el pie institucional.
- *   El diseño       Colores, tipografías, tamaños, márgenes, marco, fondo y
- *                   orientación.
+ *   El diseño       Colores, tipografías, tamaños, márgenes, marco, fondo,
+ *                   orientación y DISPOSICIÓN.
+ *
+ * LA DISPOSICIÓN NO ES UN COLOR. Es la forma de la hoja, y por eso está aparte
+ * de todo lo demás: hay certificados que no son «un título, un nombre y un
+ * párrafo». El de presentación de niños tiene el nombre del niño, la fecha en
+ * que nació, quién lo presentó, sus padres y dos parejas de padrinos; el de
+ * matrimonio nombra a los dos cónyuges en una sola frase. Se eligen de una
+ * lista, y cada uno pide en la ficha del certificado los datos que le hacen
+ * falta. La disposición «Clásica» es la de siempre, y es la que traen todos
+ * los formatos que ya existían.
  *
  * QUÉ NO SE TOCA. El nombre de la institución, su lema y su logo salen de la
  * configuración, no de acá: son los mismos en todo lo que la iglesia imprime,
@@ -30,6 +39,11 @@
 /** Los datos que se pueden poner entre llaves dentro del texto y del título. */
 const DATOS = [
   ['titular', 'El nombre del titular, como quedó escrito en el certificado'],
+  ['conyuge', 'El otro cónyuge, en el certificado de matrimonio'],
+  ['padre', 'El padre, en el certificado de presentación de niños'],
+  ['madre', 'La madre, en el certificado de presentación de niños'],
+  ['fecha_nacimiento', 'La fecha de nacimiento del niño, en letras'],
+  ['ciudad', 'La ciudad de la iglesia que emite'],
   ['tipo', 'El nombre de este formato'],
   ['numero', 'El número del certificado'],
   ['iglesia', 'La iglesia local que lo emite'],
@@ -47,6 +61,18 @@ const AYUDA_DATOS =
 const TIPOGRAFIAS = ['Con serifa (Georgia)', 'Sin serifa', 'Manuscrita'];
 const MARCOS = ['Doble línea', 'Línea simple', 'Sin marco'];
 
+/**
+ * La forma de la hoja. Cada una pide sus propios datos al emitir.
+ *
+ *   Clásica                 Título, nombre y párrafo. Sirve para casi todo y es
+ *                           la que traían todos los formatos.
+ *   Presentación de niños   Con la fecha de nacimiento, quién lo presentó, los
+ *                           padres y dos parejas de padrinos.
+ *   Matrimonio              Nombra a los dos cónyuges en una sola frase, con el
+ *                           pastor que los unió.
+ */
+const DISPOSICIONES = ['Clásica', 'Presentación de niños', 'Matrimonio'];
+
 module.exports = {
   name: 'formatos_certificado',
   label: 'Formatos de Certificado',
@@ -60,8 +86,8 @@ module.exports = {
   order: 64,
   display: '{nombre}',
   searchFields: ['nombre', 'texto', 'titulo', 'notas'],
-  listFields: ['nombre', 'activo', 'orientacion', 'color_titulo', 'notas'],
-  filterFields: ['activo', 'orientacion'],
+  listFields: ['nombre', 'activo', 'disposicion', 'orientacion', 'color_titulo', 'notas'],
+  filterFields: ['activo', 'disposicion', 'orientacion'],
   defaultSort: { field: 'orden', dir: 'asc' },
 
   fields: [
@@ -98,6 +124,16 @@ module.exports = {
       name: 'texto_fecha', label: 'Línea de la fecha', type: 'text', seccion: 'El texto',
       help: 'Vacío queda «Dado el » y la fecha de emisión. ' + AYUDA_DATOS,
     },
+    {
+      name: 'epigrafe', label: 'Versículo o epígrafe', type: 'textarea', seccion: 'El texto',
+      help: 'Opcional: el versículo que va bajo el título, en cursiva y centrado. '
+        + 'Ej: «Dejad a los niños venir a mí, y no se lo impidáis».',
+    },
+    {
+      name: 'epigrafe_cita', label: 'Cita del versículo', type: 'text', seccion: 'El texto',
+      help: 'De dónde es. Ej: «San Marcos 10:14». Solo aparece si hay versículo.',
+      sugerencias: ['San Marcos 10:14', 'Génesis 2:24', 'Mateo 19:6', 'Hechos 2:38', 'Salmos 127:3'],
+    },
 
     /* ── Qué se muestra en la hoja ──────────────────────────────── */
     { name: 'muestra_logo', label: 'Muestra el logo', type: 'boolean', default: 1, seccion: 'Qué se muestra en la hoja' },
@@ -118,9 +154,17 @@ module.exports = {
 
     /* ── El diseño de la hoja ───────────────────────────────────── */
     {
+      name: 'disposicion', label: 'Disposición de la hoja', type: 'select', default: 'Clásica',
+      options: DISPOSICIONES, seccion: 'El diseño de la hoja',
+      help: 'La FORMA de la hoja, no su color. Cada disposición pide en la ficha del certificado '
+        + 'los datos que le hacen falta: la de presentación de niños pide los padres y los padrinos; '
+        + 'la de matrimonio, el otro cónyuge. «Clásica» es la de siempre.',
+    },
+    {
       name: 'orientacion', label: 'Orientación', type: 'select', default: 'Vertical',
       options: ['Vertical', 'Horizontal'], seccion: 'El diseño de la hoja',
-      help: 'Horizontal es lo habitual en los certificados de reconocimiento.',
+      help: 'Horizontal es lo habitual en los certificados de reconocimiento, y en los de '
+        + 'presentación de niños y de matrimonio.',
     },
     {
       name: 'fondo', label: 'Imagen de fondo', type: 'file', accept: 'image/*', seccion: 'El diseño de la hoja',
@@ -158,6 +202,12 @@ module.exports = {
       name: 'marco', label: 'Marco', type: 'select', default: 'Doble línea',
       options: MARCOS, seccion: 'El diseño de la hoja',
     },
+    {
+      name: 'grosor_marco', label: 'Grosor del marco (px)', type: 'number', default: 3,
+      seccion: 'El diseño de la hoja',
+      help: 'Entre 1 y 12. Los certificados con orla llevan un marco grueso; los sobrios, uno fino.',
+      showIf: { field: 'marco', in: ['Doble línea', 'Línea simple'] },
+    },
   ],
 
   hooks: {
@@ -186,6 +236,7 @@ module.exports = {
       data.margen = entre('margen', 0, 40, 18);
       data.fondo_opacidad = entre('fondo_opacidad', 5, 100, 100);
       data.orden = entre('orden', 0, 9999, 100);
+      data.grosor_marco = entre('grosor_marco', 1, 12, 3);
 
       /**
        * El fondo tiene que ser un archivo de los que subió el sistema.
@@ -199,6 +250,9 @@ module.exports = {
       if (fondo && !/^[\w.-]+\.(jpe?g|png|webp)$/i.test(fondo)) {
         return 'La imagen de fondo no es válida. Súbala con el botón del formulario.';
       }
+
+      // Una disposición que no existe dejaría la hoja sin armar
+      if (!DISPOSICIONES.includes(dato('disposicion'))) data.disposicion = 'Clásica';
 
       const nombre = String(dato('nombre') || '').trim();
       if (!nombre) return 'El formato necesita un nombre: es con el que se elige al emitir.';
@@ -227,10 +281,16 @@ module.exports = {
      * que poder elegir el tipo aunque no le toque administrar los formatos.
      */
     router.get('/formatos_certificado/opciones', requirePerm('certificados', 'view'), (req, res) => {
+      /*
+       * Va también la disposición: al elegir el tipo, la ficha del certificado
+       * tiene que saber en el momento qué forma tendrá la hoja, porque de eso
+       * dependen los campos que pide (los padres, los padrinos, el cónyuge).
+       * Preguntarlo aparte sería un viaje más por cada tipo que se prueba.
+       */
       res.json(
-        db.prepare('SELECT nombre FROM formatos_certificado WHERE activo = 1 ORDER BY orden, nombre')
+        db.prepare('SELECT nombre, disposicion FROM formatos_certificado WHERE activo = 1 ORDER BY orden, nombre')
           .all()
-          .map((f) => ({ id: f.nombre, label: f.nombre }))
+          .map((f) => ({ id: f.nombre, label: f.nombre, disposicion: f.disposicion || 'Clásica' }))
       );
     });
 
@@ -252,3 +312,7 @@ module.exports = {
 };
 
 module.exports.DATOS = DATOS;
+
+module.exports.DISPOSICIONES = DISPOSICIONES;
+module.exports.TIPOGRAFIAS = TIPOGRAFIAS;
+module.exports.MARCOS = MARCOS;

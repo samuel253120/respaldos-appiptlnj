@@ -310,17 +310,35 @@ Cada formato manda sobre tres cosas, que son las secciones de su ficha:
 
 | Sección | Qué decide |
 |---|---|
-| **El texto** | El título, el rótulo sobre el nombre, el cuerpo del certificado y la línea de la fecha |
+| **El texto** | El título, el rótulo sobre el nombre, el cuerpo del certificado, el versículo con su cita y la línea de la fecha |
 | **Qué se muestra en la hoja** | Si aparecen el logo, el nombre de la institución, la iglesia local, el número, las firmas (con sus dos rótulos), la fecha y el pie |
-| **El diseño de la hoja** | Orientación, imagen de fondo con su intensidad, colores del título, del texto y del marco, tipografías, tamaños, margen y tipo de marco |
+| **El diseño de la hoja** | **Disposición**, orientación, imagen de fondo con su intensidad, colores del título, del texto y del marco, tipografías, tamaños, margen, tipo de marco y su grosor |
+
+#### La disposición: la forma de la hoja, no su color
+
+No todos los certificados son «un título, un nombre y un párrafo». Dos de los que la iglesia usa en papel nunca lo fueron, y la **disposición** es lo que los distingue:
+
+| Disposición | Cómo es la hoja | Qué pide al emitir |
+|---|---|---|
+| **Clásica** | Título, nombre y párrafo. Sirve para casi todo, y es la que traían todos los formatos | Lo de siempre |
+| **Presentación de niños** | Apaisada, con orla. El nombre del niño destacado, la frase con los espacios en blanco rellenados, sus padres y sus dos parejas de padrinos | Fecha de nacimiento, padre, madre y hasta dos parejas de padrinos |
+| **Matrimonio** | Apaisada. Membrete arriba, el nombre del acto en una banda, la frase que nombra a los dos cónyuges y el versículo al pie | El otro cónyuge |
+
+Al elegir el tipo de certificado, **la ficha cambia sola**: aparecen los campos que esa hoja necesita y desaparecen los que no. Y **no se emite a medias**: un certificado de matrimonio a nombre de una sola persona, o uno de presentación sin ninguno de los padres, el servidor no lo guarda. Cambiar el tipo suelta los datos del otro, para que no queden esperando reaparecer.
+
+La disposición queda **escrita en el propio certificado** al emitirlo. Si no, cambiarle la disposición al formato cambiaría la forma de todos los que ya están firmados y entregados.
 
 **Los datos se rellenan solos.** En el texto y en el título se ponen entre llaves y cada hoja sale con lo suyo:
 
-`{titular}` · `{tipo}` · `{numero}` · `{iglesia}` · `{institucion}` · `{fecha_evento}` · `{fecha_emision}` · `{oficiante}` · `{rut}`
+`{titular}` · `{conyuge}` · `{padre}` · `{madre}` · `{tipo}` · `{numero}` · `{iglesia}` · `{institucion}` · `{ciudad}` · `{fecha_nacimiento}` · `{fecha_evento}` · `{fecha_emision}` · `{oficiante}` · `{rut}`
 
 > *«Certifica que fue bautizado(a) en las aguas … el día `{fecha_evento}`, en `{iglesia}`.»*
 
-El que no tenga dato queda en blanco: una llave impresa tal cual obligaría a rehacer un certificado ya firmado.
+**Las fechas vienen también partidas**, para las hojas que llevan la frase con espacios en blanco: `{nac_dia}` `{nac_mes}` `{nac_anio}` del nacimiento, `{ev_dia}` `{ev_mes}` `{ev_anio}` del evento y `{em_dia}` `{em_mes}` `{em_anio}` de la emisión. Escribir la fecha entera ahí obligaría a redactar tres textos distintos para la misma frase.
+
+> *«Nacido(a) el `{nac_dia}` de `{nac_mes}` del año `{nac_anio}` … con fecha: `{ev_dia}` de `{ev_mes}` del año `{ev_anio}`.»*
+
+En esas hojas cada dato sale **sobre su línea**, como en el papel de siempre. El que no tenga dato **deja la línea en blanco** en vez de cerrar la frase: un hueco se ve, y un dato que falta sin que se note es peor. En la hoja clásica, una llave sin dato queda simplemente en blanco — impresa tal cual obligaría a rehacer un certificado ya firmado.
 
 **Lo que no está acá, a propósito.** El nombre de la institución, su lema y su logo salen de la configuración: son los mismos en todo lo que la iglesia imprime, y tenerlos en cada formato sería tener cuatro membretes distintos el día que cambien.
 
@@ -328,7 +346,9 @@ El que no tenga dato queda en blanco: una llave impresa tal cual obligaría a re
 
 **Un certificado puede decir algo distinto.** Su propio campo de texto manda sobre el del formato, para el caso puntual. Vacío —lo habitual— usa el del formato, así una redacción se corrige una vez y no certificado por certificado.
 
-**Vista previa, antes de guardar.** Tanto en la ficha del formato como al emitir un certificado hay un botón **👁️ Vista previa** que muestra la hoja tal como va a salir impresa, con lo que hay escrito **en ese momento en el formulario** —no con lo guardado—: se prueba un cambio de color, de tipografía o de texto y recién entonces se acepta.
+**Vista previa, antes de guardar.** Tanto en la ficha del formato como al emitir un certificado hay un botón **👁️ Vista previa** que muestra la hoja tal como va a salir impresa, con lo que hay escrito **en ese momento en el formulario** —no con lo guardado—: se prueba un cambio de color, de tipografía, de disposición o de texto y recién entonces se acepta.
+
+**Al actualizar, los formatos de presentación de niños y de matrimonio quedan con su hoja armada** —su versículo, su orla y el texto con los espacios— igual que las que la iglesia usa en papel. Los formatos cuyo texto ya se editó **no se tocan**: ese texto es una decisión de la iglesia, y cambiar un formato cambia también cómo se imprimen los certificados ya emitidos. La disposición se les puede poner a mano desde su ficha cuando quieran.
 
 En el formato la muestra va con datos de relleno que se nota que lo son —*«Nombre Del Titular Apellido»*, *«CERT-000-0000»*—, para que a nadie se le pase imprimir la prueba creyendo que es el certificado de alguien. El nombre de la iglesia sí es el real, porque de otro modo no se puede juzgar si el texto entra en un renglón. Al emitir, la muestra usa los datos que ya se escribieron.
 

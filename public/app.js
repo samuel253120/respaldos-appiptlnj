@@ -4438,6 +4438,9 @@ async function viewForm(name, id, precarga) {
   if (name === 'integrantes_cuerpo') prepararElIntegrante();
   if (name === 'cuerpos') prepararElCuerpo(isNew);
 
+  // Cada tipo de certificado pide los datos de su hoja
+  if (name === 'certificados') prepararElCertificado();
+
   // El acta: traer el texto del documento adjunto, y ver a quién enlaza
   if (name === 'actas_reuniones') prepararElActa(id, row, isNew);
 
@@ -6892,22 +6895,80 @@ async function viewPrint(name, id) {
  * que es peor que el hueco: un certificado entregado que diga «{fecha_evento}»
  * hay que rehacerlo.
  */
-function certRellenar(texto, row) {
-  if (!texto) return '';
-  const datos = {
+const CERT_MESES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+  'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+
+/**
+ * Los datos de un certificado, listos para reemplazar en el texto del formato.
+ *
+ * Las fechas vienen de dos maneras a propósito. Entera —{fecha_evento}— para
+ * los textos corridos de siempre, y partida en día, mes y año —{ev_dia},
+ * {ev_mes}, {ev_anio}— para las hojas que traen la frase con espacios en
+ * blanco: «con fecha __ de ______ del año ____». Escribirla entera ahí
+ * obligaría a la iglesia a redactar tres textos distintos para la misma frase.
+ */
+function certDatos(row) {
+  const partes = (iso) => {
+    const t = String(iso || '').slice(0, 10);
+    const [a, m, d] = t.split('-');
+    return Number(a) && Number(m) && Number(d)
+      ? { dia: d, mes: CERT_MESES[Number(m) - 1] || '', anio: a }
+      : { dia: '', mes: '', anio: '' };
+  };
+  const nace = partes(row.fecha_nacimiento);
+  const evento = partes(row.fecha_evento);
+  const emite = partes(row.fecha_emision);
+
+  return {
     titular: row.nombre_titular || '',
+    conyuge: row.conyuge || '',
+    padre: row.padre || '',
+    madre: row.madre || '',
     tipo: row.tipo || '',
     numero: row.numero || '',
     iglesia: iglesiaDeTrabajo(row.iglesia_id_label) || '',
     institucion: IGLESIA.nombre || '',
+    ciudad: row.ciudad || '',
+    fecha_nacimiento: row.fecha_nacimiento ? fechaLarga(row.fecha_nacimiento) : '',
     fecha_evento: row.fecha_evento ? fechaLarga(row.fecha_evento) : '',
     fecha_emision: row.fecha_emision ? fechaLarga(row.fecha_emision) : '',
+    nac_dia: nace.dia, nac_mes: nace.mes, nac_anio: nace.anio,
+    ev_dia: evento.dia, ev_mes: evento.mes, ev_anio: evento.anio,
+    em_dia: emite.dia, em_mes: emite.mes, em_anio: emite.anio,
     oficiante: row.oficiante_id_label || '',
     rut: row.miembro_id_label && row.rut ? rutFormatear(row.rut) : (row.rut ? rutFormatear(row.rut) : ''),
   };
+}
+
+function certRellenar(texto, row) {
+  if (!texto) return '';
+  const datos = certDatos(row);
   return String(texto).replace(/\{(\w+)\}/g, (entero, clave) =>
     Object.prototype.hasOwnProperty.call(datos, clave) ? datos[clave] : entero
   );
+}
+
+/**
+ * Lo mismo, pero dejando a la vista qué parte es dato y qué parte es texto fijo.
+ *
+ * Es como se ven estos certificados en papel desde siempre: una frase impresa
+ * con espacios en blanco, y el dato escrito encima, sobre la línea. Acá cada
+ * dato reemplazado sale subrayado y en el color del título, y el que no está
+ * deja la línea vacía —igual que el formulario en blanco—, que es preferible a
+ * que la frase se cierre sola y nadie note que falta algo.
+ *
+ * Devuelve HTML, así que el texto del formato se escapa ANTES de reemplazar:
+ * lo escribe una persona en un campo de texto, y sin eso una llave con
+ * etiquetas adentro terminaría dentro de la hoja impresa.
+ */
+function certRellenarMarcado(texto, row) {
+  if (!texto) return '';
+  const datos = certDatos(row);
+  return esc(String(texto)).replace(/\{(\w+)\}/g, (entero, clave) => {
+    if (!Object.prototype.hasOwnProperty.call(datos, clave)) return entero;
+    const v = String(datos[clave] || '').trim();
+    return `<u class="cert-dato${v ? '' : ' vacio'}">${esc(v)}</u>`;
+  });
 }
 
 /** Las tipografías que ofrece el formato, en lo que el navegador entiende. */
@@ -6963,7 +7024,11 @@ function printCertificado(row, formato) {
     `--cert-tam-titulo:${entre(f.tamano_titulo, 12, 96, 34)}px`,
     `--cert-tam-texto:${entre(f.tamano_texto, 8, 40, 15)}px`,
     `--cert-margen:${entre(f.margen, 0, 40, 18)}mm`,
-    `--cert-marco:${CERT_MARCOS[f.marco] || CERT_MARCOS['Doble línea']}`,
+    // El grosor va aparte del estilo: la misma doble línea sirve para una orla
+    // gruesa y para un marco sobrio, y es lo que distingue una hoja de otra
+    `--cert-marco:${f.marco === 'Sin marco'
+      ? CERT_MARCOS['Sin marco']
+      : `${entre(f.grosor_marco, 1, 12, 3)}px ${f.marco === 'Línea simple' ? 'solid' : 'double'}`}`,
     `--cert-fondo-opacidad:${entre(f.fondo_opacidad, 5, 100, 100) / 100}`,
   ].join(';');
 
@@ -6979,25 +7044,121 @@ function printCertificado(row, formato) {
     f.muestra_iglesia === 0 ? '' : `<div class="local">${esc(iglesiaDeTrabajo(row.iglesia_id_label))}</div>`,
   ].join('');
 
-  return `
-    <div class="print-sheet cert-sheet${horizontal}" style="${esc(estiloHoja)}">
+  /* El versículo bajo el título: lo traen la presentación y el matrimonio */
+  const epigrafe = certRellenar(f.epigrafe || '', row);
+  const cita = String(f.epigrafe_cita || '').trim();
+  const bloqueEpigrafe = epigrafe
+    ? `<div class="cert-epigrafe">${esc(epigrafe)}${cita ? `<b>${esc(cita)}</b>` : ''}</div>`
+    : '';
+
+  /*
+   * Las firmas. En la hoja clásica la línea lleva el nombre encima y el rótulo
+   * «Firma» debajo. En las hojas de presentación y de matrimonio no: la línea
+   * va en blanco para firmar sobre ella, y debajo dice qué firma va ahí
+   * —«Firma Pastor», «Timbre Iglesia»—, que es como están hechas en papel.
+   */
+  const bloqueFirmas = (soloRotulo) => (f.muestra_firmas === 0 ? '' : `
+    <div class="cert-firmas${soloRotulo ? ' en-blanco' : ''}">
+      <div class="firma">${soloRotulo
+        ? `<span class="rotulo">${esc(firma1)}</span>`
+        : `${esc(firma1)}<br><span class="rotulo">Firma</span>`}</div>
+      <div class="firma">${soloRotulo
+        ? `<span class="rotulo">${esc(firma2)}</span>`
+        : `${esc(firma2)}<br><span class="rotulo">Firma y sello</span>`}</div>
+    </div>`);
+  const firmas = bloqueFirmas(false);
+  const pie = f.muestra_pie === 0 || !pieDeLaInstitucion()
+    ? '' : `<div class="cert-pie">${esc(pieDeLaInstitucion())}</div>`;
+
+  const envolver = (clase, dentro) => `
+    <div class="print-sheet cert-sheet${clase}${horizontal}" style="${esc(estiloHoja)}">
       ${fondo}
-      <div class="cert-inner">
+      <div class="cert-inner">${dentro}</div>
+    </div>`;
+
+  /**
+   * LA PRESENTACIÓN DE NIÑOS.
+   *
+   * La hoja de siempre de la iglesia: el nombre del niño destacado, la frase
+   * con los espacios en blanco rellenados —cuándo nació, quién lo presentó,
+   * con qué fecha—, sus padres y sus dos parejas de padrinos. El par de
+   * padrinos que quede vacío no sale: una línea en blanco en un documento
+   * entregado se lee como un dato que falta.
+   */
+  if (f.disposicion === 'Presentación de niños') {
+    const par = (a, b, separador) => {
+      if (!String(a || '').trim() && !String(b || '').trim()) return '';
+      return `<div class="cn-par">
+                <span>${esc(a || '')}</span><i>${separador}</i><span>${esc(b || '')}</span>
+              </div>`;
+    };
+    const padrinos = [par(row.padrino_1, row.madrina_1, '&'), par(row.padrino_2, row.madrina_2, '&')]
+      .filter(Boolean).join('');
+
+    return envolver(' cert-ninos', `
+      ${conNumero && row.numero ? `<div class="cert-no cn-numero">N.º ${esc(row.numero)}</div>` : ''}
+      <div class="cn-cab">
+        ${f.muestra_logo === 0 || !IGLESIA.logo ? '' : `<img class="cert-logo" src="${IGLESIA.logo}" alt="" />`}
+        <div class="cn-tit">
+          ${titulo ? `<h1>${esc(titulo)}</h1>` : ''}
+          ${bloqueEpigrafe}
+        </div>
+      </div>
+      ${rotulo ? `<div class="cn-rotulo">${esc(rotulo)}</div>` : ''}
+      <div class="cn-nombre">${esc(row.nombre_titular || '')}</div>
+      ${cuerpo ? `<p class="cn-parrafo">${certRellenarMarcado(row.texto || f.texto || '', row)}</p>` : ''}
+      ${row.padre || row.madre ? `<div class="cn-rotulo">SUS PADRES:</div>${par(row.padre, row.madre, 'y')}` : ''}
+      ${padrinos ? `<div class="cn-rotulo">SUS PADRINOS:</div>${padrinos}` : ''}
+      ${bloqueFirmas(true)}
+      ${lineaFecha ? `<div class="cn-emision">${certRellenarMarcado(
+        puesto(f.texto_fecha, 'FECHA DE EMISIÓN: {ciudad}, {em_dia} de {em_mes} del año {em_anio}'), row
+      )}</div>` : ''}
+      ${pie}`);
+  }
+
+  /**
+   * EL MATRIMONIO.
+   *
+   * Nombra a los dos cónyuges en una sola frase corrida, con los espacios en
+   * blanco rellenados, y lleva el versículo al pie en una banda, como la hoja
+   * que la iglesia usa desde siempre.
+   */
+  if (f.disposicion === 'Matrimonio') {
+    return envolver(' cert-boda', `
+      <div class="cb-cab">
+        ${f.muestra_logo === 0 || !IGLESIA.logo ? '' : `<img class="cert-logo" src="${IGLESIA.logo}" alt="" />`}
+        <div class="cb-membrete">
+          ${f.muestra_institucion === 0 ? '' : `<b>${esc(IGLESIA.nombre)}</b>`}
+          ${f.muestra_institucion === 0 || !IGLESIA.lema ? '' : `<i>${esc(IGLESIA.lema)}</i>`}
+          ${f.muestra_iglesia === 0 ? '' : `<span>${esc(iglesiaDeTrabajo(row.iglesia_id_label))}</span>`}
+        </div>
+        ${conNumero && row.numero ? `<div class="cert-no">N.º ${esc(row.numero)}</div>` : ''}
+      </div>
+      <div class="cb-banda">
+        ${rotulo ? `<span>${esc(rotulo)}</span>` : ''}
+        ${titulo ? `<h1>${esc(titulo)}</h1>` : ''}
+      </div>
+      ${cuerpo ? `<p class="cb-parrafo">${certRellenarMarcado(row.texto || f.texto || '', row)}</p>` : ''}
+      ${bloqueFirmas(true)}
+      ${bloqueEpigrafe}
+      ${lineaFecha ? `<div class="cb-emision">${certRellenarMarcado(
+        puesto(f.texto_fecha, 'Certificado entregado en {ciudad} el {em_dia} de {em_mes} de {em_anio}'), row
+      )}</div>` : ''}
+      ${pie}`);
+  }
+
+  /* La de siempre, y la que vale cuando el formato no dice nada */
+  return envolver('', `
         ${encabezado}
         ${titulo ? `<h1>${esc(titulo)}</h1>` : ''}
+        ${bloqueEpigrafe}
         ${conNumero && row.numero ? `<div class="cert-no">N.º ${esc(row.numero)}</div>` : ''}
         ${rotulo ? `<div class="otorgado">${esc(rotulo)}</div>` : ''}
         <div class="titular">${esc(row.nombre_titular || '')}</div>
         ${cuerpo ? `<div class="texto">${esc(cuerpo)}</div>` : ''}
-        ${f.muestra_firmas === 0 ? '' : `
-          <div class="cert-firmas">
-            <div class="firma">${esc(firma1)}<br><span class="rotulo">Firma</span></div>
-            <div class="firma">${esc(firma2)}<br><span class="rotulo">Firma y sello</span></div>
-          </div>`}
+        ${firmas}
         ${lineaFecha ? `<div class="cert-fecha">${esc(lineaFecha)}</div>` : ''}
-        ${f.muestra_pie === 0 || !pieDeLaInstitucion() ? '' : `<div class="cert-pie">${esc(pieDeLaInstitucion())}</div>`}
-      </div>
-    </div>`;
+        ${pie}`);
 }
 
 /**
@@ -7030,6 +7191,20 @@ function certDeEjemplo(tipo) {
     iglesia_id_label: unaSola ? enLaBarra.trim() : 'Iglesia Local de Ejemplo',
     rut: '11111111-1',
     texto: '',
+    /*
+     * Lo que piden las otras dos disposiciones. Van siempre, aunque el formato
+     * que se esté mirando sea el clásico: los campos que esa hoja no usa no se
+     * dibujan, y así la muestra sirve para las tres sin preguntar cuál es.
+     */
+    ciudad: 'Ciudad de Ejemplo',
+    fecha_nacimiento: hoy,
+    padre: 'Nombre Del Padre Apellido',
+    madre: 'Nombre De La Madre Apellido',
+    padrino_1: 'Nombre Del Padrino Apellido',
+    madrina_1: 'Nombre De La Madrina Apellido',
+    padrino_2: 'Nombre Del Segundo Padrino',
+    madrina_2: 'Nombre De La Segunda Madrina',
+    conyuge: 'Nombre Del Otro Cónyuge Apellido',
   };
 }
 
@@ -11335,6 +11510,40 @@ async function descargarActaEnPdf(id, boton) {
  * adjunto quedaba como un archivo cerrado que no se busca ni se lee sin
  * bajarlo. Estas dos cosas los juntan.
  */
+/**
+ * Cada tipo de certificado pide los datos que su hoja necesita.
+ *
+ * No todos piden lo mismo: uno de membresía se resuelve con el nombre y la
+ * fecha; uno de PRESENTACIÓN DE NIÑOS dice cuándo nació el niño, quiénes son
+ * sus padres y sus padrinos; uno de MATRIMONIO nombra a los dos cónyuges. Qué
+ * forma tiene la hoja lo dice la DISPOSICIÓN del formato elegido, y de ella
+ * cuelgan esos campos por la vía normal del motor (showIf).
+ *
+ * Acá solo se mantiene al día ese campo: al cambiar el tipo se busca su
+ * disposición en la lista que ya trajo el selector —no hace falta preguntar de
+ * nuevo al servidor— y se avisa del cambio, que es lo que hace aparecer o
+ * desaparecer los bloques. El servidor la vuelve a resolver al guardar y
+ * comprueba que estén los datos: lo que decide la pantalla no basta para
+ * emitir un documento que se firma y se entrega.
+ */
+function prepararElCertificado() {
+  const tipo = document.querySelector('#recForm [name="tipo"]');
+  const como = document.querySelector('#recForm [name="disposicion"]');
+  if (!tipo || !como) return;
+
+  const mirar = () => {
+    const lista = optionsCache['/formatos_certificado/opciones'] || [];
+    const suyo = lista.find((o) => String(o.id) === String(tipo.value));
+    const nueva = (suyo && suyo.disposicion) || 'Clásica';
+    if (como.value === nueva) return;
+    como.value = nueva;
+    como.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  tipo.addEventListener('change', mirar);
+  mirar();
+}
+
 /**
  * Las dos cosas en que un grupo no se parece a un cuerpo, en la pantalla.
  *

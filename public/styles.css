@@ -2613,3 +2613,168 @@ table.libro tbody tr:nth-child(even) td { background: #fafbfe; }
   min-height: 44px;
 }
 .inf-no-inscrito button:hover { opacity: .7; }
+
+/* ===========================================================================
+   LAS DOS HOJAS QUE NO SON «UN TÍTULO Y UN PÁRRAFO»
+   ===========================================================================
+   El certificado de presentación de niños y el de matrimonio son los que la
+   iglesia usa en papel desde siempre: una frase impresa con espacios en
+   blanco, y el dato escrito sobre la línea. Se reproducen acá con el mismo
+   reparto, y no como una imagen escaneada, por dos razones: el membrete sale
+   de la configuración —así el día que cambie el nombre o el logo cambian
+   todos— y el texto queda editable en el formato, que es de lo que se trataba.
+
+   Las dos comparten lo de arriba (.cert-sheet): los colores, las tipografías,
+   los tamaños y el margen siguen saliendo del formato.
+   =========================================================================== */
+
+/* El dato escrito sobre la línea. Lo que no se sabe deja la línea en blanco,
+   igual que el formulario en papel: cerrar la frase escondería que falta. */
+.cert-dato {
+  color: var(--cert-color-titulo);
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-decoration: none;
+  border-bottom: 1px solid #78716c;
+  padding: 0 10px 1px;
+  white-space: nowrap;
+}
+.cert-dato.vacio { padding: 0 40px 1px; }
+
+/* El versículo, bajo el título */
+.cert-epigrafe {
+  font-style: italic; text-align: center; line-height: 1.5;
+  font-size: calc(var(--cert-tam-texto) * 0.98);
+  color: var(--cert-color-texto); margin: 8px auto 0; max-width: 46em;
+  white-space: pre-line;
+}
+.cert-epigrafe b { display: block; font-style: italic; margin-top: 2px; }
+
+/* Las firmas sin nombre encima: la línea va en blanco para firmar sobre ella */
+.cert-firmas.en-blanco .firma { padding-top: 8px; }
+.cert-firmas.en-blanco .firma .rotulo { font-size: 13px; color: #44403c; font-weight: 600; }
+
+/* --------------------------------------------------------------------------
+   PRESENTACIÓN DE NIÑOS
+   -------------------------------------------------------------------------- */
+.cert-ninos .cert-inner { padding: 26px 40px 20px; text-align: center; }
+.cert-ninos .cn-cab {
+  display: flex; align-items: center; gap: 22px; text-align: left;
+}
+.cert-ninos .cn-cab .cert-logo { width: 108px; height: 108px; margin: 0; flex: none; }
+.cert-ninos .cn-tit { flex: 1; min-width: 0; }
+.cert-ninos .cn-tit h1 {
+  margin: 0; text-align: center; line-height: 1.1;
+  font-family: var(--cert-fuente-titulo); font-size: var(--cert-tam-titulo);
+  color: var(--cert-color-titulo); text-transform: uppercase; font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.cert-ninos .cn-rotulo {
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+  font-size: calc(var(--cert-tam-texto) * 1.02);
+  color: var(--cert-color-texto); margin-top: 14px;
+}
+.cert-ninos .cn-nombre {
+  font-weight: 800; letter-spacing: 5px; margin: 10px auto 2px;
+  font-size: calc(var(--cert-tam-titulo) * 0.62);
+  color: var(--cert-color-titulo); line-height: 1.25;
+  border-bottom: 1px solid #78716c; padding: 0 20px 6px; max-width: 92%;
+}
+.cert-ninos .cn-parrafo {
+  margin: 14px auto 0; max-width: 54em; line-height: 2.1;
+  font-family: var(--cert-fuente-texto); font-size: var(--cert-tam-texto);
+  color: var(--cert-color-texto); text-align: center;
+}
+/* Un par de nombres sobre sus líneas, con la conjunción al medio */
+.cert-ninos .cn-par {
+  display: flex; align-items: flex-end; justify-content: center; gap: 12px;
+  margin: 6px auto 0; max-width: 94%;
+}
+.cert-ninos .cn-par span {
+  flex: 1 1 0; min-width: 0; border-bottom: 1px solid #78716c;
+  padding: 0 6px 4px; font-weight: 700; letter-spacing: 0.6px;
+  font-size: calc(var(--cert-tam-texto) * 1.02);
+  color: var(--cert-color-titulo);
+  overflow-wrap: anywhere;
+}
+.cert-ninos .cn-par i { font-style: normal; color: var(--cert-color-texto); flex: none; padding-bottom: 4px; }
+.cert-ninos .cert-firmas { margin-top: 42px; }
+.cert-ninos .cn-emision {
+  margin-top: 22px; font-size: calc(var(--cert-tam-texto) * 0.95);
+  color: var(--cert-color-texto); font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   MATRIMONIO
+   -------------------------------------------------------------------------- */
+.cert-boda .cert-inner { padding: 0; text-align: center; }
+.cert-boda .cb-cab {
+  display: flex; align-items: center; gap: 18px; text-align: left;
+  padding: 18px 26px 12px;
+}
+.cert-boda .cb-cab .cert-logo { width: 86px; height: 86px; margin: 0; flex: none; }
+.cert-boda .cb-membrete { flex: 1; min-width: 0; }
+.cert-boda .cb-membrete b {
+  display: block; font-family: var(--cert-fuente-titulo);
+  font-size: calc(var(--cert-tam-titulo) * 0.62); line-height: 1.15;
+  color: var(--cert-color-titulo); font-weight: 800;
+}
+.cert-boda .cb-membrete i {
+  display: block; font-style: normal; font-size: calc(var(--cert-tam-texto) * 0.82);
+  color: var(--cert-color-texto); margin-top: 2px; font-weight: 600;
+}
+.cert-boda .cb-membrete span { display: block; font-size: calc(var(--cert-tam-texto) * 0.8); color: #78716c; margin-top: 2px; }
+.cert-boda .cb-cab .cert-no { align-self: flex-start; white-space: nowrap; }
+
+/* La banda del título, con el nombre del acto en grande */
+.cert-boda .cb-banda {
+  /* Con respaldo: un navegador que no entienda color-mix se queda con el de
+     arriba y la banda se ve igual, solo que sin seguir al color del formato */
+  background: #eaeff8;
+  background: color-mix(in srgb, var(--cert-color-titulo) 12%, #fff);
+  border-top: 1px solid #b7c6e0;
+  border-top: 1px solid color-mix(in srgb, var(--cert-color-titulo) 30%, #fff);
+  border-bottom: 1px solid #b7c6e0;
+  border-bottom: 1px solid color-mix(in srgb, var(--cert-color-titulo) 30%, #fff);
+  padding: 10px 26px 14px; margin-bottom: 18px;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.cert-boda .cb-banda span {
+  display: block; font-family: var(--cert-fuente-titulo); font-style: italic;
+  font-size: calc(var(--cert-tam-titulo) * 0.42); color: var(--cert-color-titulo);
+  letter-spacing: 2px;
+}
+.cert-boda .cb-banda h1 {
+  margin: 0; font-family: var(--cert-fuente-titulo); font-style: italic;
+  font-size: calc(var(--cert-tam-titulo) * 1.35); line-height: 1.05;
+  color: var(--cert-color-titulo); font-weight: 800; letter-spacing: 1px;
+}
+.cert-boda .cb-parrafo {
+  margin: 0 auto; max-width: 56em; padding: 0 26px; text-align: left;
+  line-height: 2.3; font-family: var(--cert-fuente-texto);
+  font-size: var(--cert-tam-texto); color: var(--cert-color-texto);
+}
+.cert-boda .cert-firmas { margin-top: 46px; padding: 0 26px; }
+/* El versículo del matrimonio va al pie, en una banda, como en la hoja de papel */
+.cert-boda .cert-epigrafe {
+  margin-top: 24px; padding: 7px 26px; max-width: none;
+  background: #16265c;
+  background: color-mix(in srgb, var(--cert-color-titulo) 88%, #000);
+  color: #fff; font-size: calc(var(--cert-tam-texto) * 0.86); font-weight: 600;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.cert-boda .cert-epigrafe b { display: inline; margin-left: 8px; }
+.cert-boda .cb-emision {
+  padding: 12px 26px 18px; text-align: left;
+  font-size: calc(var(--cert-tam-texto) * 0.95); color: var(--cert-color-texto);
+}
+
+/* El número, abajo a la derecha.
+   Arriba no cabe: esa franja es del logo, del título y del versículo, y un
+   título de dos líneas se le venía encima. Abajo hay aire al lado de la fecha
+   de emisión, y es donde se busca el número en un documento entregado. */
+.cert-ninos { position: relative; }
+.cert-ninos .cn-numero {
+  position: absolute; bottom: calc(var(--cert-margen) + 10px); right: calc(var(--cert-margen) + 18px);
+  z-index: 2;
+}
