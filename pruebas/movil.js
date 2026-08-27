@@ -307,7 +307,10 @@ const MIRAR = `
   await pg.waitForSelector('.topbar', { timeout: 40000 });
 
   const modulos = await pg.evaluate(() => MODULES.filter((m) => m.perms.view).map((m) => m.name));
-  const rutas = ['#/', '#/asistencia', '#/asistencia/informes', '#/perfil', '#/config'];
+  // El libro de la oficina de partes tiene pantalla propia: no cuelga de
+  // ningún módulo, así que sin nombrarlo acá no lo revisaría nadie
+  const rutas = ['#/', '#/asistencia', '#/asistencia/informes', '#/documentos/libro',
+    '#/perfil', '#/config'];
   for (const m of modulos) {
     rutas.push(`#/m/${m}`, `#/m/${m}/new`);
   }

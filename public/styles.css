@@ -2503,3 +2503,85 @@ input.fuera-de-rango { border-color: var(--danger); background: #fff5f5; }
   }
 }
 @media (max-width: 560px) { .previa-hoja { --previa-escala: 0.44; } }
+
+/* ---------- El libro de la oficina de partes ----------
+   Una fila por documento y las columnas de un libro de partes: el número
+   primero, porque es lo que se busca; después las dos fechas, la materia y con
+   quién. Va apaisado como la planilla, por lo mismo: de pie no caben nueve
+   columnas sin apretar la materia hasta hacerla ilegible, y la materia es lo
+   que uno lee para reconocer un documento. */
+.libro-tit { text-align: center; letter-spacing: 0.5px; margin: 0 0 4px; font-size: 17px; color: var(--marca-azul); }
+.libro-sub {
+  display: flex; gap: 18px; justify-content: center; flex-wrap: wrap;
+  font-size: 12.5px; color: var(--muted); margin-bottom: 14px;
+}
+.libro-scroll { overflow-x: auto; }
+
+table.libro {
+  border-collapse: collapse; width: 100%; font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+table.libro th, table.libro td {
+  border: 1px solid #cbd2dd; padding: 4px 6px; text-align: left; vertical-align: top;
+}
+table.libro thead th {
+  background: #eef2ff; color: var(--marca-azul); font-weight: 700;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap;
+}
+table.libro .col-n { white-space: nowrap; }
+table.libro .col-f { white-space: nowrap; width: 78px; }
+table.libro .col-t { width: 96px; }
+table.libro .col-q { width: 170px; }
+table.libro .col-r { width: 96px; }
+table.libro .col-fo { width: 34px; text-align: right; }
+table.libro .col-e { width: 84px; }
+table.libro .num { text-align: right; }
+table.libro .rot { color: var(--muted); font-size: 11px; }
+
+/* La barrita del borde dice de un vistazo si entró o salió: en un libro que
+   mezcla las dos cosas, leer la columna del número para saberlo cansa. */
+table.libro tbody tr.entra td:first-child { border-left: 3px solid var(--marca-azul); }
+table.libro tbody tr.sale td:first-child { border-left: 3px solid var(--marca-oro-oscuro); }
+table.libro tbody tr.archivo td:first-child { border-left: 3px solid #cbd2dd; }
+table.libro tbody tr:nth-child(even) td { background: #fafbfe; }
+
+.libro-cierre { margin-top: 16px; }
+.libro-cuenta { font-size: 13px; color: var(--text); }
+.libro-firmas { display: flex; justify-content: space-around; margin-top: 46px; }
+.libro-firmas .firma {
+  width: 240px; border-top: 1px solid #78716c; padding-top: 6px;
+  text-align: center; font-size: 12px; color: #57534e;
+}
+.libro-firmas .firma .rotulo { font-size: 10.5px; color: #a8a29e; }
+.libro-pie { margin-top: 22px; text-align: center; font-size: 10.5px; color: var(--muted); }
+
+@media print {
+  .libro-hoja { padding: 0; border: none; box-shadow: none; }
+  .libro-hoja .libro-scroll { overflow: visible; }
+  table.libro { font-size: 8pt; }
+  table.libro th, table.libro td { padding: 2px 4px; }
+  /* El encabezado se repite en cada hoja: un libro de un año ocupa varias, y
+     sin los títulos arriba la segunda no se entiende. Y ninguna fila se parte
+     entre dos páginas: media anotación en cada hoja no se puede leer. */
+  table.libro thead { display: table-header-group; }
+  table.libro tr { break-inside: avoid; }
+  table.libro tbody tr:nth-child(even) td { background: #f6f7fb !important; }
+  /* Las firmas van al final del libro, no colgando de la última fila */
+  .libro-cierre { break-inside: avoid; }
+  table.libro tbody tr.entra td:first-child,
+  table.libro tbody tr.sale td:first-child,
+  table.libro tbody tr.archivo td:first-child,
+  table.libro tbody tr:nth-child(even) td {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+}
+@page libro { size: Letter landscape; margin: 10mm; }
+.libro-hoja { page: libro; }
+
+@media (max-width: 700px) {
+  /* En un teléfono el libro se lee de lado: es una tabla de nueve columnas y
+     convertirla en tarjetas la volvería nueve pantallas de alto. Se deja
+     deslizar, con la sombra de borde que avisa que sigue. */
+  .libro-sub { gap: 10px; font-size: 12px; }
+  table.libro { font-size: 11.5px; min-width: 720px; }
+}

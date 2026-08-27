@@ -839,6 +839,11 @@ function route() {
   if (parts[0] === 'informes' && parts[1] === 'asistencia' && MOD['asistencias']) {
     return (location.hash = '#/asistencia/informes');
   }
+  if (parts[0] === 'documentos' && parts[1] === 'libro' && MOD['documentos']) {
+    const dl = document.querySelector('.side-link[data-mod="documentos"]');
+    if (dl) marcarActivo(dl);
+    return viewLibroDePartes(precarga);
+  }
   if (parts[0] === 'cuenta' || parts[0] === 'perfil') {
     const cl = document.querySelector('.side-link[data-mod="_cuenta"]');
     if (cl) marcarActivo(cl);
@@ -1995,6 +2000,9 @@ async function viewList(name, filtrosIniciales) {
         <label class="range">Hasta <input type="date" id="fHasta" value="${esc(st.hasta)}" /></label>` : ''}
     </div>
     <span class="spacer"></span>
+    ${m.pantallaExtra
+      ? `<a class="btn secondary sm" href="${esc(m.pantallaExtra.ruta)}">${esc(m.pantallaExtra.label)}</a>`
+      : ''}
     ${tieneLlave('datos_planilla')
       ? '<a class="btn secondary sm" id="btnPlanilla" download>⬇️ Excel</a>'
       : ''}
@@ -6993,6 +7001,161 @@ function verVistaPreviaCertificado({ formato, row, titulo }) {
   fondo.addEventListener('remove', () => removeEventListener('resize', ajustarAlto));
 
   fondo.querySelector('#previaCerrar').focus();
+}
+
+/**
+ * El libro de la oficina de partes, para leerlo entero y para imprimirlo.
+ *
+ * La ficha de un documento sirve para trabajarlo; el libro sirve para otra
+ * cosa: para mostrarlo. Es la hoja que se lleva a una reunión, la que se
+ * archiva al cerrar el año, la que responde «muéstreme lo que entró en marzo».
+ * Por eso es una tabla apretada con lo que se lee de un vistazo —número,
+ * fecha, materia, con quién— y no una ficha por página.
+ *
+ * SIEMPRE DE UNA IGLESIA. Un libro que mezclara la matriz con las sedes
+ * tendría dos veces el número 001 en la misma página, y no sería el libro de
+ * nadie. Por eso la iglesia no admite «todas».
+ */
+async function viewLibroDePartes(precarga) {
+  const m = MOD['documentos'];
+  const iglesias = await getOptions('iglesias');
+  const puedeImprimir = tieneLlave('datos_impresion');
+
+  /* La iglesia con que se abre: la que venga en la dirección, la que se esté
+     usando arriba, o la primera que la persona tenga a mano. */
+  const st = {
+    iglesia_id: String(precarga.iglesia_id || USER.iglesia_id || (iglesias[0] || {}).id || ''),
+    anio: String(precarga.anio || ''),
+    flujo: String(precarga.flujo || ''),
+  };
+
+  content().innerHTML = `
+    <div class="page-head no-print">
+      <h2>📖 Libro de la Oficina de Partes</h2>
+      <button class="btn secondary sm" data-ir="#/m/documentos">← Volver al listado</button>
+    </div>
+    <div class="card no-print">
+      <div class="toolbar" id="libroFiltros">
+        <select id="lbIglesia" aria-label="Iglesia del libro">
+          ${iglesias.map((i) => `<option value="${esc(String(i.id))}" ${String(i.id) === st.iglesia_id ? 'selected' : ''}>${esc(i.label)}</option>`).join('')}
+        </select>
+        <select id="lbAnio" aria-label="Año del libro"><option value="">— Todos los años —</option></select>
+        <select id="lbFlujo" aria-label="Qué parte del libro">
+          <option value="">Entradas y salidas</option>
+          <option value="Recibido">Solo lo recibido</option>
+          <option value="Emitido">Solo lo emitido</option>
+          <option value="Interno o de archivo">Solo el archivo interno</option>
+        </select>
+        <span class="spacer"></span>
+        ${puedeImprimir ? '<button class="btn" data-imprimir="1">🖨️ Imprimir</button>' : ''}
+      </div>
+    </div>
+    <div id="libroHoja"></div>`;
+
+  const hoja = document.getElementById('libroHoja');
+  const sel = (id) => document.getElementById(id);
+
+  const pintar = async () => {
+    hoja.innerHTML = '<div class="card"><div class="empty-state" style="padding:26px">Armando el libro…</div></div>';
+    let d;
+    try {
+      d = await api('GET', `/documentos/libro?iglesia_id=${encodeURIComponent(st.iglesia_id)}` +
+        `&anio=${encodeURIComponent(st.anio)}&flujo=${encodeURIComponent(st.flujo)}`);
+    } catch (e) {
+      hoja.innerHTML = `<div class="card"><div class="empty-state" style="padding:26px">${esc(e.message)}</div></div>`;
+      return;
+    }
+
+    // Los años que el libro tiene escritos, para elegir sin adivinar
+    const anios = sel('lbAnio');
+    anios.innerHTML = '<option value="">— Todos los años —</option>' +
+      d.anios.map((a) => `<option value="${esc(a)}" ${a === st.anio ? 'selected' : ''}>${esc(a)}</option>`).join('');
+
+    const queParte = st.flujo === 'Recibido' ? 'Documentos recibidos'
+      : st.flujo === 'Emitido' ? 'Documentos emitidos'
+        : st.flujo === 'Interno o de archivo' ? 'Archivo interno'
+          : 'Entradas y salidas';
+    const cuando = d.anio ? `Año ${d.anio}` : 'Todos los años';
+
+    const cabecera = (f) => (f.flujo === 'Emitido' ? 'Para' : 'De');
+
+    hoja.innerHTML = `
+      <div class="card libro-hoja">
+        <div class="print-only">${membreteDelDocumento()}</div>
+        <h3 class="libro-tit">Libro de la Oficina de Partes</h3>
+        <div class="libro-sub">
+          <span><b>${esc(d.iglesia)}</b></span>
+          <span>${esc(queParte)}</span>
+          <span>${esc(cuando)}</span>
+        </div>
+        ${d.filas.length ? `
+        <div class="libro-scroll">
+          <table class="libro">
+            <thead>
+              <tr>
+                <th class="col-n">N.º</th>
+                <th class="col-f">Registro</th>
+                <th class="col-f">Documento</th>
+                <th class="col-t">Tipo</th>
+                <th>Materia / Asunto</th>
+                <th class="col-q">De / Para</th>
+                <th class="col-r">Referencia</th>
+                <th class="col-fo">Fs.</th>
+                <th class="col-e">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${d.filas.map((f) => `
+                <tr class="${f.flujo === 'Emitido' ? 'sale' : f.flujo === 'Recibido' ? 'entra' : 'archivo'}">
+                  <td class="col-n"><b>${esc(f.numero || '—')}</b></td>
+                  <td class="col-f">${esc(f.fecha_registro ? fechaCorta(f.fecha_registro) : '')}</td>
+                  <td class="col-f">${esc(f.fecha ? fechaCorta(f.fecha) : '')}</td>
+                  <td class="col-t">${esc(f.tipo || '')}</td>
+                  <td>${esc(f.titulo || '')}</td>
+                  <td class="col-q">
+                    ${(f.remitente || f.destinatario)
+                      ? `<span class="rot">${esc(cabecera(f))}:</span> ${esc(f.destinatario || f.remitente)}`
+                      : ''}
+                  </td>
+                  <td class="col-r">${esc(f.referencia || '')}</td>
+                  <td class="col-fo num">${esc(f.folios == null ? '' : String(f.folios))}</td>
+                  <td class="col-e">${esc(f.estado || '')}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="libro-cierre">
+          <div class="libro-cuenta">
+            En este libro constan <b>${fmtNumero(d.resumen.total)}</b> documento(s):
+            <b>${fmtNumero(d.resumen.recibidos)}</b> recibido(s) y
+            <b>${fmtNumero(d.resumen.emitidos)}</b> emitido(s)${
+              d.resumen.folios ? `, con un total de <b>${fmtNumero(d.resumen.folios)}</b> folio(s)` : ''}.
+          </div>
+          <div class="libro-firmas print-only">
+            <div class="firma">Secretaría<br><span class="rotulo">Firma y timbre</span></div>
+            <div class="firma">Pastor(a) / Encargado(a)<br><span class="rotulo">Firma</span></div>
+          </div>
+          <div class="libro-pie print-only">
+            Impreso el ${esc(fechaLarga(hoyISO()))}${pieDeLaInstitucion() ? ` · ${esc(pieDeLaInstitucion())}` : ''}
+          </div>
+        </div>
+      </div>`
+      : `<div class="card"><div class="empty-state" style="padding:26px">
+           El libro no tiene documentos con esos filtros.
+         </div></div>`}`;
+  };
+
+  const alCambiar = (id, campo) => {
+    const el = sel(id);
+    if (!el) return;
+    el.addEventListener('change', () => { st[campo] = el.value; pintar(); });
+  };
+  alCambiar('lbIglesia', 'iglesia_id');
+  alCambiar('lbAnio', 'anio');
+  alCambiar('lbFlujo', 'flujo');
+  sel('lbFlujo').value = st.flujo;
+
+  await pintar();
 }
 
 /* =====================================================================

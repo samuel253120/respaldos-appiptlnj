@@ -335,6 +335,23 @@ El formulario cambia según el flujo: un documento recibido pide **remitente, qu
 
 > **Un documento al que otros responden no se borra**: dejaría esas respuestas sin decir a qué contestan. Para eso está el estado *Archivado*.
 
+### Imprimir el libro 📖
+
+Desde el listado, el botón **📖 Ver el libro** abre el libro completo: una fila por documento, en el orden en que las cosas pasaron. Se elige la **iglesia** —cada una lleva el suyo—, el **año** y qué parte: *entradas y salidas*, solo lo recibido, solo lo emitido, o el archivo interno.
+
+Impreso sale apaisado, con el **membrete de la institución**, el título, la iglesia y el período; la tabla con el número, las dos fechas, el tipo, la materia, con quién, la referencia, los folios y el estado; y al pie el **cierre**: cuántos documentos constan, cuántos entraron, cuántos salieron y cuántos folios, con las dos **líneas de firma** —Secretaría y Pastor(a)— y la fecha de impresión.
+
+| | |
+|---|---|
+| El encabezado de la tabla | **Se repite en cada hoja**: un libro de un año ocupa varias, y sin los títulos arriba la segunda no se entiende |
+| Las filas | **No se parten** entre dos páginas: media anotación en cada hoja no se puede leer |
+| El cierre y las firmas | Van juntos al final, no colgando de la última fila |
+| Una barrita en el borde | Azul lo que entró, dorado lo que salió: en un libro que mezcla las dos cosas, leer la columna del número para saberlo cansa |
+
+> Probado con un libro de **84 documentos**: salen 4 páginas, con el encabezado repetido en cada una.
+
+> Si quiere el número de página impreso, actívelo en **«Encabezados y pies de página»** del cuadro de impresión del navegador: es el navegador quien pagina, y desde el sistema no se puede saber en qué hoja va a caer cada fila.
+
 **Lo que ya estaba en el módulo** —cuando era un archivo documental suelto— se clasifica solo al actualizar: lo que decía *«Correspondencia recibida»* o *«enviada»* entra a su libro con su correlativo, por fecha; **todo lo demás queda como «Interno o de archivo», sin número**. Una escritura de propiedad no entró ni salió por la oficina, y ponerle un correlativo diría que un día llegó. Nada se pierde y se reclasifica a mano lo que corresponda.
 
 ### Histórico de directivas 🏅

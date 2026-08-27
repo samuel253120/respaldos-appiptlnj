@@ -48,7 +48,10 @@ const SIN_NOMBRE = `(() => {
 
   const modulos = await pg.evaluate(() => MODULES.filter((m) => m.menu !== false).map((m) => m.name));
 
-  const pantallas = ['#/', '#/asistencia', '#/asistencia/informes', '#/perfil', '#/config'];
+  // El libro de la oficina de partes tiene pantalla propia: no cuelga de
+  // ningún módulo, así que sin nombrarlo acá no lo revisaría nadie
+  const pantallas = ['#/', '#/asistencia', '#/asistencia/informes', '#/documentos/libro',
+    '#/perfil', '#/config'];
   for (const m of modulos) {
     pantallas.push(`#/m/${m}`);
     pantallas.push(`#/m/${m}/new`); // el formulario, que es donde están los campos

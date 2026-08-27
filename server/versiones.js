@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.114.0", fecha: "2026-08-27", titulo: "El libro de la oficina de partes se puede leer entero e imprimir, con su membrete y sus firmas" },
   { version: "1.113.0", fecha: "2026-08-26", titulo: "Documentos pasa a ser la oficina de partes: lo que entra y lo que sale, cada uno con su correlativo" },
   { version: "1.112.0", fecha: "2026-08-26", titulo: "Configuración y permisos al día: el certificado estrena número, la categoría de la directiva se elige, y cada rol dice qué hace con las listas de la iglesia" },
   { version: "1.111.0", fecha: "2026-08-26", titulo: "Vista previa del certificado, en el formato y al emitirlo, sin guardar nada" },

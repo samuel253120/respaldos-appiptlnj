@@ -49,6 +49,88 @@ const ESTADOS = ['Ingresado', 'Derivado', 'En trámite', 'Respondido', 'Despacha
 const ES_RECIBIDO = { field: 'flujo', equals: 'Recibido' };
 const ES_EMITIDO = { field: 'flujo', equals: 'Emitido' };
 
+
+/**
+ * El libro armado: las anotaciones en su orden y la cuenta del cierre.
+ *
+ * Está aparte de la ruta para poder probarlo suelto. Un libro que numere mal,
+ * que ordene mal o que deje algo fuera no se nota mirándolo: se nota el día
+ * que hay que probar con él que un documento entró, y ese día ya no se puede
+ * arreglar.
+ *
+ * SIEMPRE DE UNA IGLESIA. Un libro que mezclara la matriz con las sedes
+ * tendría dos veces el número 001 en la misma página, y no sería el libro de
+ * nadie.
+ */
+function armarElLibro(db, { iglesiaId, anio, flujo }) {
+  const anioPedido = String(anio || '').trim();
+  const cual = String(flujo || '').trim();
+
+  const condiciones = ['d.iglesia_id = ?'];
+  const params = [Number(iglesiaId)];
+
+  if (FLUJOS.includes(cual)) {
+    condiciones.push('d.flujo = ?');
+    params.push(cual);
+  } else {
+    // El libro son las entradas y las salidas: lo de archivo no pasó por la
+    // oficina y no lleva número, así que no forma parte del correlativo
+    condiciones.push("d.flujo IN ('Recibido', 'Emitido')");
+  }
+
+  if (/^\d{4}$/.test(anioPedido)) {
+    /*
+     * Por la fecha de REGISTRO, no por la del documento: es la que dice cuándo
+     * pasó por la oficina y la que ordena el libro. Una carta fechada en
+     * diciembre que llegó en enero pertenece al libro de enero, y buscarla en
+     * el del año anterior no la encontraría.
+     */
+    condiciones.push("strftime('%Y', COALESCE(d.fecha_registro, d.fecha)) = ?");
+    params.push(anioPedido);
+  }
+
+  const filas = db
+    .prepare(
+      `SELECT d.id, d.numero, d.flujo, d.fecha, d.fecha_registro, d.tipo, d.titulo,
+              d.remitente, d.destinatario, d.referencia, d.folios, d.estado, d.medio,
+              c.nombre AS cuerpo
+         FROM documentos d
+         LEFT JOIN cuerpos c ON c.id = d.cuerpo_id
+        WHERE ${condiciones.join(' AND ')}
+        ORDER BY COALESCE(d.fecha_registro, d.fecha), d.id`
+    )
+    .all(...params);
+
+  const iglesia = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(Number(iglesiaId));
+  const cuenta = (f) => filas.filter((x) => x.flujo === f).length;
+
+  /** Los años que este libro tiene escritos, para poder elegir sin adivinar. */
+  const anios = db
+    .prepare(
+      `SELECT DISTINCT strftime('%Y', COALESCE(fecha_registro, fecha)) AS anio
+         FROM documentos
+        WHERE iglesia_id = ? AND COALESCE(fecha_registro, fecha) IS NOT NULL
+        ORDER BY anio DESC`
+    )
+    .all(Number(iglesiaId))
+    .map((f) => f.anio)
+    .filter(Boolean);
+
+  return {
+    iglesia: iglesia ? iglesia.nombre : '',
+    anio: /^\d{4}$/.test(anioPedido) ? anioPedido : null,
+    flujo: FLUJOS.includes(cual) ? cual : null,
+    anios,
+    filas,
+    resumen: {
+      total: filas.length,
+      recibidos: cuenta('Recibido'),
+      emitidos: cuenta('Emitido'),
+      folios: filas.reduce((n, f) => n + (Number(f.folios) || 0), 0),
+    },
+  };
+}
+
 module.exports = {
   name: 'documentos',
   label: 'Oficina de Partes',
@@ -59,6 +141,11 @@ module.exports = {
   ayudaPermiso:
     'El libro de lo que entra y lo que sale de la institución. Cada documento recibido o emitido ' +
     'lleva su correlativo, y borrar uno deja un hueco en el libro: para eso está el estado «Archivado».',
+  /*
+   * El libro completo, para leerlo de corrido y para imprimirlo. La ficha
+   * sirve para trabajar un documento; el libro, para mostrarlos todos.
+   */
+  pantallaExtra: { ruta: '#/documentos/libro', label: '📖 Ver el libro' },
   display: '{numero} — {titulo}',
   dateField: 'fecha',
   printable: true,
@@ -256,8 +343,32 @@ module.exports = {
         numero: require('../numeracion').proximoNumero(serie, iglesiaId, req.query.fecha_registro),
       });
     });
+
+    /**
+     * El libro, para leerlo entero o imprimirlo.
+     *
+     * Un libro de partes se lleva POR IGLESIA: por eso la iglesia es
+     * obligatoria y no hay un «todas». Un libro que mezclara la matriz con las
+     * sedes tendría dos veces el número 001 en la misma página y no sería el
+     * libro de nadie.
+     *
+     * El orden es el del libro: por fecha de registro, y a igualdad de fecha
+     * por el orden en que se registraron. Es el orden en que las cosas
+     * pasaron, que es lo que un libro certifica.
+     */
+    router.get('/documentos/libro', requirePerm('documentos', 'view'), (req, res) => {
+      const iglesiaId = Number(req.query.iglesia_id) || 0;
+      if (!iglesiaId) return res.status(400).json({ error: 'Indique de qué iglesia es el libro' });
+      if (!require('../alcance').alcanzaIglesia(req.user, iglesiaId)) {
+        return res.status(403).json({ error: 'Esa iglesia no está entre las que tiene asignadas' });
+      }
+      res.json(armarElLibro(require('../db').db, {
+        iglesiaId, anio: req.query.anio, flujo: req.query.flujo,
+      }));
+    });
   },
 };
 
 module.exports.FLUJOS = FLUJOS;
+module.exports.armarElLibro = armarElLibro;
 module.exports.TIPOS = TIPOS;

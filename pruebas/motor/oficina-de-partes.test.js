@@ -239,3 +239,84 @@ test('correrla de nuevo no reclasifica ni renumera nada', () => {
   documentosALaOficinaDePartes();
   assert.deepEqual(db.prepare('SELECT id, flujo, numero FROM documentos ORDER BY id').all(), antes);
 });
+
+/* ── El libro, para leerlo e imprimirlo ────────────────────────────── */
+
+const { armarElLibro } = require('../../server/modules/documentos');
+
+const paraElLibro = db.prepare("INSERT INTO iglesias (nombre, codigo, estado) VALUES ('Del Libro', 'IG-LB', 'Activa')")
+  .run().lastInsertRowid;
+const otroLibro = db.prepare("INSERT INTO iglesias (nombre, codigo, estado) VALUES ('Otro Libro', 'IG-LB2', 'Activa')")
+  .run().lastInsertRowid;
+
+const anotar = (flujo, numero, registro, ig = paraElLibro, folios = null) => db.prepare(
+  `INSERT INTO documentos (titulo, flujo, numero, fecha, fecha_registro, iglesia_id, tipo, folios)
+   VALUES (?, ?, ?, ?, ?, ?, 'Carta', ?)`
+).run('Asunto ' + numero, flujo, numero, registro, registro, ig, folios).lastInsertRowid;
+
+anotar('Recibido', 'REC-001-2026', '2026-03-04', paraElLibro, 3);
+anotar('Emitido', 'EMI-001-2026', '2026-01-15', paraElLibro, 2);
+anotar('Recibido', 'REC-001-2025', '2025-11-20', paraElLibro, 1);
+db.prepare(
+  `INSERT INTO documentos (titulo, flujo, iglesia_id, fecha, tipo)
+   VALUES ('Escritura', 'Interno o de archivo', ?, '2026-02-02', 'Escritura / Propiedad')`
+).run(paraElLibro);
+anotar('Recibido', 'REC-001-2026', '2026-03-04', otroLibro);
+
+test('el libro va en el orden en que las cosas pasaron', () => {
+  // Un libro certifica el orden de los hechos: se ordena por la fecha de
+  // REGISTRO, no por la del documento ni por el número.
+  const libro = armarElLibro(db, { iglesiaId: paraElLibro });
+  assert.deepEqual(libro.filas.map((f) => f.numero), ['REC-001-2025', 'EMI-001-2026', 'REC-001-2026']);
+});
+
+test('el libro es de UNA iglesia: no se mezcla con las demás', () => {
+  // Mezclarlas pondría dos veces el 001 en la misma página.
+  const libro = armarElLibro(db, { iglesiaId: paraElLibro });
+  assert.equal(libro.filas.filter((f) => f.numero === 'REC-001-2026').length, 1);
+  assert.equal(libro.iglesia, 'Del Libro');
+});
+
+test('el archivo interno NO forma parte del libro', () => {
+  // No pasó por la oficina y no lleva número: ponerlo entre las anotaciones
+  // diría que un día entró.
+  const libro = armarElLibro(db, { iglesiaId: paraElLibro });
+  assert.equal(libro.filas.some((f) => f.flujo === 'Interno o de archivo'), false);
+});
+
+test('…salvo que se pida ver justamente eso', () => {
+  const libro = armarElLibro(db, { iglesiaId: paraElLibro, flujo: 'Interno o de archivo' });
+  assert.equal(libro.filas.length, 1);
+  assert.equal(libro.filas[0].titulo, 'Escritura');
+});
+
+test('se puede pedir un año, y se corta por la fecha de registro', () => {
+  const libro = armarElLibro(db, { iglesiaId: paraElLibro, anio: '2026' });
+  assert.deepEqual(libro.filas.map((f) => f.numero), ['EMI-001-2026', 'REC-001-2026']);
+  assert.equal(libro.anio, '2026');
+});
+
+test('y se puede pedir solo una de las dos partes', () => {
+  const soloEntradas = armarElLibro(db, { iglesiaId: paraElLibro, flujo: 'Recibido' });
+  assert.deepEqual(soloEntradas.filas.map((f) => f.numero), ['REC-001-2025', 'REC-001-2026']);
+});
+
+test('el cierre cuenta lo que de verdad quedó en la página', () => {
+  // Si la cuenta no calzara con las filas, el libro se contradiría a sí mismo.
+  const libro = armarElLibro(db, { iglesiaId: paraElLibro, anio: '2026' });
+  assert.equal(libro.resumen.total, libro.filas.length);
+  assert.equal(libro.resumen.recibidos, 1);
+  assert.equal(libro.resumen.emitidos, 1);
+  assert.equal(libro.resumen.folios, 5);   // 3 + 2
+});
+
+test('los años que se ofrecen son los que el libro tiene escritos', () => {
+  const libro = armarElLibro(db, { iglesiaId: paraElLibro });
+  assert.deepEqual(libro.anios, ['2026', '2025']);
+});
+
+test('un año inventado no recorta nada a medias: se ignora', () => {
+  const libro = armarElLibro(db, { iglesiaId: paraElLibro, anio: 'el año pasado' });
+  assert.equal(libro.anio, null);
+  assert.equal(libro.filas.length, 3);
+});

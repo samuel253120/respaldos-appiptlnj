@@ -187,6 +187,10 @@ app.get('/api/meta', authRequired, (req, res) => {
       menu: m.menu !== false, // los que se ven dentro de otra ficha no ocupan lugar en el menú
       display: m.display,
       printable: !!m.printable,
+      // Una pantalla propia del módulo, además de su listado y su ficha: hoy
+      // el libro de la oficina de partes. La barra del listado ofrece el
+      // enlace, así que se llega desde donde uno está mirando los documentos
+      pantallaExtra: m.pantallaExtra || null,
       dateField: m.dateField || null,
       searchFields: m.searchFields,
       listFields: m.listFields,
