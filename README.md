@@ -610,6 +610,8 @@ A mano se puede anotar cualquier otra cosa: la fundación, una inauguración, un
 
 La pantalla de inicio muestra los totales del sistema, el resumen financiero del mes (a quien tenga acceso a Tesorería), los próximos cumpleaños, las solicitudes recientes y los datos que faltan por completar.
 
+> **Solicitudes en trámite** cuenta **las tres** que siguen abiertas, no dos escritas a mano. Antes nombraba «Pendiente» y «En revisión», así que una solicitud parada *esperando antecedentes* desaparecía del panel aunque siguiera abierta y fuera justamente la que había que destrabar. La tarjeta dice además **cuántas están pasadas de plazo** y lleva a la bandeja, que es donde se arreglan.
+
 ### Datos por completar 📝
 
 Una base traída de otro sistema llega siempre con huecos: gente sin teléfono, sin fecha de nacimiento, sin correo. No es un error del programa —esos datos nunca se cargaron— pero mientras nadie los vea, nadie los llena, y el día que hay que avisarle a alguien no hay por dónde.
@@ -1305,6 +1307,7 @@ de la que se toque:
 | **Las que llevo yo** | Abiertas, a mi nombre |
 | **Pasadas de plazo** | Ya debían estar contestadas: pasó la fecha comprometida o, sin ella, el plazo general |
 | **Todas las abiertas** | Lo que sigue en trámite, lleve quien lo lleve. Es la vista de quien coordina |
+| **Sin nadie que las lleve** | Abiertas cuyo responsable ya no entra al sistema. Solo aparece cuando tiene algo |
 | **Cerradas** | Lo resuelto en los últimos 30 días, que es lo que se rinde de la semana o del mes |
 
 Las cuatro cuentas salen siempre, aunque se esté mirando una: la que está en
@@ -1314,6 +1317,68 @@ que el listado: la bandeja no es una puerta lateral para ver lo que no le toca.
 > **«Pasadas de plazo» dice exactamente lo mismo que el recordatorio.** Es la
 > misma regla escrita una vez: si se separaran, el sistema avisaría de una
 > solicitud que la pantalla no marca, y ninguna de las dos volvería a creerse.
+
+### El paso siguiente, ofrecido y no hecho 🔗
+
+De los nueve tipos de solicitud, solo uno se conectaba con lo que produce:
+aprobar una de **Ayuda social** registra la ayuda sola. Las demás no proponían
+nada, y había que acordarse, ir a otro módulo y copiar a mano lo que ya estaba
+escrito. Ahora, en la pestaña **Tramitación**:
+
+| Tipo | Qué se ofrece |
+|---|---|
+| **Certificado** | Emitirlo, con el titular, la iglesia y la solicitud ya puestos |
+| **Credencial** | Emitirla; si quien pide tiene ficha de pastor, ya viene elegida |
+| **Traslado de membresía** | Abrir la ficha del miembro, que es donde se hace |
+| **Ayuda social** | Se registra sola al aprobarla, como hasta ahora |
+
+**Se ofrece, no se hace.** La ayuda social se crea sola porque aprobar la
+solicitud *es* conceder la ayuda: son el mismo acto dicho dos veces. Emitir un
+certificado no lo es —es un documento que se firma y se entrega, con su número,
+su fecha y su oficiante—, y una credencial menos todavía. Y solo se ofrece
+**cuando la solicitud ya está aprobada**: antes se anuncia, sin botón.
+
+Lo que se emita **queda enlazado** a la solicitud: su ficha pasa a decir *«de
+esta solicitud salió el certificado CERT-003-2026»* con el enlace hasta él, en
+vez de volver a ofrecer lo mismo, y en el seguimiento queda anotado qué salió de
+ahí. El enlace se pone al emitir y no se vuelve a tocar: cambiarlo después sería
+reescribir de dónde salió algo.
+
+> **El tipo de certificado no se adivina.** La solicitud dice «Certificado» y
+> nada más; elegir por ella si es de bautismo, de membresía o de matrimonio sería
+> inventar el contenido de un papel que se firma.
+
+### Todo lo que ha pedido una persona, en su ficha 🧍
+
+La ficha de un **miembro** y la de un **no miembro** tienen ahora pestaña de
+**Solicitudes**, con las dos maneras en que alguien aparece en una, separadas
+porque no son lo mismo:
+
+- **Lo que ha pedido** — las que presentó.
+- **Donde figura sin haberla presentado** — el niño de una presentación, la
+  persona a la que se traslada una ayuda—, con qué papel tiene en cada una.
+
+Era el motivo declarado del módulo —*«para poder ver todo lo que pidió una
+persona»*— y hasta acá había que ir al listado y buscarla por nombre. Desde ahí
+mismo se puede ingresar una solicitud nueva a su nombre, ya rellena.
+
+### Cuando el responsable ya no entra al sistema 🫥
+
+No se puede asignar una solicitud a una cuenta desactivada, pero una asignación
+**anterior** sobrevivía a la baja sin que nada lo dijera: los avisos iban a
+alguien que ya no entra, la solicitud no aparecía en la bandeja de nadie, y el
+recordatorio de *«lleva mucho sin respuesta»* llegaba a un buzón que nadie abre.
+
+Ahora, al desactivar una cuenta que lleva solicitudes abiertas, **se pregunta**:
+se dice cuántas son y se ofrecen dos salidas —*volver y trasladarlas* o
+*desactivarla igual*—. **No se bloquea**: quien deja la iglesia tiene que perder
+el acceso hoy, no cuando alguien se acuerde de repartir sus trámites, y negarse
+a desactivar dejaría abierta una cuenta que ya no debe entrar, que es peor.
+
+Lo que queda así no se pierde: aparece en la caja **«Sin nadie que las lleve»**
+de la bandeja —que solo se muestra cuando tiene algo—, con la marca *ya no
+entra* junto al nombre, y el vigía se lo recuerda a quien tenga la llave de
+tramitar las de otros, en un solo aviso y no uno por solicitud.
 
 ### Lo impreso lleva la tramitación 🖨️
 
@@ -1766,7 +1831,7 @@ Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesi
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro. Con `PREPARAR=1` llena la base con 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos para que la medición diga algo — y por eso **se niega a hacerlo si la base tiene fichas que no generó ella**: esos datos van directo a la base, sin pasar por el sistema, y una base con datos de una iglesia no se toca. Para medir, use una base aparte: `DATA_DIR=/tmp/carga`.
 
   `LIMPIAR=1 npm run carga` dice cuántos datos de prueba hay en una base y cuántas fichas son de verdad, sin borrar nada; `LIMPIAR=borrar` los borra. Se reconocen por sus señas: los RUT del 30.000.000 en adelante —un tramo que no está en uso—, los cuerpos «Cuerpo de prueba N» y los movimientos «Movimiento de prueba N».
-- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 844 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 876 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
 
   Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
 

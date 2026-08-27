@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.123.0", fecha: "2026-08-27", titulo: "Al aprobar se ofrece el paso siguiente, cada persona ve lo que ha pedido, y una cuenta no se desactiva dejando solicitudes huérfanas sin avisar" },
   { version: "1.122.0", fecha: "2026-08-27", titulo: "Las solicitudes tienen bandeja, plazo comprometido, hoja impresa con su tramitación y un número que dice de qué iglesia son" },
   { version: "1.121.0", fecha: "2026-08-27", titulo: "Una solicitud no se cierra sin decir qué se resolvió, no se queda sin nadie a cargo y no salta de un cierre a otro sin reabrirse" },
   { version: "1.120.0", fecha: "2026-08-27", titulo: "Las solicitudes que uno tiene a cargo se ven, aunque quien las presentó no sea de sus cuerpos" },

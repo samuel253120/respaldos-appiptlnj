@@ -528,6 +528,10 @@ module.exports = {
      *     que la pantalla y el aviso no digan cosas distintas.
      *   · ABIERTAS — todo lo que sigue en trámite dentro de lo que alcanzo,
      *     lleve quien lo lleve. Es la vista del que coordina.
+     *   · SIN NADIE QUE LAS LLEVE — abiertas cuyo responsable ya no entra al
+     *     sistema. Al desactivar una cuenta se pregunta qué pasa con lo que
+     *     lleva, pero se puede confirmar y seguir; estas son las que quedaron
+     *     así y hay que repartir. La caja solo se muestra cuando tiene algo.
      *   · CERRADAS — lo resuelto en los últimos treinta días, que es lo que se
      *     mira para rendir cuentas de la semana o del mes.
      *
@@ -580,6 +584,18 @@ module.exports = {
           con: () => [...module.exports.CERRADOS],
           orden: `COALESCE(NULLIF(s.fecha_compromiso, ''), s.fecha)`,
         },
+        huerfanas: {
+          titulo: 'Sin nadie que las lleve',
+          // Su responsable ya no entra: se desactivó su cuenta y estas
+          // quedaron a nombre de un buzón que nadie abre
+          donde: () => [
+            `s.estado NOT IN (${cerrados})`,
+            `(s.responsable_id IS NULL
+              OR NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.id = s.responsable_id AND u.activo = 1))`,
+          ],
+          con: () => [...module.exports.CERRADOS],
+          orden: `COALESCE(NULLIF(s.fecha_compromiso, ''), s.fecha)`,
+        },
         cerradas: {
           titulo: 'Cerradas en los últimos 30 días',
           donde: () => [
@@ -613,6 +629,7 @@ module.exports = {
           `SELECT s.id, s.numero, s.fecha, s.fecha_compromiso, s.fecha_respuesta, s.solicitante,
                   s.tipo, s.asunto, s.estado, s.responsable_id, s.iglesia_id,
                   (SELECT nombre FROM usuarios WHERE id = s.responsable_id) AS responsable,
+                  (SELECT activo FROM usuarios WHERE id = s.responsable_id) AS responsable_activo,
                   (SELECT nombre FROM iglesias WHERE id = s.iglesia_id) AS iglesia,
                   CAST(julianday('now','localtime')
                        - julianday(COALESCE(NULLIF(s.fecha_compromiso, ''), s.fecha)) AS INTEGER) AS dias,
@@ -635,6 +652,95 @@ module.exports = {
         caja: cual, titulo: caja.titulo, cuentas, dias,
         yo: req.user.id, filas,
       });
+    });
+
+    /**
+     * TODO LO QUE PIDIÓ UNA PERSONA, para verlo en su ficha.
+     *
+     * El módulo se diseñó, con todas sus letras, «para poder ver todo lo que
+     * pidió una persona». Pero para eso había que ir al listado y buscar por
+     * nombre: la ficha del miembro tenía pestaña de Cuerpos y no de
+     * Solicitudes, y la de No Miembros no tenía ninguna.
+     *
+     * Se devuelven las DOS maneras en que alguien aparece en una solicitud, y
+     * se distinguen, porque no son lo mismo:
+     *
+     *   · COMO TITULAR — la presentó. Es «lo que pidió».
+     *   · INVOLUCRADA — aparece dentro de la solicitud de otro: el niño de una
+     *     presentación, la persona a la que se traslada una ayuda. Es «dónde
+     *     figura», y también hay que poder verlo.
+     *
+     * Pasa por el alcance como cualquier listado: quien no ve una solicitud
+     * tampoco la ve desde acá.
+     */
+    router.get('/solicitudes/de-persona', requirePerm('solicitudes', 'view'), (req, res) => {
+      const alcance = require('../alcance');
+      const esMiembro = req.query.tipo === 'Miembro';
+      const quien = Number(req.query.id) || 0;
+      if (!quien) return res.status(400).json({ error: 'Indique de quién son las solicitudes.' });
+      const campo = esMiembro ? 'miembro_id' : 'no_miembro_id';
+
+      const params = [];
+      const suyas = alcance.condiciones(module.exports, req.user, params);
+      const donde = suyas ? ` AND (${suyas})` : '';
+
+      const titular = db
+        .prepare(
+          `SELECT s.id, s.numero, s.fecha, s.tipo, s.asunto, s.estado, s.fecha_respuesta
+             FROM solicitudes s
+            WHERE s."${campo}" = ?${donde}
+            ORDER BY s.fecha DESC, s.id DESC LIMIT 100`
+        )
+        .all(quien, ...params);
+
+      // Y donde figura sin haberla presentado. Se excluyen las que ya salieron
+      // como titular: una persona puede estar en las dos listas de su propia
+      // solicitud, y verla dos veces no dice nada nuevo.
+      let involucrada = [];
+      try {
+        const mas = [];
+        const otras = alcance.condiciones(module.exports, req.user, mas);
+        /*
+         * Sin JOIN, a propósito: «personas_solicitud» tiene sus propias
+         * columnas iglesia_id, miembro_id y no_miembro_id, y el alcance escribe
+         * esos nombres sin apellido. Con el JOIN puesto la base no sabría de
+         * qué tabla habla, la consulta ni siquiera correría, y esta lista
+         * saldría vacía sin que nada lo dijera.
+         */
+        involucrada = db
+          .prepare(
+            `SELECT s.id, s.numero, s.fecha, s.tipo, s.asunto, s.estado, s.fecha_respuesta,
+                    (SELECT relacion FROM personas_solicitud
+                      WHERE solicitud_id = s.id AND "${campo}" = ? LIMIT 1) AS relacion
+               FROM solicitudes s
+              WHERE s.id IN (SELECT solicitud_id FROM personas_solicitud WHERE "${campo}" = ?)
+                    AND COALESCE(s."${campo}", 0) <> ?
+                    ${otras ? `AND (${otras})` : ''}
+              ORDER BY s.fecha DESC, s.id DESC LIMIT 100`
+          )
+          .all(quien, quien, quien, ...mas);
+      } catch (e) {
+        involucrada = []; // sin el módulo de personas no hay segunda lista
+      }
+
+      res.json({ titular, involucrada });
+    });
+
+    /**
+     * Qué paso sigue para esta solicitud (ver server/solicitudes/paso-siguiente.js).
+     *
+     * Se resuelve en el servidor y no en la pantalla porque la mitad de lo que
+     * hace falta está en la base: si el titular tiene ficha de pastor, si ya se
+     * emitió algo a partir de esta solicitud, qué número lleva eso.
+     */
+    router.get('/solicitudes/:id(\\d+)/paso-siguiente', requirePerm('solicitudes', 'view'), (req, res) => {
+      const fila = db.prepare('SELECT * FROM solicitudes WHERE id = ?').get(req.params.id);
+      if (!fila) return res.status(404).json({ error: 'Esa solicitud no existe.' });
+      if (!require('../alcance').alcanza(module.exports, fila, req.user)) {
+        return res.status(403).json({ error: 'No tiene acceso a esa solicitud.' });
+      }
+      const { CONCEDIDA } = require('../solicitud-ayuda');
+      res.json(require('../solicitudes/paso-siguiente').deLaSolicitud(db, fila, { CONCEDIDA }) || { modulo: null });
     });
 
     /**

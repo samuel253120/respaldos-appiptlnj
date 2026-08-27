@@ -137,9 +137,10 @@ function bandeja(usuario, consulta = {}) {
 
 const YO = { id: ANA, rol: 'admin' };
 
-test('la bandeja trae las cuatro cuentas, siempre', () => {
+test('la bandeja trae todas sus cuentas, siempre', () => {
   const d = bandeja(YO);
-  assert.deepEqual(Object.keys(d.cuentas).sort(), ['abiertas', 'cerradas', 'mias', 'vencidas']);
+  assert.deepEqual(Object.keys(d.cuentas).sort(),
+    ['abiertas', 'cerradas', 'huerfanas', 'mias', 'vencidas']);
   assert.equal(d.caja, 'mias', 'se abre en lo que uno lleva');
 });
 

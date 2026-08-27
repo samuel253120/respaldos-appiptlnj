@@ -107,6 +107,21 @@ module.exports = {
       name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true,
       help: 'Se toma de la ficha del titular.',
     },
+    /*
+     * De qué solicitud salió, si salió de alguna.
+     *
+     * Lo pone la solicitud al ofrecer el paso siguiente. No toca nada de lo que
+     * se imprime ni de lo que se firma: es solo el enlace de vuelta, para que la
+     * ficha de la solicitud pueda decir «ya se emitió» en vez de volver a
+     * ofrecerlo.
+     */
+    {
+      name: 'solicitud_id', label: 'Solicitud que la originó', type: 'ref', ref: 'solicitudes',
+      // Se acepta al crear y nunca más: se sabe en el momento en que se emite,
+      // y cambiarlo después sería reescribir de dónde salió
+      readonly: true, soloAlCrear: true,
+      help: 'Se pone solo cuando se emite desde una solicitud aprobada. En su seguimiento queda anotado.',
+    },
 
     /* ---------------- la copia congelada de lo impreso ---------------- */
     {
@@ -163,6 +178,19 @@ module.exports = {
   ],
 
   hooks: {
+    /**
+     * Lo que salió de una solicitud queda anotado en su seguimiento.
+     *
+     * Que un documento haya nacido de una solicitud es la mitad de la respuesta
+     * que se le dio a quien pidió: si no queda dicho ahí, la solicitud aparece
+     * aprobada y sin rastro de qué se hizo con ella.
+     */
+    afterSave(fila, { isNew, existing, user, db }) {
+      if (!fila.solicitud_id) return;
+      if (!isNew && existing && Number(existing.solicitud_id) === Number(fila.solicitud_id)) return;
+      require('../solicitudes/paso-siguiente')
+        .anotarQueSalio(db, fila.solicitud_id, 'credenciales', fila, user);
+    },
     /**
      * Antes de guardar.
      *

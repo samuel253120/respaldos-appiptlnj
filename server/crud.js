@@ -1014,7 +1014,18 @@ function buildRouter() {
 
         const data = {};
         for (const f of def.fields) {
-          if (f.readonly) continue;
+          /*
+           * Un campo de SOLO LECTURA no se toma de lo que llegó: lo escribe el
+           * sistema, y aceptarlo del formulario sería dejar que cualquiera se
+           * invente el número de serie de una credencial.
+           *
+           * `soloAlCrear` es la única excepción, y dice exactamente lo que
+           * hace: se acepta al CREAR la ficha y nunca más. Es para el dato que
+           * cuenta de dónde salió algo —de qué solicitud nació este
+           * certificado—: se sabe en el momento en que se crea, no se elige a
+           * mano, y cambiarlo después sería reescribir su origen.
+           */
+          if (f.readonly && !(f.soloAlCrear && isNew)) continue;
           const v = coerce(f, req.body[f.name]);
           if (v !== undefined) data[f.name] = v;
         }

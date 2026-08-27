@@ -401,10 +401,40 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     miembros: scoped('miembros'),
     cuerpos: scoped('cuerpos'),
     pastores: scoped('pastores'),
+    /*
+     * TODO LO QUE SIGUE ABIERTO, no solo lo pendiente y lo en revisión.
+     *
+     * El contador nombraba dos estados a mano y dejaba fuera el tercero: una
+     * solicitud parada esperando un papel desaparecía del panel aunque siguiera
+     * abierta y fuera justamente la que había que destrabar. La lista sale del
+     * propio módulo (CERRADOS), así que no puede volver a quedar corta cuando
+     * se agregue o se cambie un estado.
+     */
     solicitudes_pendientes: (() => {
       const { sql, params } = filtro('solicitudes');
       const donde = sql ? `${sql} AND` : 'WHERE';
-      return db.prepare(`SELECT COUNT(*) AS c FROM solicitudes ${donde} estado IN ('Pendiente','En revisión')`).get(...params).c;
+      const cerrados = require('./modules/solicitudes').CERRADOS;
+      const huecos = cerrados.map(() => '?').join(',');
+      return db.prepare(`SELECT COUNT(*) AS c FROM solicitudes ${donde} estado NOT IN (${huecos})`)
+        .get(...params, ...cerrados).c;
+    })(),
+    /*
+     * Y cuántas de esas ya debían estar contestadas. Es la misma regla del
+     * recordatorio y de la bandeja (ver server/avisos/vigia.js): el plazo que
+     * se comprometió, o —sin él— el general de Configuración.
+     */
+    solicitudes_vencidas: (() => {
+      const { sql, params } = filtro('solicitudes');
+      const donde = sql ? `${sql} AND` : 'WHERE';
+      const cerrados = require('./modules/solicitudes').CERRADOS;
+      const huecos = cerrados.map(() => '?').join(',');
+      const dias = require('./ajustes').numero('avisos_solicitud_dias', 1, 120);
+      return db.prepare(
+        `SELECT COUNT(*) AS c FROM solicitudes ${donde} estado NOT IN (${huecos})
+           AND CASE WHEN COALESCE(fecha_compromiso, '') <> ''
+                      THEN fecha_compromiso < date('now','localtime')
+                    ELSE fecha <= date('now','localtime', ?) END`
+      ).get(...params, ...cerrados, `-${dias} days`).c;
     })(),
     certificados: scoped('certificados'),
   };

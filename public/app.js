@@ -1730,7 +1730,11 @@ async function viewDashboard() {
     ['miembros', '🧍', 'Miembros', d.counts.miembros],
     ['cuerpos', '👥', 'Cuerpos / Grupos', d.counts.cuerpos],
     ['pastores', '🧑‍💼', 'Pastores / Guías', d.counts.pastores],
-    ['solicitudes', '📨', 'Solicitudes pendientes', d.counts.solicitudes_pendientes],
+    // «En trámite» y no «pendientes»: son las tres de trámite juntas, incluida
+    // la que espera antecedentes, que antes no se contaba
+    ['solicitudes', '📨', 'Solicitudes en trámite', d.counts.solicitudes_pendientes,
+      d.counts.solicitudes_vencidas ? `${fmtNumero(d.counts.solicitudes_vencidas)} pasada(s) de plazo` : '',
+      '#/solicitudes/bandeja'],
     ['certificados', '📜', 'Certificados', d.counts.certificados],
   ].filter(([name]) => MOD[name]);
 
@@ -1813,9 +1817,10 @@ async function viewDashboard() {
     </div>
     ${avisoCredenciales}
     <div class="stats">
-      ${statDefs.map(([name, ic, lbl, num]) => `
-        <div class="stat" data-ir="#/m/${name}">
+      ${statDefs.map(([name, ic, lbl, num, alerta, adonde]) => `
+        <div class="stat${alerta ? ' urge' : ''}" data-ir="${esc(adonde || `#/m/${name}`)}">
           <div class="num">${esc(fmtNumero(num))}</div><div class="lbl">${lbl}</div><div class="ic">${ic}</div>
+          ${alerta ? `<div class="alerta">⏰ ${esc(alerta)}</div>` : ''}
         </div>`).join('')}
     </div>
     ${finHtml}
@@ -2483,7 +2488,15 @@ function selectLabel(f, v) {
  * ===================================================================== */
 
 /** Los módulos que se abren primero para leerlos, no para editarlos. */
-const CON_FICHA = ['miembros', 'pastores', 'cuerpos', 'iglesias'];
+/*
+ * Las que se abren en su ficha al tocarlas en el listado, en vez de en el
+ * formulario: casi siempre se entra a mirar un dato, no a cambiarlo.
+ *
+ * No Miembros se sumó cuando su ficha pasó a tener algo que mirar —lo que esa
+ * persona ha pedido—. Antes no tenía nada que la ficha dijera y el formulario
+ * no dijera igual.
+ */
+const CON_FICHA = ['miembros', 'pastores', 'cuerpos', 'iglesias', 'no_miembros'];
 
 /** "07-11-1973": la fecha como se lee y se dice acá. */
 function fechaCorta(iso) {
@@ -2928,6 +2941,14 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
     if (MOD['actas_reuniones']) sumar('actas', 'Actas', '📝', (c) => renderActasCuerpo(id, c));
   }
   if (name === 'miembros' && MOD['cuerpos']) sumar('cuerpos', 'Cuerpos', '👥', (c) => renderCuerposDelMiembro(id, c));
+  // «Para poder ver todo lo que pidió una persona» era el motivo del módulo, y
+  // hasta acá había que ir al listado a buscarla por nombre
+  if (name === 'miembros' && MOD['solicitudes']) {
+    sumar('solicitudes', 'Solicitudes', '📨', (c) => renderSolicitudesDeLaPersona('Miembro', id, c));
+  }
+  if (name === 'no_miembros' && MOD['solicitudes']) {
+    sumar('solicitudes', 'Solicitudes', '📨', (c) => renderSolicitudesDeLaPersona('No miembro', id, c));
+  }
   if (name === 'pastores' && MOD['credenciales']) sumar('credenciales', 'Credenciales', '🪪', (c) => renderCredencialesDelPastor(id, c));
   if (name === 'solicitudes') {
     sumar('tramitacion', 'Tramitación', '🔁', (c) => renderTramitacionSolicitud(id, row, c));
@@ -4316,6 +4337,70 @@ function iniciarBuscadorGlobal() {
 }
 
 /** Los cuerpos y grupos en los que participa un miembro, bajo su ficha. */
+/**
+ * Lo que pidió una persona, en su propia ficha.
+ *
+ * El módulo se diseñó «para poder ver todo lo que pidió una persona», pero para
+ * eso había que ir al listado y buscar por nombre. Acá salen las dos maneras en
+ * que alguien aparece en una solicitud, separadas porque no son lo mismo: las
+ * que PRESENTÓ, y aquellas en las que FIGURA sin haberlas presentado —el niño
+ * de una presentación, la persona a la que se traslada una ayuda—.
+ */
+async function renderSolicitudesDeLaPersona(tipo, personaId, contenedor) {
+  if (!MOD['solicitudes']) return;
+  let d;
+  try {
+    d = await api('GET', `/solicitudes/de-persona?tipo=${encodeURIComponent(tipo)}&id=${personaId}`);
+  } catch (e) {
+    contenedor.innerHTML = '';
+    return;
+  }
+
+  const filas = (lista, conRelacion) => `
+    <div class="table-scroll">
+      <table class="grid grid-lista">
+        <thead><tr>
+          <th>N.º</th><th>Fecha</th><th>Tipo</th><th>Asunto</th>
+          ${conRelacion ? '<th>Qué papel tiene</th>' : ''}<th>Estado</th>
+        </tr></thead>
+        <tbody>
+          ${lista.map((s) => `
+            <tr data-ir="#/m/solicitudes/ficha/${s.id}" tabindex="0">
+              <td data-col="numero" data-label="N.º"><b>${esc(s.numero || '—')}</b></td>
+              <td data-label="Fecha">${esc(s.fecha ? fechaCorta(s.fecha) : '')}</td>
+              <td data-label="Tipo">${esc(s.tipo || '')}</td>
+              <td data-label="Asunto">${esc(s.asunto || '')}</td>
+              ${conRelacion ? `<td data-label="Qué papel tiene">${esc(s.relacion || '')}</td>` : ''}
+              <td data-label="Estado"><span class="badge ${badgeClass(s.estado)}">${esc(s.estado || '')}</span></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  contenedor.innerHTML = `
+    <div class="card bandeja-tabla" style="margin-top:18px">
+      <div class="toolbar">
+        <b>📨 Lo que ha pedido</b>
+        <span style="color:var(--muted);font-size:13px">${fmtNumero(d.titular.length)} solicitud(es)</span>
+        <span class="spacer"></span>
+        ${MOD['solicitudes'].perms.create
+          ? `<a class="btn sm" href="#/m/solicitudes/new?solicitante_tipo=${encodeURIComponent(tipo)}&${
+              tipo === 'Miembro' ? 'miembro_id' : 'no_miembro_id'}=${personaId}">➕ Nueva solicitud</a>`
+          : ''}
+      </div>
+      ${d.titular.length ? filas(d.titular, false)
+        : '<div class="card-body" style="color:var(--muted);font-size:13px">No ha presentado ninguna solicitud.</div>'}
+    </div>
+    ${d.involucrada.length ? `
+      <div class="card bandeja-tabla" style="margin-top:14px">
+        <div class="toolbar">
+          <b>🧑‍🤝‍🧑 Donde figura sin haberla presentado</b>
+          <span style="color:var(--muted);font-size:13px">${fmtNumero(d.involucrada.length)} solicitud(es)</span>
+        </div>
+        ${filas(d.involucrada, true)}
+      </div>` : ''}`;
+}
+
 async function renderCuerposDelMiembro(miembroId, contenedor) {
   if (!MOD['cuerpos']) return;
   let d;
@@ -4799,14 +4884,42 @@ function preguntarEnDialogo({ titulo, cuerpo, aceptar = 'Aceptar', cancelar = 'C
 }
 
 function preguntarSiIgualVa(err, seguir) {
+  /*
+   * Cada pregunta con su encabezado y sus botones.
+   *
+   * Estaba escrito «Revise este monto» y «Está bien, guardar así», que era lo
+   * correcto para la única pregunta que existía —un egreso que deja la cuenta
+   * en rojo— y quedó fijo. Al aparecer la segunda —desactivar una cuenta que
+   * lleva solicitudes abiertas—, la pantalla decía «Revise este monto» sobre un
+   * aviso que no habla de ningún monto. Lo que se pregunta lo dice el servidor
+   * con `confirmar`; acá solo se le pone la cara que le corresponde.
+   */
+  const COMO_SE_PREGUNTA = {
+    saldo_negativo: {
+      titulo: '🔎 Revise este monto',
+      volver: 'Volver y corregirlo',
+      seguir: 'Está bien, guardar así',
+    },
+    solicitudes_sin_responsable_activo: {
+      titulo: '📨 Esta cuenta lleva solicitudes abiertas',
+      volver: 'Volver y trasladarlas',
+      seguir: 'Desactivarla igual',
+    },
+  };
+  const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
+    titulo: '🔎 Revise esto antes de guardar',
+    volver: 'Volver y corregirlo',
+    seguir: 'Está bien, guardar así',
+  };
+
   const errEl = document.getElementById('formError');
   errEl.innerHTML = `
     <div class="aviso confirmar">
-      <b>🔎 Revise este monto</b>
+      <b>${esc(como.titulo)}</b>
       <span>${esc(err.message)}</span>
       <div class="acciones">
-        <button type="button" class="btn secondary" id="confVolver">Volver y corregirlo</button>
-        <button type="button" class="btn" id="confSeguir">Está bien, guardar así</button>
+        <button type="button" class="btn secondary" id="confVolver">${esc(como.volver)}</button>
+        <button type="button" class="btn" id="confSeguir">${esc(como.seguir)}</button>
       </div>
     </div>`;
   errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -7385,6 +7498,9 @@ const BANDEJA_CAJAS = [
   { clave: 'mias', icono: '📥', label: 'Las que llevo yo', pie: 'Abiertas, a mi nombre' },
   { clave: 'vencidas', icono: '⏰', label: 'Pasadas de plazo', pie: 'Ya debían estar contestadas' },
   { clave: 'abiertas', icono: '📨', label: 'Todas las abiertas', pie: 'En trámite, lleve quien lleve' },
+  // Solo aparece cuando hay alguna: una caja en cero para algo que casi nunca
+  // pasa es una caja que estorba todos los días
+  { clave: 'huerfanas', icono: '🫥', label: 'Sin nadie que las lleve', pie: 'Su responsable ya no entra', soloSiHay: true },
   { clave: 'cerradas', icono: '✅', label: 'Cerradas', pie: 'Resueltas en los últimos 30 días' },
 ];
 
@@ -7429,8 +7545,10 @@ async function viewBandejaSolicitudes(precarga) {
       return;
     }
 
-    cajas.innerHTML = BANDEJA_CAJAS.map((c) => `
-      <button type="button" class="bandeja-caja${c.clave === d.caja ? ' puesta' : ''}${c.clave === 'vencidas' && d.cuentas.vencidas ? ' urge' : ''}"
+    const seVe = (c) => !c.soloSiHay || d.cuentas[c.clave] || c.clave === d.caja;
+    cajas.innerHTML = BANDEJA_CAJAS.filter(seVe).map((c) => `
+      <button type="button" class="bandeja-caja${c.clave === d.caja ? ' puesta' : ''}${
+        ['vencidas', 'huerfanas'].includes(c.clave) && d.cuentas[c.clave] ? ' urge' : ''}"
               data-caja="${esc(c.clave)}" aria-pressed="${c.clave === d.caja}">
         <span class="bc-n">${fmtNumero(d.cuentas[c.clave] || 0)}</span>
         <span class="bc-q">${esc(c.icono)} ${esc(c.label)}</span>
@@ -7467,7 +7585,11 @@ async function viewBandejaSolicitudes(precarga) {
                   <td data-label="Estado"><span class="badge ${badgeClass(f.estado)}">${esc(f.estado || '')}</span></td>
                   <td data-label="${cerradas ? 'Cerrada' : 'A cargo de'}">${cerradas
                       ? esc(f.fecha_respuesta ? fechaCorta(f.fecha_respuesta) : '')
-                      : esc(f.responsable || '—') + (Number(f.responsable_id) === Number(d.yo) ? ' <span class="mut">(yo)</span>' : '')}</td>
+                      : esc(f.responsable || '—')
+                        + (Number(f.responsable_id) === Number(d.yo) ? ' <span class="mut">(yo)</span>' : '')
+                        // Que la cuenta esté desactivada no se puede adivinar del
+                        // nombre, y es justo lo que explica por qué nadie la mueve
+                        + (f.responsable_activo === 0 ? ' <span class="badge red">ya no entra</span>' : '')}</td>
                   <td data-label="Plazo">${cerradas ? '' : plazoDeLaSolicitud(f, d.dias)}</td>
                 </tr>`).join('')}
             </tbody>
@@ -7476,9 +7598,10 @@ async function viewBandejaSolicitudes(precarga) {
       </div>` : `
       <div class="card"><div class="empty-state" style="padding:26px">
         ${esc(d.caja === 'mias' ? 'No tiene ninguna solicitud abierta a su nombre.'
-          : d.caja === 'vencidas' ? 'Ninguna solicitud está pasada de plazo. '
+          : d.caja === 'vencidas' ? 'Ninguna solicitud está pasada de plazo.'
             : d.caja === 'abiertas' ? 'No hay solicitudes en trámite.'
-              : 'No se cerró ninguna solicitud en los últimos 30 días.')}
+              : d.caja === 'huerfanas' ? 'Todas las solicitudes abiertas tienen a alguien que las lleva.'
+                : 'No se cerró ninguna solicitud en los últimos 30 días.')}
       </div></div>`;
 
     cajas.querySelectorAll('[data-caja]').forEach((b) => {
@@ -11219,6 +11342,87 @@ async function renderDocumentos(panel, id, contenedor) {
  * Solo lo ve quien puede hacerlo: el responsable actual y el administrador. A
  * los demás se les dice quién la tiene, que es lo que necesitan saber.
  */
+/**
+ * El paso siguiente de una solicitud aprobada, ofrecido y no hecho.
+ *
+ * Aprobar una solicitud de certificado no emite el certificado: eso es un
+ * documento que se firma y se entrega, y decidirlo es de una persona. Lo que sí
+ * puede hacer el sistema es no obligar a copiar a mano lo que ya está escrito.
+ * Así que acá va un botón que abre el formulario de destino con lo que la
+ * solicitud ya sabe, y —cuando el paso ya se dio— el enlace a lo que salió.
+ */
+async function pintarPasoSiguiente(id, contenedor) {
+  let p;
+  try {
+    p = await api('GET', `/solicitudes/${id}/paso-siguiente`);
+  } catch (e) {
+    return;
+  }
+  if (!p || !p.modulo || !MOD[p.modulo]) return;
+
+  // Ya se dio: se dice qué salió y se lleva hasta ahí
+  if (p.hecho) {
+    contenedor.insertAdjacentHTML('beforeend', `
+      <div class="card paso-sig hecho" style="margin-top:14px">
+        <div class="toolbar">
+          <b>${esc(p.icono)} De esta solicitud salió ${esc(p.que)}</b>
+          <span class="spacer"></span>
+          <a class="btn secondary sm" href="#/m/${esc(p.modulo)}/ficha/${p.hecho.id}">Ver ${esc(p.hecho.nombre || 'lo emitido')}</a>
+        </div>
+      </div>`);
+    return;
+  }
+
+  // La ayuda social nace sola: no hay botón que ofrecer, solo decirlo
+  if (p.automatico) {
+    if (!p.concedida) {
+      contenedor.insertAdjacentHTML('beforeend', `
+        <div class="card paso-sig" style="margin-top:14px">
+          <div class="respaldo">
+            <p><b>${esc(p.icono)} Al aprobarla, la ayuda se registra sola</b></p>
+            <p class="mut">Con lo que dice esta solicitud, y las dos quedan enlazadas.</p>
+          </div>
+        </div>`);
+    }
+    return;
+  }
+
+  // Todavía no está aprobada: se anuncia, sin ofrecer el botón
+  if (!p.concedida) {
+    contenedor.insertAdjacentHTML('beforeend', `
+      <div class="card paso-sig" style="margin-top:14px">
+        <div class="respaldo">
+          <p><b>${esc(p.icono)} El paso siguiente será ${esc(p.que)}</b></p>
+          <p class="mut">Se ofrece en cuanto la solicitud quede aprobada.</p>
+        </div>
+      </div>`);
+    return;
+  }
+
+  if (!MOD[p.modulo].perms.create && !p.abreLaFicha) return;
+
+  // Aprobada y sin dar: el botón, con lo que la solicitud ya sabe
+  const campos = { ...(p.precarga || {}) };
+  const adonde = p.abreLaFicha
+    ? `#/m/${p.modulo}/ficha/${campos.id}`
+    : `#/m/${p.modulo}/new?${new URLSearchParams({ ...campos, solicitud_id: String(id) })}`;
+
+  contenedor.insertAdjacentHTML('beforeend', `
+    <div class="card paso-sig" style="margin-top:14px">
+      <div class="toolbar">
+        <b>${esc(p.icono)} Paso siguiente</b>
+        <span class="spacer"></span>
+        <a class="btn" href="${esc(adonde)}">${esc(p.label)}</a>
+      </div>
+      <div class="respaldo">
+        <p class="mut">${p.abreLaFicha
+          ? 'El traslado se hace en la ficha de la persona, en el registro oficial: acá solo se llega hasta ella.'
+          : 'Se abre con lo que esta solicitud ya sabe —el titular, la iglesia—, para no volver a escribirlo. '
+            + 'Lo que se emita queda enlazado, y en el seguimiento queda anotado qué salió de acá.'}</p>
+      </div>
+    </div>`);
+}
+
 async function renderTramitacionSolicitud(id, row, contenedor) {
   const mod = MOD['solicitudes'];
   const cerradas = ['Aprobada', 'Rechazada', 'Completada', 'Anulada'];
@@ -11260,6 +11464,9 @@ async function renderTramitacionSolicitud(id, row, contenedor) {
         ${row.respuesta ? `<p><b>Respuesta:</b> ${esc(row.respuesta)}</p>` : ''}
       </div>
     </div>`;
+
+  // Y lo que viene después de aprobarla, si su tipo lleva a alguna parte
+  await pintarPasoSiguiente(id, contenedor);
 
   const btn = document.getElementById('solTrasladar');
   if (!btn) return;

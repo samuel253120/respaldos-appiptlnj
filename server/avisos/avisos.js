@@ -47,6 +47,14 @@ const TIPOS = {
     urgente: false,
     ayuda: 'Una solicitud a su cargo que sigue abierta pasados los días que se indiquen en Configuración.',
   },
+  solicitud_sin_responsable: {
+    label: 'Solicitudes que quedaron sin nadie que las lleve',
+    urgente: false,
+    // Solo a quien puede repartirlas: para el resto es un aviso sobre algo que
+    // no está en sus manos (ver avisos/vigia.js)
+    llave: 'solicitudes_tramitar',
+    ayuda: 'Solicitudes abiertas cuyo responsable ya no entra al sistema, porque se desactivó su cuenta.',
+  },
   credencial_por_vencer: {
     label: 'Credenciales por vencer',
     urgente: false,

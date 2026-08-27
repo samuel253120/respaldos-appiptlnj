@@ -59,6 +59,20 @@ module.exports = {
       help: 'Se administran en Formatos de Certificado, junto con su texto y su diseño.',
     },
     { name: 'iglesia_id', label: 'Iglesia que emite', type: 'ref', ref: 'iglesias', required: true },
+    /*
+     * De qué solicitud salió, si salió de alguna.
+     *
+     * Lo pone la solicitud al ofrecer el paso siguiente, y es lo que permite
+     * que su ficha diga «ya se emitió» en vez de volver a ofrecerlo. Se ve y no
+     * se escribe: quien emite a mano no tiene por qué inventar un enlace.
+     */
+    {
+      name: 'solicitud_id', label: 'Solicitud que lo originó', type: 'ref', ref: 'solicitudes',
+      // Se acepta al crear y nunca más: se sabe en el momento en que se emite,
+      // y cambiarlo después sería reescribir de dónde salió
+      readonly: true, soloAlCrear: true,
+      help: 'Se pone solo cuando se emite desde una solicitud aprobada. En su seguimiento queda anotado.',
+    },
     { name: 'miembro_id', label: 'Miembro (si está registrado)', type: 'ref', ref: 'miembros' },
     { name: 'nombre_titular', label: 'Nombre del titular', type: 'text', required: true, help: 'Nombre completo tal como aparecerá en el certificado' },
     { name: 'fecha_evento', label: 'Fecha del evento (bautismo, boda, etc.)', type: 'date' },
@@ -139,6 +153,19 @@ module.exports = {
   ],
 
   hooks: {
+    /**
+     * Lo que salió de una solicitud queda anotado en su seguimiento.
+     *
+     * Que un documento haya nacido de una solicitud es la mitad de la respuesta
+     * que se le dio a quien pidió: si no queda dicho ahí, la solicitud aparece
+     * aprobada y sin rastro de qué se hizo con ella.
+     */
+    afterSave(fila, { isNew, existing, user, db }) {
+      if (!fila.solicitud_id) return;
+      if (!isNew && existing && Number(existing.solicitud_id) === Number(fila.solicitud_id)) return;
+      require('../solicitudes/paso-siguiente')
+        .anotarQueSalio(db, fila.solicitud_id, 'certificados', fila, user);
+    },
     /**
      * Un certificado no se emite a medias (punto 17.5).
      *

@@ -29,6 +29,25 @@ const bcrypt = require('bcryptjs');
 const cifrado = require('../cifrado');
 const { ROLES } = require('../permissions');
 
+
+/** Lo que llega del formulario puede venir como 0, '0', false o 'false'. */
+function esVerdad(valor) {
+  return !(valor === 0 || valor === '0' || valor === false || valor === 'false');
+}
+
+/** Cuántas solicitudes abiertas lleva esa cuenta. */
+function solicitudesAbiertasDe(db, usuarioId) {
+  try {
+    const cerrados = require('./solicitudes').CERRADOS;
+    const huecos = cerrados.map(() => '?').join(',');
+    return db
+      .prepare(`SELECT COUNT(*) AS c FROM solicitudes WHERE responsable_id = ? AND estado NOT IN (${huecos})`)
+      .get(usuarioId, ...cerrados).c;
+  } catch (e) {
+    return 0; // sin el módulo de solicitudes no hay nada que preguntar
+  }
+}
+
 module.exports = {
   name: 'usuarios',
   label: 'Usuarios',
@@ -209,7 +228,44 @@ module.exports = {
   },
 
   hooks: {
-    beforeSave(data, { isNew, id, existing, db }) {
+    beforeSave(data, { isNew, id, existing, db, confirmado }) {
+      /*
+       * DESACTIVAR UNA CUENTA QUE LLEVA SOLICITUDES ABIERTAS.
+       *
+       * A una cuenta desactivada ya no se le puede asignar una solicitud —la
+       * lista de responsables solo trae las activas—, pero una asignación
+       * anterior sobrevivía a la baja sin que nada lo dijera. Comprobado:
+       * desactivada la cuenta, su solicitud abierta seguía a su nombre. Desde
+       * ahí los avisos iban a alguien que ya no entra, no aparecía en la
+       * bandeja de nadie, y el recordatorio de «lleva mucho sin respuesta» le
+       * llegaba a un buzón que nadie abre.
+       *
+       * NO SE BLOQUEA: se pregunta. Quien deja la iglesia tiene que perder el
+       * acceso hoy, no cuando alguien se acuerde de repartir sus trámites, y
+       * negarse a desactivar dejaría abierta una cuenta que ya no debe entrar,
+       * que es peor. Así que se dice cuántas lleva y se confirma. Después
+       * quedan marcadas en la bandeja y el vigía las recuerda.
+       */
+      if (!isNew && existing && existing.activo && !esVerdad(data.activo) && data.activo !== undefined && !confirmado) {
+        const cuantas = solicitudesAbiertasDe(db, id);
+        if (cuantas) {
+          /*
+           * Se DEVUELVE, no se lanza: un objeto con `confirmar` es la manera en
+           * que un gancho hace una pregunta —el dato puede entrar, pero alguien
+           * tiene que decir que sí— y la pantalla la convierte en dos botones.
+           * Lanzándolo, el motor lo tomaba por una avería y contestaba un 500.
+           */
+          return {
+            error:
+              `${existing.nombre} lleva ${cuantas} solicitud(es) todavía abierta(s). Al desactivar la cuenta, `
+              + 'nadie va a recibir sus avisos ni las va a ver como suyas. Conviene trasladarlas antes, desde la '
+              + 'bandeja de solicitudes. Si igual hay que cerrarle el acceso ahora, confirme: quedan marcadas '
+              + 'como «sin responsable activo» para repartirlas después.',
+            confirmar: 'solicitudes_sin_responsable_activo',
+          };
+        }
+      }
+
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
       const lista = (v) => {
         if (Array.isArray(v)) return v.map(Number).filter(Boolean);

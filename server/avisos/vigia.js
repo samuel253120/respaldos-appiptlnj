@@ -234,7 +234,56 @@ function cuotasAtrasadas(usuario, dejar) {
   }
 }
 
-const REVISIONES = [credencialesPorVencer, solicitudesSinRespuesta, cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas];
+/**
+ * Solicitudes abiertas cuyo responsable ya no entra al sistema.
+ *
+ * Al desactivar una cuenta se pregunta qué pasa con lo que lleva, pero se
+ * puede confirmar y seguir: cerrarle el acceso a alguien no puede quedar
+ * esperando a que otro reparta sus trámites. Lo que no puede pasar es que ahí
+ * se acabe la historia: esas solicitudes siguen abiertas, sin que nadie reciba
+ * sus avisos y sin aparecer en la bandeja de nadie.
+ *
+ * Así que se le recuerda a quien puede repartirlas —quien tenga la llave de
+ * tramitar las de otros—, en un solo aviso con el total y no uno por
+ * solicitud: son de nadie, y una lista de diez avisos idénticos se ignora.
+ */
+function solicitudesSinResponsableActivo(usuario, dejar) {
+  if (!require('../permissions').can(usuario, 'solicitudes_tramitar', 'view')) return;
+  const cerrados = require('../modules/solicitudes').CERRADOS;
+  const huecos = cerrados.map(() => '?').join(',');
+  const params = [];
+  const suyas = require('../alcance').condiciones(require('../modules/solicitudes'), usuario, params);
+  let filas = [];
+  try {
+    filas = db
+      .prepare(
+        `SELECT s.id, s.numero FROM solicitudes s
+          WHERE s.estado NOT IN (${huecos})
+            AND (s.responsable_id IS NULL
+                 OR NOT EXISTS (SELECT 1 FROM usuarios u WHERE u.id = s.responsable_id AND u.activo = 1))
+            ${suyas ? `AND (${suyas})` : ''}
+          ORDER BY s.fecha LIMIT 50`
+      )
+      .all(...cerrados, ...params);
+  } catch (e) {
+    return;
+  }
+  if (!filas.length) return;
+  dejar({
+    tipo: 'solicitud_sin_responsable',
+    // La clave lleva la cuenta: si aparece otra, vuelve a avisar; mientras sean
+    // las mismas, no repite todos los días
+    clave: `solicitudes_huerfanas:${filas.length}`,
+    titulo: filas.length === 1
+      ? `La solicitud ${filas[0].numero} quedó sin nadie que la lleve`
+      : `${filas.length} solicitudes quedaron sin nadie que las lleve`,
+    cuerpo: 'Su responsable ya no entra al sistema. Repártalas desde la bandeja.',
+    enlace: '#/solicitudes/bandeja?caja=huerfanas',
+  });
+}
+
+const REVISIONES = [credencialesPorVencer, solicitudesSinRespuesta, solicitudesSinResponsableActivo,
+  cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas];
 
 // ------------------------------------------------------------- la pasada ----
 
@@ -318,4 +367,7 @@ function empezar() {
   otraVuelta();
 }
 
-module.exports = { empezar, mirar, pasada, leToca, REVISIONES, solicitudesSinRespuesta };
+module.exports = {
+  empezar, mirar, pasada, leToca, REVISIONES,
+  solicitudesSinRespuesta, solicitudesSinResponsableActivo,
+};
