@@ -165,6 +165,56 @@ test('un tipo cuyo formato ya no existe cae a la hoja clásica, no revienta', ()
   assert.equal(r.datos.disposicion, 'Clásica');
 });
 
+/* ── El papel: carta o circular ────────────────────────────────────── */
+
+test('los formatos que ya existían se imprimen en la hoja de siempre', () => {
+  const sinPapel = db
+    .prepare("SELECT COUNT(*) c FROM formatos_certificado WHERE tamano_hoja IS NULL OR tamano_hoja = ''")
+    .get().c;
+  assert.equal(sinPapel, 0, 'ninguno puede quedar sin decir en qué papel se imprime');
+  assert.equal(deLaIglesia('Membresía').tamano_hoja, 'Carta');
+});
+
+test('un papel que no existe cae a la carta', () => {
+  // Sin medidas, la impresora elige por su cuenta y el certificado sale
+  // achicado para caber, con el marco corrido
+  const datos = { nombre: 'Papel raro', disposicion: 'Clásica', tamano_hoja: 'Pergamino' };
+  const error = formatos.hooks.beforeSave(datos, { existing: null });
+  assert.equal(error, null, String(error));
+  assert.equal(datos.tamano_hoja, 'Carta');
+});
+
+test('LAS MEDIDAS DEL PAPEL DICEN LO MISMO EN EL SERVIDOR Y EN LA PANTALLA', () => {
+  /*
+   * Están escritas en los dos lados porque las necesitan los dos: el servidor
+   * para guardar y comprobar, y el navegador para dibujar la hoja y decirle a
+   * la impresora de qué tamaño es la página. Si se separan, la hoja se dibuja
+   * de un tamaño y se imprime en otro: la impresora la achica para que entre y
+   * el certificado sale más chico de lo que se diseñó, con los márgenes
+   * cambiados. No se nota en pantalla; se nota en el papel entregado.
+   */
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const app = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'app.js'), 'utf8');
+
+  const trozo = app.match(/const CERT_HOJAS = \{([\s\S]*?)\};/);
+  assert.ok(trozo, 'no está CERT_HOJAS en public/app.js');
+  const enPantalla = {};
+  for (const m of trozo[1].matchAll(/(\w+):\s*\{\s*ancho:\s*(\d+),\s*alto:\s*(\d+)\s*\}/g)) {
+    enPantalla[m[1]] = { ancho: Number(m[2]), alto: Number(m[3]) };
+  }
+  assert.deepEqual(enPantalla, formatos.HOJAS);
+
+  // Y la pantalla le declara a la impresora ESAS medidas, no otras
+  assert.ok(
+    app.includes('`<style>@page { size: ${anchoHoja}mm ${altoHoja}mm; margin: 0; }</style>`'),
+    'la hoja de impresión tiene que declarar el tamaño de página con las medidas del formato'
+  );
+  // Solo al imprimir de verdad: en la vista previa una regla de página le
+  // cambiaría el papel a la pantalla que haya detrás
+  assert.ok(app.includes("printCertificado(row, formatoCert, { conPagina: true })"));
+});
+
 /* ── El formato se guarda con lo que se puede imprimir ─────────────── */
 
 test('una disposición inventada cae a la clásica', () => {

@@ -1912,9 +1912,9 @@ function formatosDeCertificadoQueTraiaElSistema() {
        (nombre, activo, orden, texto, notas,
         muestra_logo, muestra_institucion, muestra_iglesia, muestra_numero, muestra_firmas,
         muestra_fecha, muestra_pie,
-        disposicion, orientacion, fondo_opacidad, tipografia_titulo, tipografia_texto,
+        disposicion, tamano_hoja, orientacion, fondo_opacidad, tipografia_titulo, tipografia_texto,
         tamano_titulo, tamano_texto, margen, marco, grosor_marco)
-     VALUES (?, 1, ?, ?, ?, 1, 1, 1, 1, 1, 1, 1, 'Clásica', 'Vertical', 100,
+     VALUES (?, 1, ?, ?, ?, 1, 1, 1, 1, 1, 1, 1, 'Clásica', 'Carta', 'Vertical', 100,
              'Con serifa (Georgia)', 'Sin serifa', 34, 15, 18, 'Doble línea', 3)`
   );
 
@@ -2232,6 +2232,10 @@ function hojasDePresentacionYMatrimonio() {
     db.prepare("UPDATE formatos_certificado SET disposicion = 'Clásica' WHERE disposicion IS NULL OR disposicion = ''").run();
     if (columnas.has('grosor_marco')) {
       db.prepare('UPDATE formatos_certificado SET grosor_marco = 3 WHERE grosor_marco IS NULL').run();
+    }
+    // Y en qué papel se imprimen: los que ya existían, en la hoja de siempre
+    if (columnas.has('tamano_hoja')) {
+      db.prepare("UPDATE formatos_certificado SET tamano_hoja = 'Carta' WHERE tamano_hoja IS NULL OR tamano_hoja = ''").run();
     }
 
     for (const [nombre, campos] of Object.entries(HOJAS)) {

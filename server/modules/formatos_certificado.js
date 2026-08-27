@@ -73,6 +73,27 @@ const MARCOS = ['Doble línea', 'Línea simple', 'Sin marco'];
  */
 const DISPOSICIONES = ['Clásica', 'Presentación de niños', 'Matrimonio'];
 
+/**
+ * El papel en que se imprime, con sus medidas reales en milímetros.
+ *
+ * Son los dos tamaños que la iglesia tiene: la hoja CARTA de siempre y la
+ * CIRCULAR, que es la larga —216 × 330 mm, 8,5 × 13 pulgadas— y que muchas
+ * impresoras listan con ese nombre (en otras aparece como «Oficio» o
+ * «Folio»: son la misma hoja).
+ *
+ * Las medidas están acá y también en el navegador (CERT_HOJAS, en
+ * public/app.js), porque las necesitan los dos: el servidor para guardar y
+ * comprobar, y la pantalla para armar la hoja y decirle a la impresora de qué
+ * tamaño es la página. Tienen que ser el mismo número en los dos lados —si no,
+ * lo que se ve no es lo que sale—, y hay una prueba que lo comprueba
+ * (pruebas/motor/formatos-certificado.test.js).
+ */
+const HOJAS = {
+  Carta: { ancho: 216, alto: 279 },
+  Circular: { ancho: 216, alto: 330 },
+};
+const TAMANOS_HOJA = Object.keys(HOJAS);
+
 module.exports = {
   name: 'formatos_certificado',
   label: 'Formatos de Certificado',
@@ -86,8 +107,8 @@ module.exports = {
   order: 64,
   display: '{nombre}',
   searchFields: ['nombre', 'texto', 'titulo', 'notas'],
-  listFields: ['nombre', 'activo', 'disposicion', 'orientacion', 'color_titulo', 'notas'],
-  filterFields: ['activo', 'disposicion', 'orientacion'],
+  listFields: ['nombre', 'activo', 'disposicion', 'tamano_hoja', 'orientacion', 'color_titulo', 'notas'],
+  filterFields: ['activo', 'disposicion', 'tamano_hoja', 'orientacion'],
   defaultSort: { field: 'orden', dir: 'asc' },
 
   fields: [
@@ -159,6 +180,13 @@ module.exports = {
       help: 'La FORMA de la hoja, no su color. Cada disposición pide en la ficha del certificado '
         + 'los datos que le hacen falta: la de presentación de niños pide los padres y los padrinos; '
         + 'la de matrimonio, el otro cónyuge. «Clásica» es la de siempre.',
+    },
+    {
+      name: 'tamano_hoja', label: 'Tamaño de la hoja', type: 'select', default: 'Carta',
+      options: TAMANOS_HOJA, seccion: 'El diseño de la hoja',
+      help: 'CARTA: 21,6 × 27,9 cm, la de siempre. CIRCULAR: 21,6 × 33 cm, la hoja larga '
+        + '(en algunas impresoras aparece como «Oficio» o «Folio»: es la misma). La hoja se '
+        + 'ajusta sola al tamaño elegido, y las firmas bajan al pie del papel que sea.',
     },
     {
       name: 'orientacion', label: 'Orientación', type: 'select', default: 'Vertical',
@@ -253,6 +281,8 @@ module.exports = {
 
       // Una disposición que no existe dejaría la hoja sin armar
       if (!DISPOSICIONES.includes(dato('disposicion'))) data.disposicion = 'Clásica';
+      // Y un papel que no existe la dejaría sin medidas al imprimir
+      if (!TAMANOS_HOJA.includes(dato('tamano_hoja'))) data.tamano_hoja = 'Carta';
 
       const nombre = String(dato('nombre') || '').trim();
       if (!nombre) return 'El formato necesita un nombre: es con el que se elige al emitir.';
@@ -314,5 +344,7 @@ module.exports = {
 module.exports.DATOS = DATOS;
 
 module.exports.DISPOSICIONES = DISPOSICIONES;
+module.exports.HOJAS = HOJAS;
+module.exports.TAMANOS_HOJA = TAMANOS_HOJA;
 module.exports.TIPOGRAFIAS = TIPOGRAFIAS;
 module.exports.MARCOS = MARCOS;

@@ -1001,11 +1001,29 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
   --cert-marco: 3px double;
   --cert-fondo-opacidad: 1;
 
-  max-width: 900px; padding: var(--cert-margen); position: relative; overflow: hidden;
+  /* El papel. Lo pone el formato en el atributo `style` de la hoja, con las
+     medidas reales del tamaño elegido y ya dadas vuelta si va apaisada. */
+  --cert-ancho: 216mm;
+  --cert-alto: 279mm;
+
+  /* En pantalla la hoja mide lo que mide el papel, para que lo que se ve sea
+     lo que sale. `max-width` es lo que le permite achicarse en un teléfono en
+     vez de empujar la pantalla de lado. */
+  width: var(--cert-ancho); max-width: 100%; min-height: var(--cert-alto);
+  padding: var(--cert-margen); position: relative; overflow: hidden;
 }
-/* Apaisado: la hoja se da vuelta al imprimir y se ensancha en pantalla */
-.cert-sheet.apaisado { max-width: 1200px; }
-@page { size: auto; }
+/* En un teléfono la hoja se achica de ancho, y guardarle el alto del papel la
+   dejaría con media pantalla en blanco abajo. Se deja crecer con lo que tenga. */
+@media (max-width: 700px) { .cert-sheet { min-height: 0; } }
+
+/* ---------- EL TAMAÑO DEL PAPEL, AL IMPRIMIR ----------
+   CARTA (21,6 × 27,9 cm) y CIRCULAR (21,6 × 33 cm, la hoja larga: en algunas
+   impresoras aparece como «Oficio» o «Folio»).
+
+   La regla `@page` con las medidas la escribe la propia pantalla de impresión
+   con las del formato que se está imprimiendo (ver printCertificado en
+   public/app.js). Acá van solo las clases, que dicen en qué papel está la
+   hoja y sirven para reconocerla. */
 
 /* El fondo va DETRÁS de todo y no se lleva ningún toque ni ninguna selección */
 .cert-fondo {
@@ -2496,13 +2514,21 @@ input.fuera-de-rango { border-color: var(--danger); background: #fff5f5; }
    * (ver verVistaPreviaCertificado): el transform no encoge el lugar que el
    * elemento reserva, y sin eso el diálogo queda con un hueco enorme debajo.
    */
-  .previa-hoja { --previa-escala: 0.62; overflow: hidden; }
+  .previa-hoja { overflow: hidden; }
+  /*
+   * La hoja conserva su tamaño de verdad y se achica con `scale`, en vez de
+   * estirarse al ancho del diálogo. Es lo que hace que la muestra sirva para
+   * lo que se pide: ver la diferencia entre la hoja carta y la circular. Con
+   * la hoja estirada las dos se veían iguales, porque ocupaban lo mismo.
+   *
+   * Cuánto se achica lo calcula la propia ventana al abrirse (--previa-escala),
+   * que es donde se sabe cuánto mide el papel elegido y cuánto queda de sitio.
+   */
   .previa-hoja .print-sheet {
-    transform: scale(var(--previa-escala)); transform-origin: top left;
-    width: calc(100% / var(--previa-escala));
+    transform: scale(var(--previa-escala, 0.62)); transform-origin: top left;
+    margin: 0;
   }
 }
-@media (max-width: 560px) { .previa-hoja { --previa-escala: 0.44; } }
 
 /* ---------- El libro de la oficina de partes ----------
    Una fila por documento y las columnas de un libro de partes: el número
@@ -2688,12 +2714,23 @@ table.libro tbody tr:nth-child(even) td { background: #fafbfe; }
 /* Un par de nombres sobre sus líneas, con la conjunción al medio */
 .cert-ninos .cn-par {
   display: flex; align-items: flex-end; justify-content: center; gap: 12px;
-  margin: 6px auto 0; max-width: 94%;
+  /*
+   * El ANCHO va escrito. Al imprimir, la hoja se vuelve una columna flexible
+   * para que las firmas bajen al pie del papel, y ahí un bloque con `margin:
+   * auto` deja de ocupar el ancho que se le dio y se encoge hasta el largo de
+   * su texto: las dos líneas quedaban de la mitad y un nombre chileno completo
+   * se partía en dos renglones. Con el ancho puesto ocupa lo que le toca en
+   * las dos hojas.
+   */
+  margin: 6px auto 0; width: 94%; max-width: 94%;
 }
 .cert-ninos .cn-par span {
   flex: 1 1 0; min-width: 0; border-bottom: 1px solid #78716c;
-  padding: 0 6px 4px; font-weight: 700; letter-spacing: 0.6px;
-  font-size: calc(var(--cert-tam-texto) * 1.02);
+  /* Los nombres de un par van sobre dos líneas del mismo largo, como en la
+     hoja de papel. Un poco más chicos que el texto para que un nombre completo
+     chileno —cuatro palabras— quepa en un renglón y no se parta en dos. */
+  padding: 0 4px 4px; font-weight: 700; letter-spacing: 0.2px;
+  font-size: calc(var(--cert-tam-texto) * 0.86);
   color: var(--cert-color-titulo);
   overflow-wrap: anywhere;
 }
@@ -2777,4 +2814,55 @@ table.libro tbody tr:nth-child(even) td { background: #fafbfe; }
 .cert-ninos .cn-numero {
   position: absolute; bottom: calc(var(--cert-margen) + 10px); right: calc(var(--cert-margen) + 18px);
   z-index: 2;
+}
+
+/* ===========================================================================
+   EL CERTIFICADO EN PAPEL
+   ===========================================================================
+   Va al final de la hoja de estilos A PROPÓSITO. Las reglas de las dos
+   disposiciones —`.cert-ninos .cert-firmas`, `.cert-boda .cert-firmas`— tienen
+   la misma fuerza que las de acá, y cuando dos reglas empatan gana la última
+   escrita. Puesto más arriba, el «bajar las firmas al pie» no se aplicaba en
+   esas dos hojas: quedaban a media página y la hoja larga terminaba con cinco
+   centímetros en blanco abajo.
+   =========================================================================== */
+@media print {
+  /*
+   * La hoja ES la página: mide el 100 % de ella, no los milímetros.
+   *
+   * Los milímetros parecen lo mismo y no lo son. La página de 279 mm mide
+   * 1054,4881 px y una caja de «279mm» se redondea a 1054,5: cuatro centésimas
+   * de píxel de más, suficientes para que el navegador mande la hoja a una
+   * SEGUNDA PÁGINA EN BLANCO. Salía en los cuatro tamaños, y en papel son
+   * cuatro hojas gastadas por cada certificado. Con el 100 % no hay conversión
+   * que redondear: la caja y la página son la misma medida por definición.
+   *
+   * El margen del cuerpo se va por lo mismo: los ocho píxeles que el navegador
+   * le pone de fábrica empujaban igual.
+   *
+   * (El tamaño del papel se le declara a la impresora desde la propia pantalla
+   * de impresión, con las medidas del formato: ver printCertificado.)
+   */
+  html, body, .content { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  .cert-sheet {
+    width: 100%; height: 100%;
+    max-width: none; min-height: 0; margin: 0;
+    break-after: avoid; break-inside: avoid;
+  }
+
+  /*
+   * Y el contenido se reparte en el alto que haya. Es lo que hace que el mismo
+   * diseño sirva para las dos hojas: el cuerpo queda arriba y las firmas —con
+   * la fecha y el pie detrás— bajan al pie del papel que sea, en vez de dejar
+   * el sobrante en blanco al final en la hoja larga.
+   */
+  .cert-sheet .cert-inner { min-height: 100%; display: flex; flex-direction: column; }
+  .cert-sheet .cert-firmas,
+  .cert-ninos .cert-firmas,
+  .cert-boda .cert-firmas { margin-top: auto; }
+  .cert-sheet .cert-fecha,
+  .cert-ninos .cn-emision,
+  .cert-boda .cb-emision,
+  .cert-boda .cert-epigrafe,
+  .cert-sheet .cert-pie { flex: none; }
 }

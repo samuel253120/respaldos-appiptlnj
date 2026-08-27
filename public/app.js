@@ -6869,7 +6869,7 @@ async function viewPrint(name, id) {
   }
 
   let sheet;
-  if (name === 'certificados') sheet = printCertificado(row, formatoCert);
+  if (name === 'certificados') sheet = printCertificado(row, formatoCert, { conPagina: true });
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
   else sheet = printGenerico(m, row);
@@ -6985,6 +6985,27 @@ const CERT_MARCOS = {
 };
 
 /**
+ * El papel, con sus medidas reales en milímetros.
+ *
+ * CARTA es la hoja de siempre; CIRCULAR es la larga —216 × 330 mm, 8,5 × 13
+ * pulgadas—, que muchas impresoras listan con ese nombre y otras como «Oficio»
+ * o «Folio»: es la misma hoja.
+ *
+ * De acá salen dos cosas que TIENEN que coincidir o la impresión no sirve: el
+ * tamaño con que se dibuja la hoja en pantalla y el `size` que se le declara a
+ * la impresora. Si la página fuera carta y la hoja se dibujara de 330 mm, la
+ * impresora achicaría todo para que entrara y el certificado saldría más chico
+ * de lo que se diseñó. Por eso las dos cosas se arman del mismo número.
+ *
+ * La misma tabla está en server/modules/formatos_certificado.js, y una prueba
+ * comprueba que digan lo mismo.
+ */
+const CERT_HOJAS = {
+  Carta: { ancho: 216, alto: 279 },
+  Circular: { ancho: 216, alto: 330 },
+};
+
+/**
  * La hoja del certificado, armada con su formato.
  *
  * El formato manda sobre lo que dice, sobre qué partes aparecen y sobre cómo
@@ -6993,7 +7014,7 @@ const CERT_MARCOS = {
  * hoja con el aspecto de siempre a una pantalla en blanco cuando alguien
  * necesita imprimir.
  */
-function printCertificado(row, formato) {
+function printCertificado(row, formato, { conPagina = false } = {}) {
   const f = formato || {};
   const conNumero = f.muestra_numero === undefined ? true : !!f.muestra_numero;
   const puesto = (v, sino) => (String(v || '').trim() ? String(v).trim() : sino);
@@ -7015,6 +7036,16 @@ function printCertificado(row, formato) {
   };
   const color = (v, sino) => (/^#[0-9a-f]{6}$/i.test(String(v || '')) ? v : sino);
 
+  /*
+   * El papel y hacia dónde va. Apaisado se dan vuelta las medidas: es la misma
+   * hoja puesta de lado, no otra hoja.
+   */
+  const papel = CERT_HOJAS[f.tamano_hoja] ? f.tamano_hoja : 'Carta';
+  const deLado = f.orientacion === 'Horizontal';
+  const medidas = CERT_HOJAS[papel];
+  const anchoHoja = deLado ? medidas.alto : medidas.ancho;
+  const altoHoja = deLado ? medidas.ancho : medidas.alto;
+
   const estiloHoja = [
     `--cert-color-titulo:${color(f.color_titulo, '#16265c')}`,
     `--cert-color-texto:${color(f.color_texto, '#44403c')}`,
@@ -7030,9 +7061,11 @@ function printCertificado(row, formato) {
       ? CERT_MARCOS['Sin marco']
       : `${entre(f.grosor_marco, 1, 12, 3)}px ${f.marco === 'Línea simple' ? 'solid' : 'double'}`}`,
     `--cert-fondo-opacidad:${entre(f.fondo_opacidad, 5, 100, 100) / 100}`,
+    `--cert-ancho:${anchoHoja}mm`,
+    `--cert-alto:${altoHoja}mm`,
   ].join(';');
 
-  const horizontal = f.orientacion === 'Horizontal' ? ' apaisado' : '';
+  const horizontal = `${deLado ? ' apaisado' : ''} hoja-${papel.toLowerCase()}${deLado ? '-h' : ''}`;
   const fondo = f.fondo && /\.(jpe?g|png|webp)$/i.test(f.fondo)
     ? `<img class="cert-fondo" src="/uploads/${esc(f.fondo)}" alt="" />`
     : '';
@@ -7070,7 +7103,26 @@ function printCertificado(row, formato) {
   const pie = f.muestra_pie === 0 || !pieDeLaInstitucion()
     ? '' : `<div class="cert-pie">${esc(pieDeLaInstitucion())}</div>`;
 
+  /*
+   * EL TAMAÑO DE LA PÁGINA SE LE DICE A LA IMPRESORA ACÁ.
+   *
+   * No en la hoja de estilos con una regla por tamaño: probado, el navegador
+   * elegía la primera `@page` que encontraba y una hoja circular apaisada
+   * salía impresa en carta de pie —la achicaba para que entrara, con el marco
+   * corrido y los márgenes cambiados—. Escrita en el momento, con las medidas
+   * del formato que se está imprimiendo, hay UNA sola regla y no hay nada que
+   * elegir.
+   *
+   * Va solo al imprimir de verdad. La vista previa no la lleva: es una ventana
+   * sobre otra pantalla, y una regla de página ahí adentro le cambiaría el
+   * tamaño del papel a lo que hubiera detrás.
+   */
+  const laPagina = conPagina
+    ? `<style>@page { size: ${anchoHoja}mm ${altoHoja}mm; margin: 0; }</style>`
+    : '';
+
   const envolver = (clase, dentro) => `
+    ${laPagina}
     <div class="print-sheet cert-sheet${clase}${horizontal}" style="${esc(estiloHoja)}">
       ${fondo}
       <div class="cert-inner">${dentro}</div>
@@ -7260,8 +7312,17 @@ function verVistaPreviaCertificado({ formato, row, titulo }) {
   const caja = fondo.querySelector('.previa-hoja');
   const hoja = caja.querySelector('.print-sheet');
   const ajustarAlto = () => {
-    const escala = parseFloat(getComputedStyle(caja).getPropertyValue('--previa-escala'));
-    if (!Number.isFinite(escala) || escala >= 1) { caja.style.height = ''; return; }
+    /*
+     * Cuánto se achica la hoja para que quepa. Se calcula acá y no en la hoja
+     * de estilos porque depende del PAPEL elegido: una circular apaisada mide
+     * 330 mm de ancho y una carta de pie 216, y con un porcentaje fijo la
+     * primera se salía del diálogo mientras la segunda quedaba chica.
+     */
+    const sitio = caja.clientWidth;
+    const mide = hoja.offsetWidth;
+    const escala = sitio && mide ? Math.min(1, sitio / mide) : 1;
+    caja.style.setProperty('--previa-escala', String(escala));
+    if (escala >= 1) { caja.style.height = ''; return; }
     caja.style.height = `${Math.ceil(hoja.offsetHeight * escala)}px`;
   };
   ajustarAlto();

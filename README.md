@@ -312,7 +312,18 @@ Cada formato manda sobre tres cosas, que son las secciones de su ficha:
 |---|---|
 | **El texto** | El título, el rótulo sobre el nombre, el cuerpo del certificado, el versículo con su cita y la línea de la fecha |
 | **Qué se muestra en la hoja** | Si aparecen el logo, el nombre de la institución, la iglesia local, el número, las firmas (con sus dos rótulos), la fecha y el pie |
-| **El diseño de la hoja** | **Disposición**, orientación, imagen de fondo con su intensidad, colores del título, del texto y del marco, tipografías, tamaños, margen, tipo de marco y su grosor |
+| **El diseño de la hoja** | **Disposición**, **tamaño de la hoja**, orientación, imagen de fondo con su intensidad, colores del título, del texto y del marco, tipografías, tamaños, margen, tipo de marco y su grosor |
+
+#### El papel: carta o circular
+
+| Tamaño | Medidas | Cuándo |
+|---|---|---|
+| **Carta** | 21,6 × 27,9 cm | La hoja de siempre |
+| **Circular** | 21,6 × 33 cm | La hoja larga. En algunas impresoras aparece como *Oficio* o *Folio*: es la misma |
+
+Se elige en el formato, junto a la orientación, y **la hoja se ajusta sola**: el sistema le declara a la impresora el tamaño exacto de página —no deja que la elija ella— y reparte el contenido en el alto que haya. El cuerpo queda arriba y las firmas, la fecha y el pie bajan al pie del papel que sea, en vez de dejar cinco centímetros en blanco al final en la hoja larga. La vista previa muestra la hoja a escala, así que la diferencia entre los dos papeles se ve antes de imprimir.
+
+> **Dos maneras de fallar que no se ven en la pantalla.** Si la página que se le declara a la impresora no es la del formato, la impresora achica la hoja para que entre: el marco queda corrido y el certificado más chico de lo que se diseñó. Y una caja de «279mm» se redondea a un pelo más que la página de 279 mm, y ese pelo manda todo a una segunda hoja en blanco. Las dos se revisan sobre el PDF de verdad en cada versión (`npm run papel`): las tres disposiciones × los dos papeles × las dos orientaciones.
 
 #### La disposición: la forma de la hoja, no su color
 
