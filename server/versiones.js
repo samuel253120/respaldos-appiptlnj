@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.119.0", fecha: "2026-08-27", titulo: "La presentación de niños, el bautismo y el matrimonio se imprimen siempre a lo ancho" },
   { version: "1.118.0", fecha: "2026-08-27", titulo: "El certificado se imprime en hoja carta o circular, y el diseño se ajusta al papel elegido" },
   { version: "1.117.0", fecha: "2026-08-27", titulo: "La presentación de niños y el matrimonio se imprimen como las hojas que la iglesia usa en papel" },
   { version: "1.116.0", fecha: "2026-08-27", titulo: "A un grupo lo puede dirigir alguien que no está inscrito, y los grupos nacen sin cobrar cuota" },

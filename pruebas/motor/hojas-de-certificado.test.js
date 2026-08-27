@@ -165,6 +165,56 @@ test('un tipo cuyo formato ya no existe cae a la hoja clásica, no revienta', ()
   assert.equal(r.datos.disposicion, 'Clásica');
 });
 
+/* ── Las que van siempre a lo ancho ────────────────────────────────── */
+
+test('la presentación y el matrimonio no se pueden poner de pie', () => {
+  /*
+   * No es una preferencia: esas hojas reparten a lo ancho el nombre del niño,
+   * los padres y las dos parejas de padrinos, o los dos cónyuges en una sola
+   * línea. De pie, esas filas se parten en dos y la hoja deja de ser la que la
+   * iglesia usa en papel. La pantalla no ofrece la opción; acá se comprueba
+   * que el servidor la corrija igual, porque el dato puede llegar de cualquier
+   * manera.
+   */
+  for (const disposicion of formatos.SIEMPRE_APAISADAS) {
+    const datos = { nombre: `De pie ${disposicion}`, disposicion, orientacion: 'Vertical' };
+    const error = formatos.hooks.beforeSave(datos, { existing: null });
+    assert.equal(error, null, String(error));
+    assert.equal(datos.orientacion, 'Horizontal', `${disposicion} tiene que quedar apaisada`);
+  }
+});
+
+test('la hoja clásica sí se puede poner como se quiera', () => {
+  const datos = { nombre: 'Reconocimiento a mano', disposicion: 'Clásica', orientacion: 'Vertical' };
+  formatos.hooks.beforeSave(datos, { existing: null });
+  assert.equal(datos.orientacion, 'Vertical');
+});
+
+test('al actualizar, presentación, bautismo y matrimonio quedan a lo ancho', () => {
+  const { certificadosApaisados } = require('../../server/migraciones');
+  // Como si vinieran de una versión anterior: los tres de pie
+  db.prepare("DELETE FROM migraciones WHERE nombre = 'certificados apaisados'").run();
+  db.prepare(
+    `UPDATE formatos_certificado SET orientacion = 'Vertical'
+      WHERE nombre IN ('Presentación de niños', 'Bautismo', 'Matrimonio')`
+  ).run();
+
+  certificadosApaisados();
+
+  for (const nombre of ['Presentación de niños', 'Bautismo', 'Matrimonio']) {
+    assert.equal(deLaIglesia(nombre).orientacion, 'Horizontal', `${nombre} tiene que quedar apaisado`);
+  }
+  // Y no se lleva por delante a los demás
+  assert.equal(deLaIglesia('Membresía').orientacion, 'Vertical');
+});
+
+test('y no se lo vuelve a dar vuelta si la iglesia lo cambia después', () => {
+  // Se corre una sola vez: la decisión de la iglesia manda sobre la actualización
+  db.prepare("UPDATE formatos_certificado SET orientacion = 'Vertical' WHERE nombre = 'Bautismo'").run();
+  require('../../server/migraciones').certificadosApaisados();
+  assert.equal(deLaIglesia('Bautismo').orientacion, 'Vertical');
+});
+
 /* ── El papel: carta o circular ────────────────────────────────────── */
 
 test('los formatos que ya existían se imprimen en la hoja de siempre', () => {

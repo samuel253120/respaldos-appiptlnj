@@ -74,6 +74,18 @@ const MARCOS = ['Doble línea', 'Línea simple', 'Sin marco'];
 const DISPOSICIONES = ['Clásica', 'Presentación de niños', 'Matrimonio'];
 
 /**
+ * Las que van SIEMPRE apaisadas, porque así están hechas.
+ *
+ * No es una preferencia: la hoja de presentación reparte el nombre del niño,
+ * la frase con los espacios, los padres y las dos parejas de padrinos a lo
+ * ancho, y la de matrimonio nombra a los dos cónyuges en una sola línea. De
+ * pie, esas mismas filas se parten en dos y la hoja deja de ser la que la
+ * iglesia usa en papel. La orientación no se ofrece en esas dos, y si el dato
+ * llega de otra manera se corrige al guardar.
+ */
+const SIEMPRE_APAISADAS = ['Presentación de niños', 'Matrimonio'];
+
+/**
  * El papel en que se imprime, con sus medidas reales en milímetros.
  *
  * Son los dos tamaños que la iglesia tiene: la hoja CARTA de siempre y la
@@ -191,8 +203,9 @@ module.exports = {
     {
       name: 'orientacion', label: 'Orientación', type: 'select', default: 'Vertical',
       options: ['Vertical', 'Horizontal'], seccion: 'El diseño de la hoja',
-      help: 'Horizontal es lo habitual en los certificados de reconocimiento, y en los de '
-        + 'presentación de niños y de matrimonio.',
+      help: 'Horizontal es lo habitual en los certificados de reconocimiento. Las hojas de '
+        + 'presentación de niños y de matrimonio van SIEMPRE horizontales —así están hechas—, '
+        + 'y en ellas no se elige.',
     },
     {
       name: 'fondo', label: 'Imagen de fondo', type: 'file', accept: 'image/*', seccion: 'El diseño de la hoja',
@@ -284,6 +297,15 @@ module.exports = {
       // Y un papel que no existe la dejaría sin medidas al imprimir
       if (!TAMANOS_HOJA.includes(dato('tamano_hoja'))) data.tamano_hoja = 'Carta';
 
+      /*
+       * Las dos hojas que están hechas a lo ancho van a lo ancho. La pantalla
+       * ya no ofrece la otra, pero el dato puede llegar de cualquier manera y
+       * de pie esas hojas no son las que la iglesia usa: las filas de padres y
+       * de padrinos se parten en dos y la frase de los cónyuges deja de ser una.
+       */
+      const como = data.disposicion !== undefined ? data.disposicion : dato('disposicion');
+      if (SIEMPRE_APAISADAS.includes(como)) data.orientacion = 'Horizontal';
+
       const nombre = String(dato('nombre') || '').trim();
       if (!nombre) return 'El formato necesita un nombre: es con el que se elige al emitir.';
       data.nombre = nombre;
@@ -344,6 +366,7 @@ module.exports = {
 module.exports.DATOS = DATOS;
 
 module.exports.DISPOSICIONES = DISPOSICIONES;
+module.exports.SIEMPRE_APAISADAS = SIEMPRE_APAISADAS;
 module.exports.HOJAS = HOJAS;
 module.exports.TAMANOS_HOJA = TAMANOS_HOJA;
 module.exports.TIPOGRAFIAS = TIPOGRAFIAS;

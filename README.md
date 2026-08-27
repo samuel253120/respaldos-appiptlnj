@@ -335,6 +335,8 @@ No todos los certificados son «un título, un nombre y un párrafo». Dos de lo
 | **Presentación de niños** | Apaisada, con orla. El nombre del niño destacado, la frase con los espacios en blanco rellenados, sus padres y sus dos parejas de padrinos | Fecha de nacimiento, padre, madre y hasta dos parejas de padrinos |
 | **Matrimonio** | Apaisada. Membrete arriba, el nombre del acto en una banda, la frase que nombra a los dos cónyuges y el versículo al pie | El otro cónyuge |
 
+**Esas dos van SIEMPRE a lo ancho**, y en ellas la orientación no se elige: no es una preferencia, es cómo están hechas. La de presentación reparte el nombre del niño, los padres y las dos parejas de padrinos a lo ancho, y la de matrimonio nombra a los dos cónyuges en una sola línea; de pie, esas filas se parten en dos y la hoja deja de ser la que la iglesia usa en papel. El **bautismo** también se imprime a lo ancho, aunque conserve la hoja clásica: al actualizar queda así, y si algún día se decide lo contrario desde su ficha, la actualización no vuelve a darlo vuelta.
+
 Al elegir el tipo de certificado, **la ficha cambia sola**: aparecen los campos que esa hoja necesita y desaparecen los que no. Y **no se emite a medias**: un certificado de matrimonio a nombre de una sola persona, o uno de presentación sin ninguno de los padres, el servidor no lo guarda. Cambiar el tipo suelta los datos del otro, para que no queden esperando reaparecer.
 
 La disposición queda **escrita en el propio certificado** al emitirlo. Si no, cambiarle la disposición al formato cambiaría la forma de todos los que ya están firmados y entregados.

@@ -37,7 +37,7 @@ const RUT = process.env.RUT || '11.111.111-1';
 const CLAVE = process.env.CLAVE || 'admin123';
 
 /** Las medidas que manda el servidor, para no escribirlas dos veces acá. */
-const { HOJAS } = require('../server/modules/formatos_certificado');
+const { HOJAS, SIEMPRE_APAISADAS } = require('../server/modules/formatos_certificado');
 
 let bien = 0;
 const mal = [];
@@ -139,30 +139,43 @@ print(round(d[0].get_width() * 25.4 / 72), round(d[0].get_height() * 25.4 / 72),
   for (const { tipo, cert, formatoId } of suyos) {
     console.log(`\n── ${tipo}`);
     for (const papel of Object.keys(HOJAS)) {
-      for (const orientacion of ['Vertical', 'Horizontal']) {
+      for (const pedida of ['Vertical', 'Horizontal']) {
         // Se relee antes de guardar: el sistema avisa si otro tocó la ficha
-        const actual = await api('GET', `/formatos_certificado/${formatoId}`);
-        await api('PUT', `/formatos_certificado/${formatoId}`, { ...actual, tamano_hoja: papel, orientacion });
+        const antes = await api('GET', `/formatos_certificado/${formatoId}`);
+        await api('PUT', `/formatos_certificado/${formatoId}`, { ...antes, tamano_hoja: papel, orientacion: pedida });
+
+        /*
+         * Lo que se imprime es lo que el servidor GUARDÓ, no lo que se le
+         * pidió. La presentación de niños y el matrimonio van siempre a lo
+         * ancho —están hechas así—, y si se les pide de pie el servidor las
+         * corrige. La prueba lee lo que quedó y comprueba el papel contra eso;
+         * y de paso deja anotado que la corrección ocurrió.
+         */
+        const quedo = (await api('GET', `/formatos_certificado/${formatoId}`)).orientacion;
+        if (SIEMPRE_APAISADAS.includes(antes.disposicion) && pedida === 'Vertical') {
+          revisar(`${tipo} no se puede poner de pie: está hecho a lo ancho`, quedo === 'Horizontal',
+            `quedó «${quedo}»`);
+        }
 
         await ir('#/m/certificados');
         await ir(`#/print/certificados/${cert.id}`);
         await pagina.waitForSelector('.cert-sheet', { timeout: 25000 });
         await pagina.waitForTimeout(250);
 
-        const archivo = path.join(carpeta, `${tipo}-${papel}-${orientacion}.pdf`);
+        const archivo = path.join(carpeta, `${tipo}-${papel}-${pedida}.pdf`);
         fs.writeFileSync(archivo, await pagina.pdf({ preferCSSPageSize: true, printBackground: true }));
         const hoja = medirElPdf(archivo);
 
-        const deLado = orientacion === 'Horizontal';
+        const deLado = quedo === 'Horizontal';
         const ancho = deLado ? HOJAS[papel].alto : HOJAS[papel].ancho;
         const alto = deLado ? HOJAS[papel].ancho : HOJAS[papel].alto;
         revisar(
-          `${papel} ${orientacion.toLowerCase()}: la página mide ${ancho} × ${alto} mm`,
+          `${papel} ${quedo.toLowerCase()}: la página mide ${ancho} × ${alto} mm`,
           hoja.ancho === ancho && hoja.alto === alto,
           `salió de ${hoja.ancho} × ${hoja.alto} mm`
         );
         revisar(
-          `${papel} ${orientacion.toLowerCase()}: cabe en una sola hoja`,
+          `${papel} ${quedo.toLowerCase()}: cabe en una sola hoja`,
           hoja.hojas === 1,
           hoja.hojas > 1 ? `salieron ${hoja.hojas} hojas: la de más va en blanco y se gasta igual` : ''
         );

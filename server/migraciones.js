@@ -2267,6 +2267,51 @@ function hojasDePresentacionYMatrimonio() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Los certificados que la iglesia hace a lo ancho.
+ *
+ * La presentación de niños, el bautismo y el matrimonio se imprimen SIEMPRE
+ * apaisados: así son las hojas que la iglesia usa en papel. Las dos primeras
+ * ya lo traen por su disposición —están hechas a lo ancho y el sistema no
+ * ofrece la otra—, pero el BAUTISMO conserva la hoja clásica, que de fábrica
+ * viene de pie, y con eso salía distinto de los otros dos.
+ *
+ * Se corre una sola vez. Si algún día la iglesia decide ponerlo de pie desde
+ * su ficha, la actualización no se lo vuelve a dar vuelta.
+ */
+function certificadosApaisados() {
+  const NOMBRE = 'certificados apaisados';
+  if (yaAplicada(NOMBRE)) return;
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('formatos_certificado')) return; // se crea al arrancar; se intenta de nuevo
+
+  const columnas = new Set(db.prepare('PRAGMA table_info("formatos_certificado")').all().map((c) => c.name));
+  if (!columnas.has('orientacion') || !columnas.has('disposicion')) return marcarAplicada(NOMBRE);
+
+  const { SIEMPRE_APAISADAS } = require('./modules/formatos_certificado');
+  const marcas = SIEMPRE_APAISADAS.map(() => '?').join(',');
+
+  const puestos = db.transaction(() => {
+    // Las dos que están hechas a lo ancho, por si alguna quedó de pie
+    const porSuHoja = db
+      .prepare(`UPDATE formatos_certificado SET orientacion = 'Horizontal'
+                 WHERE disposicion IN (${marcas}) AND orientacion <> 'Horizontal'`)
+      .run(...SIEMPRE_APAISADAS).changes;
+    // Y el bautismo, que lleva la hoja clásica pero se imprime igual que ellas
+    const elBautismo = db
+      .prepare(`UPDATE formatos_certificado SET orientacion = 'Horizontal'
+                 WHERE nombre = 'Bautismo' AND orientacion <> 'Horizontal'`)
+      .run().changes;
+    return porSuHoja + elBautismo;
+  }).immediate();
+
+  if (puestos) {
+    console.log(`📜 certificados: ${puestos} formato(s) pasaron a imprimirse a lo ancho, como en papel.`);
+  }
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2300,6 +2345,7 @@ function ejecutarMigraciones() {
     ['fichas de integrante con su nombre', fichasDeIntegranteConSuNombre],
     ['marcas de asistencia con su registro', marcasDeAsistenciaConSuRegistro],
     ['hojas de presentación y matrimonio', hojasDePresentacionYMatrimonio],
+    ['certificados apaisados', certificadosApaisados],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],
@@ -2551,5 +2597,5 @@ module.exports = {
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo,
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
-  hojasDePresentacionYMatrimonio,
+  hojasDePresentacionYMatrimonio, certificadosApaisados,
 };

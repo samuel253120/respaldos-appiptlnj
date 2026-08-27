@@ -4441,6 +4441,9 @@ async function viewForm(name, id, precarga) {
   // Cada tipo de certificado pide los datos de su hoja
   if (name === 'certificados') prepararElCertificado();
 
+  // Y hay hojas que van siempre a lo ancho, porque así están hechas
+  if (name === 'formatos_certificado') prepararElFormato();
+
   // El acta: traer el texto del documento adjunto, y ver a quién enlaza
   if (name === 'actas_reuniones') prepararElActa(id, row, isNew);
 
@@ -11571,6 +11574,48 @@ async function descargarActaEnPdf(id, boton) {
  * adjunto quedaba como un archivo cerrado que no se busca ni se lee sin
  * bajarlo. Estas dos cosas los juntan.
  */
+/**
+ * Hay hojas que van SIEMPRE a lo ancho, y en ellas no se elige la orientación.
+ *
+ * No es una preferencia. La de presentación de niños reparte el nombre del
+ * niño, la frase con los espacios, los padres y las dos parejas de padrinos a
+ * lo ancho; la de matrimonio nombra a los dos cónyuges en una sola línea. De
+ * pie, esas mismas filas se parten en dos y la hoja deja de ser la que la
+ * iglesia usa en papel.
+ *
+ * Así que al elegir una de esas dos disposiciones la orientación se pone en
+ * horizontal, se apaga el selector y se dice por qué. El servidor la corrige
+ * igual al guardar: lo que la pantalla no ofrece hay que rechazarlo de todas
+ * maneras.
+ */
+const CERT_SIEMPRE_APAISADAS = ['Presentación de niños', 'Matrimonio'];
+
+function prepararElFormato() {
+  const como = document.querySelector('#recForm [name="disposicion"]');
+  const hacia = document.querySelector('#recForm [name="orientacion"]');
+  if (!como || !hacia) return;
+
+  const nota = document.createElement('div');
+  nota.className = 'mut';
+  nota.style.cssText = 'font-size:12px;margin-top:4px';
+  nota.hidden = true;
+  nota.textContent = 'Esta hoja va siempre a lo ancho: está hecha así.';
+  hacia.parentElement.appendChild(nota);
+
+  const mirar = () => {
+    const apaisada = CERT_SIEMPRE_APAISADAS.includes(como.value);
+    nota.hidden = !apaisada;
+    hacia.disabled = apaisada;
+    if (apaisada && hacia.value !== 'Horizontal') {
+      hacia.value = 'Horizontal';
+      hacia.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  };
+
+  como.addEventListener('change', mirar);
+  mirar();
+}
+
 /**
  * Cada tipo de certificado pide los datos que su hoja necesita.
  *
