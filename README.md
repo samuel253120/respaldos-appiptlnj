@@ -680,7 +680,8 @@ Todo lo que cuelga de una ficha iba **una tarjeta debajo de la otra**. En un com
 | Pantalla | Pestañas |
 |---|---|
 | **Cuerpo / grupo** | Datos · Integrantes · Cuotas · Tesorería · Directivas · Actas |
-| **Miembro** | Datos · Cuerpos · Documentos · Historial |
+| **Miembro** | Datos · Cuerpos · Asistencia · Solicitudes · Documentos · Historial |
+| **No miembro** | Datos · Asistencia · Solicitudes · Documentos · Historial |
 | **Iglesia** y **pastor / guía** | Datos · Documentos · Historial |
 | **Configuración del sistema** | Mantenimiento · Identidad · Organización · Acceso · Respaldos · Credencial · Límites · Preferencias · Traspaso · Versiones |
 
@@ -1393,6 +1394,19 @@ reescribir de dónde salió algo.
 > nada más; elegir por ella si es de bautismo, de membresía o de matrimonio sería
 > inventar el contenido de un papel que se firma.
 
+### Cómo ha asistido, en su ficha ✅
+
+El informe por persona ya existía y estaba bien hecho, pero había que ir a la pestaña de **📈 Informes** y escribir su nombre. En la ficha —que es donde uno la está mirando antes de una entrevista o de evaluar su período de prueba— no había ni una palabra de su asistencia.
+
+La pestaña **Asistencia** de un **miembro** y de un **no miembro** trae, del **año en curso**:
+
+- sus cuatro números: actividades, **asistencia**, inasistencia y justificación;
+- **cómo le va en cada cuerpo**, cuando participa en más de uno: en Damas puede andar al día y en el Coro no, y las dos cosas son ciertas;
+- sus **últimas doce marcas**, con fecha, cuerpo, actividad, estado y motivo;
+- y el botón **📈 Ver el informe completo**, que abre el informe de esa persona con el período editable.
+
+Los números salen del **mismo informe**, no de una cuenta propia: dos cálculos para lo mismo se separan, y la ficha terminaría diciendo un porcentaje y la pestaña de Informes otro sobre la misma persona.
+
 ### Todo lo que ha pedido una persona, en su ficha 🧍
 
 La ficha de un **miembro** y la de un **no miembro** tienen ahora pestaña de
@@ -1876,7 +1890,7 @@ Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesi
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro. Con `PREPARAR=1` llena la base con 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos para que la medición diga algo — y por eso **se niega a hacerlo si la base tiene fichas que no generó ella**: esos datos van directo a la base, sin pasar por el sistema, y una base con datos de una iglesia no se toca. Para medir, use una base aparte: `DATA_DIR=/tmp/carga`.
 
   `LIMPIAR=1 npm run carga` dice cuántos datos de prueba hay en una base y cuántas fichas son de verdad, sin borrar nada; `LIMPIAR=borrar` los borra. Se reconocen por sus señas: los RUT del 30.000.000 en adelante —un tramo que no está en uso—, los cuerpos «Cuerpo de prueba N» y los movimientos «Movimiento de prueba N».
-- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 983 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 996 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
 
   Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
 

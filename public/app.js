@@ -2991,6 +2991,19 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
     if (MOD['actas_reuniones']) sumar('actas', 'Actas', '📝', (c) => renderActasCuerpo(id, c));
   }
   if (name === 'miembros' && MOD['cuerpos']) sumar('cuerpos', 'Cuerpos', '👥', (c) => renderCuerposDelMiembro(id, c));
+  /*
+   * Cómo ha asistido, donde uno la está mirando.
+   *
+   * El informe por persona ya existía, pero había que ir a la pestaña de
+   * Informes y escribir su nombre. Es lo que se mira antes de una entrevista o
+   * de evaluar un período de prueba, así que va en la ficha.
+   */
+  if (name === 'miembros' && MOD['asistencias']) {
+    sumar('asistencia', 'Asistencia', '✅', (c) => renderAsistenciaDeLaPersona('Miembro', id, c));
+  }
+  if (name === 'no_miembros' && MOD['asistencias']) {
+    sumar('asistencia', 'Asistencia', '✅', (c) => renderAsistenciaDeLaPersona('No miembro', id, c));
+  }
   // «Para poder ver todo lo que pidió una persona» era el motivo del módulo, y
   // hasta acá había que ir al listado a buscarla por nombre
   if (name === 'miembros' && MOD['solicitudes']) {
@@ -4449,6 +4462,119 @@ async function renderSolicitudesDeLaPersona(tipo, personaId, contenedor) {
         </div>
         ${filas(d.involucrada, true)}
       </div>` : ''}`;
+}
+
+/**
+ * CÓMO HA ASISTIDO, EN SU PROPIA FICHA.
+ *
+ * El informe por persona existe y está bien hecho —abre su porcentaje en cada
+ * cuerpo y detalla marca por marca—, pero había que ir a buscarlo a la pestaña
+ * de Informes y escribir su nombre. En la ficha, que es donde uno la está
+ * mirando antes de una entrevista o de evaluar su período de prueba, no había
+ * ni una palabra de su asistencia.
+ *
+ * Los números salen del MISMO informe, no de una cuenta propia: dos cálculos
+ * para lo mismo se separan, y la ficha terminaría diciendo un porcentaje y el
+ * informe otro. Se pide el año en curso —que es lo que se mira— y queda el
+ * enlace al informe completo, donde el período se cambia.
+ */
+async function renderAsistenciaDeLaPersona(tipo, personaId, contenedor) {
+  if (!MOD['asistencias']) return;
+  const esNoMiembro = tipo === 'No miembro';
+  const desde = `${new Date().getFullYear()}-01-01`;
+  const params = new URLSearchParams({ tipo: 'persona', desde });
+  params.set(esNoMiembro ? 'no_miembro_id' : 'miembro_id', personaId);
+
+  let d;
+  try {
+    d = await api('GET', '/asistencias/informe?' + params.toString());
+  } catch (e) {
+    contenedor.innerHTML = '';
+    return;
+  }
+
+  const alInforme = `#/asistencia/informes?tipo=persona&desde=${desde}&`
+    + `${esNoMiembro ? 'no_miembro_id' : 'miembro_id'}=${personaId}`;
+  const pct = (n) => `${String(n).replace('.', ',')}%`;
+  const g = d.general;
+
+  if (!g.total) {
+    contenedor.innerHTML = `
+      <div class="card" style="margin-top:18px">
+        <div class="toolbar"><b>✅ Cómo ha asistido</b><span class="spacer"></span>
+          <a class="btn secondary sm" href="${alInforme}">📈 Ver el informe completo</a></div>
+        <div class="empty-state" style="padding:26px">
+          No tiene ninguna marca de asistencia este año.<br>
+          <span class="mut">Aparecerá acá en cuanto se le pase lista en alguna actividad.</span>
+        </div>
+      </div>`;
+    return;
+  }
+
+  /* Cuando participa en más de un cuerpo, cada uno lleva su propia cuenta y
+     pueden no parecerse: al día en uno y flojo en el otro. */
+  const porCuerpo = (d.porMiembroCuerpo || []).length > 1 ? `
+    <div class="card" style="margin-top:14px">
+      <div class="toolbar"><b>👥 En cada cuerpo</b></div>
+      <div class="table-scroll">
+        <table class="grid grid-lista">
+          <thead><tr><th>Cuerpo / Grupo</th><th>Presentes</th><th>Ausentes</th><th>Justificados</th><th>Asistencia</th></tr></thead>
+          <tbody>
+            ${d.porMiembroCuerpo.map((f) => `
+              <tr>
+                <td class="col-primera col-titular" data-label="Cuerpo / Grupo">${esc(f.cuerpo || '—')}</td>
+                <td class="num" data-label="Presentes">${esc(fmtNumero(f.presentes))}</td>
+                <td class="num" data-label="Ausentes">${esc(fmtNumero(f.ausentes))}</td>
+                <td class="num" data-label="Justificados">${esc(fmtNumero(f.justificados))}</td>
+                <td data-label="Asistencia"><b>${pct(f.pct_presente)}</b></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : '';
+
+  const ULTIMAS = 12;
+  const ultimas = (d.marcas || []).slice(0, ULTIMAS);
+  const insignia = (e) => `<span class="badge ${e === 'Presente' ? 'green' : e === 'Ausente' ? 'red' : 'blue'}">${esc(e || '')}</span>`;
+
+  contenedor.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>✅ Cómo ha asistido</b>
+        <span class="mut">este año</span>
+        <span class="spacer"></span>
+        <a class="btn secondary sm" href="${alInforme}">📈 Ver el informe completo</a>
+      </div>
+      <div class="stats" style="padding:0 14px 14px">
+        <div class="stat"><div class="ic">📋</div><div class="num">${esc(fmtNumero(g.total))}</div><div class="lbl">Actividades</div></div>
+        <div class="stat"><div class="ic">✅</div><div class="num">${pct(g.pct_presente)}</div><div class="lbl">Asistencia</div></div>
+        <div class="stat"><div class="ic">❌</div><div class="num">${pct(g.pct_ausente)}</div><div class="lbl">Inasistencia</div></div>
+        <div class="stat"><div class="ic">📝</div><div class="num">${pct(g.pct_justificado)}</div><div class="lbl">Justificación</div></div>
+      </div>
+    </div>
+    ${porCuerpo}
+    <div class="card" style="margin-top:14px">
+      <div class="toolbar">
+        <b>🗓️ Sus últimas ${fmtNumero(ultimas.length)}</b>
+        ${d.marcas.length > ULTIMAS
+          ? `<span class="mut">de ${fmtNumero(d.marcas.length)} este año — el resto, en el informe</span>` : ''}
+      </div>
+      <div class="table-scroll">
+        <table class="grid grid-lista">
+          <thead><tr><th>Fecha</th><th>Cuerpo</th><th>Actividad</th><th>Estado</th><th>Motivo</th></tr></thead>
+          <tbody>
+            ${ultimas.map((m) => `
+              <tr>
+                <td class="col-primera col-titular" data-label="Fecha">${esc(fechaCorta(m.fecha))}</td>
+                <td data-label="Cuerpo">${esc(m.cuerpo || '')}</td>
+                <td data-label="Actividad">${esc(m.actividad || '')}</td>
+                <td data-label="Estado">${insignia(m.estado)}</td>
+                <td data-label="Motivo">${esc(m.motivo || '')}${m.detalle ? ` <span class="mut">(${esc(m.detalle)})</span>` : ''}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 async function renderCuerposDelMiembro(miembroId, contenedor) {
@@ -10381,7 +10507,16 @@ async function viewAsistencia(precarga) {
   await cargarAgenda();
   if (ASIS.tab === 'informes') {
     document.getElementById('tabInformes').dataset.listo = '1';
-    renderInformeAsistencia(document.getElementById('tabInformes'));
+    /*
+     * Lo que traiga la dirección se le pasa al informe.
+     *
+     * `#/asistencia/informes?tipo=persona&miembro_id=7` llegaba hasta acá y se
+     * perdía: el informe se armaba en blanco y salía el general. Se veía al
+     * entrar desde la ficha de una persona, que es justo para lo que existe
+     * ese enlace. Solo en la primera pintada: al cambiar de pestaña a mano,
+     * lo que se quiere es el informe que uno estaba mirando, no el del enlace.
+     */
+    renderInformeAsistencia(document.getElementById('tabInformes'), p);
   }
 }
 

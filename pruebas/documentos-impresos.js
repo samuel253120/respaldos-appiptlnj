@@ -89,7 +89,15 @@ const DOCUMENTOS = [
   { nombre: 'la ficha de un miembro', modulo: 'miembros' },
   { nombre: 'un acta de reunión', modulo: 'actas_reuniones' },
   { nombre: 'el informe de asistencia', ruta: '#/asistencia/informes' },
-  { nombre: 'la planilla mensual', ruta: '#/asistencia/informes?tipo=planilla' },
+  /*
+   * La planilla mensual es de UN cuerpo: sin decir cuál, la pantalla contesta
+   * «Elija un cuerpo» y no hay hoja que revisar. Antes esto pasaba igual y la
+   * prueba lo daba por bueno porque la dirección se perdía por el camino y
+   * salía el informe general —o sea, se revisaba otra hoja, no esta—. Desde
+   * que la dirección llega de verdad (1.129.0), hay que decirle el cuerpo, y
+   * se pregunta cuál hay en vez de escribir un número.
+   */
+  { nombre: 'la planilla mensual', modulo: 'cuerpos', rutaCon: (id) => `#/asistencia/informes?tipo=planilla&cuerpo_id=${id}` },
 ];
 
 /** El primer registro que exista en ese módulo, o nada si no hay ninguno. */
@@ -136,7 +144,7 @@ async function primerRegistro(pagina, modulo) {
           `no hay ningún registro en ${doc.modulo}`);
         continue;
       }
-      doc.ruta = `#/print/${doc.modulo}/${id}`;
+      doc.ruta = doc.rutaCon ? doc.rutaCon(id) : `#/print/${doc.modulo}/${id}`;
     }
     await pagina.goto(URL + '/' + doc.ruta);
     await pagina.waitForTimeout(2200);
