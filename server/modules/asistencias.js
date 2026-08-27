@@ -1155,6 +1155,31 @@ module.exports = {
       }
       if (desde) { cond.push('d.fecha >= ?'); params.push(desde); }
       if (hasta) { cond.push('d.fecha <= ?'); params.push(hasta); }
+      /*
+       * POR TIPO DE ACTIVIDAD.
+       *
+       * Se podía acotar por cuerpo, por persona y por período, pero no por
+       * tipo: con doce tipos configurados no había manera de contestar «¿cómo
+       * anda la asistencia al Estudio Bíblico?», que es justo la pregunta que
+       * hace que valga la pena tener tipos. Comprobado: pedir el informe
+       * acotado a «Ensayo» devolvía las mismas 30.000 marcas que sin acotar,
+       * porque el parámetro no existía.
+       *
+       * El tipo vive en la actividad, no en la marca. Va como subconsulta y no
+       * como JOIN para que la condición sirva igual en las siete consultas de
+       * abajo, algunas de las cuales ya traen sus propias uniones.
+       *
+       * Y se llama `tipo_actividad`, no `tipo`: `tipo` ya está tomado por QUÉ
+       * INFORME se pide —general, por cuerpo, por persona—. Se probó con el
+       * mismo nombre y las dos cosas se pisaron: el informe general se pedía a
+       * sí mismo acotado a las actividades de tipo «general», que no existen,
+       * y salía en cero. Se vio en la pantalla, no en las pruebas: ahí el
+       * nombre habría estado igual de equivocado en los dos lados.
+       */
+      if (req.query.tipo_actividad) {
+        cond.push('d.asistencia_id IN (SELECT id FROM asistencias WHERE tipo_reunion = ?)');
+        params.push(String(req.query.tipo_actividad));
+      }
       if (cuerpoId) { cond.push('d.cuerpo_id = ?'); params.push(cuerpoId); }
       if (noMiembroId) { cond.push('d.no_miembro_id = ?'); params.push(noMiembroId); }
       else if (miembroId) { cond.push('d.miembro_id = ?'); params.push(miembroId); }
@@ -1294,6 +1319,10 @@ module.exports = {
 
       res.json({
         tipo, desde: desde || null, hasta: hasta || null,
+        // Por qué tipo de actividad quedó acotado, para que la pantalla y la
+        // hoja impresa lo digan: un informe acotado que no se anuncia se lee
+        // como si fuera el de todo
+        tipo_actividad: req.query.tipo_actividad ? String(req.query.tipo_actividad) : null,
         general, porDia, porActividad, porCuerpo, porMiembro, porMiembroCuerpo, porMotivo, marcas,
       });
     });

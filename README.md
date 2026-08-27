@@ -1039,7 +1039,7 @@ El rol **Secretario** trae los dos permisos.
 
 ## Informes de asistencia 📈
 
-En la misma pantalla de **Asistencia**, pestaña **📈 Informes**, se sacan tres informes, acotados por el período que se elija:
+En la misma pantalla de **Asistencia**, pestaña **📈 Informes**, se sacan tres informes, acotados por el período que se elija —y, si se quiere, **por tipo de actividad**—:
 
 - **General** — todo lo registrado.
 - **Por cuerpo** — se elige el cuerpo.
@@ -1078,6 +1078,10 @@ Cada informe muestra arriba los **promedios**: de **asistencia**, de **inasisten
 | **Actividad por actividad** | Cada actividad por separado, para los días con más de una |
 | **Por cuerpo** | Qué cuerpo asiste más y cuál menos |
 | **Por miembro** | Cómo va cada persona |
+
+> **El filtro por tipo de actividad** está arriba, junto al período: *«Todas las actividades»* o uno solo. Acota **todo** el informe —el resumen, las cuatro tablas y el detalle de marcas—, se combina con el período y con el cuerpo, y el informe lo dice en su encabezado y en la planilla que se baja: *«solo «Estudio Bíblico», de todo lo registrado»*. En la planilla mensual no aparece, porque esa es de un cuerpo y un mes.
+>
+> ⚠️ **Hasta la 1.128.0 no existía.** Con 12 tipos configurados no había manera de contestar *«¿cómo anda la asistencia al Estudio Bíblico?»*, que es justo la pregunta que hace que valga la pena tener tipos: pedir el informe acotado a «Ensayo» devolvía las mismas **30.000** marcas que sin acotar.
 
 Cada fila lleva una barra de tres colores (presentes, justificados, ausentes) para comparar de un vistazo, y desde el promedio por miembro se salta al informe personal de esa persona con un clic. El informe por persona agrega el **detalle de todas sus marcas** —fecha, actividad, estado, motivo y detalle— y el recuento de **motivos de justificación**. Todo se imprime con el membrete de la iglesia.
 
@@ -1872,7 +1876,7 @@ Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesi
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro. Con `PREPARAR=1` llena la base con 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos para que la medición diga algo — y por eso **se niega a hacerlo si la base tiene fichas que no generó ella**: esos datos van directo a la base, sin pasar por el sistema, y una base con datos de una iglesia no se toca. Para medir, use una base aparte: `DATA_DIR=/tmp/carga`.
 
   `LIMPIAR=1 npm run carga` dice cuántos datos de prueba hay en una base y cuántas fichas son de verdad, sin borrar nada; `LIMPIAR=borrar` los borra. Se reconocen por sus señas: los RUT del 30.000.000 en adelante —un tramo que no está en uso—, los cuerpos «Cuerpo de prueba N» y los movimientos «Movimiento de prueba N».
-- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 971 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 983 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
 
   Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
 
@@ -1905,7 +1909,7 @@ GET    /api/asistencias/agenda      actividades de un período, con su avance
 GET    /api/asistencias/:id/lista   integrantes convocados con su marca
 POST   /api/asistencias/:id/lista   guarda todas las marcas de una vez
 POST   /api/asistencias/:id/repetir copia la actividad en las fechas que le siguen
-GET    /api/asistencias/informe     informes y promedios
+GET    /api/asistencias/informe     informes y promedios (tipo_actividad acota por tipo)
 GET    /api/tesoreria/resumen       ingresos, egresos, balance y por categoría
 POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importación masiva
 ```

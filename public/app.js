@@ -6504,6 +6504,15 @@ async function renderInformeAsistencia(contenedor, precarga) {
     hasta: (precarga && precarga.hasta) || '',
     // La planilla mensual se pide por mes, no por un rango de fechas
     mes: (precarga && precarga.mes) || new Date().toISOString().slice(0, 7),
+    /*
+     * POR TIPO DE ACTIVIDAD. Vacío quiere decir todas.
+     *
+     * Se podía acotar por cuerpo, por persona y por período, pero no por tipo:
+     * con doce tipos configurados no había manera de contestar «¿cómo anda la
+     * asistencia al Estudio Bíblico?», que es justo la pregunta que hace que
+     * valga la pena tener tipos.
+     */
+    actividad: (precarga && precarga.actividad) || '',
   };
 
   contenedor.innerHTML = `
@@ -6518,6 +6527,9 @@ async function renderInformeAsistencia(contenedor, precarga) {
   await getOptions('cuerpos').catch(() => []);
   await getOptions('miembros').catch(() => []);
   const cuerpos = optionsCache['cuerpos'] || [];
+  // Los tipos salen de donde los mantiene la iglesia, no de una lista escrita
+  // acá: es la misma vía que usa el filtro del calendario
+  const tiposDeActividad = await opcionesDelCampo('asistencias', 'tipo_reunion').catch(() => []);
 
   const filtros = contenedor.querySelector('#infFiltros');
   filtros.innerHTML = `
@@ -6545,6 +6557,11 @@ async function renderInformeAsistencia(contenedor, precarga) {
       <ul class="rb-lista" hidden></ul>
     </div>
     <label class="range" id="infMesCaja" ${st.tipo === 'planilla' ? '' : 'hidden'}>Mes <input type="month" id="infMes" value="${esc(st.mes)}" /></label>
+    <select id="infActividad" aria-label="Tipo de actividad" title="Ver solo un tipo de actividad"
+            ${st.tipo === 'planilla' ? 'hidden' : ''}>
+      <option value="">Todas las actividades</option>
+      ${tiposDeActividad.map((t) => `<option value="${esc(t)}" ${st.actividad === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+    </select>
     <label class="range rango-fechas" ${st.tipo === 'planilla' ? 'hidden' : ''}>Desde <input type="date" id="infDesde" value="${esc(st.desde)}" /></label>
     <label class="range rango-fechas" ${st.tipo === 'planilla' ? 'hidden' : ''}>Hasta <input type="date" id="infHasta" value="${esc(st.hasta)}" /></label>
     <button type="button" class="btn secondary sm rango-fechas" id="infTodo"
@@ -6571,6 +6588,10 @@ async function renderInformeAsistencia(contenedor, precarga) {
     st.desde = document.getElementById('infDesde').value;
     st.hasta = document.getElementById('infHasta').value;
     st.mes = document.getElementById('infMes').value;
+    // La planilla mensual es de un cuerpo y un mes: el tipo no le aplica
+    const porTipo = document.getElementById('infActividad');
+    porTipo.hidden = st.tipo === 'planilla';
+    st.actividad = st.tipo === 'planilla' ? '' : porTipo.value;
   };
   document.getElementById('infTipo').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infCuerpo').addEventListener('change', () => { sincronizar(); cargar(); });
@@ -6579,6 +6600,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
     st.no_miembro_id = ''; st.no_miembro_nombre = '';
     sincronizar(); cargar();
   });
+  document.getElementById('infActividad').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infDesde').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infHasta').addEventListener('change', () => { sincronizar(); cargar(); });
   document.getElementById('infMes').addEventListener('change', () => { sincronizar(); cargar(); });
@@ -6761,6 +6783,8 @@ async function renderInformeAsistencia(contenedor, precarga) {
     const params = new URLSearchParams({ tipo: st.tipo });
     if (st.desde) params.set('desde', st.desde);
     if (st.hasta) params.set('hasta', st.hasta);
+    // `tipo` ya es QUÉ informe se pide; el tipo de actividad va por su nombre
+    if (st.actividad) params.set('tipo_actividad', st.actividad);
     if (st.tipo === 'cuerpo' && st.cuerpo_id) params.set('cuerpo_id', st.cuerpo_id);
     if (st.tipo === 'persona' && st.no_miembro_id) params.set('no_miembro_id', st.no_miembro_id);
     else if (st.tipo === 'persona' && st.miembro_id) params.set('miembro_id', st.miembro_id);
@@ -6773,9 +6797,15 @@ async function renderInformeAsistencia(contenedor, precarga) {
       return;
     }
 
+    /*
+     * Un informe acotado que no lo dice se lee como si fuera el de todo —y se
+     * imprime igual—, así que el tipo va junto al período, que es donde el ojo
+     * ya busca de qué es este informe.
+     */
+    const soloDe = d.tipo_actividad ? `solo «${d.tipo_actividad}», ` : '';
     const periodo = d.desde || d.hasta
-      ? `del ${d.desde ? fechaLarga(d.desde) : 'principio'} al ${d.hasta ? fechaLarga(d.hasta) : 'día de hoy'}`
-      : 'de todo lo registrado';
+      ? `${soloDe}del ${d.desde ? fechaLarga(d.desde) : 'principio'} al ${d.hasta ? fechaLarga(d.hasta) : 'día de hoy'}`
+      : `${soloDe}de todo lo registrado`;
     const g = d.general;
 
     const resumen = `
