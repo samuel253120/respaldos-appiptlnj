@@ -28,8 +28,8 @@ function ensureSeed() {
   if (iglesias === 0) {
     db.prepare(
       `INSERT INTO iglesias (nombre, codigo, estado) VALUES (?, ?, 'Activa')`
-    ).run('Iglesia Central', 'IG-001');
-    console.log('⛪ Iglesia de ejemplo creada: Iglesia Central (IG-001)');
+    ).run('Iglesia Central', 'CENTRAL');
+    console.log('⛪ Iglesia de ejemplo creada: Iglesia Central (CENTRAL)');
   }
 
   // Tesorería: la cuenta general de la corporación y la de cada iglesia, para

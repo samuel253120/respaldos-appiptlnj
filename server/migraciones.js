@@ -2312,6 +2312,109 @@ function certificadosApaisados() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Cada iglesia con su código, y sin repetirse.
+ *
+ * El código era un campo suelto y opcional: servía para buscar y para verse en
+ * el listado. Desde que el número de cada solicitud lo lleva adentro —para
+ * decir de qué iglesia es—, tiene que estar y tiene que ser único, o el número
+ * deja de nombrar una sola cosa.
+ *
+ * A las que no tenían se les propone uno sacado de su nombre: de «Iglesia
+ * Central» sale CENTRAL. A las que tenían se les deja el mismo, normalizado
+ * —mayúsculas, sin tildes ni espacios—, que es como se va a poder escribir en
+ * un acta o dictar por teléfono. Y si al normalizar dos quedaran iguales, a la
+ * segunda se le suma un número. Todo esto se ve y se corrige en la ficha de
+ * cada iglesia.
+ */
+function cadaIglesiaConSuCodigo() {
+  const NOMBRE = 'cada_iglesia_con_su_codigo';
+  if (yaAplicada(NOMBRE)) return;
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(t);
+  if (!hayTabla('iglesias')) return;
+
+  const codigos = require('./codigo-iglesia');
+  const filas = db.prepare('SELECT id, nombre, codigo FROM iglesias ORDER BY id').all();
+  const guardar = db.prepare('UPDATE iglesias SET codigo = ? WHERE id = ?');
+  let puestos = 0, arreglados = 0;
+
+  db.transaction(() => {
+    for (const ig of filas) {
+      const tenia = String(ig.codigo || '').trim();
+      // Acá sí se recorta: es un código que ya estaba guardado sin ninguna
+      // regla de largo, y lo que salga se ve y se corrige en su ficha
+      const quiere = codigos.recortar(tenia) || codigos.deSuNombre(ig.nombre, ig.id);
+      const queda = codigos.libre(db, quiere, ig.id);
+      if (queda === tenia) continue;
+      guardar.run(queda, ig.id);
+      tenia ? arreglados++ : puestos++;
+    }
+  }).immediate();
+
+  marcarAplicada(NOMBRE);
+  if (puestos || arreglados) {
+    console.log(
+      `⛪ Códigos de iglesia: ${puestos} puesto(s) desde su nombre · ${arreglados} normalizado(s). ` +
+        'Se ven y se corrigen en la ficha de cada iglesia.'
+    );
+  }
+}
+
+/**
+ * El correlativo de las solicitudes pasa a llevarse por iglesia.
+ *
+ * Era de todo el sistema: la primera solicitud de una iglesia recién creada
+ * salía con el 0004 porque heredaba el correlativo de las otras, y decir «la
+ * 12 de este año» no significaba nada mientras hubiera más de una
+ * congregación. Los certificados y la oficina de partes ya numeraban por
+ * iglesia; solicitudes se había quedado atrás.
+ *
+ * LO YA EMITIDO NO SE TOCA. Una solicitud está nombrada por su número en actas
+ * y correos, así que las que existen conservan el suyo —`0001-2026`, sin
+ * iglesia—. Lo que se hace acá es dejar el contador de cada iglesia donde
+ * llegó SU numeración, para que la siguiente siga de largo en vez de empezar
+ * de nuevo en el 0001 y quedar al lado de una que ya se llama así.
+ *
+ * El contador viejo, que era uno por año para todo el sistema, queda sin uso:
+ * lo que contaba ya está dicho en los números que se emitieron.
+ */
+function solicitudesNumeradasPorIglesia() {
+  const NOMBRE = 'solicitudes_numeradas_por_iglesia';
+  if (yaAplicada(NOMBRE)) return;
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(t);
+  if (!hayTabla('solicitudes')) return;
+
+  const numero = require('./solicitudes/numero');
+  const filas = db.prepare('SELECT iglesia_id, numero FROM solicitudes WHERE numero IS NOT NULL').all();
+
+  // Hasta dónde llegó cada libro: la iglesia y el año de cada número que ya
+  // se emitió, en el formato que sea
+  const hasta = new Map();
+  for (const s of filas) {
+    const p = numero.partesDe(s.numero);
+    if (!p) continue;
+    const libro = `${Number(s.iglesia_id) || 0}:${p.anio}`;
+    if (p.correlativo > (hasta.get(libro) || 0)) hasta.set(libro, p.correlativo);
+  }
+
+  db.transaction(() => {
+    for (const [libro, cuanto] of hasta) {
+      const [deQuien, anio] = libro.split(':');
+      numero.alMenos(Number(deQuien), Number(anio), cuanto);
+    }
+  }).immediate();
+
+  marcarAplicada(NOMBRE);
+  if (hasta.size) {
+    console.log(
+      `📨 Solicitudes: el correlativo pasa a llevarse por iglesia (${hasta.size} libro(s) al día). ` +
+        'Las que ya tienen número lo conservan; las nuevas salen como SOL-CENTRAL-0001-2026.'
+    );
+  }
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2359,7 +2462,9 @@ function ejecutarMigraciones() {
     ['credenciales desde cero', credencialesDesdeCero],
     ['contador de credenciales al día', contadorDeCredencialesAlDia],
     ['ficha del beneficiario de cada ayuda', ayudasConFichaDelBeneficiario],
+    ['cada iglesia con su código', cadaIglesiaConSuCodigo],
     ['seguimiento de las solicitudes', solicitudesConSeguimiento],
+    ['solicitudes numeradas por iglesia', solicitudesNumeradasPorIglesia],
     ['texto con formato saneado de nuevo', textoConFormatoSaneadoDeNuevo],
   ];
 
@@ -2512,24 +2617,39 @@ function solicitudesConSeguimiento() {
   let numeradas = 0, comoMiembro = 0, fichasNuevas = 0, comoNoMiembro = 0, adjuntos = 0;
 
   db.transaction(() => {
-    // 1) El número, por orden de fecha dentro de cada año
+    /*
+     * 1) El número, por orden de fecha, dentro de cada iglesia y cada año.
+     *
+     * Estas solicitudes vienen de antes de que el módulo llevara número, así
+     * que no hay ninguna referencia que respetar: se numeran directamente con
+     * el formato de hoy —`SOL-CENTRAL-0001-2026`—, que dice de qué iglesia es
+     * cada una. Las que ya traían número no se tocan.
+     */
     const sinNumero = db
       .prepare(`SELECT id, fecha, iglesia_id, solicitante, miembro_id, estado
                      ${traeAdjunto ? ', adjunto' : ''}${traeAtendida ? ', atendida_por' : ''}
                   FROM solicitudes WHERE numero IS NULL OR numero = ''
                  ORDER BY fecha, id`)
       .all();
-    const porAnio = new Map();
+    const porLibro = new Map();
     const ponerNumero = db.prepare('UPDATE solicitudes SET numero = ? WHERE id = ?');
     for (const s of sinNumero) {
       const anio = Number(String(s.fecha || '').slice(0, 4)) || new Date().getFullYear();
-      const cuantas = (porAnio.get(anio) || 0) + 1;
-      porAnio.set(anio, cuantas);
-      ponerNumero.run(numero.comoSeEscribe(cuantas, anio), s.id);
+      const deQuien = Number(s.iglesia_id) || 0;
+      const libro = `${deQuien}:${anio}`;
+      const cuantas = (porLibro.get(libro) || 0) + 1;
+      porLibro.set(libro, cuantas);
+      ponerNumero.run(
+        numero.comoSeEscribe(cuantas, anio, require('./codigo-iglesia').deLaIglesia(db, deQuien)),
+        s.id
+      );
       numeradas++;
     }
-    // El contador de cada año queda donde llegó la numeración
-    for (const [anio, cuantas] of porAnio) numero.alMenos(anio, cuantas);
+    // El contador de cada libro queda donde llegó su numeración
+    for (const [libro, cuantas] of porLibro) {
+      const [deQuien, anio] = libro.split(':');
+      numero.alMenos(Number(deQuien), Number(anio), cuantas);
+    }
 
     // 2) Quién la presentó
     const nuevaFicha = db.prepare(
@@ -2594,6 +2714,7 @@ function solicitudesConSeguimiento() {
 // significa duplicar personas, perder ayudas o repetir un número de solicitud.
 module.exports = {
   ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
+  cadaIglesiaConSuCodigo, solicitudesNumeradasPorIglesia,
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo,
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,

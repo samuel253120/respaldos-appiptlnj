@@ -125,10 +125,16 @@ async function montarEscenario(admin) {
     return r.json;
   };
 
-  const norte = await buscarOCrear('iglesias', (f) => f.codigo === `${MARCA}-N`,
-    { nombre: 'Iglesia Norte de Prueba', codigo: `${MARCA}-N`, estado: 'Activa' });
-  const sur = await buscarOCrear('iglesias', (f) => f.codigo === `${MARCA}-S`,
-    { nombre: 'Iglesia Sur de Prueba', codigo: `${MARCA}-S`, estado: 'Activa' });
+  /*
+   * El código de una iglesia es corto por regla —va dentro del número de cada
+   * solicitud, que se dicta por teléfono—, así que las dos de la prueba llevan
+   * una marca propia y corta. Se reconocen igual por el nombre, que sí lleva la
+   * marca larga.
+   */
+  const norte = await buscarOCrear('iglesias', (f) => f.codigo === 'ZZPRUEBA-N',
+    { nombre: `Iglesia Norte ${MARCA}`, codigo: 'ZZPRUEBA-N', estado: 'Activa' });
+  const sur = await buscarOCrear('iglesias', (f) => f.codigo === 'ZZPRUEBA-S',
+    { nombre: `Iglesia Sur ${MARCA}`, codigo: 'ZZPRUEBA-S', estado: 'Activa' });
 
   const damas = await buscarOCrear('cuerpos', (f) => f.nombre === `Damas ${MARCA} Norte`,
     { nombre: `Damas ${MARCA} Norte`, tipo: 'Dorcas', iglesia_id: norte.id, estado: 'Activo' });
@@ -301,7 +307,7 @@ async function loAjenoNoSeVe(E, modulos) {
   console.log('\n1 · Lo ajeno no se ve');
 
   const deOtraIglesia = [
-    ['Iglesia Sur de Prueba', 'el nombre de la otra iglesia'],
+    [E.sur.nombre, 'el nombre de la otra iglesia'],
     [E.delSur.apellidos, 'una miembro de la otra iglesia'],
     [E.pastorSur.apellidos, 'el pastor de la otra iglesia'],
     [E.cuerpoSur.nombre, 'un cuerpo de la otra iglesia'],

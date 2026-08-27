@@ -1115,6 +1115,42 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
 .print-generic td { border: 1px solid var(--border); padding: 8px 12px; }
 .print-generic td.k { background: #f8fafc; font-weight: 600; width: 220px; }
 
+/* Los mismos recursos de la hoja del acta, para las hojas genéricas que los
+   usan: el registro de servicio y la solicitud con su tramitación. Estaban
+   escritos solo bajo «.acta-sheet», así que los títulos y los bloques de texto
+   de esas dos salían sin formato. */
+.print-generic h3 {
+  margin: 20px 0 6px; font-size: 14px; text-transform: uppercase;
+  letter-spacing: 0.5px; color: #334155;
+}
+.print-generic .blk { white-space: pre-wrap; font-size: 13.5px; }
+.print-generic .meta-tbl td.k { background: #f8fafc; font-weight: 600; width: 220px; }
+.print-generic .blk.vacio { color: var(--muted); font-size: 12.5px; }
+
+/* La resolución en su propio recuadro: es lo que se le contestó a quien pidió
+   y lo primero que alguien busca en la hoja. */
+.print-generic .blk.resolucion {
+  border: 1px solid var(--border); border-left: 3px solid var(--marca-azul);
+  background: #f8fafc; padding: 10px 14px; border-radius: 4px;
+}
+
+/* Las tablas de la tramitación: una fila por cosa que pasó, más apretadas que
+   la tabla de datos porque son muchas y lo que se lee es el texto. */
+.print-generic table.tramite { margin-bottom: 6px; font-size: 12.5px; }
+.print-generic table.tramite th {
+  border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+  background: #eef2ff; color: var(--marca-azul); font-weight: 700;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px;
+}
+.print-generic table.tramite td { padding: 6px 10px; vertical-align: top; }
+.print-generic table.tramite .nowrap { white-space: nowrap; }
+/* Que una anotación no quede partida entre dos páginas: se lee como una sola
+   cosa, y a la mitad no dice nada. */
+@media print {
+  .print-generic table.tramite tr { break-inside: avoid; }
+  .print-generic table.tramite thead { display: table-header-group; }
+}
+
 @media print {
   body { background: #fff; }
   .sidebar, .topbar, .print-actions, .no-print { display: none !important; }
@@ -2529,6 +2565,51 @@ input.fuera-de-rango { border-color: var(--danger); background: #fff5f5; }
     margin: 0;
   }
 }
+
+/* ---------- La bandeja de solicitudes ----------
+   Cuatro cajas arriba —el tablero— y debajo las filas de la que se eligió.
+   Las cajas son botones de verdad, no adornos: se llega a ellas con el
+   tabulador y se marcan con aria-pressed, porque cambian lo que se ve abajo.
+   La de «pasadas de plazo» se pinta distinto solo cuando tiene algo: una alerta
+   permanente deja de ser una alerta. */
+.bandeja-cajas {
+  display: grid; gap: 10px; margin: 14px 0;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+}
+.bandeja-caja {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  border-top: 3px solid var(--border); padding: 12px 14px; cursor: pointer;
+  font: inherit; color: inherit; min-height: 44px;
+}
+.bandeja-caja:hover { border-color: var(--marca-azul); }
+.bandeja-caja:focus-visible { outline: 2px solid var(--marca-azul); outline-offset: 2px; }
+.bandeja-caja.puesta { border-top-color: var(--marca-azul); box-shadow: var(--shadow); }
+.bandeja-caja.urge { border-top-color: var(--danger); }
+.bandeja-caja .bc-n {
+  font-size: 26px; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.bandeja-caja.urge .bc-n { color: var(--danger); }
+.bandeja-caja.puesta .bc-n { color: var(--marca-azul); }
+.bandeja-caja.puesta.urge .bc-n { color: var(--danger); }
+.bandeja-caja .bc-q { font-size: 13.5px; font-weight: 600; }
+.bandeja-caja .bc-d { font-size: 12px; color: var(--muted); }
+
+/* En el teléfono la tarjeta la encabeza el NÚMERO, que es como se nombra una
+   solicitud: es lo que uno busca para reconocerla, igual que el nombre en la
+   tarjeta de un miembro. */
+@media (max-width: 700px) {
+  .bandeja-tabla td[data-col="numero"] {
+    font-size: 15.5px; font-weight: 700; text-align: left; justify-content: flex-start;
+    padding-bottom: 4px;
+  }
+  .bandeja-tabla td[data-col="numero"]::before { display: none; }
+}
+
+.bandeja-tabla .plazo { white-space: nowrap; font-size: 12.5px; color: var(--muted); }
+.bandeja-tabla .plazo.vencido { color: var(--danger); font-weight: 600; }
+.bandeja-tabla .plazo.justo { color: var(--warning); font-weight: 600; }
+.bandeja-tabla tbody tr { cursor: pointer; }
 
 /* ---------- El libro de la oficina de partes ----------
    Una fila por documento y las columnas de un libro de partes: el número

@@ -135,6 +135,8 @@ module.exports = {
   filterFields: ['estado', 'tipo', 'responsable_id', 'iglesia_id'],
   defaultSort: { field: 'fecha', dir: 'desc' },
   printable: true,
+  // Un módulo de trámites se entra por la bandeja, no por el listado completo
+  pantallaExtra: { ruta: '#/solicitudes/bandeja', label: '📥 Ver la bandeja' },
   ESTADOS,
   CERRADOS,
   ABIERTOS,
@@ -165,7 +167,8 @@ module.exports = {
   fields: [
     {
       name: 'numero', label: 'N.º de solicitud', type: 'text', readonly: true, unique: true,
-      help: 'Lo pone el sistema al ingresarla: correlativo por año. No se escribe ni se corrige a mano.',
+      help: 'Lo pone el sistema al ingresarla: SOL-CENTRAL-0001-2026, correlativo por iglesia y por año. '
+        + 'Lleva el código de la iglesia para que se sepa de cuál es. No se escribe ni se corrige a mano.',
     },
     { name: 'fecha', label: 'Fecha de la solicitud', type: 'date', required: true },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
@@ -239,6 +242,28 @@ module.exports = {
       optionsRoute: '/solicitudes/responsables',
       help: 'Quién tiene que responderla. Para pasarla a otro use «Trasladar», que deja constancia de por qué.',
     },
+    /*
+     * PARA CUÁNDO SE PROMETIÓ CONTESTAR.
+     *
+     * El aviso de «lleva mucho sin respuesta» usaba un solo número de días,
+     * igual para todo. Pero un traslado de membresía, una audiencia con el
+     * liderazgo y una ayuda de urgencia no tienen el mismo plazo, y no había
+     * dónde anotar para cuándo se le dijo a la persona que tendría respuesta.
+     * Sin eso, «va atrasada» era una opinión.
+     *
+     * Puesto, manda: el recordatorio sale cuando esa fecha pasa. En blanco,
+     * sigue valiendo el número de días de Configuración, que es el respaldo
+     * para las que nadie comprometió.
+     */
+    {
+      name: 'fecha_compromiso', label: 'Respuesta comprometida para', type: 'date',
+      // Con fecha adelante, claro: un plazo que solo admite el pasado no es un
+      // plazo. Es la misma marca que lleva el «Plazo para responder» de la
+      // oficina de partes, y por lo mismo.
+      futuro: true, noAntesDe: 'fecha',
+      help: 'Para cuándo se le dijo a quien pidió que tendría respuesta. Puesta, es la que manda: el '
+        + 'sistema avisa cuando pasa. En blanco vale el plazo general de Configuración.',
+    },
     {
       name: 'respuesta', label: 'Respuesta / Resolución', type: 'textarea',
       help: 'Qué se resolvió, y por qué. Hace falta para cerrar la solicitud —aprobarla, '
@@ -290,7 +315,9 @@ module.exports = {
       if (isNew) {
         if (!data.numero) {
           const anio = Number(String(data.fecha || '').slice(0, 4)) || new Date().getFullYear();
-          data.numero = require('../solicitudes/numero').siguiente(anio);
+          // Cada iglesia lleva su propio correlativo, y el número dice de cuál
+          // es: SOL-CENTRAL-0001-2026 (ver server/solicitudes/numero.js)
+          data.numero = require('../solicitudes/numero').siguiente(data.iglesia_id, anio);
         }
         // Quien la ingresa queda a cargo mientras no se diga otra cosa: una
         // solicitud sin responsable es una solicitud que nadie mira.
@@ -482,6 +509,132 @@ module.exports = {
         )
         .all(...params);
       res.json(filas.map((u) => ({ id: u.id, label: u.nombre })));
+    });
+
+    /**
+     * LA BANDEJA: por dónde se entra a trabajar el módulo.
+     *
+     * Un módulo de trámites no se usa desde el listado completo. Se usa desde
+     * «lo que tengo que hacer hoy», y eso hasta acá había que armarlo a mano:
+     * entrar al listado, abrir los filtros y elegirse a uno mismo de una lista
+     * de responsables. Nadie hace eso todos los días.
+     *
+     * Son cuatro cajas y cada una contesta una pregunta:
+     *
+     *   · MÍAS — las que llevo yo y siguen abiertas. Es la de siempre.
+     *   · VENCIDAS — las que ya debían estar contestadas: pasó la fecha que se
+     *     comprometió, o —si no se comprometió ninguna— llevan más del plazo
+     *     general abiertas. Son las mismas que dispara el recordatorio, para
+     *     que la pantalla y el aviso no digan cosas distintas.
+     *   · ABIERTAS — todo lo que sigue en trámite dentro de lo que alcanzo,
+     *     lleve quien lo lleve. Es la vista del que coordina.
+     *   · CERRADAS — lo resuelto en los últimos treinta días, que es lo que se
+     *     mira para rendir cuentas de la semana o del mes.
+     *
+     * Las cuentas de las cuatro salen SIEMPRE, aunque se mire una: son el
+     * tablero. Y todas pasan por el alcance de quien mira, igual que el
+     * listado: la bandeja no es una puerta lateral para ver lo que no le toca.
+     */
+    router.get('/solicitudes/bandeja', requirePerm('solicitudes', 'view'), (req, res) => {
+      const alcance = require('../alcance');
+      const dias = require('../ajustes').numero('avisos_solicitud_dias', 1, 120);
+      const cerrados = module.exports.CERRADOS.map(() => '?').join(',');
+
+      /** Lo que esta persona alcanza, más la iglesia que esté mirando. */
+      const suyo = (params) => {
+        const partes = [];
+        const donde = alcance.condiciones(module.exports, req.user, params);
+        if (donde) partes.push(`(${donde})`);
+        const iglesia = Number(req.query.iglesia_id) || 0;
+        if (iglesia) { partes.push('s.iglesia_id = ?'); params.push(iglesia); }
+        return partes.length ? partes.join(' AND ') : '1 = 1';
+      };
+
+      /*
+       * Vencida: pasó lo que se prometió, o —sin promesa— el plazo general.
+       * Es la misma condición del recordatorio (ver server/avisos/vigia.js);
+       * si las dos se separaran, el sistema avisaría de una cosa y la pantalla
+       * mostraría otra.
+       */
+      const VENCIDA =
+        `CASE WHEN COALESCE(s.fecha_compromiso, '') <> ''
+                THEN s.fecha_compromiso < date('now','localtime')
+              ELSE s.fecha <= date('now','localtime', ?) END`;
+
+      const CAJAS = {
+        mias: {
+          titulo: 'Las que llevo yo',
+          donde: () => [`s.estado NOT IN (${cerrados})`, 's.responsable_id = ?'],
+          con: () => [...module.exports.CERRADOS, req.user.id],
+          orden: `COALESCE(NULLIF(s.fecha_compromiso, ''), s.fecha)`,
+        },
+        vencidas: {
+          titulo: 'Pasadas de plazo',
+          donde: () => [`s.estado NOT IN (${cerrados})`, VENCIDA],
+          con: () => [...module.exports.CERRADOS, `-${dias} days`],
+          orden: `COALESCE(NULLIF(s.fecha_compromiso, ''), s.fecha)`,
+        },
+        abiertas: {
+          titulo: 'Todas las abiertas',
+          donde: () => [`s.estado NOT IN (${cerrados})`],
+          con: () => [...module.exports.CERRADOS],
+          orden: `COALESCE(NULLIF(s.fecha_compromiso, ''), s.fecha)`,
+        },
+        cerradas: {
+          titulo: 'Cerradas en los últimos 30 días',
+          donde: () => [
+            `s.estado IN (${cerrados})`,
+            `COALESCE(s.fecha_respuesta, s.fecha) >= date('now','localtime','-30 days')`,
+          ],
+          con: () => [...module.exports.CERRADOS],
+          orden: 'COALESCE(s.fecha_respuesta, s.fecha) DESC',
+        },
+      };
+
+      const armar = (caja) => {
+        const params = [];
+        const donde = [suyo(params), ...caja.donde()];
+        return { sql: donde.join(' AND '), params: [...params, ...caja.con()] };
+      };
+
+      // El tablero: cuántas hay en cada caja
+      const cuentas = {};
+      for (const [clave, caja] of Object.entries(CAJAS)) {
+        const { sql, params } = armar(caja);
+        cuentas[clave] = db.prepare(`SELECT COUNT(*) AS c FROM solicitudes s WHERE ${sql}`).get(...params).c;
+      }
+
+      // Y las filas de la que se está mirando
+      const cual = CAJAS[req.query.caja] ? req.query.caja : 'mias';
+      const caja = CAJAS[cual];
+      const { sql, params } = armar(caja);
+      const filas = db
+        .prepare(
+          `SELECT s.id, s.numero, s.fecha, s.fecha_compromiso, s.fecha_respuesta, s.solicitante,
+                  s.tipo, s.asunto, s.estado, s.responsable_id, s.iglesia_id,
+                  (SELECT nombre FROM usuarios WHERE id = s.responsable_id) AS responsable,
+                  (SELECT nombre FROM iglesias WHERE id = s.iglesia_id) AS iglesia,
+                  CAST(julianday('now','localtime')
+                       - julianday(COALESCE(NULLIF(s.fecha_compromiso, ''), s.fecha)) AS INTEGER) AS dias,
+                  ${VENCIDA} AS vencida
+             /*
+              * Los nombres salen de subconsultas y no de un JOIN a propósito:
+              * «usuarios» tiene sus propias columnas iglesia_id y miembro_id, y
+              * el alcance escribe esos nombres sin apellido. Con el JOIN puesto,
+              * la base no sabría de qué tabla habla y la consulta ni siquiera
+              * corre.
+              */
+             FROM solicitudes s
+            WHERE ${sql}
+            ORDER BY ${caja.orden}
+            LIMIT 200`
+        )
+        .all(`-${dias} days`, ...params);
+
+      res.json({
+        caja: cual, titulo: caja.titulo, cuentas, dias,
+        yo: req.user.id, filas,
+      });
     });
 
     /**

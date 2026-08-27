@@ -145,6 +145,14 @@ const OPCIONES = [
           'entrega dos números repetidos son dos papeles que dicen ser el mismo.',
       },
       {
+        clave: 'solicitud_prefijo', label: 'Prefijo del número de las solicitudes', tipo: 'text',
+        defecto: 'SOL-',
+        ayuda:
+          'Las solicitudes se numeran por iglesia y por año, y el número lleva el código de la iglesia para ' +
+          'que se sepa de cuál es: de fábrica «SOL-», que da «SOL-CENTRAL-0001-2026». Cambiar el prefijo ' +
+          'empieza una serie nueva y no toca los números ya emitidos.',
+      },
+      {
         clave: 'documento_recibido_prefijo', label: 'Prefijo de los documentos recibidos', tipo: 'text',
         defecto: 'REC-',
         ayuda:

@@ -486,6 +486,21 @@ La organización distingue cuatro, de mayor a menor:
 
 El sistema hace cumplir lo primero: al designar una segunda matriz avisa cuál lo es y no lo guarda —*«Ya hay una Iglesia Matriz: Iglesia Central. Cámbiele el tipo a esa antes de designar otra.»*—. Para traspasar la condición de matriz, primero se le cambia el tipo a la que la tiene y después se designa la nueva.
 
+### El código de cada iglesia 🏷️
+
+Cada iglesia lleva un **código corto y propio** —`CENTRAL`, `IG-001`—, que es
+**obligatorio y no se puede repetir**. No es un dato de adorno: va dentro del
+número de cada solicitud (`SOL-CENTRAL-0001-2026`) para decir de qué iglesia es,
+y dos iglesias con el mismo código darían dos series de números idénticas.
+
+Lo que se escriba se ajusta solo al guardar —mayúsculas, sin tildes ni
+espacios—, porque tiene que poder dictarse por teléfono y escribirse en un acta:
+*«Iglesia Ñuñoa»* queda como `IGLESIA-NUNOA`. El **largo máximo son 16
+caracteres**, y uno más largo se avisa en vez de recortarse: cortarlo en
+silencio podría dejar dos códigos distintos convertidos en el mismo. Al
+actualizar, a las iglesias que no tenían se les propone uno sacado de su nombre
+y se ve en su ficha.
+
 El tipo aparece como columna y como filtro en el listado de iglesias. Las iglesias registradas antes de esta distinción quedan **sin tipo**, a la espera de que se les asigne: el sistema no lo adivina. Una iglesia nueva se crea como *Iglesia Local*, que es lo más habitual.
 
 > **Para más adelante: de cuál depende cada una.** Los tipos forman una jerarquía —el anexo depende de una local o de una sede, la local depende de una sede, y todas dependen de la matriz—, pero **todavía no se registra ese vínculo**: por ahora el tipo se guarda solo, sin decir de quién depende cada iglesia. Se implementará cuando haya más iglesias que ordenar; entonces la organización podrá verse como árbol y sumar, por ejemplo, la membresía de una sede con todos sus anexos.
@@ -1227,9 +1242,90 @@ Cada servicio tiene su hoja con el membrete de la iglesia, los datos agrupados (
 
 Una solicitud no es una ficha que se llena y se archiva. **Entra**, alguien la
 **lleva**, y termina **resuelta**. Por eso, además de sus datos, lleva un número
-correlativo por año (`0001-2026`), un responsable, un historial donde se anota
-sola cada cosa que le pasa, y las personas, documentos y antecedentes que se le
-van sumando.
+que dice de qué iglesia es (`SOL-CENTRAL-0001-2026`), un responsable, un plazo
+comprometido, un historial donde se anota sola cada cosa que le pasa, y las
+personas, documentos y antecedentes que se le van sumando.
+
+El módulo se entra por su **bandeja**, no por el listado: un listado sirve para
+buscar una solicitud que uno ya sabe que existe; la bandeja sirve para ver qué
+hay que mover hoy.
+
+### El número dice de qué iglesia es 🔢
+
+`SOL-CENTRAL-0001-2026`. Tres partes, y cada una está por algo:
+
+| Parte | Qué dice | De dónde sale |
+|---|---|---|
+| `SOL-` | Qué es | El prefijo, en **Configuración → Organización** |
+| `CENTRAL` | **De qué iglesia es** | El **código** de la iglesia, en su ficha |
+| `0001-2026` | Cuál del año es | El correlativo, **por iglesia** y por año |
+
+Antes el correlativo era de todo el sistema: la primera solicitud de una
+iglesia recién creada salía con el `0004-2026` —heredaba el de las otras—, y
+decir *«la 12 de este año»* no significaba nada mientras hubiera más de una
+congregación. Los certificados y la oficina de partes ya numeraban por iglesia;
+solicitudes se había quedado atrás.
+
+**El código de la iglesia pasa a ser obligatorio y único**, porque ahora
+identifica: dos iglesias con el mismo código darían dos series de números
+idénticas. Se escribe en su ficha y el sistema lo ajusta solo —mayúsculas, sin
+tildes ni espacios—, para que se pueda dictar por teléfono y escribir en un
+acta: *«Iglesia Ñuñoa»* queda como `IGLESIA-NUNOA`, *«ig 001»* como `IG-001`.
+
+> **Al actualizar**, a cada iglesia que no tenía código se le pone uno sacado de
+> su nombre —de «Iglesia Central» sale `CENTRAL`— y se revisa que no haya dos
+> iguales. Todo eso se ve y se corrige en la ficha de cada iglesia.
+>
+> **Las solicitudes que ya tienen número lo conservan**, con el formato viejo:
+> es con el que están nombradas en actas y correos, y renumerarlas dejaría esas
+> referencias apuntando a nada. Lo que hace la actualización es dejar el
+> contador de cada iglesia donde llegó su numeración, para que la siguiente siga
+> de largo. Cambiar el prefijo o el código más adelante tampoco toca lo ya
+> emitido: empieza una serie nueva.
+
+### Se puede comprometer una fecha ⏳
+
+En cada solicitud hay un campo **«Respuesta comprometida para»**: es la fecha
+que se le dio a quien pidió. Puesta, **es la que manda**: el recordatorio de
+*«sigue sin respuesta»* sale cuando esa fecha pasa, y no antes. En blanco vale
+el plazo general de Configuración, igual para todas.
+
+Antes solo existía ese número global, así que una ayuda de urgencia prometida
+para el jueves y un trámite que puede esperar un mes avisaban el mismo día, y
+«va atrasada» era una opinión.
+
+### La bandeja: por dónde se entra a trabajar 📥
+
+Desde el listado, el botón **📥 Ver la bandeja** abre la pantalla con la que se
+trabaja todos los días. Arriba, cuatro cuentas —el tablero—; debajo, las filas
+de la que se toque:
+
+| Caja | Qué junta |
+|---|---|
+| **Las que llevo yo** | Abiertas, a mi nombre |
+| **Pasadas de plazo** | Ya debían estar contestadas: pasó la fecha comprometida o, sin ella, el plazo general |
+| **Todas las abiertas** | Lo que sigue en trámite, lleve quien lo lleve. Es la vista de quien coordina |
+| **Cerradas** | Lo resuelto en los últimos 30 días, que es lo que se rinde de la semana o del mes |
+
+Las cuatro cuentas salen siempre, aunque se esté mirando una: la que está en
+cero también dice algo. Y todas pasan por el **alcance** de quien mira, igual
+que el listado: la bandeja no es una puerta lateral para ver lo que no le toca.
+
+> **«Pasadas de plazo» dice exactamente lo mismo que el recordatorio.** Es la
+> misma regla escrita una vez: si se separaran, el sistema avisaría de una
+> solicitud que la pantalla no marca, y ninguna de las dos volvería a creerse.
+
+### Lo impreso lleva la tramitación 🖨️
+
+La hoja de una solicitud ya no es la tabla de sus campos y nada más. Lleva, en
+el orden en que se leen: **la solicitud** —quién pidió, qué pidió y cómo está—,
+**la resolución** en su propio recuadro si está cerrada, **el seguimiento
+completo** en el orden en que pasaron las cosas, **las personas** que involucra
+y **los antecedentes** acompañados con su nombre y su fecha. Al pie, las dos
+líneas de firma: quien la lleva y quien resuelve.
+
+Los archivos no se imprimen —son fotos y PDF—; se imprime la lista, que es lo
+que dice qué se acompañó. Los archivos quedan en la ficha, en el sistema.
 
 ### El recorrido: de dónde se puede pasar a dónde
 
@@ -1292,13 +1388,13 @@ llevó se elimina, el enlace se suelta—: ya no hay nada que hacer con ella.
 
 ## Configuración del sistema ⚙️
 
-Quien tenga la llave **Configuración del sistema** tiene en el menú la entrada **Configuración**, con **33 opciones** en siete grupos:
+Quien tenga la llave **Configuración del sistema** tiene en el menú la entrada **Configuración**, con **58 opciones** en siete grupos:
 
 | Grupo | Qué se decide ahí |
 |---|---|
 | **Mantenimiento** | Deja el sistema en mantenimiento y el aviso que verán los usuarios |
 | **Identidad** | Nombre, lema, **logo**, RUT o personalidad jurídica, dirección, teléfono, correo y sitio web |
-| **Organización** | Cuerpo de oficiales, meses de prueba, si las cuotas y la ofrenda se registran solas en tesorería y el porcentaje que aporta a la corporación |
+| **Organización** | Cuerpo de oficiales, meses de prueba, **los prefijos de cada serie de números** —actas, certificados, solicitudes y oficina de partes—, si las cuotas y la ofrenda se registran solas en tesorería y el porcentaje que aporta a la corporación |
 | **Acceso** | Contraseña inicial, largo mínimo, **a los cuántos errores se cierra la puerta** y si se puede recuperar con una pregunta |
 | **Respaldos** | Copia automática, a qué hora, cuántas se guardan y **cada cuánto se recuerda bajar el respaldo completo** |
 | **Límites y espacio** | **Cuánto puede pesar un archivo**, **filas máximas de una planilla** y **con cuánto espacio libre avisar** |
@@ -1670,7 +1766,7 @@ Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesi
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro. Con `PREPARAR=1` llena la base con 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos para que la medición diga algo — y por eso **se niega a hacerlo si la base tiene fichas que no generó ella**: esos datos van directo a la base, sin pasar por el sistema, y una base con datos de una iglesia no se toca. Para medir, use una base aparte: `DATA_DIR=/tmp/carga`.
 
   `LIMPIAR=1 npm run carga` dice cuántos datos de prueba hay en una base y cuántas fichas son de verdad, sin borrar nada; `LIMPIAR=borrar` los borra. Se reconocen por sus señas: los RUT del 30.000.000 en adelante —un tramo que no está en uso—, los cuerpos «Cuerpo de prueba N» y los movimientos «Movimiento de prueba N».
-- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 806 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 844 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
 
   Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
 

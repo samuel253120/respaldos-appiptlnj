@@ -49,7 +49,9 @@ const ids = {
 solicitudesConSeguimiento();
 
 const laDe = (id) => db.prepare('SELECT * FROM solicitudes WHERE id = ?').get(id);
-const contador = (anio) => (db.prepare('SELECT ultimo FROM solicitud_contador WHERE anio = ?').get(anio) || { ultimo: 0 }).ultimo;
+const contador = (deQuien, anio) =>
+  (db.prepare('SELECT ultimo FROM solicitud_contador_iglesia WHERE iglesia_id = ? AND anio = ?')
+    .get(deQuien, anio) || { ultimo: 0 }).ultimo;
 
 // ------------------------------------------------------------- el número ---
 
@@ -57,14 +59,23 @@ test('a todas se les pone número', () => {
   for (const id of Object.values(ids)) assert.ok(laDe(id).numero, `la ${id} quedó sin número`);
 });
 
-test('se numeran por orden de fecha, y el correlativo se reinicia cada año', () => {
-  assert.equal(laDe(ids.rosa1).numero, '0001-2025');
-  assert.equal(laDe(ids.rosa2).numero, '0002-2025');
-  assert.equal(laDe(ids.rosa3).numero, '0003-2025');
-  assert.equal(laDe(ids.juanAca).numero, '0001-2026', 'el año nuevo parte de cero');
-  assert.equal(laDe(ids.juanAlla).numero, '0002-2026');
-  assert.equal(laDe(ids.delMiembro).numero, '0003-2026');
-  assert.equal(laDe(ids.sinNombre).numero, '0004-2026');
+test('se numeran por orden de fecha, por iglesia, y el correlativo se reinicia cada año', () => {
+  assert.equal(laDe(ids.rosa1).numero, 'SOL-IG-M-0001-2025');
+  assert.equal(laDe(ids.rosa2).numero, 'SOL-IG-M-0002-2025');
+  assert.equal(laDe(ids.rosa3).numero, 'SOL-IG-M-0003-2025');
+  assert.equal(laDe(ids.juanAca).numero, 'SOL-IG-M-0001-2026', 'el año nuevo parte de cero');
+  assert.equal(laDe(ids.delMiembro).numero, 'SOL-IG-M-0002-2026');
+  assert.equal(laDe(ids.sinNombre).numero, 'SOL-IG-M-0003-2026');
+});
+
+test('la de la otra iglesia no hereda el correlativo de esta', () => {
+  assert.equal(laDe(ids.juanAlla).numero, 'SOL-IG-M2-0001-2026',
+    'era la segunda del sistema en 2026, pero la primera de SU iglesia');
+});
+
+test('el número dice de qué iglesia es cada una', () => {
+  assert.ok(laDe(ids.juanAca).numero.includes('IG-M-'), laDe(ids.juanAca).numero);
+  assert.ok(laDe(ids.juanAlla).numero.includes('IG-M2-'), laDe(ids.juanAlla).numero);
 });
 
 test('no hay dos con el mismo número', () => {
@@ -72,15 +83,17 @@ test('no hay dos con el mismo número', () => {
   assert.equal(new Set(todos).size, todos.length);
 });
 
-test('el contador de cada año queda donde llegó la numeración', () => {
-  assert.equal(contador(2025), 3);
-  assert.equal(contador(2026), 4);
+test('el contador de cada libro queda donde llegó su numeración', () => {
+  assert.equal(contador(iglesia, 2025), 3);
+  assert.equal(contador(iglesia, 2026), 3);
+  assert.equal(contador(otra, 2026), 1);
 });
 
 test('y la siguiente solicitud no repite ninguno', () => {
   const numero = require('../../server/solicitudes/numero');
-  assert.equal(numero.siguiente(2026), '0005-2026');
-  assert.equal(numero.siguiente(2025), '0004-2025');
+  assert.equal(numero.siguiente(iglesia, 2026), 'SOL-IG-M-0004-2026');
+  assert.equal(numero.siguiente(iglesia, 2025), 'SOL-IG-M-0004-2025');
+  assert.equal(numero.siguiente(otra, 2026), 'SOL-IG-M2-0002-2026');
 });
 
 // -------------------------------------------------------- quién la presentó --

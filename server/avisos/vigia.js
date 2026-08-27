@@ -82,24 +82,43 @@ function credencialesPorVencer(usuario, dejar) {
   }
 }
 
-/** Solicitudes a su cargo que llevan demasiado abiertas. */
+/**
+ * Solicitudes a su cargo que ya debían estar contestadas.
+ *
+ * DOS PLAZOS, Y EL COMPROMETIDO MANDA. Si la solicitud dice para cuándo se
+ * prometió respuesta, el aviso sale cuando esa fecha pasa: es la que se le dio
+ * a quien pidió, y es la única que esa persona está esperando. Si no dice
+ * nada, vale el número de días de Configuración, igual para todas.
+ *
+ * Antes solo existía el segundo, así que una ayuda de urgencia comprometida
+ * para el jueves y un trámite que puede esperar un mes avisaban el mismo día.
+ */
 function solicitudesSinRespuesta(usuario, dejar) {
   const cuantos = ajustes.numero('avisos_solicitud_dias', 1, 120);
   const filas = db
     .prepare(
-      `SELECT id, numero, asunto, fecha, estado FROM solicitudes
+      `SELECT id, numero, asunto, fecha, estado, fecha_compromiso FROM solicitudes
         WHERE responsable_id = ?
           AND estado NOT IN ('Aprobada','Rechazada','Completada','Anulada')
-          AND fecha <= date('now','localtime', ?)
-        ORDER BY fecha LIMIT 50`
+          AND CASE
+                WHEN COALESCE(fecha_compromiso, '') <> ''
+                  THEN fecha_compromiso < date('now','localtime')
+                ELSE fecha <= date('now','localtime', ?)
+              END
+        ORDER BY COALESCE(NULLIF(fecha_compromiso, ''), fecha) LIMIT 50`
     )
     .all(usuario.id, `-${cuantos} days`);
   for (const s of filas) {
+    const prometida = String(s.fecha_compromiso || '').trim();
     dejar({
       tipo: 'solicitud_sin_respuesta',
       clave: `solicitud_lenta:${s.id}`,
-      titulo: `La solicitud ${s.numero} sigue sin respuesta`,
-      cuerpo: `Ingresada el ${s.fecha}, está «${s.estado}» y la tiene usted a cargo.`,
+      titulo: prometida
+        ? `La solicitud ${s.numero} pasó su plazo`
+        : `La solicitud ${s.numero} sigue sin respuesta`,
+      cuerpo: prometida
+        ? `Se comprometió respuesta para el ${prometida} y sigue «${s.estado}». La tiene usted a cargo.`
+        : `Ingresada el ${s.fecha}, está «${s.estado}» y la tiene usted a cargo.`,
       enlace: `#/m/solicitudes/ficha/${s.id}`,
     });
   }
@@ -299,4 +318,4 @@ function empezar() {
   otraVuelta();
 }
 
-module.exports = { empezar, mirar, pasada, leToca, REVISIONES };
+module.exports = { empezar, mirar, pasada, leToca, REVISIONES, solicitudesSinRespuesta };

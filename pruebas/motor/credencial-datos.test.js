@@ -21,7 +21,7 @@ const datos = require('../../server/credenciales/datos');
 function sembrar() {
   const iglesia = db.prepare(
     `INSERT INTO iglesias (nombre, codigo, tipo, ciudad, estado)
-     VALUES ('La Nueva Jerusalén', 'IG-1', 'Iglesia Sede', 'Quilpué', 'Activa')`
+     VALUES ('La Nueva Jerusalén', 'IG-CRED', 'Iglesia Sede', 'Quilpué', 'Activa')`
   ).run().lastInsertRowid;
   const pastor = db.prepare(
     `INSERT INTO pastores (nombres, apellidos, rut, cargo, funcion, iglesia_id, estado, foto)

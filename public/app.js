@@ -839,6 +839,11 @@ function route() {
   if (parts[0] === 'informes' && parts[1] === 'asistencia' && MOD['asistencias']) {
     return (location.hash = '#/asistencia/informes');
   }
+  if (parts[0] === 'solicitudes' && parts[1] === 'bandeja' && MOD['solicitudes']) {
+    const sl = document.querySelector('.side-link[data-mod="solicitudes"]');
+    if (sl) marcarActivo(sl);
+    return viewBandejaSolicitudes(precarga);
+  }
   if (parts[0] === 'documentos' && parts[1] === 'libro' && MOD['documentos']) {
     const dl = document.querySelector('.side-link[data-mod="documentos"]');
     if (dl) marcarActivo(dl);
@@ -6874,8 +6879,32 @@ async function viewPrint(name, id) {
     ).catch(() => null);
   }
 
+  /*
+   * La solicitud se imprime CON su tramitación: el seguimiento, las personas
+   * que involucra y los antecedentes. Es lo que hace que la hoja sirva para
+   * archivar o para llevarla a una reunión; sin eso es la ficha a secas y no
+   * cuenta nada de lo que pasó. Lo que no se pueda traer —sin permiso sobre
+   * ese módulo, o sin señal— no impide imprimir: sale la parte que sí está.
+   */
+  let deLaSolicitud = null;
+  if (name === 'solicitudes') {
+    const traer = (modulo, orden) => (MOD[modulo]
+      ? api('GET', `/${modulo}?f_solicitud_id=${encodeURIComponent(id)}&limit=200&sort=${orden}&dir=asc`)
+        .then((d) => d.rows || []).catch(() => [])
+      : Promise.resolve([]));
+    const [seguimiento, personas, documentos] = await Promise.all([
+      // Por id y no por fecha: en un mismo día pasan varias cosas, y lo que
+      // interesa es en qué orden pasaron
+      traer('historial_solicitudes', 'id'),
+      traer('personas_solicitud', 'id'),
+      traer('documentos_solicitudes', 'fecha'),
+    ]);
+    deLaSolicitud = { seguimiento, personas, documentos };
+  }
+
   let sheet;
-  if (name === 'certificados') sheet = printCertificado(row, formatoCert, { conPagina: true });
+  if (name === 'solicitudes') sheet = printSolicitud(m, row, deLaSolicitud);
+  else if (name === 'certificados') sheet = printCertificado(row, formatoCert, { conPagina: true });
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
   else sheet = printGenerico(m, row);
@@ -7336,6 +7365,155 @@ function verVistaPreviaCertificado({ formato, row, titulo }) {
   fondo.addEventListener('remove', () => removeEventListener('resize', ajustarAlto));
 
   fondo.querySelector('#previaCerrar').focus();
+}
+
+/**
+ * LA BANDEJA DE SOLICITUDES: la primera pantalla del módulo.
+ *
+ * El listado sirve para buscar una solicitud que uno ya sabe que existe. La
+ * bandeja sirve para lo otro, que es lo que se hace todos los días: ver qué
+ * hay que mover hoy. Hasta acá eso había que armarlo a mano —entrar al
+ * listado, abrir los filtros, elegirse a uno mismo de una lista de
+ * responsables—, y eso no lo hace nadie a diario.
+ *
+ * Arriba van las cuatro cuentas, siempre las cuatro, aunque se esté mirando
+ * una: son el tablero, y la que está en cero también dice algo. Debajo, las
+ * filas de la que se eligió, con lo que se lee de un vistazo y el número de
+ * días en rojo cuando ya se pasó el plazo.
+ */
+const BANDEJA_CAJAS = [
+  { clave: 'mias', icono: '📥', label: 'Las que llevo yo', pie: 'Abiertas, a mi nombre' },
+  { clave: 'vencidas', icono: '⏰', label: 'Pasadas de plazo', pie: 'Ya debían estar contestadas' },
+  { clave: 'abiertas', icono: '📨', label: 'Todas las abiertas', pie: 'En trámite, lleve quien lleve' },
+  { clave: 'cerradas', icono: '✅', label: 'Cerradas', pie: 'Resueltas en los últimos 30 días' },
+];
+
+async function viewBandejaSolicitudes(precarga) {
+  const iglesias = await getOptions('iglesias').catch(() => []);
+  const st = {
+    caja: BANDEJA_CAJAS.some((c) => c.clave === precarga.caja) ? precarga.caja : 'mias',
+    iglesia_id: String(precarga.iglesia_id || ''),
+  };
+
+  content().innerHTML = `
+    <div class="page-head">
+      <h2>📥 Bandeja de solicitudes</h2>
+      <div class="actions">
+        <button class="btn secondary sm" data-ir="#/m/solicitudes">📋 Ver el listado completo</button>
+        ${MOD['solicitudes'].perms.create ? '<button class="btn sm" data-ir="#/m/solicitudes/new">➕ Nueva solicitud</button>' : ''}
+      </div>
+    </div>
+    <div class="card">
+      <div class="toolbar">
+        <select id="bjIglesia" aria-label="Iglesia">
+          <option value="">— Todas las iglesias que administro —</option>
+          ${iglesias.map((i) => `<option value="${esc(String(i.id))}" ${String(i.id) === st.iglesia_id ? 'selected' : ''}>${esc(i.label)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="bandeja-cajas" id="bjCajas"></div>
+    <div id="bjLista"></div>`;
+
+  const cajas = document.getElementById('bjCajas');
+  const lista = document.getElementById('bjLista');
+
+  const pintar = async () => {
+    lista.innerHTML = '<div class="card"><div class="empty-state" style="padding:26px">Buscando…</div></div>';
+    let d;
+    try {
+      d = await api('GET', `/solicitudes/bandeja?caja=${encodeURIComponent(st.caja)}` +
+        `&iglesia_id=${encodeURIComponent(st.iglesia_id)}`);
+    } catch (e) {
+      cajas.innerHTML = '';
+      lista.innerHTML = `<div class="card"><div class="empty-state" style="padding:26px">${esc(e.message)}</div></div>`;
+      return;
+    }
+
+    cajas.innerHTML = BANDEJA_CAJAS.map((c) => `
+      <button type="button" class="bandeja-caja${c.clave === d.caja ? ' puesta' : ''}${c.clave === 'vencidas' && d.cuentas.vencidas ? ' urge' : ''}"
+              data-caja="${esc(c.clave)}" aria-pressed="${c.clave === d.caja}">
+        <span class="bc-n">${fmtNumero(d.cuentas[c.clave] || 0)}</span>
+        <span class="bc-q">${esc(c.icono)} ${esc(c.label)}</span>
+        <span class="bc-d">${esc(c.pie)}</span>
+      </button>`).join('');
+
+    const cerradas = d.caja === 'cerradas';
+    lista.innerHTML = d.filas.length ? `
+      <div class="card">
+        <div class="toolbar">
+          <b>${esc(d.titulo)}</b>
+          <span style="color:var(--muted);font-size:13px">${fmtNumero(d.filas.length)} solicitud(es)</span>
+        </div>
+        <div class="table-scroll">
+          <table class="grid grid-lista bandeja-tabla">
+            <thead>
+              <tr>
+                <th>N.º</th>
+                <th>Solicitante</th>
+                <th>Asunto</th>
+                <th>Tipo</th>
+                <th>Estado</th>
+                <th>${cerradas ? 'Cerrada' : 'A cargo de'}</th>
+                <th>${cerradas ? '' : 'Plazo'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${d.filas.map((f) => `
+                <tr data-ir="#/m/solicitudes/ficha/${f.id}" tabindex="0">
+                  <td data-col="numero" data-label="N.º"><b>${esc(f.numero || '—')}</b></td>
+                  <td data-label="Solicitante">${esc(f.solicitante || '')}</td>
+                  <td data-label="Asunto">${esc(f.asunto || '')}</td>
+                  <td data-label="Tipo">${esc(f.tipo || '')}</td>
+                  <td data-label="Estado"><span class="badge ${badgeClass(f.estado)}">${esc(f.estado || '')}</span></td>
+                  <td data-label="${cerradas ? 'Cerrada' : 'A cargo de'}">${cerradas
+                      ? esc(f.fecha_respuesta ? fechaCorta(f.fecha_respuesta) : '')
+                      : esc(f.responsable || '—') + (Number(f.responsable_id) === Number(d.yo) ? ' <span class="mut">(yo)</span>' : '')}</td>
+                  <td data-label="Plazo">${cerradas ? '' : plazoDeLaSolicitud(f, d.dias)}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>` : `
+      <div class="card"><div class="empty-state" style="padding:26px">
+        ${esc(d.caja === 'mias' ? 'No tiene ninguna solicitud abierta a su nombre.'
+          : d.caja === 'vencidas' ? 'Ninguna solicitud está pasada de plazo. '
+            : d.caja === 'abiertas' ? 'No hay solicitudes en trámite.'
+              : 'No se cerró ninguna solicitud en los últimos 30 días.')}
+      </div></div>`;
+
+    cajas.querySelectorAll('[data-caja]').forEach((b) => {
+      b.addEventListener('click', () => { st.caja = b.dataset.caja; pintar(); });
+    });
+  };
+
+  document.getElementById('bjIglesia').addEventListener('change', (e) => {
+    st.iglesia_id = e.target.value;
+    pintar();
+  });
+
+  await pintar();
+}
+
+/**
+ * Cómo va de plazo una solicitud, dicho en una línea.
+ *
+ * Con fecha comprometida se cuenta contra ella, que es lo que se le prometió a
+ * quien pidió; sin ella, contra el día en que entró y el plazo general. Se
+ * dicen las dos cosas —cuál es el plazo y cuánto falta o cuánto lleva
+ * pasado— porque «vencida» a secas no dice si fue ayer o hace dos meses.
+ */
+function plazoDeLaSolicitud(f, diasGenerales) {
+  const dias = Number(f.dias);
+  if (!Number.isFinite(dias)) return '';
+  if (f.fecha_compromiso) {
+    if (dias > 0) return `<span class="plazo vencido">${fmtNumero(dias)} día(s) pasado</span>`;
+    if (dias === 0) return '<span class="plazo justo">vence hoy</span>';
+    return `<span class="plazo">para el ${esc(fechaCorta(f.fecha_compromiso))}</span>`;
+  }
+  // Sin fecha comprometida, lo que cuenta es el plazo general: es exactamente
+  // cuándo sale el recordatorio (ver server/avisos/vigia.js)
+  const pasada = dias >= diasGenerales;
+  return `<span class="plazo${pasada ? ' vencido' : ''}">${fmtNumero(dias)} día(s) abierta</span>`;
 }
 
 /**
@@ -7963,6 +8141,115 @@ function printServicio(m, row) {
         <div class="firma">${esc(row.coordinador || 'Coordinador(a)')}<br>Coordinador(a)</div>
         <div class="firma">${esc(row.predicador || 'Predicador(a)')}<br>Predicador(a)</div>
       </div>
+    </div>`;
+}
+
+/**
+ * LA SOLICITUD IMPRESA, con su tramitación.
+ *
+ * Salía como cualquier ficha: la tabla de sus campos y nada más. Para archivar
+ * en papel o llevarla a una reunión, eso es justo lo que no sirve —falta todo
+ * lo que pasó—, y una solicitud es antes que nada lo que pasó con ella.
+ *
+ * Así que la hoja lleva cuatro cosas, en el orden en que se leen:
+ *
+ *   · LA SOLICITUD: quién pidió, qué pidió y cómo está hoy.
+ *   · LA RESOLUCIÓN, si está cerrada, en su propio recuadro. Es lo que se le
+ *     contestó a la persona y lo primero que alguien va a buscar.
+ *   · EL SEGUIMIENTO completo, en el orden en que pasaron las cosas: es la
+ *     constancia de por qué la solicitud anduvo dando vueltas.
+ *   · LAS PERSONAS que involucra y LOS ANTECEDENTES que se juntaron, con su
+ *     nombre y su fecha. Los archivos no se imprimen —son fotos y PDF—; se
+ *     imprime la lista, que es lo que dice qué se acompañó.
+ *
+ * Al pie van las dos firmas, como en el acta: quien la llevó y quien resolvió.
+ */
+function printSolicitud(m, row, extras) {
+  const seguimiento = (extras && extras.seguimiento) || [];
+  const personas = (extras && extras.personas) || [];
+  const documentos = (extras && extras.documentos) || [];
+  const fila = (k, v) => (v == null || v === '' ? '' : `<tr><td class="k">${esc(k)}</td><td>${esc(v)}</td></tr>`);
+  // La lista de estados cerrados es la del formulario (SOL_CERRADOS): «/api/meta»
+  // manda los campos del módulo, no sus constantes
+  const cerrada = SOL_CERRADOS.includes(row.estado);
+
+  return `
+    <div class="print-sheet print-generic">
+      ${membreteDelDocumento()}
+      <h1>Solicitud ${esc(row.numero || '')}</h1>
+      <div class="sub">${esc(iglesiaDeTrabajo(row.iglesia_id_label))} — ${fechaLarga(row.fecha)}</div>
+
+      <table class="meta-tbl">
+        ${fila('Solicitante', row.solicitante)}
+        ${fila('Presentada por', row.solicitante_tipo)}
+        ${fila('Tipo de solicitud', row.tipo)}
+        ${fila('Asunto', row.asunto)}
+        ${fila('Estado', row.estado)}
+        ${fila('Responsable', row.responsable_id_label)}
+        ${fila('Respuesta comprometida para', row.fecha_compromiso ? fechaLarga(row.fecha_compromiso) : '')}
+        ${fila('Fecha de respuesta', row.fecha_respuesta ? fechaLarga(row.fecha_respuesta) : '')}
+        ${fila('Tipo de ayuda', row.ayuda_tipo)}
+        ${fila('Valor estimado', row.ayuda_monto == null || row.ayuda_monto === '' ? '' : fmtMoney(row.ayuda_monto))}
+      </table>
+
+      ${row.descripcion ? `<h3>Lo que se pide</h3><div class="blk">${esc(row.descripcion)}</div>` : ''}
+
+      ${cerrada && row.respuesta
+        ? `<h3>Resolución</h3><div class="blk resolucion">${esc(row.respuesta)}</div>`
+        : row.respuesta ? `<h3>Respuesta</h3><div class="blk">${esc(row.respuesta)}</div>` : ''}
+
+      <h3>Tramitación</h3>
+      ${seguimiento.length ? `
+        <table class="grid tramite">
+          <thead><tr><th>Fecha</th><th>Qué pasó</th><th>Registrado por</th></tr></thead>
+          <tbody>
+            ${seguimiento.map((h) => `
+              <tr>
+                <td class="nowrap">${esc(h.fecha ? fechaCorta(h.fecha) : '')}</td>
+                <td><b>${esc(h.tipo || '')}.</b> ${esc(h.descripcion || '')}</td>
+                <td class="nowrap">${esc(h.registrado_por || (h.origen === 'Automático' ? 'El sistema' : ''))}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`
+        : '<div class="blk vacio">Sin anotaciones en el seguimiento.</div>'}
+
+      ${personas.length ? `
+        <h3>Personas que involucra</h3>
+        <table class="grid tramite">
+          <thead><tr><th>Persona</th><th>Registro</th><th>Qué papel tiene</th></tr></thead>
+          <tbody>
+            ${personas.map((p) => `
+              <tr>
+                <td>${esc(p.persona || '')}</td>
+                <td class="nowrap">${esc(p.persona_tipo || '')}</td>
+                <td>${esc(p.relacion || '')}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>` : ''}
+
+      <h3>Antecedentes acompañados</h3>
+      ${documentos.length ? `
+        <table class="grid tramite">
+          <thead><tr><th>Fecha</th><th>Documento</th><th>Tipo</th></tr></thead>
+          <tbody>
+            ${documentos.map((d) => `
+              <tr>
+                <td class="nowrap">${esc(d.fecha ? fechaCorta(d.fecha) : '')}</td>
+                <td>${esc(d.nombre || '')}</td>
+                <td class="nowrap">${esc(d.tipo || '')}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        <div class="blk vacio">
+          ${fmtNumero(documentos.length)} antecedente(s). Los archivos quedan en el sistema, en la ficha de esta solicitud.
+        </div>`
+        : '<div class="blk vacio">No se acompañaron antecedentes.</div>'}
+
+      <div class="acta-firmas">
+        <div class="firma">${esc(row.responsable_id_label || 'Responsable')}<br>A cargo de la solicitud</div>
+        <div class="firma">Pastor(a) / Encargado(a)<br>Resuelve</div>
+      </div>
+      <div class="doc-pie">${pieDelDocumento()}</div>
     </div>`;
 }
 
