@@ -941,6 +941,24 @@ Arriba, dos filtros: por **cuerpo** y por **tipo de actividad**.
 
 **2. Las actividades del día.** Al tocar un día se abren sus actividades, cada una con su tipo, su hora, su lugar, los cuerpos convocados y **cuánto lleva**: *«12/28 — Faltan 16»*, *«Lista completa»* o *«Sin tomar»*. Se editan (✏️) y se eliminan (🗑️) ahí mismo. Si el día tiene una sola actividad, se abre sola.
 
+### 🔔 El sistema avisa de quien se está alejando
+
+Hay siete tipos de aviso —credenciales por vencer, cuotas atrasadas, solicitudes sin respuesta, cumpleaños— y ninguno era de asistencia. Y la asistencia es de lo poco que avisa **a tiempo** de que alguien se está alejando, que es de lo que más le importa a un cuerpo: cuando se nota sin ayuda, ya pasaron meses.
+
+Ahora, en la pasada diaria, el vigía revisa quién lleva **faltas seguidas** en cada cuerpo. La cuenta va de la actividad más reciente hacia atrás:
+
+| Lo que se le puso | Qué hace con la cuenta |
+|---|---|
+| **Presente** | La **corta**: volvió |
+| **Ausente** | Suma una falta |
+| **Justificado** | Suma una falta, y se anota que **avisó** |
+| *sin marcar* | **Ni suma ni corta.** Nadie faltó a una lista que no se pasó |
+| *visita* | No se mira: una visita no tiene a qué faltar |
+
+Cuántas faltas hacen falta lo dice **Configuración** —de fábrica, cuatro; en **0** no se avisa—. Va **un aviso por cuerpo** y no uno por persona —tres avisos idénticos la misma mañana es la forma más rápida de que alguien deje de mirarlos—, con el total, los primeros nombres y su cuenta, y lleva al informe de ese cuerpo: *«2 personas llevan 4 faltas seguidas o más en Coro — Elena Vidal (5), Rosa Pinto (5). 1 de ellas avisó al menos una vez.»*
+
+Lo último es la mitad del asunto: **quien avisa que no puede ir no es el mismo caso que quien desapareció**, y el aviso deja ver la diferencia sin obligar a entrar a mirar. Y como cualquier otro, se apaga desde el perfil.
+
 > **Ese «12/28» cuenta la lista que usted va a abrir, y nada más.** Los cuerpos que le tocan, la gente de esos cuerpos, y las marcas de esa gente —incluida la de quien salió del cuerpo después de que le marcaran, que la lista sigue mostrando—. De ahí sale que lo marcado nunca pueda pasar del total.
 >
 > ⚠️ **Hasta la 1.124.0 contaba todos los cuerpos convocados, sin mirar quién preguntaba.** A una encargada de un cuerpo de **49** personas, una actividad que convocaba a dos cuerpos le decía *«200 / 98»*: marcas ajenas arriba, gente ajena abajo, la barra en **204 %** y *«Faltan»* en negativo. Su lista tenía 49 filas. De 25 actividades cotejadas contra la lista que abría, **22 no cuadraban**; al administrador le fallaban 24 de 25. De paso costaba caro: la agenda de un año recorría los integrantes de cada cuerpo una vez por cada actividad que lo convoca —**300 ms**—; ahora los recorre una vez y son **106 ms**.
@@ -1906,7 +1924,7 @@ Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesi
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro. Con `PREPARAR=1` llena la base con 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos para que la medición diga algo — y por eso **se niega a hacerlo si la base tiene fichas que no generó ella**: esos datos van directo a la base, sin pasar por el sistema, y una base con datos de una iglesia no se toca. Para medir, use una base aparte: `DATA_DIR=/tmp/carga`.
 
   `LIMPIAR=1 npm run carga` dice cuántos datos de prueba hay en una base y cuántas fichas son de verdad, sin borrar nada; `LIMPIAR=borrar` los borra. Se reconocen por sus señas: los RUT del 30.000.000 en adelante —un tramo que no está en uso—, los cuerpos «Cuerpo de prueba N» y los movimientos «Movimiento de prueba N».
-- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 1.020 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 1.041 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
 
   Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
 

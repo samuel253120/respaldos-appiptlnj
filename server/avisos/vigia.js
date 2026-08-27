@@ -282,8 +282,70 @@ function solicitudesSinResponsableActivo(usuario, dejar) {
   });
 }
 
+/**
+ * QUIEN LLEVA MUCHAS FALTAS SEGUIDAS.
+ *
+ * Había siete tipos de aviso y ninguno de asistencia, siendo que la asistencia
+ * es de lo poco que avisa A TIEMPO de que alguien se está alejando —que es de
+ * lo que más le importa a un cuerpo—. Cuando se nota sin ayuda, ya pasaron
+ * meses.
+ *
+ * Un aviso POR CUERPO, no uno por persona: tres avisos idénticos la misma
+ * mañana es la forma más rápida de que alguien deje de mirarlos. Cada uno dice
+ * a cuántos les pasa, nombra a los primeros y lleva al informe del cuerpo.
+ *
+ * Cuántas faltas hacen falta lo dice Configuración, como los demás plazos; en
+ * 0 no se avisa. Las justificadas van dichas aparte: quien avisa que no puede
+ * ir no es el mismo caso que quien desapareció.
+ */
+function faltasSeguidas(usuario, dejar) {
+  const { can } = require('../permissions');
+  if (!can(usuario, 'asistencias', 'view')) return;
+  const faltas = require('../faltas-seguidas');
+  const cuantas = faltas.cuantasAvisan();
+  if (!cuantas) return;
+
+  const alcance = require('../alcance');
+  const params = [];
+  const donde = ["estado = 'Activo'"];
+  const iglesias = alcance.iglesiasDe(usuario);
+  const cuerpos = alcance.cuerposDe(usuario);
+  if (iglesias.length) { donde.push(`iglesia_id IN (${iglesias.map(() => '?').join(',')})`); params.push(...iglesias); }
+  if (cuerpos.length) { donde.push(`id IN (${cuerpos.map(() => '?').join(',')})`); params.push(...cuerpos); }
+
+  for (const cuerpo of db.prepare(`SELECT id, nombre FROM cuerpos WHERE ${donde.join(' AND ')}`).all(...params)) {
+    let alejados = [];
+    try {
+      alejados = faltas.delCuerpo(cuerpo.id, cuantas);
+    } catch (e) {
+      continue;
+    }
+    if (!alejados.length) continue;
+
+    const NOMBRA = 3;
+    const nombres = alejados.slice(0, NOMBRA).map((p) => `${p.nombre} (${p.faltas})`).join(', ');
+    const resto = alejados.length - NOMBRA;
+    const conAviso = alejados.reduce((n, p) => n + (p.justificadas ? 1 : 0), 0);
+    dejar({
+      tipo: 'faltas_seguidas',
+      /*
+       * La clave lleva a quiénes y con cuántas: mientras sea la misma gente
+       * con la misma cuenta, no vuelve a avisar todos los días; en cuanto
+       * alguien suma otra falta o se agrega uno más, sí.
+       */
+      clave: `faltas:${cuerpo.id}:${alejados.map((p) => `${p.clave}=${p.faltas}`).join(',')}`,
+      titulo: alejados.length === 1
+        ? `${alejados[0].nombre} lleva ${alejados[0].faltas} faltas seguidas en ${cuerpo.nombre}`
+        : `${alejados.length} personas llevan ${cuantas} faltas seguidas o más en ${cuerpo.nombre}`,
+      cuerpo: `${nombres}${resto > 0 ? ` y ${resto} más` : ''}.`
+        + (conAviso ? ` ${conAviso} de ellas avisó al menos una vez.` : ' Ninguna avisó.'),
+      enlace: `#/asistencia/informes?tipo=cuerpo&cuerpo_id=${cuerpo.id}`,
+    });
+  }
+}
+
 const REVISIONES = [credencialesPorVencer, solicitudesSinRespuesta, solicitudesSinResponsableActivo,
-  cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas];
+  cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas, faltasSeguidas];
 
 // ------------------------------------------------------------- la pasada ----
 

@@ -124,6 +124,15 @@ const OPCIONES = [
           'no hay ni una marca puesta.',
       },
       {
+        clave: 'asistencia_faltas_seguidas', label: 'Avisar cuando alguien lleve tantas faltas seguidas',
+        tipo: 'number', defecto: '4', min: 0, max: 52,
+        ayuda:
+          'Cuántas actividades seguidas puede faltar alguien antes de que el sistema avise a quien lleva ' +
+          'su cuerpo. Se cuentan las actividades en que no estuvo presente, de la más reciente hacia atrás, ' +
+          'y las que están sin marcar no cuentan ni cortan la cuenta: nadie faltó a una lista que no se pasó. ' +
+          'El aviso dice cuántas de esas faltas fueron justificadas, que no es el mismo caso. En 0 no se avisa.',
+      },
+      {
         clave: 'acta_reunion_prefijo', label: 'Prefijo del número de las actas de reunión', tipo: 'text',
         defecto: '',
         ayuda:

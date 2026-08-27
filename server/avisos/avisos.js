@@ -78,6 +78,14 @@ const TIPOS = {
     urgente: false,
     ayuda: 'Integrantes de cuerpos con cuotas al debe.',
   },
+  faltas_seguidas: {
+    label: 'Quien lleva muchas faltas seguidas',
+    urgente: false,
+    ayuda:
+      'Integrantes de sus cuerpos que llevan seguidas tantas faltas como diga Configuración. '
+      + 'Es de lo poco que avisa a tiempo de que alguien se está alejando; cuando se nota sin ayuda, '
+      + 'ya pasaron meses. El aviso dice cuántas de esas faltas fueron justificadas.',
+  },
 };
 
 /** Los canales por los que puede salir un aviso. */
