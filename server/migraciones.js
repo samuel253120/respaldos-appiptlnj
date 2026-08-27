@@ -1931,6 +1931,104 @@ function formatosDeCertificadoQueTraiaElSistema() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Los documentos que ya estaban, puestos en el libro que les corresponde.
+ *
+ * El módulo era un archivo documental suelto: un título, un tipo y un archivo
+ * adjunto. Ahora es la oficina de partes, y cada documento dice si entró, si
+ * salió o si solo se guarda. Lo que ya estaba no se toca más de lo necesario:
+ *
+ *   · lo que decía «Correspondencia recibida» pasa a Recibido;
+ *   · lo que decía «Correspondencia enviada» pasa a Emitido;
+ *   · TODO lo demás queda como «Interno o de archivo».
+ *
+ * Esa última línea es la importante. Una escritura de propiedad o un contrato
+ * no entraron ni salieron por la oficina: ponerlos en el libro con un
+ * correlativo diría que un día llegaron, y no llegaron. Quedan donde estaban,
+ * visibles y sin número, y la iglesia reclasifica a mano lo que corresponda.
+ *
+ * A los que sí van al libro se les da su correlativo POR IGLESIA Y POR AÑO, en
+ * el orden de su fecha: es el único orden que se puede reconstruir, y es el
+ * que un libro de partes tiene de todas maneras. Los que no tienen fecha van
+ * al final, por su orden de creación.
+ *
+ * No se toca ninguno que ya tenga número: si la iglesia venía numerando a
+ * mano, ese número es el bueno.
+ */
+function documentosALaOficinaDePartes() {
+  const NOMBRE = 'documentos a la oficina de partes';
+  if (yaAplicada(NOMBRE)) return;
+
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('documentos')) return marcarAplicada(NOMBRE);
+
+  const columnas = new Set(db.prepare('PRAGMA table_info("documentos")').all().map((c) => c.name));
+  for (const necesaria of ['flujo', 'numero', 'fecha_registro']) {
+    if (!columnas.has(necesaria)) return; // se crean al arrancar; se intentará de nuevo
+  }
+
+  const ajustes = require('./ajustes');
+  const anioDe = (f) => {
+    const m = /^(\d{4})-\d{2}-\d{2}/.exec(String(f || ''));
+    return m ? m[1] : String(new Date().getFullYear());
+  };
+
+  const todos = db
+    .prepare('SELECT id, tipo, fecha, iglesia_id, numero, flujo FROM documentos ORDER BY fecha, id')
+    .all();
+  if (!todos.length) return marcarAplicada(NOMBRE);
+
+  const ponerFlujo = db.prepare('UPDATE documentos SET flujo = ? WHERE id = ?');
+  const ponerNumero = db.prepare(
+    'UPDATE documentos SET numero = ?, fecha_registro = COALESCE(fecha_registro, fecha), tipo = ? WHERE id = ?'
+  );
+
+  // Un contador por iglesia, año y libro
+  const contadores = new Map();
+  const siguiente = (iglesia, anio, flujo) => {
+    const clave = `${iglesia}|${anio}|${flujo}`;
+    const n = (contadores.get(clave) || 0) + 1;
+    contadores.set(clave, n);
+    return n;
+  };
+
+  const cuenta = { Recibido: 0, Emitido: 0, 'Interno o de archivo': 0 };
+
+  db.transaction(() => {
+    for (const d of todos) {
+      if (d.flujo) continue; // ya clasificado
+
+      const flujo = d.tipo === 'Correspondencia recibida' ? 'Recibido'
+        : d.tipo === 'Correspondencia enviada' ? 'Emitido'
+          : 'Interno o de archivo';
+      ponerFlujo.run(flujo, d.id);
+      cuenta[flujo]++;
+
+      if (flujo === 'Interno o de archivo') continue;
+      if (String(d.numero || '').trim()) continue;   // ya venía numerado a mano
+
+      const anio = anioDe(d.fecha);
+      const prefijo = String(
+        ajustes.obtener(flujo === 'Emitido' ? 'documento_emitido_prefijo' : 'documento_recibido_prefijo') || ''
+      ).trim();
+      const n = siguiente(d.iglesia_id || 0, anio, flujo);
+      // El tipo viejo decía el flujo, no la clase de documento: pasa a «Carta»,
+      // que es lo que casi siempre es, y se corrige en la ficha si no lo era
+      ponerNumero.run(`${prefijo}${String(n).padStart(3, '0')}-${anio}`, 'Carta', d.id);
+    }
+  }).immediate();
+
+  const total = cuenta.Recibido + cuenta.Emitido + cuenta['Interno o de archivo'];
+  if (total) {
+    console.log(
+      `📬 documentos: ${cuenta.Recibido} quedaron como recibidos, ${cuenta.Emitido} como emitidos y ` +
+        `${cuenta['Interno o de archivo']} como archivo interno (sin número, porque no pasaron por la oficina).`
+    );
+  }
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -1960,6 +2058,7 @@ function ejecutarMigraciones() {
     ['devolver los que la directiva sacó (corregida)', devolverLosQueLaDirectivaSaco],
     ['marcas de asistencia con su cuerpo', marcasDeAsistenciaConSuCuerpo],
     ['formatos de certificado', formatosDeCertificadoQueTraiaElSistema],
+    ['documentos a la oficina de partes', documentosALaOficinaDePartes],
     ['tipos de documento de los pastores', tiposDeDocumentoDePastores],
     ['tratos permitidos', tratamientosPermitidos],
     ['tipo de miembro de los menores', menoresDeEdadComoTipoDeMiembro],
@@ -2209,5 +2308,5 @@ function solicitudesConSeguimiento() {
 module.exports = {
   ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo,
-  formatosDeCertificadoQueTraiaElSistema,
+  formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
 };

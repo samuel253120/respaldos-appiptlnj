@@ -19,7 +19,12 @@
  *   · las actas de reunión se numeran POR CUERPO —el coro lleva su libro y las
  *     dorcas el suyo—, y salen «001-2026»;
  *   · las de asamblea, POR IGLESIA, y salen «AS-001-2026»;
- *   · los certificados, POR IGLESIA, y salen «CERT-001-2026».
+ *   · los certificados, POR IGLESIA, y salen «CERT-001-2026»;
+ *   · la oficina de partes lleva DOS libros por iglesia —lo que entra y lo que
+ *     sale—, y salen «REC-001-2026» y «EMI-001-2026». Son dos series y no una
+ *     porque son dos libros: en una oficina de partes el correlativo de
+ *     entrada y el de salida corren por separado, y mezclarlos haría imposible
+ *     decir «el oficio 45 que enviamos».
  *
  * El certificado se sumó después, y por el mismo motivo que las actas: su
  * número se escribía a mano, y es un documento que se firma y se entrega. Dos
@@ -42,6 +47,8 @@ const CLAVE_DEL_PREFIJO = {
   actas_reuniones: 'acta_reunion_prefijo',
   actas_asambleas: 'acta_asamblea_prefijo',
   certificados: 'certificado_prefijo',
+  documentos_recibidos: 'documento_recibido_prefijo',
+  documentos_emitidos: 'documento_emitido_prefijo',
 };
 
 function prefijoDe(cual) {
@@ -73,6 +80,26 @@ const SERIES = {
     // Por iglesia, que es como el módulo exige que no se repita
     acotadaPor: 'iglesia_id',
     // «CERT-001-2026» de fábrica, y el prefijo se puede cambiar
+    arma: (n, anio, prefijo) => `${prefijo}${String(n).padStart(3, '0')}-${anio}`,
+    lee: (valor, anio, prefijo) => leerNumero(valor, anio, prefijo),
+  },
+  /*
+   * Los dos libros de la oficina de partes. Comparten tabla y se separan por
+   * el flujo: es la misma ficha de documento, contada en dos correlativos.
+   */
+  documentos_recibidos: {
+    tabla: 'documentos',
+    campo: 'numero',
+    acotadaPor: 'iglesia_id',
+    ademasDonde: { campo: 'flujo', vale: 'Recibido' },
+    arma: (n, anio, prefijo) => `${prefijo}${String(n).padStart(3, '0')}-${anio}`,
+    lee: (valor, anio, prefijo) => leerNumero(valor, anio, prefijo),
+  },
+  documentos_emitidos: {
+    tabla: 'documentos',
+    campo: 'numero',
+    acotadaPor: 'iglesia_id',
+    ademasDonde: { campo: 'flujo', vale: 'Emitido' },
     arma: (n, anio, prefijo) => `${prefijo}${String(n).padStart(3, '0')}-${anio}`,
     lee: (valor, anio, prefijo) => leerNumero(valor, anio, prefijo),
   },
@@ -115,11 +142,19 @@ function proximoNumero(cual, dentroDe, fecha) {
 
   const anio = anioDe(fecha);
   const prefijo = prefijoDe(cual);
+  /*
+   * Una serie puede acotarse ADEMÁS por otra columna: la oficina de partes
+   * lleva dos libros en la misma tabla, y lo que entra no numera lo que sale.
+   */
+  const mas = serie.ademasDonde;
+  const donde = mas ? ` AND "${mas.campo}" = ?` : '';
+  const conQue = mas ? [acotado, mas.vale] : [acotado];
+
   let filas;
   try {
     filas = db
-      .prepare(`SELECT "${serie.campo}" AS valor FROM "${serie.tabla}" WHERE "${serie.acotadaPor}" = ?`)
-      .all(acotado);
+      .prepare(`SELECT "${serie.campo}" AS valor FROM "${serie.tabla}" WHERE "${serie.acotadaPor}" = ?${donde}`)
+      .all(...conQue);
   } catch (e) {
     return null; // una tabla que todavía no está no puede impedir crear un acta
   }

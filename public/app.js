@@ -4393,6 +4393,20 @@ async function viewForm(name, id, precarga) {
     });
   }
 
+  /*
+   * La oficina de partes estrena su número, y depende de DOS cosas: de la
+   * iglesia —cada una lleva su libro— y del flujo, porque lo que entra y lo
+   * que sale se numeran por separado. Lo interno no lleva número.
+   */
+  if (name === 'documentos') {
+    proponerElNumeroDeActa(isNew, {
+      ruta: '/documentos/proximo-numero',
+      depende: ['iglesia_id', 'flujo', 'fecha_registro'],
+      clave: 'iglesia_id',
+      campo: 'numero',
+    });
+  }
+
   // Al traspasar, se muestra cuánto hay en la cuenta de origen
   if (name === 'traspasos') mostrarSaldoOrigen();
 
@@ -11096,7 +11110,19 @@ function proponerElNumeroDeActa(isNew, { ruta, depende, clave, campo: cual = 'nu
     } catch (e) {
       return; // sin propuesta se escribe a mano, como antes
     }
-    if (!r || !r.numero) return;
+    if (!r || !r.numero) {
+      /*
+       * Sin propuesta —se vació el cuerpo, o el flujo elegido no lleva
+       * correlativo— se retira la que el propio sistema había puesto. Dejarla
+       * a la vista sería ofrecer un número que al guardar se descarta, y quien
+       * lo vio anotado en su cuaderno lo daría por asignado.
+       */
+      if (loQuePropuso && campo.value.trim() === loQuePropuso) {
+        campo.value = '';
+        loQuePropuso = null;
+      }
+      return;
+    }
     campo.value = r.numero;
     loQuePropuso = r.numero;
   };

@@ -145,6 +145,18 @@ const OPCIONES = [
           'entrega dos números repetidos son dos papeles que dicen ser el mismo.',
       },
       {
+        clave: 'documento_recibido_prefijo', label: 'Prefijo de los documentos recibidos', tipo: 'text',
+        defecto: 'REC-',
+        ayuda:
+          'La oficina de partes lleva dos libros por iglesia. Este es el de lo que entra: de fábrica «REC-», ' +
+          'que propone «REC-001-2026». Se reinicia cada año.',
+      },
+      {
+        clave: 'documento_emitido_prefijo', label: 'Prefijo de los documentos emitidos', tipo: 'text',
+        defecto: 'EMI-',
+        ayuda: 'El libro de lo que sale. De fábrica «EMI-», que propone «EMI-001-2026».',
+      },
+      {
         clave: 'directiva_categoria', label: 'Categoría que compone la directiva', tipo: 'select',
         // Las del propio módulo de miembros, para que no se desincronicen
         get opciones() {

@@ -19,7 +19,7 @@ Los archivos están en `public/img/logo.png` (con fondo transparente) y `public/
 | **Personas** | Miembros · Bitácora de Miembros · Documentos de Miembros |
 | **Asistencia** | Asistencia: calendario, actividades, toma de lista e informes en una sola pantalla, pensada para el teléfono |
 | **Finanzas** | Cuentas de Tesorería (corporación e iglesias) · Tesorería (ingresos/egresos con resumen y balance) · Traspasos entre Cuentas · Ayudas Sociales · Inventarios (de iglesia y de cuerpos) |
-| **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · Documentos · Certificados (con sus **formatos** administrables) · Credenciales · Solicitudes |
+| **Documentación** | Actas de Reuniones de Cuerpos · Actas de Asambleas · **Oficina de Partes** · Certificados (con sus **formatos** administrables) · Credenciales · Solicitudes |
 | **Administración** | Usuarios (roles y permisos) |
 
 Todos los módulos tienen: listado con búsqueda, filtros, ordenamiento y paginación; formularios generados automáticamente; y (donde aplica) filtro por rango de fechas, adjuntos y vista de impresión.
@@ -314,6 +314,28 @@ En el formato la muestra va con datos de relleno que se nota que lo son —*«No
 **El número lo propone el sistema.** Al elegir la iglesia, el certificado estrena el número que le toca —*CERT-001-2026*—, por iglesia y por año, con el prefijo que se fija en **Configuración → Organización**. Se puede cambiar siempre: hay certificados que vienen numerados de antes. Antes se escribía entero a mano, con los mismos dos problemas que tenían las actas —ir a mirar cuál fue el último, y repetir uno por una distracción—, y en un papel que se firma y se entrega dos números iguales son dos documentos que dicen ser el mismo.
 
 > Al actualizar se crean solos los **ocho** tipos que traía el sistema, con sus mismos textos, para que nada cambie de aspecto ese día. Desde ahí se editan, se agregan otros o se sacan de uso.
+
+### La oficina de partes 🗂️
+
+Todo lo que entra y todo lo que sale de la institución queda anotado, con su número correlativo, en el orden en que pasó por la oficina. Es el libro que contesta tres cosas que después nadie recuerda: **si llegó, cuándo, y qué se hizo con eso.**
+
+| Flujo | Qué es | Correlativo |
+|---|---|---|
+| **Recibido** | Lo que llega de afuera | `REC-001-2026` |
+| **Emitido** | Lo que la iglesia manda | `EMI-001-2026` |
+| **Interno o de archivo** | Lo que solo se guarda: una escritura, un contrato | *sin número* |
+
+**Son dos libros, no uno.** Mezclar entrada y salida en un solo correlativo haría imposible decir *«el oficio 45 que enviamos»*. Y cada **iglesia lleva el suyo**: la matriz numera desde el 001 y cada sede también, igual que con las actas de asamblea. Los dos se reinician cada año, y los prefijos se fijan en Configuración.
+
+**Dos fechas, que no son la misma.** La *del documento* es la que trae escrita quien lo firmó; la *de registro* es cuándo pasó por la oficina. Una carta fechada el 3 puede llegar el 11, y para un plazo lo que cuenta es el 11.
+
+El formulario cambia según el flujo: un documento recibido pide **remitente, quién lo recibió, a quién se derivó y el plazo para responder**; uno emitido pide **destinatario, quién lo firma** y a qué documento recibido responde — que es lo que después permite seguir el hilo completo. Cada uno lleva además su tipo (*Oficio, Carta, Memorándum, Circular…*), el número con que viene de origen, los folios, el estado del trámite y el documento digitalizado.
+
+> **El número es una propuesta.** El sistema propone el que sigue al elegir la iglesia y el flujo, y se puede cambiar: hay libros que vienen de antes y correspondencia que llegó con su número puesto. Cambiar el prefijo empieza una serie nueva, porque del libro se cuentan solo los números que siguen el formato de hoy.
+
+> **Un documento al que otros responden no se borra**: dejaría esas respuestas sin decir a qué contestan. Para eso está el estado *Archivado*.
+
+**Lo que ya estaba en el módulo** —cuando era un archivo documental suelto— se clasifica solo al actualizar: lo que decía *«Correspondencia recibida»* o *«enviada»* entra a su libro con su correlativo, por fecha; **todo lo demás queda como «Interno o de archivo», sin número**. Una escritura de propiedad no entró ni salió por la oficina, y ponerle un correlativo diría que un día llegó. Nada se pierde y se reclasifica a mano lo que corresponda.
 
 ### Histórico de directivas 🏅
 
