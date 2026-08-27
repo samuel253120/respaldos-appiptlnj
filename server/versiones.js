@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.121.0", fecha: "2026-08-27", titulo: "Una solicitud no se cierra sin decir qué se resolvió, no se queda sin nadie a cargo y no salta de un cierre a otro sin reabrirse" },
   { version: "1.120.0", fecha: "2026-08-27", titulo: "Las solicitudes que uno tiene a cargo se ven, aunque quien las presentó no sea de sus cuerpos" },
   { version: "1.119.0", fecha: "2026-08-27", titulo: "La presentación de niños, el bautismo y el matrimonio se imprimen siempre a lo ancho" },
   { version: "1.118.0", fecha: "2026-08-27", titulo: "El certificado se imprime en hoja carta o circular, y el diseño se ajusta al papel elegido" },

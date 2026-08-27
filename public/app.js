@@ -4444,6 +4444,9 @@ async function viewForm(name, id, precarga) {
   // Y hay hojas que van siempre a lo ancho, porque así están hechas
   if (name === 'formatos_certificado') prepararElFormato();
 
+  // Una solicitud sigue un recorrido: no todo estado lleva a todos los demás
+  if (name === 'solicitudes') prepararLaSolicitud(row, isNew);
+
   // El acta: traer el texto del documento adjunto, y ver a quién enlaza
   if (name === 'actas_reuniones') prepararElActa(id, row, isNew);
 
@@ -11748,6 +11751,92 @@ function prepararElIntegrante() {
 
   cuerpo.addEventListener('change', mirar);
   mirar();
+}
+
+/**
+ * POR DÓNDE PUEDE SEGUIR UNA SOLICITUD.
+ *
+ * Es la misma tabla que tiene el servidor (SIGUIENTES, en
+ * server/modules/solicitudes.js), escrita acá para que el formulario no
+ * ofrezca un estado que después va a ser rechazado. Una prueba del motor
+ * compara las dos y falla si se separan.
+ *
+ * Se lee así: entre los tres estados abiertos se anda libremente; desde
+ * cualquiera de ellos se cierra de las cuatro maneras; y desde uno cerrado
+ * solo se puede REABRIR, salvo que lo aprobado se complete, que es el final
+ * natural de una solicitud concedida. Para pasar de un cierre a otro hay que
+ * reabrirla primero, y esa decisión queda escrita en su historial.
+ */
+const SOL_SIGUIENTES = {
+  Pendiente: ['Pendiente', 'En revisión', 'En espera de antecedentes', 'Aprobada', 'Rechazada', 'Completada', 'Anulada'],
+  'En revisión': ['Pendiente', 'En revisión', 'En espera de antecedentes', 'Aprobada', 'Rechazada', 'Completada', 'Anulada'],
+  'En espera de antecedentes': ['Pendiente', 'En revisión', 'En espera de antecedentes', 'Aprobada', 'Rechazada', 'Completada', 'Anulada'],
+  Aprobada: ['Pendiente', 'En revisión', 'En espera de antecedentes', 'Completada'],
+  Rechazada: ['Pendiente', 'En revisión', 'En espera de antecedentes'],
+  Completada: ['Pendiente', 'En revisión', 'En espera de antecedentes'],
+  Anulada: ['Pendiente', 'En revisión', 'En espera de antecedentes'],
+};
+
+/** Los cuatro con los que la solicitud ya no está en trámite. */
+const SOL_CERRADOS = ['Aprobada', 'Rechazada', 'Completada', 'Anulada'];
+
+/**
+ * La ficha de una solicitud, con su recorrido a la vista.
+ *
+ * Dos cosas, y las dos son para no dejar elegir algo que el servidor va a
+ * rechazar. La comprobación de verdad la hace él al guardar: lo que la
+ * pantalla no ofrece hay que rechazarlo de todas maneras.
+ *
+ *   · LOS ESTADOS QUE NO SIGUEN se apagan, y se dice por qué. Estando anulada,
+ *     «Completada» no está: primero se reabre.
+ *   · LA RESOLUCIÓN SE PIDE al cerrar. Se marca el campo como obligatorio en
+ *     cuanto el estado elegido es uno de cierre, y se deja de pedir si ya
+ *     venía escrita —lo aprobado que ahora se completa— o si la solicitud
+ *     vuelve a quedar abierta.
+ */
+function prepararLaSolicitud(row, isNew) {
+  // Con siete opciones el estado es un desplegable normal, no uno con buscador
+  // (ese deja un campo oculto sin lista que apagar). Si algún día pasara a
+  // serlo, esto se hace a un lado en vez de romper la ficha entera.
+  const estado = document.querySelector('#recForm [name="estado"]');
+  if (!estado || !estado.options) return;
+
+  const respuesta = document.querySelector('#recForm [name="respuesta"]');
+  const desde = isNew ? null : row.estado;
+  const yaEstaba = String((row && row.respuesta) || '').trim() !== '';
+
+  // --- Los estados a los que sí puede pasar ---
+  const nota = document.createElement('div');
+  nota.className = 'mut';
+  nota.style.cssText = 'font-size:12px;margin-top:4px';
+  nota.hidden = true;
+  estado.parentElement.appendChild(nota);
+
+  if (desde) {
+    const siguen = SOL_SIGUIENTES[desde] || [];
+    let apagados = 0;
+    [...estado.options].forEach((o) => {
+      if (!o.value || o.value === desde) return;
+      o.disabled = !siguen.includes(o.value);
+      if (o.disabled) apagados++;
+    });
+    if (apagados) {
+      nota.hidden = false;
+      nota.textContent = SOL_CERRADOS.includes(desde)
+        ? `Esta solicitud está ${desde.toLowerCase()}. Para cerrarla de otra manera, primero vuelva a `
+          + 'ponerla en trámite; el cambio queda anotado en su historial.'
+        : 'Desde este estado no se puede pasar a los que aparecen apagados.';
+    }
+  }
+
+  // --- La resolución hace falta para cerrar ---
+  if (!respuesta) return;
+  const pedirla = () => {
+    const cierra = SOL_CERRADOS.includes(estado.value);
+    respuesta.required = cierra && !yaEstaba;
+  };
+  estado.addEventListener('change', pedirla);
+  pedirla();
 }
 
 function prepararElActa(id, row, isNew) {

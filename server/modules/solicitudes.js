@@ -50,6 +50,47 @@ const ESTADOS = [
 /** Con estos estados la solicitud ya no está en trámite. */
 const CERRADOS = ['Aprobada', 'Rechazada', 'Completada', 'Anulada'];
 
+/** Los tres en que la solicitud sigue viva y alguien la tiene que mover. */
+const ABIERTOS = ESTADOS.filter((e) => !CERRADOS.includes(e));
+
+/**
+ * Qué estado puede seguir a cuál.
+ *
+ * Sin esto, el estado era un campo más de la ficha y saltaba a cualquier
+ * parte: se comprobó pasar una solicitud de «Anulada» a «Completada» y se
+ * guardaba. Con eso se puede completar algo que se anuló, aprobar algo que se
+ * rechazó o rechazar algo ya aprobado, y el historial queda contando una
+ * historia que no ocurrió.
+ *
+ * La regla es corta y se puede decir en una frase:
+ *
+ *   · Entre los estados ABIERTOS se anda libremente: una solicitud va y viene
+ *     entre pendiente, en revisión y esperando antecedentes según cómo avance.
+ *   · Desde cualquier abierto se puede CERRAR de las cuatro maneras.
+ *   · Desde uno CERRADO solo se puede REABRIR —volver a un estado abierto—,
+ *     con la única excepción de que lo aprobado se complete, que es el
+ *     final natural de una solicitud concedida.
+ *
+ * O sea: para pasar de un cierre a otro hay que reabrirla primero. No es un
+ * trámite de más; es que dar por completado algo que se anuló tiene que
+ * costar una decisión y quedar escrita.
+ */
+const SIGUIENTES = {
+  Pendiente: [...ABIERTOS, ...CERRADOS],
+  'En revisión': [...ABIERTOS, ...CERRADOS],
+  'En espera de antecedentes': [...ABIERTOS, ...CERRADOS],
+  Aprobada: [...ABIERTOS, 'Completada'],
+  Rechazada: [...ABIERTOS],
+  Completada: [...ABIERTOS],
+  Anulada: [...ABIERTOS],
+};
+
+/** ¿Se puede pasar de un estado al otro? Quedarse donde está siempre se puede. */
+function sePuedePasar(desde, hasta) {
+  if (!desde || desde === hasta) return true;
+  return (SIGUIENTES[desde] || ESTADOS).includes(hasta);
+}
+
 /**
  * Le avisa a quien queda a cargo de la solicitud.
  *
@@ -96,6 +137,9 @@ module.exports = {
   printable: true,
   ESTADOS,
   CERRADOS,
+  ABIERTOS,
+  SIGUIENTES,
+  sePuedePasar,
 
   /**
    * QUIÉN VE UNA SOLICITUD, cuando quien mira tiene cuerpos asignados.
@@ -197,7 +241,8 @@ module.exports = {
     },
     {
       name: 'respuesta', label: 'Respuesta / Resolución', type: 'textarea',
-      help: 'Qué se resolvió. Al cerrar la solicitud queda anotada en su historial.',
+      help: 'Qué se resolvió, y por qué. Hace falta para cerrar la solicitud —aprobarla, '
+        + 'rechazarla, completarla o anularla— y queda anotada en su historial.',
     },
     { name: 'fecha_respuesta', label: 'Fecha de respuesta', type: 'date', noAntesDe: 'fecha', readonly: true,
       help: 'La pone el sistema el día en que la solicitud se cierra.' },
@@ -252,11 +297,68 @@ module.exports = {
         if (!data.responsable_id) data.responsable_id = user.id;
       }
 
-      // La fecha de respuesta la pone el sistema el día en que se cierra, y se
-      // borra si la solicitud vuelve a abrirse.
       const nuevoEstado = data.estado !== undefined ? data.estado : existing && existing.estado;
       const estabaCerrada = existing && CERRADOS.includes(existing.estado);
       const quedaCerrada = CERRADOS.includes(nuevoEstado);
+
+      /*
+       * EL ESTADO SIGUE UN RECORRIDO (ver SIGUIENTES, arriba).
+       *
+       * Antes era un campo más y saltaba a cualquier parte: de «Anulada» a
+       * «Completada» se guardaba sin decir nada. El error explica la salida,
+       * que es reabrirla y cerrarla como corresponda; no deja a nadie con un
+       * «no se puede» y ningún camino.
+       */
+      if (!isNew && existing && !sePuedePasar(existing.estado, nuevoEstado)) {
+        return `Una solicitud «${existing.estado.toLowerCase()}» no pasa a «${String(nuevoEstado).toLowerCase()}». `
+          + 'Para retomarla, vuelva a ponerla en trámite —pendiente, en revisión o en espera de '
+          + 'antecedentes— y desde ahí ciérrela como corresponda.';
+      }
+
+      /*
+       * NO SE CIERRA SIN DECIR QUÉ SE RESOLVIÓ.
+       *
+       * La respuesta era opcional: se podía rechazar una solicitud y dejarla
+       * con la resolución en blanco. Quien pidió se quedaba sin respuesta, y
+       * el historial decía solo «De Pendiente a Rechazada», que no es
+       * constancia de nada. Es la misma regla del traslado, que exige su
+       * motivo desde que existe, y por la misma razón.
+       *
+       * Si ya venía escrita —lo aprobado que ahora se completa— no se vuelve a
+       * pedir: la resolución de esa solicitud ya está.
+       */
+      if (quedaCerrada && !estabaCerrada) {
+        const dicha = data.respuesta !== undefined ? data.respuesta : existing && existing.respuesta;
+        if (!String(dicha || '').trim()) {
+          return `Escriba en «Respuesta / Resolución» qué se resolvió antes de dejarla `
+            + `${String(nuevoEstado).toLowerCase()}: es lo que se le contesta a quien pidió, y lo `
+            + 'único que va a quedar dicho cuando alguien revise el caso.';
+        }
+      }
+
+      /*
+       * Y NO SE QUEDA SIN NADIE A CARGO mientras esté abierta.
+       *
+       * «Quien la ingresa queda a cargo» solo corría al crearla. Al editarla se
+       * podía vaciar el responsable y se guardaba: desde ahí no le llegaba
+       * aviso a nadie, no aparecía en la bandeja de nadie y el aviso de «lleva
+       * mucho sin respuesta» no se disparaba nunca. Una solicitud sin dueño es
+       * una solicitud que nadie mira.
+       *
+       * Cerrada sí puede quedarse sin responsable —si la cuenta de quien la
+       * llevó se elimina, el enlace se suelta—: ya no hay nada que hacer con
+       * ella y exigirlo dejaría fichas viejas imposibles de guardar.
+       */
+      const aCargo = data.responsable_id !== undefined
+        ? data.responsable_id
+        : existing && existing.responsable_id;
+      if (!quedaCerrada && !Number(aCargo)) {
+        return 'Una solicitud abierta necesita a alguien a cargo: sin responsable no le llega aviso '
+          + 'a nadie y no aparece en la bandeja de nadie. Indique quién la lleva.';
+      }
+
+      // La fecha de respuesta la pone el sistema el día en que se cierra, y se
+      // borra si la solicitud vuelve a abrirse.
       if (quedaCerrada && !estabaCerrada) data.fecha_respuesta = new Date().toISOString().slice(0, 10);
       if (!quedaCerrada && estabaCerrada) data.fecha_respuesta = null;
 
@@ -303,9 +405,19 @@ module.exports = {
         return;
       }
       if (existing && existing.estado !== fila.estado) {
+        /*
+         * Reabrir tiene nombre propio en el historial.
+         *
+         * Sacar de «Aprobada» algo que se resolvió no es un cambio de estado
+         * como cualquiera: es deshacer un cierre, y el que lo lea tres meses
+         * después tiene que verlo de una. Ya pedía permiso; ahora además se
+         * anota diciendo qué fue.
+         */
+        const seReabre = CERRADOS.includes(existing.estado) && !CERRADOS.includes(fila.estado);
         seguimiento.anotar(db, fila.id, {
           tipo: 'Cambio de estado',
-          descripcion: `De «${existing.estado || 'sin estado'}» a «${fila.estado}».` +
+          descripcion: (seReabre ? 'SE REABRE: de ' : 'De ') +
+            `«${existing.estado || 'sin estado'}» a «${fila.estado}».` +
             (CERRADOS.includes(fila.estado) && fila.respuesta ? ` Resolución: ${fila.respuesta}` : ''),
           user,
         });

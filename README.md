@@ -1223,6 +1223,73 @@ Esta es también una capacidad general del motor: cualquier campo puede declarar
 
 Cada servicio tiene su hoja con el membrete de la iglesia, los datos agrupados (salmo, mensaje, asistencia, ofrenda) y espacio para las firmas del coordinador y del predicador.
 
+## Solicitudes: quién la lleva y cómo termina 📨
+
+Una solicitud no es una ficha que se llena y se archiva. **Entra**, alguien la
+**lleva**, y termina **resuelta**. Por eso, además de sus datos, lleva un número
+correlativo por año (`0001-2026`), un responsable, un historial donde se anota
+sola cada cosa que le pasa, y las personas, documentos y antecedentes que se le
+van sumando.
+
+### El recorrido: de dónde se puede pasar a dónde
+
+Los siete estados no son una lista suelta donde se elige cualquiera. Tres dicen
+que la solicitud **sigue en trámite** y cuatro que **ya terminó**:
+
+| En trámite | Terminada |
+|---|---|
+| Pendiente · En revisión · En espera de antecedentes | Aprobada · Rechazada · Completada · Anulada |
+
+La regla se dice en una frase: **entre los tres primeros se anda libremente;
+desde cualquiera de ellos se cierra de las cuatro maneras; y desde un cierre
+solo se puede reabrir** —volver a ponerla en trámite—, con la única excepción de
+que **lo aprobado se complete**, que es el final natural de una solicitud
+concedida.
+
+O sea: para pasar de un cierre a otro **hay que reabrirla primero**. Antes el
+estado era un campo más de la ficha y saltaba a cualquier parte —una solicitud
+*anulada* pasaba a *completada* y se guardaba sin decir nada—, y así se podía
+dar por entregado algo que se anuló, aprobar lo que se había rechazado o
+rechazar lo ya aprobado, con el historial contando una historia que no ocurrió.
+Ahora la pantalla apaga los estados a los que no se puede pasar y dice por qué,
+y el servidor lo rechaza igual al guardar, explicando la salida:
+
+> *Una solicitud «anulada» no pasa a «completada». Para retomarla, vuelva a
+> ponerla en trámite —pendiente, en revisión o en espera de antecedentes— y
+> desde ahí ciérrela como corresponda.*
+
+**Reabrir tiene nombre propio en el historial.** No es un cambio de estado como
+cualquiera: es deshacer un cierre. Queda anotado como *«SE REABRE: de «Anulada»
+a «En revisión».»*, para que quien lo lea tres meses después lo vea de una.
+
+### No se cierra en blanco
+
+Para **aprobar, rechazar, completar o anular** hay que escribir en **Respuesta /
+Resolución** qué se resolvió. Es lo que se le contesta a quien pidió, y lo único
+que va a quedar dicho cuando alguien revise el caso: sin eso, el historial decía
+solo *«De Pendiente a Rechazada»*, que no es constancia de nada. Es la misma
+exigencia que tiene el traslado con su motivo, y por la misma razón.
+
+Al cerrarla, el sistema le pone solo la **fecha de respuesta**; si más adelante
+se reabre, esa fecha se borra. Y **lo aprobado se completa sin volver a
+escribirla**: la resolución de esa solicitud ya está.
+
+### No se queda sin nadie a cargo
+
+Quien la ingresa queda a cargo mientras no se diga otra cosa, y para pasarla a
+otro está **Trasladar**, que deja constancia de quién la pasó, a quién y por
+qué. Lo que ya no se puede es **vaciar el responsable de una solicitud
+abierta**: sin responsable no le llega aviso a nadie, no aparece en la bandeja
+de nadie y el recordatorio de *«lleva mucho sin respuesta»* no se dispara nunca.
+Una solicitud sin dueño es una solicitud que nadie mira.
+
+Una vez **cerrada** sí puede quedarse sin responsable —si la cuenta de quien la
+llevó se elimina, el enlace se suelta—: ya no hay nada que hacer con ella.
+
+> **Cerrarla o reabrirla pide lo mismo que trasladarla.** Quien la tiene a cargo
+> la cierra siempre, es su trabajo; para hacerlo con la de otro hace falta la
+> llave **Trasladar y cerrar solicitudes de otros**.
+
 ## Configuración del sistema ⚙️
 
 Quien tenga la llave **Configuración del sistema** tiene en el menú la entrada **Configuración**, con **33 opciones** en siete grupos:
@@ -1603,7 +1670,7 @@ Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesi
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro. Con `PREPARAR=1` llena la base con 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos para que la medición diga algo — y por eso **se niega a hacerlo si la base tiene fichas que no generó ella**: esos datos van directo a la base, sin pasar por el sistema, y una base con datos de una iglesia no se toca. Para medir, use una base aparte: `DATA_DIR=/tmp/carga`.
 
   `LIMPIAR=1 npm run carga` dice cuántos datos de prueba hay en una base y cuántas fichas son de verdad, sin borrar nada; `LIMPIAR=borrar` los borra. Se reconocen por sus señas: los RUT del 30.000.000 en adelante —un tramo que no está en uso—, los cuerpos «Cuerpo de prueba N» y los movimientos «Movimiento de prueba N».
-- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 265 comprobaciones y corren en poco más de un segundo. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 806 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
 
   Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
 
