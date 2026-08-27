@@ -314,6 +314,8 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
   // 5. Cuerpos: quién queda a cargo
   if (def.name === 'cuerpos') {
     const nombre = despues.nombre || 'un cuerpo';
+    // Solo cuando el líder es un miembro inscrito: un grupo lo puede dirigir
+    // alguien del registro aparte, y esa persona no tiene bitácora
     if (despues.lider_id && (isNew || antes.lider_id !== despues.lider_id)) {
       anotar({ miembroId: despues.lider_id, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
         descripcion: `Queda como líder / encargado de "${nombre}".` });

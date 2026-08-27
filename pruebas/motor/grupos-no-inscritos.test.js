@@ -308,7 +308,99 @@ test('el movimiento de una cuota dice el nombre de quien pagó, esté inscrito o
   assert.equal(pago.miembro_id, null, 'y sin número de miembro, porque no tiene');
 });
 
-/* ── 6. La regla de la directiva también deja la ficha completa ────── */
+/* ── 6. A un grupo lo puede dirigir alguien no inscrito ────────────── */
+
+const cuerpos = require('../../server/modules/cuerpos');
+
+/** Guarda un cuerpo pasando por su hook, como lo hace el motor. */
+function guardarCuerpo(datos, { id = null, existing = null, isNew = true } = {}) {
+  const copia = { ...datos };
+  const error = cuerpos.hooks.beforeSave(copia, { id, existing, isNew, db });
+  if (error) return { error };
+  const campos = Object.keys(copia).filter((c) => copia[c] !== undefined);
+  const fila = db
+    .prepare(
+      `INSERT INTO cuerpos (${campos.map((c) => `"${c}"`).join(',')})
+       VALUES (${campos.map(() => '?').join(',')})`
+    )
+    .run(...campos.map((c) => copia[c]));
+  return { id: Number(fila.lastInsertRowid), datos: copia };
+}
+
+test('a un GRUPO lo puede dirigir alguien que no está inscrito', () => {
+  const encargado = unNoMiembro('Simón', 'Delsonido');
+  const r = guardarCuerpo({
+    nombre: 'Sonido', tipo: 'Grupo', iglesia_id: iglesia, estado: 'Activo',
+    lider_tipo: 'No miembro', lider_no_miembro_id: encargado,
+  });
+  assert.equal(r.error, undefined, String(r.error));
+  assert.equal(r.datos.lider, 'Simón Delsonido', 'el nombre queda escrito en la ficha del grupo');
+  assert.equal(r.datos.lider_id, null, 'y el enlace del otro registro queda suelto');
+
+  // Y pertenece al grupo por dirigirlo, aunque no tenga ficha de integrante
+  const gente = integrantes.personasDelCuerpo(db, r.id);
+  assert.equal(gente.length, 1);
+  assert.equal(gente[0].clave, `n${encargado}`);
+  assert.equal(gente[0].persona_tipo, 'No miembro');
+
+  // Pero NO entra en la lista de ids de miembros: ahí se confundiría con el
+  // miembro que tenga ese mismo número
+  assert.deepEqual(integrantes.idsDeIntegrantes(db, r.id), []);
+});
+
+test('a un CUERPO no: es formal y de sus integrantes sale su directiva', () => {
+  const encargado = unNoMiembro('Pablo', 'Sinregistro');
+  const r = guardarCuerpo({
+    nombre: 'Caballeros', tipo: 'Cuerpo', iglesia_id: iglesia, estado: 'Activo',
+    lider_tipo: 'No miembro', lider_no_miembro_id: encargado,
+  });
+  assert.match(String(r.error), /Un cuerpo lo dirige un miembro inscrito/);
+});
+
+test('ni un encargado registrado en otra iglesia', () => {
+  const ajeno = unNoMiembro('Iván', 'Devisita', otraIglesia);
+  const r = guardarCuerpo({
+    nombre: 'Aseo', tipo: 'Grupo', iglesia_id: iglesia, estado: 'Activo',
+    lider_tipo: 'No miembro', lider_no_miembro_id: ajeno,
+  });
+  assert.match(String(r.error), /otra iglesia/);
+});
+
+test('cambiar de registro suelta el enlace anterior', () => {
+  const encargado = unNoMiembro('Rut', 'Encargada');
+  const puesto = guardarCuerpo({
+    nombre: 'Cocina', tipo: 'Grupo', iglesia_id: iglesia, estado: 'Activo',
+    lider_tipo: 'No miembro', lider_no_miembro_id: encargado,
+  });
+  const antes = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(puesto.id);
+
+  const cambio = { lider_tipo: 'Miembro', lider_id: ana };
+  const error = cuerpos.hooks.beforeSave(cambio, { id: puesto.id, existing: antes, isNew: false, db });
+  assert.equal(error, null, String(error));
+  assert.equal(cambio.lider_no_miembro_id, null,
+    'si no, el enlace viejo quedaría apuntando a alguien que ya no dirige nada');
+  assert.equal(cambio.lider, 'Ana Miembro');
+});
+
+test('un cuerpo nace cobrando cuota y un grupo no', () => {
+  // Casi ningún grupo cobra, y hasta ahora nacían cobrando igual que los
+  // cuerpos: si nadie se acordaba de apagarlo, su gente quedaba con una deuda
+  // que nunca existió.
+  const unCuerpo = { nombre: 'Damas nuevas', tipo: 'Cuerpo', iglesia_id: iglesia, estado: 'Activo' };
+  cuerpos.hooks.beforeSave(unCuerpo, { id: null, existing: null, isNew: true, db });
+  assert.equal(unCuerpo.cobra_cuota, 1);
+
+  const unGrupo = { nombre: 'Aseo nuevo', tipo: 'Grupo', iglesia_id: iglesia, estado: 'Activo' };
+  cuerpos.hooks.beforeSave(unGrupo, { id: null, existing: null, isNew: true, db });
+  assert.equal(unGrupo.cobra_cuota, 0);
+
+  // Y quien lo dice manda: un grupo que sí cobra se crea cobrando
+  const cobrador = { nombre: 'Coro', tipo: 'Grupo', iglesia_id: iglesia, estado: 'Activo', cobra_cuota: 1 };
+  cuerpos.hooks.beforeSave(cobrador, { id: null, existing: null, isNew: true, db });
+  assert.equal(cobrador.cobra_cuota, 1);
+});
+
+/* ── 7. La regla de la directiva también deja la ficha completa ────── */
 
 test('la ficha que pone la regla de la directiva dice quién es y de qué registro', () => {
   /*
@@ -335,7 +427,7 @@ test('la ficha que pone la regla de la directiva dice quién es y de qué regist
   assert.equal(suya.persona, 'Justo Lidera');
 });
 
-/* ── 7. Las migraciones dejan al día lo que ya existía ─────────────── */
+/* ── 8. Las migraciones dejan al día lo que ya existía ─────────────── */
 
 test('las fichas que ya existían quedan escritas como de miembros', () => {
   const { fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro } = require('../../server/migraciones');
@@ -347,12 +439,21 @@ test('las fichas que ya existían quedan escritas como de miembros', () => {
     )
     .run(cuerpoFormal, ana, iglesia).lastInsertRowid;
 
+  // Un cuerpo viejo: sin registro del líder y sin su nombre escrito
+  const cuerpoViejo = db
+    .prepare("INSERT INTO cuerpos (nombre, tipo, iglesia_id, estado, lider_id, lider_tipo, lider) VALUES ('De antes', 'Cuerpo', ?, 'Activo', ?, NULL, NULL)")
+    .run(iglesia, ana).lastInsertRowid;
+
   fichasDeIntegranteConSuNombre();
   marcasDeAsistenciaConSuRegistro();
 
   const puesta = db.prepare('SELECT * FROM integrantes_cuerpo WHERE id = ?').get(vieja);
   assert.equal(puesta.persona_tipo, 'Miembro');
   assert.equal(puesta.persona, 'Ana Miembro');
+
+  const suCuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoViejo);
+  assert.equal(suCuerpo.lider_tipo, 'Miembro', 'los líderes que ya existían son miembros inscritos');
+  assert.equal(suCuerpo.lider, 'Ana Miembro');
 
   const sinRegistro = db
     .prepare("SELECT COUNT(*) c FROM asistencia_detalle WHERE persona_tipo IS NULL OR persona_tipo = ''")

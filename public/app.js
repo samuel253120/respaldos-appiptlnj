@@ -4436,6 +4436,7 @@ async function viewForm(name, id, precarga) {
 
   // Un cuerpo se compone de miembros; un grupo, no necesariamente
   if (name === 'integrantes_cuerpo') prepararElIntegrante();
+  if (name === 'cuerpos') prepararElCuerpo(isNew);
 
   // El acta: traer el texto del documento adjunto, y ver a quién enlaza
   if (name === 'actas_reuniones') prepararElActa(id, row, isNew);
@@ -11334,6 +11335,60 @@ async function descargarActaEnPdf(id, boton) {
  * adjunto quedaba como un archivo cerrado que no se busca ni se lee sin
  * bajarlo. Estas dos cosas los juntan.
  */
+/**
+ * Las dos cosas en que un grupo no se parece a un cuerpo, en la pantalla.
+ *
+ *   · QUIÉN LO DIRIGE. A un cuerpo lo dirige un miembro inscrito. A un grupo
+ *     lo puede dirigir alguien del registro aparte, así que la opción se
+ *     ofrece solo cuando el tipo es Grupo.
+ *   · LA CUOTA. Un cuerpo nace cobrando y un grupo no, porque casi ningún
+ *     grupo cobra y hasta ahora nacían cobrando igual: si nadie se acordaba
+ *     de apagarlo, su gente quedaba con una deuda que nunca existió.
+ *
+ * La casilla de la cuota sigue al tipo SOLO mientras nadie la haya tocado. En
+ * cuanto la persona la marca o la desmarca, manda ella: cambiar el tipo
+ * después no puede deshacer lo que acaba de decidir.
+ */
+function prepararElCuerpo(isNew) {
+  const tipo = document.querySelector('#recForm [name="tipo"]');
+  if (!tipo) return;
+
+  // --- Quién lo dirige ---
+  const liderTipo = document.querySelector('#recForm [name="lider_tipo"]');
+  const sueltaEl = liderTipo && [...liderTipo.options].find((o) => o.value === 'No miembro');
+  let nota = null;
+  if (sueltaEl) {
+    nota = document.createElement('div');
+    nota.className = 'mut';
+    nota.style.cssText = 'font-size:12px;margin-top:4px';
+    nota.hidden = true;
+    nota.textContent = 'Un cuerpo lo dirige un miembro inscrito. Para otra cosa, el tipo tiene que ser Grupo.';
+    liderTipo.parentElement.appendChild(nota);
+  }
+
+  // --- La cuota ---
+  const cuota = document.querySelector('#recForm [name="cobra_cuota"]');
+  let laTocaron = false;
+  if (cuota) cuota.addEventListener('change', () => { laTocaron = true; });
+
+  const seguirAlTipo = () => {
+    const esGrupo = tipo.value === 'Grupo';
+    if (sueltaEl) {
+      sueltaEl.disabled = !esGrupo;
+      nota.hidden = esGrupo;
+      if (!esGrupo && liderTipo.value === 'No miembro') {
+        liderTipo.value = 'Miembro';
+        liderTipo.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+    // Solo al crear: en una ficha que ya existe, lo guardado manda
+    if (cuota && isNew && !laTocaron) cuota.checked = !esGrupo;
+  };
+
+  tipo.addEventListener('change', seguirAlTipo);
+  seguirAlTipo();
+}
+
 /**
  * En un CUERPO solo entran miembros inscritos; en un GRUPO, cualquiera.
  *

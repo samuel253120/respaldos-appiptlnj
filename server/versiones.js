@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.116.0", fecha: "2026-08-27", titulo: "A un grupo lo puede dirigir alguien que no está inscrito, y los grupos nacen sin cobrar cuota" },
   { version: "1.115.0", fecha: "2026-08-27", titulo: "En los grupos también sirve gente que no está inscrita en la membresía, y quien se inscribe después se lleva su historial" },
   { version: "1.114.0", fecha: "2026-08-27", titulo: "El libro de la oficina de partes se puede leer entero e imprimir, con su membrete y sus firmas" },
   { version: "1.113.0", fecha: "2026-08-26", titulo: "Documentos pasa a ser la oficina de partes: lo que entra y lo que sale, cada uno con su correlativo" },

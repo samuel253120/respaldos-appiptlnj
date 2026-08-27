@@ -116,6 +116,18 @@ module.exports = function importarCuerpos(origen, { lote, prueba, iglesiaId }) {
         tipo: formal ? 'Cuerpo' : 'Grupo',
         iglesia_id: iglesiaId,
         lider_id: lider,
+        // Lo que llega de la importación dirige miembros: el registro aparte
+        // —quien dirige un grupo sin estar inscrito— no viene del sistema de
+        // origen, se pone acá (ver server/modules/cuerpos.js)
+        lider_tipo: 'Miembro',
+        lider: lider
+          ? (() => {
+              const m = db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(lider);
+              return m ? `${m.nombres || ''} ${m.apellidos || ''}`.trim() : null;
+            })()
+          : null,
+        // Los cuerpos cobran cuota mensual y los grupos no
+        cobra_cuota: formal ? 1 : 0,
         fecha_creacion: fecha(g.createdAt),
         estado: g.status === 'inactive' ? 'Inactivo' : 'Activo',
         descripcion: texto(g.description),

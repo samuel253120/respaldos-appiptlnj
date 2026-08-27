@@ -20,7 +20,21 @@
  * De la ficha del cuerpo cuelgan además sus integrantes —cada uno con su
  * estado y su período de prueba, en el módulo "integrantes_cuerpo"—, su
  * tesorería, sus cuotas mensuales y sus actas de reunión.
+ *
+ * ---------------------------------------------------------------------------
+ * DOS COSAS EN LAS QUE UN GRUPO NO SE PARECE A UN CUERPO
+ *
+ * 1. QUIÉN LO DIRIGE. A un cuerpo lo dirige un miembro inscrito: es formal, y
+ *    de sus integrantes sale su directiva. A un grupo lo puede dirigir alguien
+ *    que no está en la membresía —el hermano que lleva el equipo de sonido—,
+ *    que se busca en el registro aparte (módulo «No Miembros»).
+ *
+ * 2. LA CUOTA. Un cuerpo nace cobrando cuota mensual; un grupo, no. Casi
+ *    ningún grupo cobra, y hasta ahora nacían cobrando igual que los cuerpos:
+ *    si nadie se acordaba de apagarlo, su gente quedaba con una deuda que
+ *    nunca existió. Se puede encender en el grupo que sí cobre.
  */
+const { REGISTROS } = require('../integrantes');
 
 /** Revisa los requisitos formales de un cuerpo y devuelve su estado. */
 function evaluarCumplimiento(fila, db) {
@@ -74,8 +88,8 @@ module.exports = {
   group: 'Organización',
   order: 52,
   display: '{nombre}',
-  searchFields: ['nombre', 'descripcion'],
-  listFields: ['foto', 'nombre', 'tipo', 'iglesia_id', 'lider_id', 'estado', 'cumplimiento'],
+  searchFields: ['nombre', 'descripcion', 'lider'],
+  listFields: ['foto', 'nombre', 'tipo', 'iglesia_id', 'lider', 'estado', 'cumplimiento'],
   defaultSort: { field: 'nombre', dir: 'asc' },
   computed: [
     {
@@ -97,7 +111,27 @@ module.exports = {
       help: 'CUERPO: entidad formal, con reglamento, deberes y derechos. GRUPO: agrupación de servicio o ayuda, sin reglamento ni obligaciones formales.',
     },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
-    { name: 'lider_id', label: 'Líder / Encargado', type: 'ref', ref: 'miembros' },
+    {
+      name: 'lider_tipo', label: '¿Quién lo dirige?', type: 'select',
+      default: 'Miembro', options: REGISTROS,
+      help: 'La segunda opción es para el hermano o la hermana que dirige un GRUPO sin estar '
+        + 'inscrito en la membresía. Un cuerpo lo dirige un miembro inscrito: es formal, y de sus '
+        + 'integrantes sale su directiva.',
+    },
+    {
+      name: 'lider_id', label: 'Líder / Encargado', type: 'ref', ref: 'miembros',
+      showIf: { field: 'lider_tipo', equals: 'Miembro' },
+    },
+    {
+      name: 'lider_no_miembro_id', label: 'Encargado(a) no inscrito(a)', type: 'ref', ref: 'no_miembros',
+      showIf: { field: 'lider_tipo', equals: 'No miembro' },
+      help: 'Se busca en el registro de No Miembros. Si todavía no tiene ficha, créela ahí: basta con el nombre.',
+    },
+    {
+      name: 'lider', label: 'Quién lo dirige', type: 'text', readonly: true,
+      help: 'Lo copia el sistema de la ficha elegida, para que el listado y el buscador digan el '
+        + 'nombre sin tener que mirar dos registros.',
+    },
     {
       name: 'reune_lideres', label: 'Este cuerpo reúne a los miembros líderes de su iglesia', type: 'boolean',
       help: 'Es la directiva. Quien pase a la categoría «Miembro Líder» entra solo, y quien la deje sale solo. '
@@ -112,9 +146,14 @@ module.exports = {
       help: 'Cuánto dura la prueba de quien entra a este cuerpo, antes de evaluar su informe. En blanco, se usan los meses de Configuración → Organización.', min: 0, max: 60,
     },
     {
-      name: 'cobra_cuota', label: 'Este cuerpo cobra cuota mensual', type: 'boolean', default: 1,
+      /*
+       * Sin `default` a propósito: cuánto vale de fábrica depende del tipo, y
+       * eso se decide en beforeSave. Un cuerpo nace cobrando y un grupo no.
+       */
+      name: 'cobra_cuota', label: 'Este cuerpo cobra cuota mensual', type: 'boolean',
       seccion: 'Cuota mensual',
-      help: 'Apáguelo en los cuerpos y grupos que no cobran cuota. Un integrante suelto se exime desde su propia ficha.',
+      help: 'Los cuerpos nacen cobrando y los grupos no, porque casi ninguno cobra. Enciéndalo en el '
+        + 'grupo que sí cobre, o apáguelo en el cuerpo que no. Un integrante suelto se exime desde su propia ficha.',
     },
     {
       name: 'cuota_mensual', label: 'Monto de la cuota', type: 'money', min: 0,
@@ -151,14 +190,62 @@ module.exports = {
      * cuál lo tiene ya, para poder ir a destildarlo si de verdad se quiere
      * cambiar.
      */
-    beforeSave(data, { id, existing, db }) {
-      const marcada = data.reune_lideres !== undefined
-        ? data.reune_lideres
-        : existing ? existing.reune_lideres : 0;
+    beforeSave(data, { id, existing, isNew, db }) {
+      const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
+      const tipo = dato('tipo') || 'Cuerpo';
+      const iglesiaId = dato('iglesia_id');
+
+      /*
+       * De fábrica un cuerpo cobra cuota y un grupo no.
+       *
+       * No se declara como `default` del campo porque depende del tipo. Solo
+       * vale al crear y solo si no viene dicho: quien mande el dato manda.
+       */
+      if (isNew && (data.cobra_cuota === undefined || data.cobra_cuota === null || data.cobra_cuota === '')) {
+        data.cobra_cuota = tipo === 'Grupo' ? 0 : 1;
+      }
+
+      /*
+       * A un GRUPO lo puede dirigir alguien que no está inscrito.
+       *
+       * A un cuerpo no: es una entidad formal, y de sus integrantes sale su
+       * directiva. Como en la ficha de integrante, la persona sale de uno de
+       * los dos registros y el enlace del otro lado se suelta: si no, corregir
+       * de un registro al otro dejaría el enlace viejo apuntando a alguien que
+       * ya no dirige nada.
+       */
+      const liderTipo = REGISTROS.includes(dato('lider_tipo')) ? dato('lider_tipo') : 'Miembro';
+      data.lider_tipo = liderTipo;
+      if (liderTipo === 'No miembro' && tipo !== 'Grupo') {
+        return 'Un cuerpo lo dirige un miembro inscrito: es una entidad formal y de sus integrantes '
+          + 'sale su directiva. Para poner de encargado a alguien que no está en la membresía, el '
+          + 'tipo tiene que ser Grupo.';
+      }
+
+      const deDonde = liderTipo === 'No miembro'
+        ? { tabla: 'no_miembros', campo: 'lider_no_miembro_id', otro: 'lider_id' }
+        : { tabla: 'miembros', campo: 'lider_id', otro: 'lider_no_miembro_id' };
+      const quien = Number(dato(deDonde.campo));
+      data[deDonde.otro] = null;
+      if (!quien) {
+        // Un cuerpo puede no tener líder puesto todavía: eso es legítimo
+        data[deDonde.campo] = null;
+        data.lider = null;
+      } else {
+        const ficha = db
+          .prepare(`SELECT nombres, apellidos, iglesia_id FROM "${deDonde.tabla}" WHERE id = ?`)
+          .get(quien);
+        if (!ficha) return 'La persona que se puso como líder ya no está en el sistema.';
+        if (liderTipo === 'No miembro' && ficha.iglesia_id && iglesiaId
+            && Number(ficha.iglesia_id) !== Number(iglesiaId)) {
+          return 'Esa persona está registrada en otra iglesia. Cada iglesia lleva a los suyos.';
+        }
+        data[deDonde.campo] = quien;
+        data.lider = `${ficha.nombres || ''} ${ficha.apellidos || ''}`.trim();
+      }
+
+      const marcada = dato('reune_lideres');
       if (!marcada) return null;
-      const iglesiaId = data.iglesia_id !== undefined
-        ? data.iglesia_id
-        : existing ? existing.iglesia_id : null;
       if (!iglesiaId) return null;
 
       const otra = db
@@ -279,7 +366,9 @@ module.exports = {
         motivo_retiro: f.motivo_retiro,
         exento_cuota: !!f.exento_cuota,
         exento_motivo: f.exento_motivo,
-        lidera: Number(cuerpo.lider_id) === Number(f.miembro_id),
+        lidera: f.persona_tipo === 'No miembro'
+          ? Number(cuerpo.lider_no_miembro_id) === Number(f.no_miembro_id)
+          : Number(cuerpo.lider_id) === Number(f.miembro_id),
         prueba_vencida: f.estado === 'En prueba' && !!f.fecha_fin_prueba && f.fecha_fin_prueba < hoy,
         evaluaciones: db
           .prepare('SELECT COUNT(*) n FROM evaluaciones_integrantes WHERE integrante_id = ?')

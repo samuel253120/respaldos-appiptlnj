@@ -197,19 +197,34 @@ function personasDelCuerpo(db, cuerpoId, opciones = {}) {
     estado: f.estado,
   }));
 
-  const cuerpo = db.prepare('SELECT lider_id FROM cuerpos WHERE id = ?').get(cuerpoId);
-  const liderId = cuerpo && cuerpo.lider_id ? Number(cuerpo.lider_id) : 0;
-  if (liderId && !gente.some((g) => g.persona_tipo === 'Miembro' && Number(g.miembro_id) === liderId)) {
-    const m = db
-      .prepare('SELECT id, nombres, apellidos, rut, foto FROM miembros WHERE id = ?')
-      .get(liderId);
+  /*
+   * El líder pertenece al cuerpo por dirigirlo, aunque no tenga ficha de
+   * integrante. Y a un GRUPO lo puede dirigir alguien que no está inscrito en
+   * la membresía (ver server/modules/cuerpos.js), así que hay que ir a
+   * buscarlo al registro que corresponda.
+   */
+  const cuerpo = db
+    .prepare('SELECT lider_id, lider_no_miembro_id FROM cuerpos WHERE id = ?')
+    .get(cuerpoId);
+  if (!cuerpo) return gente;
+
+  const noInscrito = Number(cuerpo.lider_no_miembro_id) || 0;
+  const inscrito = noInscrito ? 0 : Number(cuerpo.lider_id) || 0;
+  const yaEsta = noInscrito
+    ? gente.some((g) => g.persona_tipo === 'No miembro' && Number(g.no_miembro_id) === noInscrito)
+    : inscrito && gente.some((g) => g.persona_tipo === 'Miembro' && Number(g.miembro_id) === inscrito);
+
+  if ((noInscrito || inscrito) && !yaEsta) {
+    const m = noInscrito
+      ? db.prepare('SELECT id, nombres, apellidos, rut FROM no_miembros WHERE id = ?').get(noInscrito)
+      : db.prepare('SELECT id, nombres, apellidos, rut, foto FROM miembros WHERE id = ?').get(inscrito);
     if (m) {
       gente.unshift({
         ficha_id: null,
-        clave: clavePersona({ miembro_id: m.id }),
-        persona_tipo: 'Miembro',
-        miembro_id: m.id,
-        no_miembro_id: null,
+        clave: clavePersona(noInscrito ? { no_miembro_id: m.id } : { miembro_id: m.id }),
+        persona_tipo: noInscrito ? 'No miembro' : 'Miembro',
+        miembro_id: noInscrito ? null : m.id,
+        no_miembro_id: noInscrito ? m.id : null,
         nombres: m.nombres,
         apellidos: m.apellidos,
         rut: m.rut || null,

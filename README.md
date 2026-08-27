@@ -264,6 +264,10 @@ En un cuerpo la segunda opción **ni se ofrece**, y el servidor la rechaza aunqu
 
 Hace falta el permiso de **No Miembros** para poder buscarla: son fichas de gente en situación vulnerable y no se le abren a cualquiera.
 
+**Y también lo puede dirigir.** El líder o encargado de un **grupo** no tiene por qué estar inscrito: la ficha del cuerpo pregunta lo mismo —*¿quién lo dirige?*— y lo busca en el registro que corresponda. En un **cuerpo** no: es formal y de sus integrantes sale su directiva, así que su líder es un miembro inscrito. Quien dirige pertenece al grupo por dirigirlo, aunque no tenga ficha de integrante: sale en su lista de asistencia igual que los demás.
+
+**La cuota mensual.** Un cuerpo nace cobrando cuota; **un grupo nace sin cobrar**, porque casi ninguno cobra. Hasta la 1.115.0 nacían cobrando igual que los cuerpos, y si nadie se acordaba de apagarlo su gente quedaba con una deuda que nunca existió. En el grupo que sí cobre se enciende en su ficha.
+
 **Cuando se inscribe.** En su ficha de No Miembro hay un botón *«Inscribir como miembro»*: le crea su ficha en el registro oficial con lo que ya se sabía de ella y **le lleva sus grupos y su asistencia, con las fechas de siempre**. Sin ese paso, cada inscripción dejaba dos fichas y el recorrido de la persona colgando de la que ya no se usa. Su ficha del registro aparte **no se borra**: queda apuntando a la nueva, porque de ella cuelgan las ayudas que se le entregaron cuando todavía no era miembro.
 
 > **Por qué el número no alcanza.** El miembro n.º 7 y el no miembro n.º 7 son dos personas distintas. Todo lo que identifica gente —una lista de asistencia, el alcance de un usuario, el cuerpo de oficiales— lo hace ahora por su registro **y** su número. Lo que sigue trabajando solo con miembros —quién puede ver qué, quién es oficial, quién compone una directiva— sigue devolviendo únicamente miembros, a propósito.

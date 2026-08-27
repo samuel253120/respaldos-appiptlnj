@@ -2067,6 +2067,28 @@ function fichasDeIntegranteConSuNombre() {
       .run().changes;
   }).immediate();
 
+  /*
+   * Lo mismo con el líder de cada cuerpo. A un GRUPO lo puede dirigir alguien
+   * que no está inscrito, así que la ficha del cuerpo dice de qué registro
+   * sale su encargado y lleva su nombre escrito. Los que ya existen dirigen
+   * miembros, sin excepción.
+   */
+  if (hayTabla('cuerpos')) {
+    const suyas = new Set(db.prepare('PRAGMA table_info("cuerpos")').all().map((c) => c.name));
+    if (suyas.has('lider_tipo') && suyas.has('lider')) {
+      db.transaction(() => {
+        db.prepare("UPDATE cuerpos SET lider_tipo = 'Miembro' WHERE lider_tipo IS NULL OR lider_tipo = ''").run();
+        db.prepare(
+          `UPDATE cuerpos
+              SET lider = TRIM(COALESCE(
+                    (SELECT (COALESCE(m.nombres, '') || ' ' || COALESCE(m.apellidos, ''))
+                       FROM miembros m WHERE m.id = cuerpos.lider_id), ''))
+            WHERE (lider IS NULL OR lider = '') AND lider_id IS NOT NULL`
+        ).run();
+      }).immediate();
+    }
+  }
+
   // Y las cuotas ya cobradas, que también dicen a nombre de quién se pagaron
   if (hayTabla('cuotas_cuerpo')
       && db.prepare('PRAGMA table_info("cuotas_cuerpo")').all().some((c) => c.name === 'persona')) {
