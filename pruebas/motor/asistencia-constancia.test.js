@@ -114,9 +114,15 @@ const marcasDe = (cuerpoId) => db
   .prepare('SELECT * FROM asistencia_detalle WHERE asistencia_id = ? AND cuerpo_id = ? ORDER BY id')
   .all(actividadId, cuerpoId);
 
+/*
+ * Solo las de ESTA actividad. Las pruebas del motor comparten una misma base y
+ * node las corre en paralelo, así que contar todas las líneas del registro
+ * hacía que esta prueba fallara o pasara según qué otro archivo estuviera
+ * escribiendo en ese momento.
+ */
 const lineasDelRegistro = () => db
-  .prepare("SELECT * FROM registro_cambios WHERE accion = 'Corrección de lista' ORDER BY id")
-  .all();
+  .prepare("SELECT * FROM registro_cambios WHERE accion = 'Corrección de lista' AND registro_id = ? ORDER BY id")
+  .all(actividadId);
 
 // ------------------------------------------------- antes de tomar la lista ---
 

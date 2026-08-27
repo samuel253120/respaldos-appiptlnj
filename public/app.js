@@ -11070,6 +11070,101 @@ function cuantasVecesSeRepite(desde, regla, hasta) {
 /* ---------------- pasar lista ---------------- */
 
 /**
+ * ANOTAR A QUIEN ESTUVO SIN SER DEL CUERPO.
+ *
+ * La lista sale de los integrantes de los cuerpos convocados, y quien llegó
+ * sin pertenecer a ninguno —una visita, alguien de otro cuerpo que pasó, un
+ * familiar— no se podía anotar. La regla que lo impedía está bien: es la que
+ * evita ensuciar el porcentaje con gente que no corresponde. Lo que faltaba
+ * era esto: sumarla como VISITA, marcada como tal y fuera del porcentaje.
+ *
+ * Se busca entre la membresía y quienes sirven sin estar inscritos, por
+ * IGLESIA y no por cuerpo: el caso que esto resuelve es justamente el de
+ * alguien de otro cuerpo. Quien ya está en la lista no se ofrece.
+ */
+function abrirVisita(asistenciaId, alElegir) {
+  const fondo = document.createElement('div');
+  fondo.className = 'modal-fondo';
+  fondo.innerHTML = `
+    <div class="modal" style="max-width:560px">
+      <div class="modal-head"><h3>🧍 Anotar una visita</h3><button class="cerrar" aria-label="Cerrar">&times;</button></div>
+      <div class="modal-body">
+        <p class="mut" style="margin-top:0">
+          Alguien que estuvo en esta actividad sin ser del cuerpo. Queda constancia de que
+          estuvo, y <b>no cuenta en el porcentaje</b> de nadie.
+        </p>
+        <div class="fld"><label for="vsCuerpo">A la lista de</label>
+          <select id="vsCuerpo"></select></div>
+        <div class="fld" style="margin-top:12px"><label for="vsBuscar">Quién</label>
+          <input type="search" id="vsBuscar" placeholder="🔎 Nombre o RUT…" autocomplete="off" /></div>
+        <div id="vsLista" class="vs-lista"></div>
+        <div class="form-error" id="vsError" style="padding:0"></div>
+      </div>
+      <div class="modal-foot"><button class="btn secondary" id="vsCerrar">Cerrar</button></div>
+    </div>`;
+  document.body.appendChild(fondo);
+  const cerrar = () => fondo.remove();
+  fondo.querySelector('.cerrar').addEventListener('click', cerrar);
+  fondo.querySelector('#vsCerrar').addEventListener('click', cerrar);
+  fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(); });
+
+  const caja = fondo.querySelector('#vsLista');
+  const selCuerpo = fondo.querySelector('#vsCuerpo');
+  const entrada = fondo.querySelector('#vsBuscar');
+  let cuerpos = [];
+  let reloj = null;
+
+  const buscar = async () => {
+    const texto = entrada.value.trim();
+    if (texto.length < 2) {
+      caja.innerHTML = '<div class="mut" style="padding:12px 2px">Escriba al menos dos letras del nombre o del RUT.</div>';
+      return;
+    }
+    caja.innerHTML = '<div class="mut" style="padding:12px 2px">Buscando…</div>';
+    let d;
+    try {
+      d = await api('GET', `/asistencias/${asistenciaId}/quien-puede-visitar?buscar=${encodeURIComponent(texto)}`);
+    } catch (e) {
+      caja.innerHTML = '';
+      fondo.querySelector('#vsError').textContent = e.message;
+      return;
+    }
+    if (!cuerpos.length) {
+      cuerpos = d.cuerpos || [];
+      selCuerpo.innerHTML = cuerpos.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
+      selCuerpo.parentElement.hidden = cuerpos.length < 2;
+    }
+    if (!(d.gente || []).length) {
+      caja.innerHTML = `<div class="mut" style="padding:12px 2px">
+        Nadie con ese nombre fuera de esta lista.<br>
+        Si es alguien que no está en el sistema, primero cree su ficha en <b>No Miembros</b>.
+      </div>`;
+      return;
+    }
+    caja.innerHTML = `<ul class="mini-list">${(d.gente || []).map((p, i) => `
+      <li data-i="${i}" tabindex="0" role="button">
+        <span><b>${esc(p.nombre)}</b>${p.persona_tipo === 'No miembro' ? ' <span class="badge">No inscrito(a)</span>' : ''}</span>
+        <span class="mut">${p.rut ? esc(rutFormatear(p.rut)) : ''}</span>
+      </li>`).join('')}</ul>`;
+    caja.querySelectorAll('li').forEach((li) => {
+      const elegir = () => {
+        const quien = d.gente[Number(li.dataset.i)];
+        const cuerpoId = Number(selCuerpo.value) || (cuerpos[0] || {}).id;
+        const cuerpo = (cuerpos.find((c) => c.id === cuerpoId) || {}).nombre || '';
+        cerrar();
+        alElegir({ ...quien, cuerpo_id: cuerpoId, cuerpo });
+      };
+      li.addEventListener('click', elegir);
+      li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elegir(); } });
+    });
+  };
+
+  entrada.addEventListener('input', () => { clearTimeout(reloj); reloj = setTimeout(buscar, 280); });
+  buscar();
+  entrada.focus();
+}
+
+/**
  * La lista para marcar: buscador, filtros por estado, avance y los tres
  * botones por persona. Se guarda sola y deja respaldo en el teléfono.
  */
@@ -11174,10 +11269,14 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   const fila = (p) => `
     <li data-clave="${esc(claveDe(p))}" data-id="${p.miembro_id || ''}"
         data-no-miembro="${p.no_miembro_id || ''}" data-cuerpo="${esc(String(p.cuerpo_id || ''))}"
+        ${p.visita ? 'data-visita="1"' : ''}
         data-buscar="${esc(textoBuscable(`${p.nombre} ${p.rut || ''}`))}"
-        class="${p.estado ? 'marcado' : ''}">
+        class="${p.estado ? 'marcado' : ''}${p.visita ? ' es-visita' : ''}">
       <div class="pl-quien">
         <b>${esc(p.nombre)}</b>
+        ${p.visita
+          ? '<span class="badge yellow" title="Estuvo, pero no es del cuerpo: no cuenta en el porcentaje">Visita</span>'
+          : ''}
         ${p.cuerpo ? `<span class="pl-cuerpo-chip">${esc(p.cuerpo)}</span>` : ''}
         ${p.persona_tipo === 'No miembro'
           ? '<span class="badge" title="Sirve en este grupo sin estar inscrita en la membresía">No inscrito(a)</span>'
@@ -11246,6 +11345,8 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
           <div class="pl-estado" id="plEstado"></div>
           ${puedeEditar ? `
             <div class="pl-acciones">
+              <button class="btn secondary" id="plVisita" aria-label="Anotar una visita"
+                      title="Anotar a alguien que estuvo sin ser del cuerpo">🧍<span class="solo-ancho"> Anotar una visita</span></button>
               <button class="btn secondary" id="plTodos">✓ Todos presentes</button>
               <button class="btn" id="plGuardar">💾 Guardar lista</button>
             </div>` : ''}
@@ -11317,6 +11418,8 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
       estado: on ? on.dataset.estado : null,
       motivo: li.querySelector('.pl-motivo').value || null,
       detalle: li.querySelector('.pl-detalle').value || null,
+      // Estuvo sin ser del cuerpo: el servidor la guarda fuera del porcentaje
+      visita: li.dataset.visita === '1' || undefined,
     };
   });
 
@@ -11349,9 +11452,15 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
    */
   const esDelCuerpo = (li, cuerpo) => !cuerpo || li.dataset.cuerpo === cuerpo;
 
+  /*
+   * Las filas que cuentan para el avance. Las VISITAS no: estuvieron, pero no
+   * son del cuerpo, y sumarlas diría que la lista va más adelantada de lo que
+   * va —y que hay más gente convocada de la que hay—.
+   */
   const filasQueCuentan = () => {
     const cuerpo = (document.getElementById('plCuerpo') || {}).value || '';
-    return cuerpo ? filas().filter((li) => esDelCuerpo(li, cuerpo)) : filas();
+    const propias = filas().filter((li) => li.dataset.visita !== '1');
+    return cuerpo ? propias.filter((li) => esDelCuerpo(li, cuerpo)) : propias;
   };
 
   const resumen = () => {
@@ -11367,11 +11476,13 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     const pct = total ? Math.round((marcados / total) * 100) : 0;
     document.getElementById('plPct').textContent = `${marcados}/${total} (${pct}%)`;
     document.getElementById('plBarra').style.width = `${pct}%`;
+    const visitas = filas().filter((li) => li.dataset.visita === '1' && li.querySelector('.pl-b.on')).length;
     document.getElementById('plResumen').innerHTML =
       `<span class="badge green">${cuenta.Presente} presentes</span>
        <span class="badge red">${cuenta.Ausente} ausentes</span>
        <span class="badge blue">${cuenta.Justificado} justificados</span>
-       ${cuenta.sin ? `<span class="badge">${cuenta.sin} sin marcar</span>` : ''}`;
+       ${cuenta.sin ? `<span class="badge">${cuenta.sin} sin marcar</span>` : ''}
+       ${visitas ? `<span class="badge yellow" title="Estuvieron, pero no son del cuerpo: no cuentan en el porcentaje">${visitas} visita(s)</span>` : ''}`;
     const chip = contenedor.querySelector('[data-filtro="sin"]');
     if (chip) chip.textContent = `Sin marcar (${cuenta.sin})`;
     return cuenta;
@@ -11495,35 +11606,76 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     li.dataset.estado = estado || '';
   };
 
-  lista.querySelectorAll('.pl-b').forEach((b) => {
-    b.addEventListener('click', () => {
-      const li = b.closest('li');
-      const yaEstaba = b.classList.contains('on');
-      li.querySelectorAll('.pl-b').forEach((x) => x.classList.remove('on'));
-      if (!yaEstaba) b.classList.add('on'); // volver a pulsarlo la desmarca
-      pintarFila(li);
-      cambio(li);
+  /*
+   * Lo que hace andar una fila. Aparte, porque hay filas que nacen después:
+   * las visitas se agregan con la lista ya en pantalla, y si esto se quedara
+   * escrito adentro del recorrido de abajo, sus botones no harían nada.
+   */
+  const engancharFila = (li) => {
+    li.querySelectorAll('.pl-b').forEach((b) => {
+      b.addEventListener('click', () => {
+        const yaEstaba = b.classList.contains('on');
+        li.querySelectorAll('.pl-b').forEach((x) => x.classList.remove('on'));
+        if (!yaEstaba) b.classList.add('on'); // volver a pulsarlo la desmarca
+        pintarFila(li);
+        cambio(li);
+      });
     });
-  });
-  lista.querySelectorAll('.pl-motivo').forEach((sel) => {
-    sel.addEventListener('change', () => { pintarFila(sel.closest('li')); cambio(sel.closest('li')); });
-  });
-  lista.querySelectorAll('.pl-detalle').forEach((inp) => {
-    inp.addEventListener('input', () => cambio(inp.closest('li')));
-  });
+    const motivo = li.querySelector('.pl-motivo');
+    if (motivo) motivo.addEventListener('change', () => { pintarFila(li); cambio(li); });
+    const detalle = li.querySelector('.pl-detalle');
+    if (detalle) detalle.addEventListener('input', () => cambio(li));
+  };
+  filas().forEach(engancharFila);
 
   const btnTodos = document.getElementById('plTodos');
   if (btnTodos) {
     btnTodos.addEventListener('click', () => {
-      // Solo a quienes están a la vista y sin marcar: no pisa lo ya decidido
-      const pendientes = filas().filter((li) => !li.hidden && !li.querySelector('.pl-b.on'));
-      const objetivo = pendientes.length ? pendientes : filas().filter((li) => !li.hidden);
+      // Solo a quienes están a la vista y sin marcar: no pisa lo ya decidido.
+      // Y nunca a las visitas: cada una se anotó a mano, con su estado.
+      const aLaVista = filas().filter((li) => !li.hidden && li.dataset.visita !== '1');
+      const pendientes = aLaVista.filter((li) => !li.querySelector('.pl-b.on'));
+      const objetivo = pendientes.length ? pendientes : aLaVista;
       objetivo.forEach((li) => {
         li.querySelectorAll('.pl-b').forEach((x) => x.classList.toggle('on', x.dataset.estado === 'Presente'));
         pintarFila(li);
       });
       cambio(objetivo);
     });
+  }
+
+  const btnVisita = document.getElementById('plVisita');
+  if (btnVisita) {
+    btnVisita.addEventListener('click', () => abrirVisita(asistenciaId, (quien) => {
+      /*
+       * La visita entra como una fila más, marcada presente y tocada, y se va
+       * por el mismo camino de guardado que todas las demás: un camino solo
+       * para las visitas se separaría del otro el día que algo cambie.
+       */
+      const yaEsta = filas().find((li) => li.dataset.clave === `${quien.clave}:${quien.cuerpo_id}`);
+      if (yaEsta) { toast('Esa persona ya está en la lista.', true); return; }
+      const li = document.createElement('div');
+      li.innerHTML = fila({
+        clave: `${quien.clave}:${quien.cuerpo_id}`,
+        persona_tipo: quien.persona_tipo,
+        miembro_id: quien.miembro_id,
+        no_miembro_id: quien.no_miembro_id,
+        nombre: quien.nombre,
+        rut: quien.rut,
+        cuerpo_id: quien.cuerpo_id,
+        cuerpo: quien.cuerpo,
+        visita: true,
+        estado: 'Presente',
+      });
+      const nueva = li.firstElementChild;
+      lista.appendChild(nueva);
+      engancharFila(nueva);
+      pintarFila(nueva);
+      cambio(nueva);
+      filtrar();
+      nueva.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      toast(`${quien.nombre} quedó anotada como visita. No cuenta en el porcentaje del cuerpo.`);
+    }));
   }
 
   const btnGuardar = document.getElementById('plGuardar');

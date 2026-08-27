@@ -137,6 +137,27 @@ module.exports = {
      */
     { name: 'tomada_en', label: 'Marcada el', type: 'text', readonly: true, oculto: true },
     { name: 'tomada_por', label: 'Marcada por', type: 'ref', ref: 'usuarios', readonly: true, oculto: true },
+
+    /*
+     * ESTUVO, PERO NO ES DEL CUERPO.
+     *
+     * La lista sale de los integrantes de los cuerpos convocados, y quien
+     * llegó sin pertenecer a ninguno —una visita, alguien de otro cuerpo que
+     * pasó, un familiar— no se podía anotar: el servidor contestaba «no está
+     * en ninguno de los cuerpos convocados a esta actividad».
+     *
+     * Esa regla está bien: es la que impide ensuciar el porcentaje con gente
+     * que no corresponde. Lo que faltaba era la otra mitad. Una marca de
+     * visita deja constancia de que estuvo —que es lo que se quiere saber de
+     * una visita— y queda FUERA de todos los porcentajes: del avance de la
+     * lista, del informe y de la planilla del cuerpo. Así no le altera el
+     * cumplimiento a nadie.
+     *
+     * Se guarda con el cuerpo a cuya lista se la sumó, no en blanco: es «la
+     * lista de Damas del 12 de marzo, con tres visitas», y es lo que hace que
+     * la encargada de Damas la vea y la pueda corregir.
+     */
+    { name: 'visita', label: 'Visita', type: 'boolean', readonly: true, default: 0 },
   ],
 
   hooks: {

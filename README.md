@@ -1734,6 +1734,22 @@ A una actividad puede asistir más de un cuerpo. Quien tiene **cuerpos asignados
 
 No es solo lo que se muestra: si llegara una marca de alguien de otro cuerpo, el servidor la rechaza. Y el progreso de marcado que se ve es el de su parte, no el de toda la actividad —el de la agenda también, desde la 1.125.0—.
 
+### 🧍 Quien estuvo sin ser del cuerpo: las visitas
+
+La lista sale de los integrantes de los cuerpos convocados, así que quien llegó sin pertenecer a ninguno —una visita, alguien de otro cuerpo que pasó, un familiar— no se podía anotar. Con **🧍 Anotar una visita**, al pie de la lista, se busca a esa persona y se la suma.
+
+Una visita:
+
+- **deja constancia de que estuvo**, que es lo que se quiere saber de una visita;
+- sale en la lista con su etiqueta **Visita**, y se le marca como a cualquiera;
+- y queda **fuera de todos los porcentajes**: del avance de la lista, del informe y de la planilla mensual del cuerpo. No le altera el cumplimiento a nadie. En el resumen de la lista se cuentan aparte —*«3 visita(s)»*—, y el informe las trae en su propio número.
+
+Se busca entre la **membresía** y **quienes sirven sin estar inscritos**, por **iglesia** y no por cuerpo: el caso que esto resuelve es justamente el de alguien de otro cuerpo, y buscarlo entre los del cuerpo propio no lo encontraría nunca. Quien ya está en la lista no se ofrece. Si es alguien que no está en el sistema, primero se le crea la ficha en **No Miembros**.
+
+Tres resguardos: una visita se suma a la lista de un cuerpo **que a uno le toca pasar**, no a cualquiera de la actividad; la persona tiene que ser de una **iglesia que uno alcance**; y corregirle el estado después **no la convierte en integrante** —sigue siendo visita aunque la corrección no lo repita—.
+
+> La regla que impedía anotarla **está bien y se queda**: es la que evita ensuciar el porcentaje con gente que no corresponde. Lo que faltaba era la otra mitad.
+
 Sin cuerpos asignados —el caso del administrador— le tocan todos los convocados.
 
 ### Los permisos y el alcance trabajan juntos
@@ -1890,7 +1906,7 @@ Las otras pruebas miran lo que la de humo no ve. Solo la de la credencial necesi
 - `npm run carga` — que el sistema responda rápido con mucha gente adentro. Con `PREPARAR=1` llena la base con 600 fichas inventadas, 12 cuerpos, 150 actividades y 3.000 movimientos para que la medición diga algo — y por eso **se niega a hacerlo si la base tiene fichas que no generó ella**: esos datos van directo a la base, sin pasar por el sistema, y una base con datos de una iglesia no se toca. Para medir, use una base aparte: `DATA_DIR=/tmp/carga`.
 
   `LIMPIAR=1 npm run carga` dice cuántos datos de prueba hay en una base y cuántas fichas son de verdad, sin borrar nada; `LIMPIAR=borrar` los borra. Se reconocen por sus señas: los RUT del 30.000.000 en adelante —un tramo que no está en uso—, los cuerpos «Cuerpo de prueba N» y los movimientos «Movimiento de prueba N».
-- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 996 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
+- `npm run motor` — **las piezas de adentro, una por una**, sin servidor y sin navegador: el RUT y su dígito verificador, cómo se arma el nombre de cada persona, los permisos escalón por escalón, el alcance por iglesia y por cuerpo, la limpieza del texto de las actas, la planilla y qué archivos se aceptan. Son 1.020 comprobaciones y corren en unos siete segundos. Atrapan el error fino: ese que no rompe ninguna pantalla —así que la prueba de humo lo deja pasar— y que nadie ve hasta que ya pasó algo.
 
   Corren contra una base **recién creada y descartable**, nunca contra la del sistema; el corredor la prepara y la borra. No es una formalidad: alguna de esas pruebas escribe y borra para comprobar lo suyo, y hacerlo sobre los datos de la iglesia sería imperdonable. Por eso, además, se niegan a arrancar si se las llama a mano sobre la base de siempre.
 
@@ -1923,6 +1939,7 @@ GET    /api/asistencias/agenda      actividades de un período, con su avance
 GET    /api/asistencias/:id/lista   integrantes convocados con su marca
 POST   /api/asistencias/:id/lista   guarda todas las marcas de una vez
 POST   /api/asistencias/:id/repetir copia la actividad en las fechas que le siguen
+GET    /api/asistencias/:id/quien-puede-visitar  a quién se puede sumar como visita
 GET    /api/asistencias/informe     informes y promedios (tipo_actividad acota por tipo)
 GET    /api/tesoreria/resumen       ingresos, egresos, balance y por categoría
 POST   /api/importar/<modulo>       { filas: [...], prueba: true|false } importación masiva

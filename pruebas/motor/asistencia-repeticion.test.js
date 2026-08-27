@@ -302,10 +302,12 @@ test('una actividad DISTINTA el mismo día sí se crea: no son la misma', () => 
 });
 
 test('deja UNA línea en el Registro de Cambios, no cuarenta', () => {
-  db.prepare("DELETE FROM registro_cambios WHERE accion = 'Repetición'").run();
   const id = unaActividad('2026-06-07');
   const r = repetir(id, YO, { regla: 'semanal', hasta: '2026-08-30' });
-  const lineas = db.prepare("SELECT * FROM registro_cambios WHERE accion = 'Repetición'").all();
+  // Solo las de ESTA actividad: las pruebas del motor comparten base y corren
+  // en paralelo, así que contar todas dependería de quién más esté escribiendo
+  const lineas = db
+    .prepare("SELECT * FROM registro_cambios WHERE accion = 'Repetición' AND registro_id = ?").all(id);
   assert.equal(lineas.length, 1, `${r.creadas} actividades dejaron ${lineas.length} líneas`);
   assert.equal(lineas[0].usuario, 'Rosa Pinto Vidal');
   assert.match(lineas[0].detalle, /Creó 12 actividad\(es\) más, todos los domingos, hasta el 2026-08-30/);

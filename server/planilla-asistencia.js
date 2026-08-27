@@ -63,10 +63,17 @@ function armar(db, cuerpo, mes) {
   // en la membresía, y la planilla del grupo tiene que traerla igual
   const gente = personasDelCuerpo(db, cuerpo.id);
 
+  /*
+   * Sin las VISITAS. La planilla es el padrón del cuerpo mes a mes —una fila
+   * por integrante—, y una visita no es integrante: sumarla le abriría una
+   * fila a alguien que no está en el cuerpo y le movería el porcentaje del día
+   * al pie de la columna. Su constancia queda en la lista de esa actividad y
+   * en el informe, que las cuenta aparte.
+   */
   const filas = db
     .prepare(
       `SELECT miembro_id, no_miembro_id, fecha, estado FROM asistencia_detalle
-        WHERE cuerpo_id = ? AND fecha >= ? AND fecha <= ?`
+        WHERE cuerpo_id = ? AND fecha >= ? AND fecha <= ? AND COALESCE(visita, 0) = 0`
     )
     .all(cuerpo.id, primero, ultimo);
 

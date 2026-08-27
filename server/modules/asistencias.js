@@ -133,8 +133,9 @@ function marcasVisibles(actividad, db, usuario) {
   const acota = suyos.length ? ` AND cuerpo_id IN (${suyos.map(() => '?').join(',')})` : '';
   return db
     .prepare(
-      `SELECT miembro_id, no_miembro_id, cuerpo_id, estado, motivo, detalle FROM asistencia_detalle
-        WHERE asistencia_id = ?${acota}`
+      `SELECT miembro_id, no_miembro_id, cuerpo_id, estado, motivo, detalle,
+              COALESCE(visita, 0) AS visita
+         FROM asistencia_detalle WHERE asistencia_id = ?${acota}`
     )
     .all(actividad.id, ...(acota ? suyos : []))
     // La clave la arma el servidor: es él quien manda sobre el formato, y así
@@ -192,10 +193,17 @@ function avanceDe(actividad, db, usuario, marcas, recuerdo) {
   let convocados = 0;
   for (const cuerpoId of leTocan) convocados += clavesDelCuerpo(db, cuerpoId, recuerdo).size;
 
-  const cuenta = { presentes: 0, ausentes: 0, justificados: 0 };
+  const cuenta = { presentes: 0, ausentes: 0, justificados: 0, visitas: 0 };
   for (const m of marcas) {
     const quien = clavePersona(m);
     if (!quien) continue; // marca sin persona: la lista tampoco la muestra
+    /*
+     * La visita se cuenta aparte y no entra en ninguna de las dos mitades.
+     * No es del cuerpo: ni engrosa el padrón —nadie la esperaba— ni cuenta
+     * como marcada, o el avance diría que la lista va más adelantada de lo
+     * que va.
+     */
+    if (Number(m.visita) === 1) { cuenta.visitas += 1; continue; }
     const cuerpoId = Number(m.cuerpo_id) || 0;
     const estaEnElCuerpo = leTocan.includes(cuerpoId) && clavesDelCuerpo(db, cuerpoId, recuerdo).has(quien);
     if (!estaEnElCuerpo) {
@@ -225,7 +233,7 @@ function avanceDeUna(actividad, db, usuario, recuerdo) {
   const donde = `asistencia:avance:${actividad.id}`;
   if (recuerdo && recuerdo.has(donde)) return recuerdo.get(donde);
   const marcas = db
-    .prepare('SELECT miembro_id, no_miembro_id, cuerpo_id, estado FROM asistencia_detalle WHERE asistencia_id = ?')
+    .prepare('SELECT miembro_id, no_miembro_id, cuerpo_id, estado, visita FROM asistencia_detalle WHERE asistencia_id = ?')
     .all(actividad.id);
   const av = avanceDe(actividad, db, usuario, marcas, recuerdo);
   if (recuerdo) recuerdo.set(donde, av);
@@ -344,17 +352,24 @@ function quienLaPaso(actividad, db, usuario) {
   };
 }
 
-/** Cuenta las marcas de una actividad. */
+/**
+ * Cuenta las marcas de una actividad. Las VISITAS van aparte: dejan constancia
+ * de que estuvieron, pero no son del cuerpo y no le mueven el porcentaje.
+ */
 function conteo(asistenciaId, db, cuerpos) {
   const acota = cuerpos && cuerpos.length ? ` AND cuerpo_id IN (${cuerpos.map(() => '?').join(',')})` : '';
   const filas = db
-    .prepare(`SELECT estado, COUNT(*) AS n FROM asistencia_detalle WHERE asistencia_id = ?${acota} GROUP BY estado`)
+    .prepare(
+      `SELECT estado, COALESCE(visita, 0) AS visita, COUNT(*) AS n
+         FROM asistencia_detalle WHERE asistencia_id = ?${acota} GROUP BY estado, COALESCE(visita, 0)`
+    )
     .all(asistenciaId, ...(acota ? cuerpos : []));
-  const de = (e) => (filas.find((f) => f.estado === e) || {}).n || 0;
+  const de = (e) => (filas.find((f) => f.estado === e && !f.visita) || {}).n || 0;
   const presentes = de('Presente');
   const ausentes = de('Ausente');
   const justificados = de('Justificado');
-  return { presentes, ausentes, justificados, total: presentes + ausentes + justificados };
+  const visitas = filas.filter((f) => f.visita).reduce((n, f) => n + f.n, 0);
+  return { presentes, ausentes, justificados, visitas, total: presentes + ausentes + justificados };
 }
 
 module.exports = {
@@ -646,7 +661,7 @@ module.exports = {
         if (!tanda.length) break;
         const marcas = db
           .prepare(
-            `SELECT asistencia_id, miembro_id, no_miembro_id, cuerpo_id, estado
+            `SELECT asistencia_id, miembro_id, no_miembro_id, cuerpo_id, estado, visita
                FROM asistencia_detalle WHERE asistencia_id IN (${tanda.map(() => '?').join(',')})`
           )
           .all(...tanda);
@@ -672,6 +687,8 @@ module.exports = {
           presentes: av.presentes,
           ausentes: av.ausentes,
           justificados: av.justificados,
+          // Quienes estuvieron sin ser del cuerpo: van aparte del avance
+          visitas: av.visitas,
         };
       });
 
@@ -705,7 +722,8 @@ module.exports = {
       const porPar = new Map(marcas.map((m) => [claveDe(m, m.cuerpo_id), m]));
 
       // Quien ya tiene marca pero salió del cuerpo se sigue mostrando, siempre
-      // que su marca sea de un cuerpo que a esta persona le toque pasar
+      // que su marca sea de un cuerpo que a esta persona le toque pasar. Y las
+      // VISITAS, que nunca estuvieron en el cuerpo pero estuvieron ahí.
       const suyos = require('../alcance').cuerposDe(req.user);
       for (const m of marcas) {
         const clave = claveDe(m, m.cuerpo_id);
@@ -718,6 +736,7 @@ module.exports = {
           ? db.prepare('SELECT id, nombres, apellidos, rut FROM no_miembros WHERE id = ?').get(m.no_miembro_id)
           : db.prepare('SELECT id, nombres, apellidos, rut, foto FROM miembros WHERE id = ?').get(m.miembro_id);
         if (!ficha) continue;
+        const esVisita = Number(m.visita) === 1;
         convocados.set(clave, {
           persona_tipo: esNo ? 'No miembro' : 'Miembro',
           miembro_id: esNo ? null : Number(m.miembro_id),
@@ -727,7 +746,10 @@ module.exports = {
           rut: ficha.rut || null,
           foto: ficha.foto || null,
           cuerpo_id: m.cuerpo_id || null,
-          cuerpo: cuerpo ? `${cuerpo.nombre} (ya no figura)` : 'Sin cuerpo',
+          visita: esVisita,
+          cuerpo: esVisita
+            ? (cuerpo ? cuerpo.nombre : 'Sin cuerpo')
+            : (cuerpo ? `${cuerpo.nombre} (ya no figura)` : 'Sin cuerpo'),
         });
       }
 
@@ -753,6 +775,8 @@ module.exports = {
             foto: donde.foto || null,
             cuerpo_id: donde.cuerpo_id,
             cuerpo: donde.cuerpo,
+            // Estuvo, pero no es del cuerpo: no cuenta en el porcentaje
+            visita: !!donde.visita,
             estado: marca.estado || null,
             motivo: marca.motivo || null,
             detalle: marca.detalle || null,
@@ -780,6 +804,73 @@ module.exports = {
         tomada: quienLaPaso(actividad, db, req.user),
         motivos_con_detalle: motivosConDetalle(),
         puede_marcar: can(req.user, 'asistencia_detalle', 'create') && can(req.user, 'asistencia_detalle', 'edit'),
+      });
+    });
+
+    /**
+     * A QUIÉN SE PUEDE SUMAR COMO VISITA a una lista.
+     *
+     * Se busca entre los dos registros —la membresía y quienes sirven sin
+     * estar inscritos— de las iglesias que uno alcanza, y se dejan fuera los
+     * que ya están en la lista: convocados o ya anotados.
+     *
+     * Se busca por IGLESIA y no por cuerpo, a diferencia del listado de
+     * miembros. Es a propósito: el caso que esto viene a resolver es
+     * justamente el de alguien de OTRO cuerpo que pasó, y buscarlo entre los
+     * del cuerpo propio no lo encontraría nunca.
+     */
+    router.get('/asistencias/:id(\\d+)/quien-puede-visitar', requirePerm('asistencia_detalle', 'edit'), (req, res) => {
+      const alcance = require('../alcance');
+      const actividad = db.prepare('SELECT * FROM asistencias WHERE id = ?').get(req.params.id);
+      if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada' });
+      if (!alcance.alcanza(module.exports, actividad, req.user)) {
+        return res.status(403).json({ error: 'Esa actividad está fuera de lo que tiene asignado' });
+      }
+
+      const buscar = String(req.query.buscar || '').trim();
+      if (buscar.length < 2) return res.json({ gente: [], corto: true });
+
+      const suyas = alcance.iglesiasDe(req.user);
+      const porIglesia = suyas.length ? ` AND iglesia_id IN (${suyas.map(() => '?').join(',')})` : '';
+      const como = `%${buscar.replace(/[%_]/g, ' ')}%`;
+      const soloDigitos = buscar.replace(/[^0-9kK]/g, '');
+
+      const buscarEn = (tabla, tipo) => db
+        .prepare(
+          `SELECT id, nombres, apellidos, rut, iglesia_id FROM "${tabla}"
+            WHERE (nombres || ' ' || COALESCE(apellidos, '') LIKE ?
+                   OR REPLACE(REPLACE(COALESCE(rut, ''), '.', ''), '-', '') LIKE ?)${porIglesia}
+            ORDER BY apellidos, nombres LIMIT 25`
+        )
+        .all(como, `%${soloDigitos}%`, ...suyas)
+        .map((f) => ({
+          persona_tipo: tipo,
+          miembro_id: tipo === 'Miembro' ? f.id : null,
+          no_miembro_id: tipo === 'Miembro' ? null : f.id,
+          nombre: require('../nombres').paraMostrar(f.nombres, f.apellidos),
+          rut: f.rut || null,
+          clave: clavePersona(tipo === 'Miembro' ? { miembro_id: f.id } : { no_miembro_id: f.id }),
+        }));
+
+      // Los que ya están en la lista no se ofrecen: ni los convocados ni los
+      // que alguien ya anotó, para no proponer una fila que ya existe
+      const yaEstan = new Set([
+        ...[...integrantesConvocados(actividad, db, req.user).values()].map((p) => clavePersona(p)),
+        ...db.prepare('SELECT miembro_id, no_miembro_id FROM asistencia_detalle WHERE asistencia_id = ?')
+          .all(actividad.id).map((m) => clavePersona(m)),
+      ]);
+
+      const gente = [...buscarEn('miembros', 'Miembro'), ...buscarEn('no_miembros', 'No miembro')]
+        .filter((p) => !yaEstan.has(p.clave))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre))
+        .slice(0, 25);
+
+      res.json({
+        gente,
+        // A qué cuerpos se la puede sumar: los que a esta persona le toca pasar
+        cuerpos: cuerposQueLeTocan(actividad, req.user)
+          .map((id) => db.prepare('SELECT id, nombre FROM cuerpos WHERE id = ?').get(id))
+          .filter(Boolean),
       });
     });
 
@@ -877,17 +968,59 @@ module.exports = {
 
       const suyos = require('../alcance').cuerposDe(req.user);
       const yaMarcados = new Map(
-        db.prepare('SELECT miembro_id, no_miembro_id, cuerpo_id FROM asistencia_detalle WHERE asistencia_id = ?')
+        db.prepare('SELECT miembro_id, no_miembro_id, cuerpo_id, visita FROM asistencia_detalle WHERE asistencia_id = ?')
           .all(actividad.id)
-          .map((m) => [claveDe(m, m.cuerpo_id), Number(m.cuerpo_id)])
+          .map((m) => [claveDe(m, m.cuerpo_id), m])
       );
+
+      /*
+       * LAS VISITAS: quien estuvo sin ser del cuerpo.
+       *
+       * La comprobación de abajo —solo se marca a quien está convocado— es la
+       * que impide ensuciar el porcentaje con gente que no corresponde, y se
+       * queda. A una visita no se le aplica porque una visita es, por
+       * definición, alguien que no está convocado; a cambio lleva sus propias
+       * dos reglas:
+       *
+       *   · se suma a la lista de un cuerpo QUE A UNO LE TOCA PASAR, no a
+       *     cualquiera de la actividad;
+       *   · y la persona tiene que ser de una IGLESIA que uno alcance. No se
+       *     pide que sea de sus cuerpos, porque el caso es justamente el de
+       *     alguien de otro cuerpo que pasó.
+       *
+       * Una marca que ya está guardada como visita sigue siéndolo aunque la
+       * corrección no lo repita: así, corregirle el estado a una visita no la
+       * convierte en integrante del cuerpo sin que nadie lo pida.
+       */
+      const leTocan = cuerposQueLeTocan(actividad, req.user).map(Number);
+      const alcance2 = require('../alcance');
+      for (const m of marcas) {
+        const yaEsta = yaMarcados.get(claveDe(m, m.cuerpo_id));
+        if (yaEsta && Number(yaEsta.visita) === 1) m.visita = true;
+        if (!m.visita) continue;
+        if (!leTocan.includes(Number(m.cuerpo_id))) {
+          return res.status(403).json({
+            error: 'Una visita se suma a la lista de un cuerpo que le toca pasar a usted.',
+          });
+        }
+        const esNo = !!Number(m.no_miembro_id);
+        const ficha = esNo
+          ? db.prepare('SELECT id, nombres, apellidos, iglesia_id FROM no_miembros WHERE id = ?').get(Number(m.no_miembro_id))
+          : db.prepare('SELECT id, nombres, apellidos, iglesia_id FROM miembros WHERE id = ?').get(Number(m.miembro_id));
+        if (!ficha) return res.status(400).json({ error: 'Esa visita no está en el sistema.' });
+        if (!alcance2.alcanzaIglesia(req.user, ficha.iglesia_id)) {
+          return res.status(403).json({ error: 'Esa persona no es de una iglesia que usted tenga asignada.' });
+        }
+      }
+
       // La comprobación es por PAR persona-cuerpo: marcar a alguien en un
       // cuerpo al que no pertenece es tan ajeno como marcar a un desconocido
       const ajeno = marcas.find((m) => {
+        if (m.visita) return false; // una visita no está convocada: de eso se trata
         const clave = claveDe(m, m.cuerpo_id);
         if (convocados.has(clave)) return false;
         if (!yaMarcados.has(clave)) return true; // ni convocado ni marcado antes
-        return suyos.length ? !suyos.includes(yaMarcados.get(clave)) : false;
+        return suyos.length ? !suyos.includes(Number(yaMarcados.get(clave).cuerpo_id)) : false;
       });
       if (ajeno) {
         const esNo = !!Number(ajeno.no_miembro_id);
@@ -940,15 +1073,20 @@ module.exports = {
           `INSERT INTO asistencia_detalle (asistencia_id, persona_tipo, miembro_id, no_miembro_id,
                                            estado, motivo, detalle,
                                            cuerpo_id, fecha, iglesia_id, created_by,
-                                           tomada_en, tomada_por, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                           tomada_en, tomada_por, updated_at, visita)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         );
         const ahora = db.prepare("SELECT datetime('now','localtime') AS t").get().t;
         let guardadas = 0;
         for (const m of marcas) {
           const clave = claveDe(m, m.cuerpo_id);
           const donde = convocados.get(clave);
-          const cuerpoId = (donde && donde.cuerpo_id) || yaMarcados.get(clave) || null;
+          const yaEsta = yaMarcados.get(clave);
+          // Una visita no está entre los convocados: su cuerpo es aquel a cuya
+          // lista se la sumó, que ya se comprobó que le toca a quien marca
+          const cuerpoId = m.visita
+            ? Number(m.cuerpo_id) || null
+            : (donde && donde.cuerpo_id) || (yaEsta && Number(yaEsta.cuerpo_id)) || null;
           // La marca es de UNO de los dos registros: el otro lado va en blanco
           const noMiembroId = Number(m.no_miembro_id) || null;
           const miembroId = noMiembroId ? null : Number(m.miembro_id) || null;
@@ -979,7 +1117,8 @@ module.exports = {
              * son iguales y una corrección es exactamente lo que se ve
              * distinto.
              */
-            ahora
+            ahora,
+            m.visita ? 1 : 0
           );
           guardadas++;
         }
@@ -1183,7 +1322,17 @@ module.exports = {
       if (cuerpoId) { cond.push('d.cuerpo_id = ?'); params.push(cuerpoId); }
       if (noMiembroId) { cond.push('d.no_miembro_id = ?'); params.push(noMiembroId); }
       else if (miembroId) { cond.push('d.miembro_id = ?'); params.push(miembroId); }
-      const where = 'WHERE ' + cond.join(' AND ');
+      /*
+       * Las VISITAS quedan fuera de los porcentajes del informe.
+       *
+       * Una visita deja constancia de que estuvo, pero no es del cuerpo: si
+       * entrara en la cuenta, un domingo con quince visitas le subiría el
+       * cumplimiento a un cuerpo que no hizo nada distinto. Se cuentan aparte,
+       * más abajo.
+       */
+      const sinVisitas = 'COALESCE(d.visita, 0) = 0';
+      const where = 'WHERE ' + cond.concat(sinVisitas).join(' AND ');
+      const whereConVisitas = 'WHERE ' + cond.join(' AND ');
 
       const porcentajes = (f) => {
         const total = f.presentes + f.ausentes + f.justificados;
@@ -1305,15 +1454,32 @@ module.exports = {
           .map(porcentajes);
       }
 
+      /*
+       * Cuántas visitas hubo, y quiénes. Van aparte de todo lo demás: no
+       * suman en ningún porcentaje, pero de una visita lo que se quiere saber
+       * es justamente que estuvo.
+       */
+      const visitas = db
+        .prepare(`SELECT COUNT(*) AS n FROM asistencia_detalle d ${whereConVisitas} AND COALESCE(d.visita, 0) = 1`)
+        .get(...params).n;
+
       // En el informe por persona se detallan sus marcas una por una
       let marcas = [];
       if (tipo === 'persona' && unaPersona) {
+        /*
+         * El detalle SÍ trae sus visitas, marcadas como tales.
+         *
+         * Sus porcentajes no las cuentan —no son de su cuerpo—, pero «estuve
+         * como visita en el Coro el 4 de marzo» es información suya y no tiene
+         * por qué desaparecer de su propia hoja.
+         */
         marcas = db
-          .prepare(`SELECT d.fecha, d.estado, d.motivo, d.detalle, a.tipo_reunion AS actividad, c.nombre AS cuerpo
+          .prepare(`SELECT d.fecha, d.estado, d.motivo, d.detalle, COALESCE(d.visita, 0) AS visita,
+                           a.tipo_reunion AS actividad, c.nombre AS cuerpo
                       FROM asistencia_detalle d
                       LEFT JOIN asistencias a ON a.id = d.asistencia_id
                       LEFT JOIN cuerpos c ON c.id = d.cuerpo_id
-                     ${where} ORDER BY d.fecha DESC LIMIT 500`)
+                     ${whereConVisitas} ORDER BY d.fecha DESC LIMIT 500`)
           .all(...params);
       }
 
@@ -1323,6 +1489,7 @@ module.exports = {
         // hoja impresa lo digan: un informe acotado que no se anuncia se lee
         // como si fuera el de todo
         tipo_actividad: req.query.tipo_actividad ? String(req.query.tipo_actividad) : null,
+        visitas,
         general, porDia, porActividad, porCuerpo, porMiembro, porMiembroCuerpo, porMotivo, marcas,
       });
     });
