@@ -2584,6 +2584,41 @@ function elAvisoDiceDeQuienViene() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Rescata a quiénes fue cada mensaje ya mandado.
+ *
+ * El registro decía cuántos eran y no cuáles. Lo que todavía se puede saber
+ * está en los avisos que llevan la clave del mensaje: se copian con el nombre
+ * de la cuenta, para que la constancia siga diciendo a quién se le escribió
+ * aunque después la cuenta se borre.
+ *
+ * Lo que ya se llevó el borrado de los noventa días —o un retiro— no vuelve; por
+ * eso esto corre cuanto antes y de ahora en adelante se anota al mandar.
+ */
+function losDestinatariosQuedanAnotados() {
+  const NOMBRE = 'a quiénes fue cada mensaje queda anotado';
+  if (yaAplicada(NOMBRE)) return;
+
+  require('./avisos/mensajes');
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('mensajes_destinatarios') || !hayTabla('notificaciones')) return marcarAplicada(NOMBRE);
+
+  const info = db
+    .prepare(
+      `INSERT INTO mensajes_destinatarios (mensaje_id, usuario_id, nombre)
+       SELECT m.id, n.usuario_id, u.nombre
+         FROM mensajes_enviados m
+         JOIN notificaciones n ON n.clave = 'mensaje:' || m.id
+         LEFT JOIN usuarios u ON u.id = n.usuario_id
+        WHERE NOT EXISTS (SELECT 1 FROM mensajes_destinatarios d WHERE d.mensaje_id = m.id)`
+    )
+    .run();
+
+  if (info.changes) console.log(`📇 ${info.changes} destinatario(s) de mensajes ya mandados quedaron anotados.`);
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2639,6 +2674,7 @@ function ejecutarMigraciones() {
     ['los que ya no están salen de sus cuerpos', losQueYaNoEstanSalenDeSusCuerpos],
     ['el conteo de leídos se guarda en el mensaje', elConteoDeLeidosSeGuarda],
     ['los avisos de un mensaje dicen de quién vienen', elAvisoDiceDeQuienViene],
+    ['a quiénes fue cada mensaje queda anotado', losDestinatariosQuedanAnotados],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -2889,7 +2925,7 @@ module.exports = {
   ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
   cadaIglesiaConSuCodigo, solicitudesNumeradasPorIglesia,
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, elConteoDeLeidosSeGuarda,
-  elAvisoDiceDeQuienViene,
+  elAvisoDiceDeQuienViene, losDestinatariosQuedanAnotados,
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
   hojasDePresentacionYMatrimonio, certificadosApaisados,

@@ -73,6 +73,31 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS ix_mensajes_enviados_fecha ON mensajes_enviados (id DESC);
   CREATE INDEX IF NOT EXISTS ix_mensajes_enviados_quien ON mensajes_enviados (enviado_por);
+
+  /*
+   * A quiénes fue cada mensaje.
+   *
+   * El registro decía cuántos eran y no cuáles: «A 3 personas elegidas» no
+   * contesta la pregunta más obvia que se le hace a una constancia. Se podía
+   * deducir de los avisos que llevan la clave del mensaje, pero esos se borran
+   * —los leídos a los noventa días, los sin leer al retirarlo— así que la
+   * respuesta se iba desvaneciendo sola, igual que se desvanecía el conteo de
+   * leídos antes de guardarlo.
+   *
+   * Va el NOMBRE junto al número de la cuenta, a propósito: si la cuenta se
+   * borra, la constancia tiene que seguir diciendo a quién se le escribió.
+   *
+   * Lo que NO se guarda es quién lo leyó. Eso sigue siendo un número y nada
+   * más: saber quién abrió qué sería vigilar a la gente por dentro del sistema.
+   */
+  CREATE TABLE IF NOT EXISTS mensajes_destinatarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mensaje_id INTEGER NOT NULL,
+    usuario_id INTEGER,
+    nombre TEXT
+  );
+  CREATE INDEX IF NOT EXISTS ix_mensajes_destinatarios ON mensajes_destinatarios (mensaje_id);
+  CREATE INDEX IF NOT EXISTS ix_mensajes_destinatarios_quien ON mensajes_destinatarios (usuario_id, mensaje_id);
 `);
 
 /*
@@ -328,8 +353,16 @@ function enviar(quienManda, { titulo, cuerpo, urgente, enlace, destino, valor, i
      * —el segundo no se crearía mientras el primero siguiera sin leer— y
      * después no habría cómo contar quiénes leyeron cuál.
      */
+    const anotarDestinatario = db.prepare(
+      'INSERT INTO mensajes_destinatarios (mensaje_id, usuario_id, nombre) VALUES (?, ?, ?)'
+    );
+
     let llegaron = 0;
     for (const quien of gente) {
+      // A quiénes fue queda anotado siempre, aunque el aviso no llegue a
+      // crearse: se le mandó, y eso es lo que la constancia tiene que decir
+      anotarDestinatario.run(mensajeId, quien.id, quien.nombre || null);
+
       const dejado = avisos.avisar({
         usuario_id: quien.id,
         tipo: 'mensaje',
@@ -462,6 +495,41 @@ function retirar(quien, id) {
 }
 
 /**
+ * Un envío, abierto: lo que decía y a quiénes fue.
+ *
+ * La pantalla mostraba el título, el destino y cuántos lo leyeron, y no el
+ * texto —estaba guardado y no se mostraba en ninguna parte— ni a quiénes fue.
+ * Las dos cosas son lo que uno va a buscar después: «¿qué fue lo que mandé?» y
+ * «¿a quiénes se lo mandé?».
+ */
+function unEnvio(quien, id) {
+  const suyo = unoQueAlcanza(quien, id);
+  if (!suyo) return null;
+  const destinatarios = db
+    .prepare('SELECT usuario_id, nombre FROM mensajes_destinatarios WHERE mensaje_id = ? ORDER BY nombre')
+    .all(suyo.id);
+  const quienLoMando = db.prepare('SELECT nombre FROM usuarios WHERE id = ?').get(suyo.enviado_por || 0);
+  const quienLoRetiro = db.prepare('SELECT nombre FROM usuarios WHERE id = ?').get(suyo.retirado_por || 0);
+  return {
+    id: suyo.id,
+    titulo: suyo.titulo,
+    cuerpo: suyo.cuerpo,
+    urgente: !!suyo.urgente,
+    enlace: suyo.enlace,
+    destino: suyo.destino,
+    destino_id: suyo.destino_id,
+    destino_dice: suyo.destino_dice,
+    cuantos: suyo.cuantos,
+    leidos: suyo.leidos,
+    retirado_en: suyo.retirado_en,
+    quien_retiro: quienLoRetiro ? quienLoRetiro.nombre : null,
+    quien: quienLoMando ? quienLoMando.nombre : null,
+    created_at: suyo.created_at,
+    destinatarios,
+  };
+}
+
+/**
  * Alguien abrió su aviso: queda anotado en el mensaje.
  *
  * ── POR QUÉ SE GUARDA Y NO SE CUENTA ──
@@ -563,5 +631,5 @@ function loQueSeHaMandado(quienManda, cuantos = 30) {
 module.exports = {
   DESTINOS, LARGO, TOPE_DE_UN_ENVIO, PREGUNTAR_DESDE,
   aQuienPuedeEscribir, aQuienesAlcanza, enviar, loQueSeHaMandado, loQueFalta, enlaceLimpio,
-  anotarLectura, retirar,
+  anotarLectura, retirar, unEnvio,
 };

@@ -4418,10 +4418,12 @@ async function viewMensajes() {
           <div class="mut" style="font-size:12.5px">${esc(m.destino_dice)} · ${esc(m.quien || '')} · ${esc(cuandoFue(m.created_at))}${
             m.retirado_en ? ` · lo retiró ${esc(m.quien_retiro || 'alguien')} ${esc(cuandoFue(m.retirado_en))}` : ''}</div>
           <div class="msg-acciones">
+            <button type="button" class="btn sm" data-abrir="${m.id}">Ver</button>
             <button type="button" class="btn sm" data-repetir="${m.id}">↻ Volver a mandar</button>
             ${!m.retirado_en && m.sin_leer
               ? `<button type="button" class="btn sm danger" data-retirar="${m.id}">Retirar</button>` : ''}
           </div>
+          <div class="msg-abierto" id="msgAbierto${m.id}" hidden></div>
         </span>
         <span class="mut" style="white-space:nowrap">${m.leidos} de ${m.cuantos} leído${m.leidos === 1 ? '' : 's'}</span>
       </li>`).join('')}</ul>`;
@@ -4446,6 +4448,36 @@ async function viewMensajes() {
         } catch (e) {
           toast(e.message, true);
           boton.disabled = false;
+        }
+      });
+    });
+
+    /*
+     * Abrir un envío: lo que decía y a quiénes fue.
+     *
+     * La lista mostraba el título, el destino y cuántos lo leyeron, y no el
+     * texto ni a quiénes fue. Las dos cosas son lo que uno va a buscar después.
+     */
+    caja.querySelectorAll('[data-abrir]').forEach((boton) => {
+      boton.addEventListener('click', async () => {
+        const caja2 = document.getElementById(`msgAbierto${boton.dataset.abrir}`);
+        if (!caja2.hidden) { caja2.hidden = true; boton.textContent = 'Ver'; return; }
+        caja2.innerHTML = '<div class="mut">Cargando…</div>';
+        caja2.hidden = false;
+        boton.textContent = 'Ocultar';
+        try {
+          const e = await api('GET', `/avisos/mensajes/${boton.dataset.abrir}`);
+          caja2.innerHTML = `
+            <p class="msg-texto">${esc(e.cuerpo || '')}</p>
+            ${e.enlace ? `<div class="mut">Llevaba a <code>${esc(e.enlace)}</code></div>` : ''}
+            <div class="msg-aquienes">
+              <b>A quiénes fue</b>
+              ${e.destinatarios.length
+                ? `<ul>${e.destinatarios.map((x) => `<li>${esc(x.nombre || `Cuenta n.º ${x.usuario_id}`)}</li>`).join('')}</ul>`
+                : '<div class="mut">No quedó anotado: es de antes de que se guardara.</div>'}
+            </div>`;
+        } catch (err) {
+          caja2.innerHTML = `<div class="mut">${esc(err.message)}</div>`;
         }
       });
     });

@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.148.0", fecha: "2026-08-28", titulo: "De cada mensaje queda a quiénes fue y qué decía: un envío se abre y se relee, y lo recibido ya no se va con el aviso" },
   { version: "1.147.0", fecha: "2026-08-28", titulo: "Los mensajes tienen ritmo: una cuenta no puede llenar a máquina una campanita que nadie puede apagar" },
   { version: "1.146.0", fecha: "2026-08-28", titulo: "Antes de mandar se sabe a cuántos va —también a una iglesia o a un perfil— y a mucha gente se pregunta dos veces" },
   { version: "1.145.0", fecha: "2026-08-28", titulo: "Los mensajes dejan de perdérsele a quien los recibe: la campanita pone primero lo sin leer y hay una pantalla propia con todo lo que le han escrito" },

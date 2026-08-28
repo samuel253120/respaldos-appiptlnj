@@ -922,6 +922,122 @@ test('un mensaje cuyo autor ya no existe no se le abre a cualquiera', () => {
   assert.ok(titulosQueVe(general).includes('De una cuenta que ya no está'));
 });
 
+// ----------------------------- a quiénes fue, y poder releer lo que se mandó
+
+/*
+ * El registro decía cuántos eran y no cuáles —«A 3 personas elegidas» no
+ * contesta la pregunta más obvia que se le hace a una constancia— y la pantalla
+ * no mostraba el texto, que estaba guardado y no se veía en ninguna parte.
+ */
+test('queda anotado a quiénes fue cada mensaje', () => {
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'Reunión de coordinación', cuerpo: 'El jueves a las 19:00.',
+    destino: 'personas', valor: [ana.id, beto.id],
+  });
+  const abierto = mensajes.unEnvio(jefa, salida.id);
+  assert.deepEqual(abierto.destinatarios.map((x) => x.nombre).sort(), [ana.nombre, beto.nombre].sort());
+  assert.equal(abierto.cuerpo, 'El jueves a las 19:00.', 'y lo que decía, para poder releerlo');
+  assert.equal(abierto.destino_dice, 'A 2 personas elegidas');
+});
+
+test('el nombre queda escrito, para cuando la cuenta ya no esté', () => {
+  const seVa = cuenta('Quien Después se Borra', { iglesia: norte });
+  const salida = mensajes.enviar(jefa, { titulo: 'Al que se fue', cuerpo: 'x', destino: 'personas', valor: [seVa.id] });
+  db.prepare('DELETE FROM usuarios WHERE id = ?').run(seVa.id);
+  const abierto = mensajes.unEnvio(jefa, salida.id);
+  assert.equal(abierto.destinatarios[0].nombre, 'Quien Después se Borra',
+    'la constancia tiene que seguir diciendo a quién se le escribió');
+});
+
+test('pero sigue sin decir quién lo leyó', () => {
+  const salida = mensajes.enviar(jefa, { titulo: 'Para mirar los leídos', cuerpo: 'x', destino: 'personas', valor: [ana.id] });
+  const suyo = db.prepare('SELECT id FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+    .get(ana.id, `mensaje:${salida.id}`);
+  avisos.marcarLeida(ana.id, suyo.id);
+  const abierto = mensajes.unEnvio(jefa, salida.id);
+  assert.equal(abierto.leidos, 1, 'cuántos, sí');
+  assert.deepEqual(Object.keys(abierto.destinatarios[0]).sort(), ['nombre', 'usuario_id'],
+    'quiénes, no: saber quién abrió qué sería vigilar a la gente por dentro del sistema');
+});
+
+test('un envío ajeno no se abre', () => {
+  const jefeDeAlla = cuenta('Jefe que Abre de Más', { iglesia: sur, administra: [sur], rol: 'admin' });
+  const mio = mensajes.enviar(jefa, { titulo: 'Que no lo abran', cuerpo: 'x', destino: 'personas', valor: [ana.id] });
+  assert.equal(mensajes.unEnvio(jefeDeAlla, mio.id), null,
+    'abrirlo es lo mismo que mirarlo en la lista: el mismo alcance');
+});
+
+test('«Mis mensajes» ya no depende de que el aviso siga ahí', () => {
+  const quien = cuenta('Quien Guarda para Siempre', { iglesia: norte });
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'De hace medio año', cuerpo: 'Lo que se dijo entonces', destino: 'personas', valor: [quien.id],
+  });
+  const suyo = db.prepare('SELECT id FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+    .get(quien.id, `mensaje:${salida.id}`);
+  avisos.marcarLeida(quien.id, suyo.id);
+  db.prepare("UPDATE notificaciones SET leida_en = date('now','localtime','-200 days') WHERE clave = ?")
+    .run(`mensaje:${salida.id}`);
+  avisos.limpiarLosViejos(90);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM notificaciones WHERE clave = ?').get(`mensaje:${salida.id}`).c, 0);
+
+  const mios = avisos.recibidos(quien.id, {});
+  assert.equal(mios.total, 1, 'lo que uno quiere volver a leer no se puede ir con el aviso');
+  assert.equal(mios.mensajes[0].titulo, 'De hace medio año');
+  assert.equal(mios.mensajes[0].cuerpo, 'Lo que se dijo entonces');
+  assert.equal(mios.mensajes[0].de, jefa.nombre);
+  assert.equal(mios.mensajes[0].leida, 1, 'sin aviso y sin retiro, es que lo leyó');
+});
+
+test('y un mensaje retirado antes de abrirlo no le queda a nadie', () => {
+  const quien = cuenta('Quien No Alcanzó a Verlo', { iglesia: norte });
+  const salida = mensajes.enviar(jefa, { titulo: 'Retirado a tiempo', cuerpo: 'x', destino: 'personas', valor: [quien.id] });
+  assert.equal(avisos.recibidos(quien.id, {}).total, 1);
+  mensajes.retirar(jefa, salida.id);
+  assert.equal(avisos.recibidos(quien.id, {}).total, 0,
+    'retirarlo quiere decir justamente eso: no alcanzó a verlo');
+});
+
+test('pero el que sí alcanzó a leerlo lo conserva', () => {
+  const rapido = cuenta('Quien lo Leyó Enseguida', { iglesia: norte });
+  const lento = cuenta('Quien no lo Abrió', { iglesia: norte });
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'Retirado a medias', cuerpo: 'x', destino: 'personas', valor: [rapido.id, lento.id],
+  });
+  const suyo = db.prepare('SELECT id FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+    .get(rapido.id, `mensaje:${salida.id}`);
+  avisos.marcarLeida(rapido.id, suyo.id);
+  mensajes.retirar(jefa, salida.id);
+  assert.equal(avisos.recibidos(rapido.id, {}).total, 1, 'ya lo vio: borrárselo sería reescribirle lo que recuerda');
+  assert.equal(avisos.recibidos(lento.id, {}).total, 0);
+});
+
+test('la migración rescata a quiénes fue lo que ya estaba mandado', () => {
+  const { losDestinatariosQuedanAnotados } = require('../../server/migraciones');
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'De antes de la lista', cuerpo: 'x', destino: 'personas', valor: [ana.id, beto.id],
+  });
+  db.prepare('DELETE FROM mensajes_destinatarios WHERE mensaje_id = ?').run(salida.id);
+  db.prepare('DELETE FROM migraciones WHERE nombre = ?').run('a quiénes fue cada mensaje queda anotado');
+  assert.deepEqual(mensajes.unEnvio(jefa, salida.id).destinatarios, []);
+
+  /*
+   * Y uno mandado con la versión nueva, que YA los tiene anotados, no puede
+   * quedar con todo repetido: la migración corre una vez sobre una base donde
+   * conviven los de antes y los de después.
+   */
+  const yaLosTenia = mensajes.enviar(jefa, {
+    titulo: 'De después de la lista', cuerpo: 'x', destino: 'personas', valor: [ana.id, beto.id],
+  });
+  assert.equal(mensajes.unEnvio(jefa, yaLosTenia.id).destinatarios.length, 2);
+
+  losDestinatariosQuedanAnotados();
+  const rescatados = mensajes.unEnvio(jefa, salida.id).destinatarios;
+  assert.deepEqual(rescatados.map((x) => x.nombre).sort(), [ana.nombre, beto.nombre].sort(),
+    'lo que todavía se puede saber está en los avisos que llevan la clave del mensaje');
+  assert.equal(mensajes.unEnvio(jefa, yaLosTenia.id).destinatarios.length, 2,
+    'y al que ya los tenía no se le repiten');
+});
+
 // ------------------------------------ el ritmo: cuántos se pueden mandar seguidos
 
 /*
@@ -1065,6 +1181,17 @@ test('y pregunta con los dos botones antes de mandarlo a mucha gente', () => {
   assert.match(trozo, /preguntarSiIgualVa\(err, \(\) => mandar\(true\), 'msgError'\)/,
     'y al decir que sí se manda de nuevo, no se pierde lo escrito');
   assert.match(trozo, /igual_asi: !!igualAsi/);
+});
+
+test('la pantalla deja abrir un envío y ver a quiénes fue', () => {
+  const trozo = app.slice(app.indexOf("querySelectorAll('[data-abrir]')"),
+    app.indexOf("querySelectorAll('[data-abrir]')") + 1800);
+  assert.match(trozo, /\/avisos\/mensajes\/\$\{boton\.dataset\.abrir\}/);
+  assert.match(trozo, /msg-texto">\$\{esc\(e\.cuerpo/, 'con el texto, que estaba guardado y no se veía');
+  assert.match(trozo, /msg-aquienes[\s\S]{0,120}A quiénes fue/);
+  assert.match(trozo, /e\.destinatarios\.map\(\(x\) => `<li>/, 'con la lista, no solo el título');
+  assert.match(trozo, /es de antes de que se guardara/,
+    'de un mensaje viejo se dice que no quedó anotado, en vez de mostrar una lista vacía');
 });
 
 test('en las preferencias, lo que no se puede apagar sale dicho y no como casilla', () => {

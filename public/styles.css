@@ -3020,6 +3020,13 @@ ul.mini-list li.salido > span:first-child { opacity: .72; }
 .msg-recibido.sin-leer { border-left: 4px solid var(--marca-azul); }
 .msg-quien { font-size: 12.5px; }
 .msg-texto { margin: 9px 0 0; white-space: pre-wrap; }
+/* Un envío abierto: lo que decía y a quiénes fue */
+.msg-abierto { margin-top: 10px; padding: 12px 14px; background: #f8fafc;
+               border: 1px solid #eef1f6; border-radius: 8px; }
+.msg-abierto .msg-texto { margin: 0 0 8px; white-space: pre-wrap; }
+.msg-aquienes { margin-top: 8px; font-size: 13px; }
+.msg-aquienes ul { margin: 5px 0 0; padding-left: 1.2em; columns: 2; }
+@media (max-width: 620px) { .msg-aquienes ul { columns: 1; } }
 /* Uno retirado se lee tachado y apagado: la constancia queda, el aviso no */
 ul.mini-list li.retirado > span:first-child { opacity: .72; }
 ul.mini-list li.retirado .msg-t { text-decoration: line-through; }

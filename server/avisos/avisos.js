@@ -270,20 +270,36 @@ function paraLaCampanita(usuarioId, cuantos = 20) {
  * —«¿a qué hora era la reunión?»—, y la campanita no sirve para eso, porque
  * muestra un puñado y mezcla los avisos que hace el sistema.
  *
- * Alcanza hasta donde alcanzan los avisos: los leídos se borran solos a los
- * noventa días (ver `limpiarLosViejos`). Mientras tanto están todos acá.
+ * ── DE DÓNDE SALEN ──
+ *
+ * De la lista de destinatarios que guarda cada mensaje, no de los avisos: los
+ * avisos leídos se borran solos a los noventa días, y con ellos se iba lo que
+ * uno quería volver a leer. Ahora la lista no se borra.
+ *
+ * Con una excepción: un mensaje RETIRADO del que no queda aviso es uno que se
+ * retiró antes de que esta persona lo abriera, y eso es justamente lo que
+ * retirar quiere decir. Los que alcanzó a leer antes del retiro le siguen
+ * quedando, porque ya los vio.
  */
+const DE_LOS_MIOS = `
+    FROM mensajes_destinatarios d
+    JOIN mensajes_enviados m ON m.id = d.mensaje_id
+    LEFT JOIN notificaciones n ON n.usuario_id = d.usuario_id AND n.clave = 'mensaje:' || m.id
+   WHERE d.usuario_id = ? AND (n.id IS NOT NULL OR m.retirado_en IS NULL)`;
+
 function recibidos(usuarioId, { limit = 30, offset = 0 } = {}) {
   const tope = Math.min(Number(limit) || 30, 100);
   const desde = Math.max(Number(offset) || 0, 0);
-  const total = db
-    .prepare("SELECT COUNT(*) c FROM notificaciones WHERE usuario_id = ? AND tipo = 'mensaje'")
-    .get(usuarioId).c;
+  const total = db.prepare(`SELECT COUNT(*) c ${DE_LOS_MIOS}`).get(usuarioId).c;
   const mensajes = db
     .prepare(
-      `SELECT id, titulo, cuerpo, de, enlace, leida, created_at
-         FROM notificaciones WHERE usuario_id = ? AND tipo = 'mensaje'
-        ORDER BY id DESC LIMIT ? OFFSET ?`
+      `SELECT n.id, m.titulo, m.cuerpo, m.enlace,
+              -- el nombre tal como iba en el aviso; si ya no está, el de ahora
+              COALESCE(n.de, (SELECT nombre FROM usuarios WHERE id = m.enviado_por)) AS de,
+              CASE WHEN n.id IS NULL THEN 1 ELSE n.leida END AS leida,
+              m.created_at
+       ${DE_LOS_MIOS}
+       ORDER BY m.id DESC LIMIT ? OFFSET ?`
     )
     .all(usuarioId, tope, desde);
   return { total, mensajes, hayMas: desde + mensajes.length < total };

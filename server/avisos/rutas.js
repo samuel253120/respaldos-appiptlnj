@@ -207,6 +207,13 @@ router.post('/avisos/mensajes', authRequired, puedeEnviar, (req, res) => {
   res.status(201).json({ ok: true, ...salida });
 });
 
+/** Abrir uno: lo que decía y a quiénes fue. */
+router.get('/avisos/mensajes/:id(\\d+)', authRequired, puedeEnviar, (req, res) => {
+  const suyo = mensajes.unEnvio(req.user, Number(req.params.id));
+  if (!suyo) return res.status(404).json({ error: 'Ese mensaje no está entre los que usted puede ver.' });
+  res.json(suyo);
+});
+
 /**
  * Retirar uno.
  *
