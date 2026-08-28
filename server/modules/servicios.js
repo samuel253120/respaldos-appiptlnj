@@ -130,12 +130,34 @@ module.exports = {
       name: 'ofrenda_total', label: 'Ofrenda recibida (total)', type: 'money', seccion: 'Ofrenda',
       help: 'Todo lo que se recibió. Entra completo a la tesorería de la iglesia.', min: 0,
     },
+    /*
+     * El porcentaje con que se calculó queda GUARDADO en el servicio.
+     *
+     * Antes no: el aporte se recalculaba en cada guardado con el porcentaje que
+     * rigiera ese día. Medido en la revisión del módulo: un servicio de marzo de
+     * $200.000 con el 10% tenía $20.000 de aporte; se cambió el ajuste al 20% y
+     * bastó con corregirle la HORA DE INICIO para que el aporte pasara a $40.000
+     * y los movimientos de tesorería de un mes cerrado se reescribieran solos.
+     *
+     * Lo que se aportó entonces es un hecho. Se anota con el servicio, se ve, y
+     * se cambia a mano cuando de verdad hay que cambiarlo.
+     */
+    {
+      name: 'ofrenda_porcentaje', label: 'Porcentaje del aporte (%)', type: 'number', min: 0, max: 100,
+      help:
+        'El que rige al registrar el servicio, tomado de Configuración → Organización. Queda guardado acá: '
+        + 'si mañana la organización cambia el porcentaje, este servicio conserva el suyo. Cámbielo solo si '
+        + 'este servicio en particular aportó otro.',
+    },
     {
       name: 'ofrenda_fondo', label: 'Aporte a la corporación', type: 'money', readonly: true,
-      calcula: { tipo: 'porcentaje', campo: 'ofrenda_total', opcion: 'ofrenda_porcentaje_fondo' },
+      calcula: {
+        tipo: 'porcentaje', campo: 'ofrenda_total',
+        porcentajeCampo: 'ofrenda_porcentaje', opcion: 'ofrenda_porcentaje_fondo',
+      },
       help:
-        'Se calcula solo, con el porcentaje definido en Configuración → Organización. En Tesorería sale como ' +
-        'egreso de la cuenta de la iglesia y entra al «Fondo para la corporación».',
+        'Se calcula solo, con el porcentaje de acá arriba. En Tesorería sale como egreso de la cuenta de la ' +
+        'iglesia y entra al «Fondo para la corporación».',
     },
     {
       name: 'ofrenda_iglesia', label: 'Queda para la iglesia', type: 'money', readonly: true,
@@ -156,6 +178,19 @@ module.exports = {
   hooks: {
     beforeSave(data, { existing }) {
       const dato = (nombre) => (data[nombre] !== undefined ? data[nombre] : existing ? existing[nombre] : null);
+
+      /*
+       * Un servicio que todavía no tiene porcentaje se queda con el que rige
+       * hoy. De ahí en adelante es suyo: cambiar el ajuste de la organización no
+       * le toca lo que ya aportó.
+       *
+       * Va acá y no como `default` del campo porque el valor no es fijo: sale de
+       * Configuración, y un `default` se escribe una vez en la declaración.
+       */
+      const suPorcentaje = dato('ofrenda_porcentaje');
+      if (suPorcentaje === null || suPorcentaje === undefined || suPorcentaje === '') {
+        data.ofrenda_porcentaje = require('../ajustes').numero('ofrenda_porcentaje_fondo', 0, 100);
+      }
       const inicio = dato('hora_inicio');
       const termino = dato('hora_termino');
       if (inicio && termino && termino < inicio) {

@@ -2619,6 +2619,53 @@ function losDestinatariosQuedanAnotados() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Le anota a cada servicio ya registrado el porcentaje con que se calculó su
+ * aporte a la corporación.
+ *
+ * Antes ese porcentaje no se guardaba: el aporte se recalculaba en cada guardado
+ * con el que rigiera ese día, así que corregirle la hora a un servicio de marzo
+ * le cambiaba cuánto había aportado. Ahora el porcentaje vive con el servicio.
+ *
+ * El de los que ya estaban se puede RECUPERAR de los números mismos: el aporte
+ * dividido por la ofrenda es exactamente el porcentaje que se usó. Donde no hay
+ * ofrenda no hay de dónde sacarlo, y ahí se pone el que rige hoy, que es lo que
+ * se habría usado igual.
+ */
+function elPorcentajeDelAporteQuedaConSuServicio() {
+  const NOMBRE = 'el porcentaje del aporte queda con su servicio';
+  if (yaAplicada(NOMBRE)) return;
+
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('servicios')) return marcarAplicada(NOMBRE);
+  const columnas = db.prepare('PRAGMA table_info(servicios)').all().map((c) => c.name);
+  if (!columnas.includes('ofrenda_porcentaje')) return; // todavía no se declaró: se corre en el próximo arranque
+
+  const deHoy = require('./ajustes').numero('ofrenda_porcentaje_fondo', 0, 100);
+  const info = db
+    .prepare(
+      `UPDATE servicios
+          SET ofrenda_porcentaje = CASE
+                WHEN ofrenda_total > 0 THEN ROUND(COALESCE(ofrenda_fondo, 0) * 100.0 / ofrenda_total, 2)
+                ELSE ?
+              END
+        WHERE ofrenda_porcentaje IS NULL`
+    )
+    .run(deHoy);
+
+  if (info.changes) {
+    const rescatados = db
+      .prepare('SELECT COUNT(*) c FROM servicios WHERE ofrenda_total > 0')
+      .get().c;
+    console.log(
+      `🕊️  ${info.changes} servicio(s) quedaron con su porcentaje de aporte anotado `
+      + `(${rescatados} recuperado(s) de su propia ofrenda; el resto con el ${deHoy}% que rige hoy).`
+    );
+  }
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2675,6 +2722,7 @@ function ejecutarMigraciones() {
     ['el conteo de leídos se guarda en el mensaje', elConteoDeLeidosSeGuarda],
     ['los avisos de un mensaje dicen de quién vienen', elAvisoDiceDeQuienViene],
     ['a quiénes fue cada mensaje queda anotado', losDestinatariosQuedanAnotados],
+    ['el porcentaje del aporte queda con su servicio', elPorcentajeDelAporteQuedaConSuServicio],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -2925,7 +2973,7 @@ module.exports = {
   ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
   cadaIglesiaConSuCodigo, solicitudesNumeradasPorIglesia,
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, elConteoDeLeidosSeGuarda,
-  elAvisoDiceDeQuienViene, losDestinatariosQuedanAnotados,
+  elAvisoDiceDeQuienViene, losDestinatariosQuedanAnotados, elPorcentajeDelAporteQuedaConSuServicio,
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
   hojasDePresentacionYMatrimonio, certificadosApaisados,

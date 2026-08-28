@@ -390,7 +390,30 @@ function aplicarDefectos(def, data) {
  * El valor se guarda en la base, para poder filtrarlo, ordenarlo y sumarlo
  * como cualquier otro campo.
  */
-function porcentajeDe(calcula) {
+function porcentajeDe(calcula, crudo) {
+  /*
+   * El porcentaje puede venir de un campo de la propia ficha, y ese manda sobre
+   * el de Configuración.
+   *
+   * Existe por lo que pasaba con la ofrenda de un servicio: el aporte a la
+   * corporación se recalculaba en CADA guardado con el porcentaje que rigiera
+   * ese día, así que corregir la hora de un servicio de marzo le cambiaba
+   * cuánto había aportado —y con él, los movimientos de tesorería de un mes
+   * cerrado—. Lo que se aportó entonces es un hecho: se guarda con la ficha y
+   * deja de moverse cuando cambia el ajuste.
+   *
+   * En blanco —una ficha nueva, o una de antes de que esto existiera— manda el
+   * ajuste, que es lo que corresponde: el porcentaje que rige hoy.
+   */
+  if (calcula.porcentajeCampo && crudo) {
+    const suyo = crudo(calcula.porcentajeCampo);
+    // Sirve el cero: un servicio que no aportó nada aportó cero, y eso no es lo
+    // mismo que no tener porcentaje anotado
+    if (suyo !== null && suyo !== undefined && suyo !== '') {
+      const n = Number(suyo);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+  }
   if (calcula.opcion) {
     const ajustes = require('./ajustes'); // tardío: ajustes usa la base
     const n = Number(ajustes.obtener(calcula.opcion));
@@ -400,9 +423,9 @@ function porcentajeDe(calcula) {
 }
 
 function aplicarCalculos(def, data, existing) {
+  const crudo = (nombre) => (data[nombre] !== undefined ? data[nombre] : existing ? existing[nombre] : null);
   const numero = (nombre) => {
-    const v = data[nombre] !== undefined ? data[nombre] : existing ? existing[nombre] : null;
-    const n = Number(v);
+    const n = Number(crudo(nombre));
     return Number.isFinite(n) ? n : 0;
   };
   const redondear = (n) => Math.round(n * 100) / 100;
@@ -415,7 +438,7 @@ function aplicarCalculos(def, data, existing) {
     } else if (c.tipo === 'resta') {
       data[f.name] = redondear(c.campos.reduce((acc, n, i) => (i === 0 ? numero(n) : acc - numero(n)), 0));
     } else if (c.tipo === 'porcentaje') {
-      data[f.name] = redondear((numero(c.campo) * porcentajeDe(c)) / 100);
+      data[f.name] = redondear((numero(c.campo) * porcentajeDe(c, crudo)) / 100);
     }
   }
 }

@@ -29,8 +29,16 @@ const NOTA = 'Movimiento generado por el Registro de Servicios.';
 
 /** Los tres movimientos que le corresponden a la ofrenda de este servicio. */
 function movimientosDeLaOfrenda(fila, db) {
+  /*
+   * El porcentaje que se escribe en el movimiento es EL DEL SERVICIO, no el que
+   * rija hoy. Si no, un servicio viejo que alguien vuelva a guardar quedaba con
+   * un movimiento que decía «(20%)» sobre un monto calculado al 10%.
+   */
   const ajustes = require('./ajustes');
-  const porcentaje = ajustes.numero('ofrenda_porcentaje_fondo', 0, 100);
+  const suyo = fila.ofrenda_porcentaje;
+  const porcentaje = suyo !== null && suyo !== undefined && suyo !== '' && Number.isFinite(Number(suyo))
+    ? Number(suyo)
+    : ajustes.numero('ofrenda_porcentaje_fondo', 0, 100);
   const cuentaDe = (tipo) =>
     db.prepare('SELECT * FROM cuentas_tesoreria WHERE iglesia_id = ? AND tipo = ?').get(fila.iglesia_id, tipo);
 

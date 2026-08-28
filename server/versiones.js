@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.151.0", fecha: "2026-08-28", titulo: "El aporte a la corporación deja de recalcularse solo: cada servicio guarda el porcentaje con que se calculó" },
   { version: "1.150.0", fecha: "2026-08-28", titulo: "El registro de un servicio ya no pide el tema del mensaje: la iglesia no lo usa" },
   { version: "1.149.0", fecha: "2026-08-28", titulo: "Un mensaje largo deja de comerse la campanita entera, y al teléfono le va un extracto que sí cabe" },
   { version: "1.148.0", fecha: "2026-08-28", titulo: "De cada mensaje queda a quiénes fue y qué decía: un envío se abre y se relee, y lo recibido ya no se va con el aviso" },

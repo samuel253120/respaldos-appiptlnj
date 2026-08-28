@@ -9130,7 +9130,7 @@ function printServicio(m, row) {
       <h3>Ofrenda</h3>
       <table class="meta-tbl">
         ${fila('Recibida (total)', fmtMoney(row.ofrenda_total))}
-        ${fila('Aporte a la corporación', fmtMoney(row.ofrenda_fondo))}
+        ${fila(`Aporte a la corporación${row.ofrenda_porcentaje != null && row.ofrenda_porcentaje !== '' ? ` (${row.ofrenda_porcentaje}%)` : ''}`, fmtMoney(row.ofrenda_fondo))}
         ${fila('Queda para la iglesia', fmtMoney(row.ofrenda_iglesia))}
       </table>
 
