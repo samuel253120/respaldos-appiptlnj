@@ -31,6 +31,7 @@ const { db } = require('./db');
 const { allModules, displayOf } = require('./registry');
 const { can } = require('./permissions');
 const alcance = require('./alcance');
+const busqueda = require('./busqueda');
 const sensibles = require('./sensibles');
 
 /** Cuántos se traen de cada módulo y cuántos se muestran en total. */
@@ -135,9 +136,13 @@ function buscar(texto, usuario) {
     const params = [];
     const donde = [];
 
-    const like = buscables.map((f) => `"${f}" LIKE ?`).join(' OR ');
-    donde.push(`(${like})`);
-    for (const _ of buscables) params.push(`%${q}%`);
+    // Por palabras y sin tildes, igual que el listado de cada módulo: el
+    // buscador de arriba y el listado tienen que encontrar lo mismo, o el de
+    // arriba parece roto. Ver server/busqueda.js.
+    const buscada = busqueda.condicion(q, buscables);
+    if (!buscada) continue;
+    donde.push(`(${buscada.sql})`);
+    params.push(...buscada.params);
 
     // El mismo alcance del listado: iglesias, cuerpos y nivel de tesorería
     const suyo = alcance.condiciones(def, usuario, params);

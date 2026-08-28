@@ -30,6 +30,7 @@ const { authRequired, requirePerm } = require('./auth');
 const rut = require('./rut');
 const { can } = require('./permissions');
 const planilla = require('./planilla');
+const busqueda = require('./busqueda');
 const archivos = require('./archivos');
 const sensibles = require('./sensibles');
 const tesorerias = require('./tesorerias');
@@ -852,15 +853,16 @@ function buildRouter() {
       const scope = scopeClause(def, req.user, params);
       if (scope) where.push(scope);
 
-      const q = (req.query.q || '').trim();
       // Solo por los campos que esta persona alcanza: un teléfono que no se le
       // muestra tampoco sirve para encontrar a su dueño, porque si sirviera
       // bastaría con probar números para averiguar de quién es cada uno.
-      const buscables = sensibles.buscablesPara(def, req.user);
-      if (q && buscables.length) {
-        const like = buscables.map((f) => `"${f}" LIKE ?`).join(' OR ');
-        where.push(`(${like})`);
-        buscables.forEach(() => params.push(`%${q}%`));
+      //
+      // Cómo se compara —por palabras y sin tildes— está en server/busqueda.js,
+      // con lo que costaba antes escrito ahí.
+      const buscada = busqueda.condicion(req.query.q, sensibles.buscablesPara(def, req.user));
+      if (buscada) {
+        where.push(`(${buscada.sql})`);
+        params.push(...buscada.params);
       }
 
       // Filtros exactos: ?f_campo=valor (solo campos declarados)
