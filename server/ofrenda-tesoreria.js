@@ -23,6 +23,11 @@
  *   3. Egreso     del aporte                     de esa misma cuenta
  *   4. Ingreso    del aporte                     en el «Fondo para la corporación» de la iglesia
  *
+ * Los dos del aporte —3 y 4— van marcados como TRASLADO ENTRE CUENTAS: no es
+ * plata que entre ni salga de la organización, es la misma cambiando de cuenta,
+ * y el resumen la cuenta aparte para no decir que entró dos veces (ver
+ * server/entre-cuentas.js).
+ *
  * El par del aporte —3 y 4— va con método «Otro», y no es descuido: no es
  * dinero que entre ni salga de la iglesia, es la misma plata pasando de una
  * cuenta suya a otra. Decir «Efectivo» ahí era tan inexacto como decirlo de una
@@ -76,25 +81,25 @@ function movimientosDeLaOfrenda(fila, db) {
   return [
     {
       columna: 'movimiento_iglesia_id',
-      tipo: 'Ingreso', categoria: 'Ofrendas', metodo: 'Efectivo',
+      tipo: 'Ingreso', categoria: 'Ofrendas', metodo: 'Efectivo', entreCuentas: 0,
       monto: enEfectivo,
       cuenta: general, concepto: recibida,
     },
     {
       columna: 'movimiento_transferencia_id',
-      tipo: 'Ingreso', categoria: 'Ofrendas', metodo: 'Transferencia',
+      tipo: 'Ingreso', categoria: 'Ofrendas', metodo: 'Transferencia', entreCuentas: 0,
       monto: porBanco,
       cuenta: general, concepto: `${recibida} (por transferencia)`,
     },
     {
       columna: 'movimiento_aporte_id',
-      tipo: 'Egreso', categoria: 'Aportes', metodo: 'Otro',
+      tipo: 'Egreso', categoria: 'Aportes', metodo: 'Otro', entreCuentas: 1,
       monto: Number(fila.ofrenda_fondo) || 0,
       cuenta: general, concepto: aporte,
     },
     {
       columna: 'movimiento_fondo_id',
-      tipo: 'Ingreso', categoria: 'Aportes', metodo: 'Otro',
+      tipo: 'Ingreso', categoria: 'Aportes', metodo: 'Otro', entreCuentas: 1,
       monto: Number(fila.ofrenda_fondo) || 0,
       cuenta: fondo, concepto: aporte,
     },
@@ -132,19 +137,19 @@ function sincronizarOfrenda(fila, db) {
       db.prepare(
         `UPDATE tesoreria
             SET fecha = ?, tipo = ?, categoria = ?, concepto = ?, monto = ?, metodo = ?,
-                cuenta_id = ?, iglesia_id = ?, updated_at = datetime('now','localtime')
+                entre_cuentas = ?, cuenta_id = ?, iglesia_id = ?, updated_at = datetime('now','localtime')
           WHERE id = ?`
       ).run(fila.fecha, lado.tipo, lado.categoria, lado.concepto, lado.monto, lado.metodo,
-            lado.cuenta.id, fila.iglesia_id, guardado.id);
+            lado.entreCuentas, lado.cuenta.id, fila.iglesia_id, guardado.id);
     } else {
       const info = db
         .prepare(
-          `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto, metodo, cuenta_id,
-                                  iglesia_id, notas, servicio_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto, metodo, entre_cuentas,
+                                  cuenta_id, iglesia_id, notas, servicio_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(fila.fecha, lado.tipo, lado.categoria, lado.concepto, lado.monto, lado.metodo,
-             lado.cuenta.id, fila.iglesia_id, NOTA, fila.id);
+             lado.entreCuentas, lado.cuenta.id, fila.iglesia_id, NOTA, fila.id);
       db.prepare(`UPDATE servicios SET "${lado.columna}" = ? WHERE id = ?`).run(info.lastInsertRowid, fila.id);
     }
   }

@@ -13,6 +13,12 @@
  * cuenta de origen y un ingreso en la de destino—, que se mantienen
  * cuadrados: si se corrige el traspaso se corrigen los dos, y si se elimina
  * se eliminan los dos. Esos movimientos no se editan por separado.
+ *
+ * Los dos van marcados como TRASLADO ENTRE CUENTAS: la plata no entró ni salió
+ * de la organización, cambió de cuenta. El resumen la cuenta aparte cuando ve
+ * los dos lados, y como egreso de verdad cuando solo ve uno —el aporte que una
+ * iglesia le traspasa a la corporación, mirado desde esa iglesia, sí salió—.
+ * Está explicado en server/entre-cuentas.js.
  */
 module.exports = {
   name: 'traspasos',
@@ -139,7 +145,7 @@ module.exports = {
           db.prepare(
             `UPDATE tesoreria
                 SET fecha = ?, tipo = ?, categoria = 'Traspaso', concepto = ?, monto = ?,
-                    metodo = ?, cuenta_id = ?, iglesia_id = ?, comprobante = ?,
+                    metodo = ?, entre_cuentas = 1, cuenta_id = ?, iglesia_id = ?, comprobante = ?,
                     updated_at = datetime('now','localtime')
               WHERE id = ?`
           ).run(
@@ -150,9 +156,9 @@ module.exports = {
         } else {
           const info = db
             .prepare(
-              `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto, metodo, cuenta_id,
-                                      iglesia_id, comprobante, notas, traspaso_id)
-               VALUES (?, ?, 'Traspaso', ?, ?, ?, ?, ?, ?, ?, ?)`
+              `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto, metodo, entre_cuentas,
+                                      cuenta_id, iglesia_id, comprobante, notas, traspaso_id)
+               VALUES (?, ?, 'Traspaso', ?, ?, ?, 1, ?, ?, ?, ?, ?)`
             )
             .run(
               fila.fecha, lado.tipo, lado.concepto, fila.monto,

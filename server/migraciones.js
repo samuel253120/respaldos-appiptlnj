@@ -2666,6 +2666,60 @@ function elPorcentajeDelAporteQuedaConSuServicio() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Los traslados entre cuentas quedan marcados como lo que son.
+ *
+ * Desde la 1.161.0, los dos lados de un traspaso y los dos del aporte que una
+ * ofrenda pasa al fondo llevan una marca: no son plata que entre ni salga de la
+ * organización, es la misma cambiando de cuenta. El resumen la cuenta aparte
+ * (ver server/entre-cuentas.js).
+ *
+ * Los movimientos que ya estaban escritos no la tienen, y sin ella el resumen
+ * de los meses pasados seguiría diciendo que entró más de lo que entró. Acá se
+ * les pone, sin tocar ni un peso: se reconocen porque llevan su traspaso_id, o
+ * porque son los dos movimientos que el servicio anotó como aporte —los que
+ * apuntan sus columnas movimiento_aporte_id y movimiento_fondo_id—. Los
+ * ingresos de la ofrenda propiamente tal no se tocan: ésos sí entraron.
+ */
+function losTrasladosQuedanMarcados() {
+  const NOMBRE = 'los traslados entre cuentas quedan marcados';
+  if (yaAplicada(NOMBRE)) return;
+
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('tesoreria')) return marcarAplicada(NOMBRE);
+  const columnas = db.prepare('PRAGMA table_info(tesoreria)').all().map((c) => c.name);
+  if (!columnas.includes('entre_cuentas')) return; // todavía no se declaró: se corre en el próximo arranque
+
+  let marcados = 0;
+  marcados += db
+    .prepare("UPDATE tesoreria SET entre_cuentas = 1 WHERE traspaso_id IS NOT NULL AND COALESCE(entre_cuentas, 0) <> 1")
+    .run().changes;
+
+  if (hayTabla('servicios')) {
+    const deServicios = db.prepare('PRAGMA table_info(servicios)').all().map((c) => c.name);
+    if (deServicios.includes('movimiento_aporte_id') && deServicios.includes('movimiento_fondo_id')) {
+      marcados += db
+        .prepare(
+          `UPDATE tesoreria SET entre_cuentas = 1
+            WHERE COALESCE(entre_cuentas, 0) <> 1
+              AND id IN (SELECT movimiento_aporte_id FROM servicios WHERE movimiento_aporte_id IS NOT NULL
+                         UNION
+                         SELECT movimiento_fondo_id  FROM servicios WHERE movimiento_fondo_id  IS NOT NULL)`
+        )
+        .run().changes;
+    }
+  }
+
+  // Y lo demás queda dicho también: un movimiento escrito a mano no es un traslado
+  db.prepare('UPDATE tesoreria SET entre_cuentas = 0 WHERE entre_cuentas IS NULL').run();
+
+  if (marcados) {
+    console.log(`💱 ${marcados} movimiento(s) quedaron marcados como traslado entre cuentas: ya no se cuentan como plata que entró.`);
+  }
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2723,6 +2777,7 @@ function ejecutarMigraciones() {
     ['los avisos de un mensaje dicen de quién vienen', elAvisoDiceDeQuienViene],
     ['a quiénes fue cada mensaje queda anotado', losDestinatariosQuedanAnotados],
     ['el porcentaje del aporte queda con su servicio', elPorcentajeDelAporteQuedaConSuServicio],
+    ['los traslados entre cuentas quedan marcados', losTrasladosQuedanMarcados],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -2974,6 +3029,7 @@ module.exports = {
   cadaIglesiaConSuCodigo, solicitudesNumeradasPorIglesia,
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, elConteoDeLeidosSeGuarda,
   elAvisoDiceDeQuienViene, losDestinatariosQuedanAnotados, elPorcentajeDelAporteQuedaConSuServicio,
+  losTrasladosQuedanMarcados,
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
   hojasDePresentacionYMatrimonio, certificadosApaisados,

@@ -2551,6 +2551,15 @@ async function viewList(name, filtrosIniciales) {
         <div class="fin green"><div class="lbl">Ingresos (período filtrado)</div><div class="num">${fmtMoney(r.ingresos)}</div></div>
         <div class="fin red"><div class="lbl">Egresos</div><div class="num">${fmtMoney(r.egresos)}</div></div>
         <div class="fin blue"><div class="lbl">Balance</div><div class="num">${fmtMoney(r.balance)}</div></div>
+        <!-- La plata que no entró ni salió, solo cambió de cuenta: el aporte que una
+             ofrenda pasa al fondo y los traspasos. Antes se sumaba a los ingresos y
+             el mes decía que había entrado más de lo que entró. Solo se muestra
+             cuando hubo alguno: una tarjeta en cero no dice nada. -->
+        ${Number(r.movido) > 0 ? `
+          <div class="fin slate">
+            <div class="lbl">Movido entre cuentas</div>
+            <div class="num">${fmtMoney(r.movido)}</div>
+          </div>` : ''}
         <div class="fin slate"><div class="lbl">Movimientos</div><div class="num">${esc(fmtNumero(r.movimientos))}</div></div>
         ${cuentas.length ? `
           <details class="saldos-cuentas" ${enPantallaChica() ? '' : 'open'}>

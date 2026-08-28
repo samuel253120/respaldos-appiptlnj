@@ -60,6 +60,14 @@ module.exports = {
     // (se manejan desde allá, para que los dos lados queden siempre cuadrados)
     { name: 'traspaso_id', type: 'number', oculto: true, readonly: true },
     { name: 'servicio_id', type: 'number', oculto: true, readonly: true },
+    /*
+     * Un lado de un traslado entre cuentas de la organización: los dos de un
+     * traspaso, y los dos del aporte que una ofrenda pasa al fondo. No es plata
+     * que entre ni salga, y por eso el resumen la cuenta aparte (ver
+     * server/entre-cuentas.js). Lo pone quien genera el movimiento, no la
+     * persona: un movimiento escrito a mano nunca es un traslado.
+     */
+    { name: 'entre_cuentas', type: 'number', oculto: true, readonly: true },
   ],
   hooks: {
     beforeSave(data, { user, existing, db, confirmado }) {
@@ -157,14 +165,16 @@ module.exports = {
         params.push(req.query.hasta);
       }
       const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
-      const totals = db
-        .prepare(`SELECT tipo, COALESCE(SUM(monto),0) AS total, COUNT(*) AS n FROM tesoreria ${whereSql} GROUP BY tipo`)
-        .all(...params);
-      const porCategoria = db
-        .prepare(`SELECT tipo, categoria, COALESCE(SUM(monto),0) AS total FROM tesoreria ${whereSql} GROUP BY tipo, categoria ORDER BY total DESC`)
-        .all(...params);
-      const ingresos = (totals.find((t) => t.tipo === 'Ingreso') || {}).total || 0;
-      const egresos = (totals.find((t) => t.tipo === 'Egreso') || {}).total || 0;
+      /*
+       * Lo que entró y lo que salió, sin la plata que solo cambió de bolsillo:
+       * el aporte que una ofrenda pasa al fondo de su misma iglesia y los dos
+       * lados de un traspaso. Se descuentan solo cuando LOS DOS LADOS están
+       * dentro de lo que se está mirando; el porqué está en
+       * server/entre-cuentas.js.
+       */
+      const entreCuentas = require('../entre-cuentas');
+      const cuentas = entreCuentas.totalesDe(db, whereSql, params);
+      const porCategoria = entreCuentas.porCategoriaDe(db, whereSql, params);
       // Saldo por cuenta, para ver de un vistazo cómo está repartido el dinero
       const suyasResumen = require('../alcance').iglesiasDe(req.user);
       const porCuenta = db
@@ -181,11 +191,7 @@ module.exports = {
         )
         .all(...suyasResumen);
 
-      res.json({
-        ingresos, egresos, balance: ingresos - egresos,
-        movimientos: totals.reduce((a, t) => a + t.n, 0),
-        porCategoria, porCuenta,
-      });
+      res.json({ ...cuentas, porCategoria, porCuenta });
     });
   },
 };
