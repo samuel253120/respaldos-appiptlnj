@@ -5102,6 +5102,11 @@ function preguntarSiIgualVa(err, seguir) {
       volver: 'Volver y trasladarlas',
       seguir: 'Desactivarla igual',
     },
+    miembro_con_el_mismo_nombre: {
+      titulo: '🧍 Puede que esta persona ya esté registrada',
+      volver: 'Volver y buscarla',
+      seguir: 'Es otra persona, crear la ficha',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',

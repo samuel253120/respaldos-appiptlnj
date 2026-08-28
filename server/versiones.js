@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.133.0", fecha: "2026-08-28", titulo: "Al crear a alguien que ya está registrado, el sistema lo dice antes de guardar: se pregunta, no se bloquea" },
   { version: "1.132.0", fecha: "2026-08-28", titulo: "A quien fallece o se traslada se le retira de sus cuerpos: deja de aparecer en la lista, en la planilla del mes y en el aviso de faltas" },
   { version: "1.131.0", fecha: "2026-08-27", titulo: "El sistema avisa de quien lleva muchas faltas seguidas, con las justificadas dichas aparte" },
   { version: "1.130.0", fecha: "2026-08-27", titulo: "Se puede anotar a quien estuvo sin ser del cuerpo: queda como visita, con su constancia, y fuera del porcentaje de nadie" },

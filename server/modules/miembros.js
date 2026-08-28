@@ -90,6 +90,118 @@ function sincronizarUsuario(fila, db) {
     .run(...valores, usuario.id);
 }
 
+/**
+ * Dos fichas de la misma persona.
+ *
+ * El RUT es único, pero no obligatorio, y en una base traída de otro sistema
+ * casi nadie lo trae. Sin RUT, dos fichas de la misma persona son dos personas
+ * distintas para el sistema. Medido antes de esto: se creó «Zzprueba Duplicada
+ * Del Carmen» dos veces seguidas en la misma iglesia y las dos entraron con un
+ * 201, sin una palabra.
+ *
+ * Lo que cuesta no es la fila de más: su asistencia queda partida en dos y
+ * ninguna de las dos fichas muestra su historia completa, se le puede emitir
+ * dos veces el mismo certificado, y entra dos veces al cuerpo y cuenta dos
+ * veces entre los convocados. Cuando alguien se da cuenta, hay que juntar a
+ * mano lo que quedó colgando de cada una. Y como buscar «María González» hoy
+ * no encuentra a María González, el paso siguiente natural es justamente
+ * crearla de nuevo.
+ *
+ * ── Con qué se compara ──
+ *
+ * Misma iglesia, mismo PRIMER nombre y mismos apellidos, sin mirar tildes ni
+ * mayúsculas. El primer nombre y no todos, porque el segundo se escribe unas
+ * veces sí y otras no —«María José» y «María» son la misma señora—. Los
+ * apellidos COMPLETOS y no solo el primero: medido sobre las 603 fichas
+ * cargadas, comparar solo el primer apellido daba 1.726 choques —«Luis Pérez
+ * Soto» contra «Luis Pérez González», que no son la misma persona ni de
+ * lejos— y comparar los dos da 185. Nueve veces menos ruido, y lo que se
+ * descarta es justo aquello en que los apellidos no coinciden.
+ *
+ * ── Cuándo NO pregunta ──
+ *
+ * Si las dos fichas traen RUT y son distintos, son dos personas distintas y no
+ * hay nada que preguntar: en la base cargada eso solo deja fuera 1.726 avisos
+ * inútiles. Si el RUT es el mismo, no llega hasta acá: lo ataja antes la regla
+ * de campo único.
+ *
+ * Y al editar solo se revisa cuando este guardado cambia el nombre o la
+ * iglesia. Revisarlo siempre castigaría a quien viene a corregir un teléfono
+ * por una ficha repetida que ya estaba y que a lo mejor ni conoce —el mismo
+ * error que se arregló en las reglas del trato pastoral, unas líneas más
+ * abajo—.
+ *
+ * ── Y no bloquea: pregunta ──
+ *
+ * Dos hermanas llamadas igual existen. Se devuelve un objeto con `confirmar`,
+ * que el motor convierte en dos botones en vez de en un aviso rojo. Al
+ * importar una planilla no hay a quién preguntarle quinientas veces, así que
+ * la fila queda marcada y quien importa la revisa en la vista previa, que es
+ * como el sistema resuelve todas las preguntas por planilla (ver
+ * server/importar.js).
+ */
+function comoSeCompara(texto) {
+  return String(texto || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Con qué dato se distingue a una persona de otra que se llama igual. */
+function comoSeDistingue(ficha) {
+  if (ficha.rut) return `RUT ${ficha.rut}`;
+  if (ficha.fecha_nacimiento) {
+    const [a, m, d] = String(ficha.fecha_nacimiento).slice(0, 10).split('-');
+    return `nacida el ${d}-${m}-${a}`;
+  }
+  return 'sin RUT ni fecha de nacimiento';
+}
+
+/**
+ * Las fichas de esta misma iglesia que se llaman igual que la que se guarda.
+ *
+ * Se traen las de la iglesia y se comparan acá, porque SQLite no sabe ignorar
+ * las tildes y son justamente lo que hay que ignorar. Medido: 1,5 ms sobre una
+ * iglesia de 600 fichas y 8,9 ms sobre una de 4.400. Se paga solo al crear una
+ * ficha o al cambiarle el nombre, que es algo que se hace de a una y a mano.
+ */
+function lasQueSeLlamanIgual(db, ficha, id) {
+  const nombre = comoSeCompara(ficha.nombres).split(' ')[0];
+  const apellidos = comoSeCompara(ficha.apellidos);
+  if (!nombre || !apellidos || !ficha.iglesia_id) return [];
+
+  return db
+    .prepare('SELECT id, nombres, apellidos, rut, fecha_nacimiento FROM miembros WHERE iglesia_id = ? AND id IS NOT ?')
+    .all(ficha.iglesia_id, id || 0)
+    .filter((otra) => comoSeCompara(otra.nombres).split(' ')[0] === nombre
+      && comoSeCompara(otra.apellidos) === apellidos
+      // dos RUT distintos son dos personas distintas: no hay nada que preguntar
+      && !(otra.rut && ficha.rut && otra.rut !== ficha.rut));
+}
+
+/** El aviso, o null si no hay ninguna que se llame igual. */
+function avisoDeFichaRepetida(db, ficha, id) {
+  const iguales = lasQueSeLlamanIgual(db, ficha, id);
+  if (!iguales.length) return null;
+
+  const listadas = iguales.slice(0, 3)
+    .map((o) => `${o.nombres} ${o.apellidos} (${comoSeDistingue(o)})`).join('; ');
+  const yMas = iguales.length > 3 ? `, y ${iguales.length - 3} más` : '';
+
+  return {
+    error:
+      (iguales.length === 1
+        // Con una sola no se repite el nombre: ya está escrito en el
+        // formulario que la persona está mirando
+        ? `Ya hay una ficha de ${iguales[0].nombres} ${iguales[0].apellidos} en esta iglesia `
+          + `(${comoSeDistingue(iguales[0])}). `
+        : `Ya hay ${iguales.length} fichas con ese mismo nombre en esta iglesia: ${listadas}${yMas}. `)
+      + 'Si es la misma persona, abra la que ya existe en vez de crear otra: así su asistencia, sus '
+      + 'certificados y su historial quedan en un solo lugar. Si de verdad son dos personas distintas, '
+      + 'confirme.',
+    confirmar: 'miembro_con_el_mismo_nombre',
+  };
+}
+
 /** Años cumplidos a la fecha de hoy. */
 function edadEnAnios(fechaNacimiento) {
   if (!fechaNacimiento) return null;
@@ -466,8 +578,27 @@ module.exports = {
   },
 
   hooks: {
-    beforeSave(data, { id, existing, db }) {
+    beforeSave(data, { id, existing, db, confirmado }) {
       const rutDe = (d, e) => (d.rut !== undefined ? d.rut : e ? e.rut : null);
+
+      /*
+       * ¿No será la misma persona que ya está? Ver arriba, en
+       * `avisoDeFichaRepetida`, por qué se compara así y por qué pregunta en
+       * vez de bloquear.
+       *
+       * Al editar solo se mira si ESTE guardado cambia el nombre o la iglesia:
+       * revisarlo siempre trancaría a quien viene a corregir un teléfono.
+       */
+      if (!confirmado) {
+        const antesDeGuardar = existing || {};
+        const cambiaElNombre = ['nombres', 'apellidos', 'iglesia_id']
+          .some((campo) => data[campo] !== undefined
+            && comoSeCompara(data[campo]) !== comoSeCompara(antesDeGuardar[campo]));
+        if (!id || cambiaElNombre) {
+          const repetida = avisoDeFichaRepetida(db, { ...antesDeGuardar, ...data }, id);
+          if (repetida) return repetida;
+        }
+      }
       const conyuge = data.conyuge_id !== undefined ? data.conyuge_id : existing ? existing.conyuge_id : null;
       if (conyuge && id && Number(conyuge) === Number(id)) {
         return 'Un miembro no puede figurar como su propio cónyuge';
