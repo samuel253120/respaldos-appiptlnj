@@ -1510,6 +1510,45 @@ async function entrar(rut = RUT, clave = CLAVE) {
       + `y quedaron ${despuesDeSacar.datos && despuesDeSacar.datos.total} miembros`);
   }
 
+  /* 12 · Mandar mensajes a máquina ------------------------------------- */
+  console.log('\n12 · El ritmo de los mensajes');
+  /*
+   * El aviso de un mensaje escrito a mano no se puede apagar en la campanita
+   * —a propósito, porque quien lo manda no tiene acuse de recibo—, así que una
+   * cuenta descuidada o robada puede llenar una campanita que nadie puede
+   * silenciar. Medido antes del tope: veinticinco mensajes urgentes seguidos a
+   * la misma persona salieron todos en 85 ms.
+   *
+   * Va al final de esta prueba a propósito: gasta el tope de la cuenta con que
+   * se corre, y lo que viene después ya no manda mensajes.
+   */
+  const rafaga = `Ráfaga ${Date.now()}`;
+  const aQuien = await api('GET', '/api/avisos/mensajes/destinatarios');
+  if (aQuien.estado !== 200 || !(aQuien.datos.personas || []).length) {
+    revisar('el tope de mensajes por hora frena la ráfaga', false,
+      `no se pudo preguntar a quién escribirle: ${aQuien.estado}`);
+  } else {
+    const aUno = [aQuien.datos.personas[0].id];
+    let salieron = 0;
+    let frenados = 0;
+    for (let i = 0; i < 25; i++) {
+      const r = await api('POST', '/api/avisos/mensajes', {
+        titulo: `${rafaga} ${i}`, cuerpo: 'x', destino: 'personas', valor: aUno, urgente: true,
+      });
+      if (r.estado === 201) salieron++;
+      if (r.estado === 429) frenados++;
+    }
+    revisar('el tope de mensajes por hora frena la ráfaga',
+      frenados > 0 && salieron < 25, `salieron ${salieron} de 25 y se frenaron ${frenados}`);
+
+    const ultimo = await api('POST', '/api/avisos/mensajes', {
+      titulo: `${rafaga} uno más`, cuerpo: 'x', destino: 'personas', valor: aUno,
+    });
+    revisar('y se dice cuánto falta, en vez de un «no» a secas',
+      ultimo.estado === 429 && /Puede mandar otro en/.test((ultimo.datos || {}).error || ''),
+      `respondió ${ultimo.estado}: ${JSON.stringify(ultimo.datos).slice(0, 140)}`);
+  }
+
   console.log(fallas ? `\n❌ ${fallas} comprobación(es) fallaron.` : '\n✅ Lo que tiene que estar cerrado, está cerrado.');
   process.exit(fallas ? 1 : 0);
 })();

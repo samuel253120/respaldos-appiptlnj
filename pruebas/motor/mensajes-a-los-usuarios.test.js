@@ -922,6 +922,70 @@ test('un mensaje cuyo autor ya no existe no se le abre a cualquiera', () => {
   assert.ok(titulosQueVe(general).includes('De una cuenta que ya no está'));
 });
 
+// ------------------------------------ el ritmo: cuántos se pueden mandar seguidos
+
+/*
+ * El tope de quinientos es POR ENVÍO. No había ninguno para la cantidad de
+ * envíos, y medido salieron veinticinco mensajes urgentes seguidos a la misma
+ * persona en 85 ms. Por separado las dos reglas están bien; juntas dejan un
+ * hueco, porque el aviso de un mensaje no se puede apagar en la campanita.
+ */
+const ritmo = require('../../server/avisos/ritmo');
+
+test('deja mandar hasta el tope y después frena', () => {
+  ritmo.olvidarTodo();
+  const quien = 90001;
+  for (let i = 0; i < ritmo.DE_FABRICA; i++) {
+    assert.equal(ritmo.cuantoLeFalta(quien), 0, `el envío ${i + 1} tenía que pasar`);
+    ritmo.anotarEnvio(quien);
+  }
+  assert.ok(ritmo.cuantoLeFalta(quien) > 0, 'el que sigue, no');
+  assert.equal(ritmo.cuantosLleva(quien), ritmo.DE_FABRICA);
+});
+
+test('y dice cuánto falta, en vez de un «no» a secas', () => {
+  ritmo.olvidarTodo();
+  const quien = 90002;
+  const ahora = Date.now();
+  for (let i = 0; i < ritmo.DE_FABRICA; i++) ritmo.anotarEnvio(quien, ahora);
+  const faltan = ritmo.cuantoLeFalta(quien, ahora);
+  assert.equal(faltan, Math.ceil(ritmo.VENTANA_MS / 1000), 'recién mandados: falta la hora entera');
+  assert.match(ritmo.comoSeExplica(faltan), /Puede mandar otro en 60 minutos/);
+  assert.match(ritmo.comoSeExplica(faltan), /no se puede apagar/,
+    'el porqué importa: sin eso el tope parece un capricho');
+});
+
+test('pasada la hora vuelve a dejar', () => {
+  ritmo.olvidarTodo();
+  const quien = 90003;
+  const hace61 = Date.now() - 61 * 60 * 1000;
+  for (let i = 0; i < ritmo.DE_FABRICA; i++) ritmo.anotarEnvio(quien, hace61);
+  assert.equal(ritmo.cuantosLleva(quien), 0, 'los de hace más de una hora ya no cuentan');
+  assert.equal(ritmo.cuantoLeFalta(quien), 0);
+});
+
+test('el tope es de cada persona, no del sistema', () => {
+  ritmo.olvidarTodo();
+  for (let i = 0; i < ritmo.DE_FABRICA; i++) ritmo.anotarEnvio(90004);
+  assert.ok(ritmo.cuantoLeFalta(90004) > 0);
+  assert.equal(ritmo.cuantoLeFalta(90005), 0, 'que uno se pase no puede callar a los demás');
+});
+
+test('la ruta solo gasta el tope con lo que salió', () => {
+  /*
+   * Un rechazo por falta de título, o la pregunta de «le va a llegar a mucha
+   * gente», no pueden gastar: si gastaran, contestar que sí costaría dos, y
+   * quien se equivoca al escribir pagaría por equivocarse.
+   */
+  const rutas = fs.readFileSync(path.join(__dirname, '../../server/avisos/rutas.js'), 'utf8');
+  const trozo = rutas.slice(rutas.indexOf("router.post('/avisos/mensajes'"),
+    rutas.indexOf("router.post('/avisos/mensajes'") + 1200);
+  assert.match(trozo, /if \(salida\.error\) return res\.status\(400\)[\s\S]*ritmo\.anotarEnvio/,
+    'la anotación tiene que ir DESPUÉS de la salida por error');
+  assert.match(trozo, /const falta = ritmo\.cuantoLeFalta\(req\.user\.id\);/);
+  assert.match(trozo, /res\.status\(429\)/, 'y el freno se dice con el código que le corresponde');
+});
+
 // --------------------------------------------------- lo que muestra la pantalla
 
 const fs = require('fs');

@@ -458,6 +458,15 @@ const OPCIONES = [
         ayuda: 'Días que puede llevar abierta una solicitud a cargo de alguien antes de que el sistema se lo recuerde.',
       },
       {
+        clave: 'mensajes_por_hora', label: 'Cuántos mensajes puede mandar una persona por hora',
+        tipo: 'number', defecto: '10', min: 1, max: 200,
+        ayuda:
+          'El aviso de un mensaje escrito a mano no se puede apagar en la campanita —es donde queda la ' +
+          'constancia de que llegó—, así que mandarlos seguidos llena una campanita que nadie puede ' +
+          'silenciar. Solo cuentan los que salieron: uno rechazado, o la pregunta de antes de mandarlo a ' +
+          'mucha gente, no gastan nada.',
+      },
+      {
         clave: 'avisos_guardar_dias', label: 'Borrar los avisos leídos a los tantos días', tipo: 'number',
         defecto: '90', min: 7, max: 730,
         ayuda:

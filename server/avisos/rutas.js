@@ -182,13 +182,28 @@ router.get('/avisos/mensajes', authRequired, puedeEnviar, (req, res) => {
   res.json({ mensajes: mensajes.loQueSeHaMandado(req.user, req.query.limit) });
 });
 
-/** Mandar uno. */
+/**
+ * Mandar uno.
+ *
+ * El tope por hora se mira ACÁ y no dentro de `enviar`: un tope por tiempo es
+ * cosa de la puerta —cuida de que a esa puerta no la golpeen a máquina— y
+ * adentro está lo que hace al mensaje, que tiene que valer venga por donde
+ * venga. Ver server/avisos/ritmo.js.
+ */
+const ritmo = require('./ritmo');
+
 router.post('/avisos/mensajes', authRequired, puedeEnviar, (req, res) => {
+  const falta = ritmo.cuantoLeFalta(req.user.id);
+  if (falta) return res.status(429).json({ error: ritmo.comoSeExplica(falta), segundos: falta });
+
   const salida = mensajes.enviar(req.user, req.body || {});
   // Si viene `confirmar`, no es un error sino una pregunta: la pantalla la
   // muestra con sus dos botones y reintenta con `igual_asi`, igual que en el
   // resto del sistema (ver `preguntarSiIgualVa` en public/app.js).
   if (salida.error) return res.status(400).json(salida);
+
+  // Solo se anota lo que salió: una pregunta o un rechazo no gastan el tope
+  ritmo.anotarEnvio(req.user.id);
   res.status(201).json({ ok: true, ...salida });
 });
 
