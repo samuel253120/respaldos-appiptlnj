@@ -407,6 +407,83 @@ test('a más de quinientos de una vez no se manda: se pide acotar', () => {
   assert.equal(db.prepare('SELECT COUNT(*) c FROM notificaciones WHERE tipo = ? AND titulo = ?').get('mensaje', 'A todos').c, 0);
 });
 
+// ------------------------------------ de quién es cada mensaje del historial
+
+/*
+ * Lo que se ha mandado se ve como se ve todo lo demás: lo de la gente que uno
+ * ve. La primera versión del módulo no lo acotaba y traía los últimos treinta
+ * envíos del sistema entero, con su texto completo; la administradora de una
+ * iglesia leía la correspondencia de la otra. Estas cinco pruebas son las que
+ * faltaban.
+ */
+const titulosQueVe = (quien) => mensajes.loQueSeHaMandado(quien, 200).map((m) => m.titulo);
+
+test('el historial no muestra lo que mandó la otra iglesia', () => {
+  const jefeDelSur = cuenta('Jefe de los Mensajes del Sur', { iglesia: sur, administra: [sur], rol: 'admin' });
+
+  const acaDelNorte = mensajes.enviar(jefa, {
+    titulo: 'Asunto interno del Norte', cuerpo: 'Hablemos de la tesorería antes del domingo.',
+    destino: 'personas', valor: [ana.id],
+  });
+  const allaDelSur = mensajes.enviar(jefeDelSur, {
+    titulo: 'Asunto interno del Sur', cuerpo: 'Lo de la campaña quedó para el jueves.',
+    destino: 'personas', valor: [carla.id],
+  });
+  assert.equal(acaDelNorte.cuantos, 1);
+  assert.equal(allaDelSur.cuantos, 1);
+
+  assert.ok(!titulosQueVe(jefeDelSur).includes('Asunto interno del Norte'),
+    'un mensaje interno es de los textos más francos que se escriben en una oficina');
+  assert.ok(!titulosQueVe(jefa).includes('Asunto interno del Sur'));
+
+  // y no es que se esconda el título y viaje el cuerpo
+  const loSuyo = mensajes.loQueSeHaMandado(jefeDelSur, 200);
+  assert.ok(!JSON.stringify(loSuyo).includes('Hablemos de la tesorería'),
+    'el texto tampoco viaja por otro lado');
+});
+
+test('pero lo propio nunca se esconde', () => {
+  assert.ok(titulosQueVe(jefa).includes('Asunto interno del Norte'));
+  const solo = cuenta('Sin Nadie Alrededor', { iglesia: sur, administra: [sur], rol: 'admin' });
+  const suyo = mensajes.enviar(solo, { titulo: 'El único que mandó', cuerpo: 'Uno solo', destino: 'todos' });
+  assert.equal(suyo.error, undefined);
+  assert.deepEqual(titulosQueVe(solo).filter((t) => t === 'El único que mandó'), ['El único que mandó'],
+    'uno siempre se ve a sí mismo: si no, quien manda no podría revisar lo que mandó');
+});
+
+test('y en la misma oficina se ve lo del colega', () => {
+  const otraDelNorte = cuenta('La Otra Jefa del Norte', { iglesia: norte, administra: [norte], rol: 'admin' });
+  assert.ok(titulosQueVe(otraDelNorte).includes('Asunto interno del Norte'),
+    'la constancia es del equipo, no de quien apretó el botón');
+  assert.ok(!titulosQueVe(otraDelNorte).includes('Asunto interno del Sur'));
+});
+
+test('quien administra toda la organización lo sigue viendo todo', () => {
+  const general = cuenta('General de los Historiales', { rol: 'admin' });
+  const suyos = titulosQueVe(general);
+  assert.ok(suyos.includes('Asunto interno del Norte'));
+  assert.ok(suyos.includes('Asunto interno del Sur'),
+    'sin iglesias asignadas se ve todo, como en cualquier otro listado del sistema');
+});
+
+test('un mensaje cuyo autor ya no existe no se le abre a cualquiera', () => {
+  /*
+   * `enviado_por` puede quedar en blanco si la cuenta se borra. Un mensaje así
+   * no es de nadie: quien está acotado a sus iglesias no tiene por qué leerlo,
+   * y quien ve toda la organización sí.
+   */
+  const huerfano = mensajes.enviar(jefa, {
+    titulo: 'De una cuenta que ya no está', cuerpo: 'Texto viejo', destino: 'personas', valor: [ana.id],
+  });
+  db.prepare('UPDATE mensajes_enviados SET enviado_por = NULL WHERE id = ?').run(huerfano.id);
+
+  const jefeDelSur = db.prepare('SELECT * FROM usuarios WHERE nombre = ?').get('Jefe de los Mensajes del Sur');
+  const general = db.prepare('SELECT * FROM usuarios WHERE nombre = ?').get('General de los Historiales');
+  assert.ok(!titulosQueVe(jefa).includes('De una cuenta que ya no está'));
+  assert.ok(!titulosQueVe(jefeDelSur).includes('De una cuenta que ya no está'));
+  assert.ok(titulosQueVe(general).includes('De una cuenta que ya no está'));
+});
+
 // --------------------------------------------------- lo que muestra la pantalla
 
 const fs = require('fs');

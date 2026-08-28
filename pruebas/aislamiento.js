@@ -247,6 +247,11 @@ async function montarEscenario(admin) {
   const secretaria = await cuenta(`Secretaria ${MARCA}`, 'secretario', [norte.id], [damas.id]);
   const adminNorte = await cuenta(`Admin Norte ${MARCA}`, 'admin', [norte.id], []);
   const delOtroLado = await cuenta(`Secretaria Sur ${MARCA}`, 'secretario', [sur.id], []);
+  // Una administradora de la OTRA iglesia: hace falta una cuenta que tenga la
+  // llave de enviar mensajes para poder comprobar qué le muestra el historial.
+  // Sin ella, pedirlo daba 403 por falta de permiso y el agujero quedaba tapado
+  // por el motivo equivocado.
+  const adminSur = await cuenta(`Admin Sur ${MARCA}`, 'admin', [sur.id], []);
   // Una cuenta de la propia iglesia del administrador del Norte, para que las
   // pruebas que RESTABLECEN contraseñas no le rompan la sesión a la secretaria.
   const ayudante = await cuenta(`Ayudante ${MARCA}`, 'secretario', [norte.id], []);
@@ -255,7 +260,7 @@ async function montarEscenario(admin) {
     norte, sur, damas, jovenes, cuerpoSur,
     deDamas, deJovenes, delSur, pastorSur,
     cuentaSur, cuentaJovenes, actividadSur, actividadCompartida, actaSur, perfil,
-    secretaria, adminNorte, delOtroLado, ayudante,
+    secretaria, adminNorte, delOtroLado, adminSur, ayudante,
   };
 }
 
@@ -603,6 +608,39 @@ async function niSePuedeApuntarALoAjeno(E, admin) {
   revisar('ni mandándole un mensaje a la iglesia ajena entera',
     aLaIglesiaAjena.estado === 400 || (aLaIglesiaAjena.json && aLaIglesiaAjena.json.cuantos === 0),
     `respondió ${aLaIglesiaAjena.estado} y llegó a ${(aLaIglesiaAjena.json || {}).cuantos}`);
+
+  /*
+   * Y lo que se ha MANDADO se lee como se lee todo lo demás: lo de la gente que
+   * uno ve.
+   *
+   * Esta es la puerta que quedó abierta en la 1.140.0. El historial traía los
+   * últimos treinta envíos del sistema entero, con su texto completo, a
+   * cualquiera que tuviera la llave: la administradora de una iglesia leía lo
+   * que la de la otra le había escrito a su gente. Lo encontró la revisión del
+   * módulo y no esta prueba, porque esta prueba miraba a quién se le puede
+   * ESCRIBIR y no lo que se puede LEER. Ahora mira las dos.
+   */
+  const reservado = `Texto reservado ${MARCA}`;
+  const propio = await norte('POST', '/api/avisos/mensajes', {
+    titulo: `Asunto interno del Norte ${MARCA}`, cuerpo: reservado,
+    destino: 'personas', valor: [E.ayudante.id],
+  });
+  const deAlla = sesion(E.adminSur.token);
+  const historialAjeno = await deAlla('GET', '/api/avisos/mensajes?limit=200');
+  const suPropioHistorial = await norte('GET', '/api/avisos/mensajes?limit=200');
+
+  revisar('el historial de mensajes no le abre los de la otra iglesia',
+    historialAjeno.estado === 200 && !historialAjeno.texto.includes(MARCA),
+    `respondió ${historialAjeno.estado} y ${(historialAjeno.json && historialAjeno.json.mensajes || []).length} mensaje(s), `
+    + `de los cuales con la marca: ${((historialAjeno.json && historialAjeno.json.mensajes) || []).filter((m) => String(m.titulo).includes(MARCA)).length}`);
+
+  revisar('ni el texto de esos mensajes por ningún otro lado',
+    !historialAjeno.texto.includes(reservado), 'el cuerpo del mensaje ajeno viajó igual');
+
+  revisar('pero lo suyo lo sigue viendo',
+    propio.estado === 201 && suPropioHistorial.estado === 200
+      && suPropioHistorial.texto.includes(reservado),
+    `mandó ${propio.estado} y su propio historial ${suPropioHistorial.estado}`);
 
   const sinLlave = await secre('GET', '/api/avisos/mensajes/destinatarios');
   revisar('y sin la llave de enviar, la puerta está cerrada',

@@ -59,6 +59,7 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now','localtime'))
   );
   CREATE INDEX IF NOT EXISTS ix_mensajes_enviados_fecha ON mensajes_enviados (id DESC);
+  CREATE INDEX IF NOT EXISTS ix_mensajes_enviados_quien ON mensajes_enviados (enviado_por);
 `);
 
 /**
@@ -312,15 +313,47 @@ function enviar(quienManda, { titulo, cuerpo, urgente, enlace, destino, valor })
  * apagar: si el aviso llega sí o sí, quien lo mandó tiene derecho a saber
  * cuántos lo abrieron. No dice QUIÉNES: eso sería vigilar a la gente por dentro
  * del sistema, y para saber si alguien se enteró está preguntarle.
+ *
+ * ── DE QUIÉN ES CADA MENSAJE ──
+ *
+ * Se ve lo que mandó la gente que uno ve. Es exactamente el mismo alcance con
+ * el que se decide a quién se le puede escribir, y por la misma razón: la llave
+ * de enviar mensajes no puede convertirse en una manera de leer la
+ * correspondencia de otra iglesia. Uno siempre se ve a sí mismo, así que lo
+ * propio nunca se esconde, y quien administra toda la organización lo sigue
+ * viendo todo.
+ *
+ * Esta lista NO estaba acotada, y esa es la primera versión del módulo: traía
+ * los últimos treinta envíos del sistema entero, con su texto completo. La
+ * administradora de una iglesia leía lo que la de la otra le había escrito a su
+ * gente. El módulo entero se escribió alrededor de que eso no pasara —a quién
+ * se le puede escribir se le pregunta al listado de Usuarios— y la puerta quedó
+ * abierta justo en la otra dirección: no en escribir, en leer. La prueba de
+ * aislamiento tampoco lo miraba; ahora sí.
  */
 function loQueSeHaMandado(quienManda, cuantos = 30) {
+  const alcance = require('../alcance');
+  const params = [];
+  /*
+   * La tabla de la subconsulta va SIN ALIAS: estas condiciones nombran sus
+   * columnas como «usuarios.id» y con un alias apuntarían a una tabla que no
+   * existe. Está explicado en server/alcance.js, arriba de
+   * `condicionesDeUsuarios`, y también en `aQuienesAlcanza`, más arriba.
+   */
+  const suyo = alcance.condicionesDeUsuarios(quienManda, params);
+  const donde = suyo
+    ? `WHERE m.enviado_por IN (SELECT usuarios.id FROM usuarios WHERE ${suyo})`
+    : '';
+  params.push(Math.min(Number(cuantos) || 30, 200));
+
   const filas = db
     .prepare(
       `SELECT m.*, u.nombre AS quien
          FROM mensajes_enviados m LEFT JOIN usuarios u ON u.id = m.enviado_por
+        ${donde}
         ORDER BY m.id DESC LIMIT ?`
     )
-    .all(Math.min(Number(cuantos) || 30, 200));
+    .all(...params);
 
   const leidos = db.prepare(
     "SELECT COUNT(*) c FROM notificaciones WHERE clave = ? AND leida = 1"
