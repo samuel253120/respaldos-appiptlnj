@@ -96,10 +96,21 @@ module.exports = {
       seccion: 'Predicador',
       help: 'Búsquelo entre los miembros o escriba el nombre si no está registrado.',
     },
-    { name: 'mensaje_titulo', label: 'Tema del mensaje', type: 'text', seccion: 'Mensaje bíblico', ancho: 'completo' },
+    /*
+     * Acá iba «Tema del mensaje», un texto libre. Se sacó porque la iglesia no
+     * lo usa: el registro del servicio dice quién predicó y sobre qué pasaje, y
+     * el tema no se anotaba nunca.
+     *
+     * La columna sigue en la base con lo que hubiera guardado —el motor agrega
+     * columnas y no las quita, y acá no se borra nada—: si algún día vuelve a
+     * hacer falta, se declara de nuevo el campo y lo escrito reaparece.
+     *
+     * La sección «Mensaje bíblico» la abre ahora el libro, que era lo que hacía
+     * el campo que se fue.
+     */
     {
       name: 'mensaje_libro', label: 'Mensaje: libro', type: 'select', options: LIBROS, buscador: true,
-      ancho: 'completo', help: 'Escriba las primeras letras del libro.',
+      seccion: 'Mensaje bíblico', ancho: 'completo', help: 'Escriba las primeras letras del libro.',
     },
     { name: 'mensaje_capitulo', label: 'Mensaje: capítulo', type: 'number' },
     { name: 'mensaje_versiculo_inicial', label: 'Mensaje: versículo inicial', type: 'number' },

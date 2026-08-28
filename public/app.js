@@ -9117,7 +9117,6 @@ function printServicio(m, row) {
       <h3>Mensaje</h3>
       <table class="meta-tbl">
         ${fila('Predicador(a)', row.predicador)}
-        ${fila('Tema', row.mensaje_titulo)}
         ${fila('Pasaje', row.cita_mensaje)}
       </table>
 
