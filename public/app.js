@@ -263,7 +263,45 @@ function fmtNumero(n) {
  */
 function fmtMoney(n) {
   if (n == null || n === '') return '';
-  return '$ ' + fmtNumero(n);
+  /*
+   * Al peso, sin centavos: en pesos no existen. Desde la 1.168.0 el sistema los
+   * redondea al guardar (ver `coerce` en server/crud.js), pero lo que quedó
+   * anotado antes los sigue teniendo, y «$ 765.432,1» en un libro de caja se
+   * lee como un error de otra cosa.
+   */
+  const x = Number(n);
+  return '$ ' + (Number.isFinite(x) ? fmtNumero(Math.round(x)) : fmtNumero(n));
+}
+
+/**
+ * Que la cifra quepa en su tarjeta.
+ *
+ * Las tarjetas de arriba del libro —ingresos, egresos, balance— llevan la
+ * primera cifra que se mira al entrar, y con las de una organización de verdad
+ * se cortaban a media cifra: medido en un computador de 1.280 px, a «Ingresos»
+ * y a «Egresos» les faltaban 11 px cada una y se leía «$ 182.552.72…».
+ *
+ * La columna ya se ensanchó para la cifra de nueve dígitos que es el caso
+ * corriente (ver styles.css). Esto es para lo que venga después: una cifra de
+ * diez u once dígitos, o una pantalla más angosta de lo previsto. En vez de
+ * cortarla, se le baja el cuerpo a la letra hasta que entre. Un número más
+ * chico se lee; uno cortado, no.
+ *
+ * No hay manera de preguntarle a CSS cuánto mide un texto, así que se mide
+ * después de pintar y solo se toca lo que de verdad se desborda: si todo cabe
+ * —el caso de siempre— no cambia nada.
+ */
+function ajustarCifras(contenedor) {
+  const donde = contenedor || document;
+  for (const num of donde.querySelectorAll('.fin .num')) {
+    num.style.fontSize = '';
+    // Del cuerpo de siempre hacia abajo, de dos en dos, hasta 13 px: más chico
+    // que eso ya no es una cifra destacada sino letra menuda
+    const original = parseFloat(getComputedStyle(num).fontSize) || 21;
+    for (let px = original; px >= 13 && num.scrollWidth > num.clientWidth; px -= 2) {
+      num.style.fontSize = `${px - 2}px`;
+    }
+  }
 }
 
 /**
@@ -736,6 +774,7 @@ async function boot() {
     if (meta.ajustes) AJUSTES = { ...AJUSTES, ...meta.ajustes };
     window.GRUPOS_DEL_MENU = meta.gruposDelMenu || [];
     renderShell();
+    vigilarLasCifras();
     route();
   } catch (e) {
     // Lo que se había pedido adelantado ya no se va a usar
@@ -1768,6 +1807,38 @@ function enPantallaChica() {
 
 function content() {
   return document.getElementById('content');
+}
+
+/**
+ * Deja a `ajustarCifras` mirando lo que se pinta, sin tener que llamarla desde
+ * cada pantalla.
+ *
+ * Las tarjetas de cifras las dibujan cuarenta y dos sitios distintos —el panel,
+ * cada listado con resumen, los informes, la ficha de una cuenta— y encima
+ * algunas se rellenan después, cuando llega la respuesta del servidor. Ir a
+ * llamarla a cada uno es la clase de lista que un día queda incompleta, y el
+ * síntoma sería justo el que se está arreglando: una cifra cortada en la
+ * pantalla que nadie se acordó de incluir.
+ *
+ * Así que se mira el contenido y punto. La comprobación es barata —solo toca lo
+ * que de verdad se desborda— y se agrupa en el siguiente cuadro para no correr
+ * una vez por cada nodo que aparece.
+ */
+function vigilarLasCifras() {
+  const caja = content();
+  if (!caja || typeof MutationObserver === 'undefined') return;
+  let pedido = null;
+  const alDia = () => {
+    pedido = null;
+    try { ajustarCifras(caja); } catch (e) { /* una cifra ancha no puede tumbar la pantalla */ }
+  };
+  const pedir = () => {
+    if (pedido) return;
+    pedido = requestAnimationFrame(alDia);
+  };
+  new MutationObserver(pedir).observe(caja, { childList: true, subtree: true });
+  window.addEventListener('resize', pedir);
+  pedir();
 }
 
 /* ---------------- panel de control ---------------- */

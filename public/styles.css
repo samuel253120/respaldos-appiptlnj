@@ -973,7 +973,13 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
 .fin.blue { border-left-color: var(--accent); }
 .fin.slate { border-left-color: #64748b; }
 .fin .lbl { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
-.fin .num { font-size: 21px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; color: var(--text); }
+/* La cifra no se parte ni se corta: la tarjeta se estira, y si aun así no cabe
+   es `ajustarCifras` (public/app.js) quien le baja el cuerpo a la letra. Sin el
+   nowrap, «$ 182.552.728» se partía por el punto y quedaba en dos líneas. */
+.fin .num {
+  font-size: 21px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums;
+  color: var(--text); white-space: nowrap;
+}
 .fin.green .num { color: #15803d; }
 .fin.red .num { color: #b91c1c; }
 .fin.blue .num { color: var(--accent-dark); }
@@ -996,7 +1002,10 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
 
 /* Los totales de lo que se está viendo, arriba del listado: primero en
    Tesorería, después en Servicios. Las dos usan las mismas cifras. */
-.treasury-summary, .resumen-cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+/* Las tarjetas de cifras: la columna mide lo que mide una cifra de nueve
+   dígitos —«$ 182.552.728»— a 21 px, que es lo que maneja una organización de
+   verdad. Con 180 px se cortaban a media cifra: medido, les faltaban 11 px. */
+.treasury-summary, .resumen-cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
 /* La nota del promedio: de qué se sacó, cuando no salió de todos */
 .resumen-nota { font-size: 12px; color: var(--muted); margin: -8px 0 16px; }
 

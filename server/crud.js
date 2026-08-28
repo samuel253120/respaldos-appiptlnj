@@ -285,10 +285,27 @@ function coerce(field, value) {
   if (value === undefined) return undefined;
   if (value === '' || value === null) return null;
   switch (field.type) {
-    case 'number':
-    case 'money': {
+    case 'number': {
       const n = Number(value);
       return Number.isFinite(n) ? n : null;
+    }
+    /**
+     * El dinero se guarda al peso.
+     *
+     * En pesos no hay centavos, y sin embargo un movimiento de $1.000,55 se
+     * aceptaba tal cual. Los decimales no se ven en pantalla pero ensucian
+     * todas las sumas: el balance no cuadra nunca con la caja al peso, y la
+     * diferencia aparece más tarde, repartida en cifras que no se explican.
+     *
+     * Se redondea al guardar, no al mostrar: un dato guardado mal no se
+     * arregla con maquillaje. Un campo puede pedir decimales declarando
+     * `decimales: true` —una tasa, un tipo de cambio—; es una opción, no un
+     * descuido.
+     */
+    case 'money': {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return null;
+      return field.decimales ? n : Math.round(n);
     }
     case 'boolean':
       return value === true || value === 1 || value === '1' || value === 'true' ? 1 : 0;
