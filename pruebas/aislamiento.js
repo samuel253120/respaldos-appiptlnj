@@ -206,6 +206,17 @@ async function montarEscenario(admin) {
       cuerpo_id: cuerpoSur.id, tipo: 'Ordinaria', estado: 'Borrador',
       presidida_por: `Preside ${MARCA}` });
 
+  /*
+   * Un servicio del Sur con una ofrenda imposible de confundir: los totales del
+   * listado y del informe de servicios son una suma, y una suma no se delata
+   * con el nombre de nadie. Si el alcance no se respetara, la cifra del Norte
+   * traería estos $7.654.321 adentro sin que ningún dato ajeno se viera.
+   */
+  const servicioSur = await buscarOCrear('servicios',
+    (f) => f.fecha === '2028-09-03' && String(f.iglesia_id) === String(sur.id),
+    { fecha: '2028-09-03', tipo: 'Servicio Especial', iglesia_id: sur.id,
+      ofrenda_total: 7654321, asistencia_adultos: 4321 });
+
   const perfil = await buscarOCrear('perfiles_permisos', (f) => f.nombre === `Perfil ${MARCA}`,
     { nombre: `Perfil ${MARCA}`, estado: 'Activo', permisos: JSON.stringify({ miembros: ['view'] }) });
 
@@ -259,7 +270,7 @@ async function montarEscenario(admin) {
   return {
     norte, sur, damas, jovenes, cuerpoSur,
     deDamas, deJovenes, delSur, pastorSur,
-    cuentaSur, cuentaJovenes, actividadSur, actividadCompartida, actaSur, perfil,
+    cuentaSur, cuentaJovenes, actividadSur, actividadCompartida, actaSur, perfil, servicioSur,
     secretaria, adminNorte, delOtroLado, adminSur, ayudante,
   };
 }
@@ -417,6 +428,28 @@ async function loAjenoNoSeVe(E, modulos) {
     console.log(`      · GET ${f.ruta}`);
     console.log(`        a ${f.quien} se le escapó ${f.queEs} («${f.aguja}»), con ${f.estado}`);
   }
+
+  /*
+   * Y las SUMAS, que no se pillan buscando palabras.
+   *
+   * El barrido de arriba busca datos ajenos por su texto —un apellido, el
+   * nombre de una cuenta—, y un total no tiene texto: son $7.654.321 metidos
+   * dentro de una cifra que se ve perfectamente razonable. Por eso los totales
+   * de servicios se comprueban aparte, con una ofrenda del Sur que no se puede
+   * confundir con nada.
+   */
+  const norte = sesion(E.adminNorte.token);
+  const suTotal = await norte('GET', '/api/servicios/resumen');
+  const suInforme = await norte('GET', '/api/servicios/informe');
+  const laDelSur = 7654321;
+  const suma = (r) => Number(((r.json || {}).resumen || r.json || {}).ofrenda || 0);
+  revisar('los totales de servicios no le suman la ofrenda de la otra iglesia',
+    suTotal.estado === 200 && suma(suTotal) < laDelSur,
+    `respondió ${suTotal.estado} con una ofrenda de ${suma(suTotal)}, y la del Sur sola es ${laDelSur}`);
+  revisar('ni el informe por mes y por tipo',
+    suInforme.estado === 200 && suma(suInforme) < laDelSur
+      && !JSON.stringify((suInforme.json || {}).porTipo || []).includes('7654321'),
+    `respondió ${suInforme.estado} con una ofrenda de ${suma(suInforme)}`);
 }
 
 /* ------------------------------------------------------------------ *

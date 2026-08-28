@@ -1479,6 +1479,17 @@ function buildRouter() {
         // datos de salud igual que las del motor
         expandRow: (row, usuario) => expandRow(def, row, usuario),
         scopeClause: (user, params) => scopeClause(def, user, params),
+        /*
+         * Cómo se arma el listado que la persona está mirando: alcance,
+         * búsqueda, filtros y rango de fechas, tal cual.
+         *
+         * Se lo presta el motor a las rutas del módulo para que un total o un
+         * informe sumen EXACTAMENTE las filas que la pantalla muestra. Armado
+         * aparte, un día empiezan a discrepar —un filtro nuevo que la pantalla
+         * conoce y el total no— y nadie se entera, porque las dos cifras se
+         * ven razonables por separado.
+         */
+        comoSeArmaElListado: (req) => consultaDeUnListado(def, req),
       });
     }
   }

@@ -311,7 +311,8 @@ const MIRAR = `
   // bandeja de solicitudes— no cuelgan del listado de ninguno, así que sin
   // nombrarlas acá no las revisaría nadie
   const rutas = ['#/', '#/asistencia', '#/asistencia/informes', '#/documentos/libro',
-    '#/solicitudes/bandeja', '#/mensajes', '#/mis-mensajes', '#/perfil', '#/config'];
+    '#/servicios/informe', '#/solicitudes/bandeja', '#/mensajes', '#/mis-mensajes',
+    '#/perfil', '#/config'];
   for (const m of modulos) {
     rutas.push(`#/m/${m}`, `#/m/${m}/new`);
   }

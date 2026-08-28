@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.154.0", fecha: "2026-08-28", titulo: "El Registro de Servicios suma: los totales de lo que se está viendo van arriba del listado, y hay un informe por mes y por tipo de servicio que se imprime" },
   { version: "1.153.0", fecha: "2026-08-28", titulo: "Registrar dos veces el mismo servicio se pregunta antes de guardar: la ofrenda dejó de poder entrar dos veces a Tesorería sin que nadie lo notara" },
   { version: "1.152.0", fecha: "2026-08-28", titulo: "La vigilia que cruza la medianoche se puede registrar: un término anterior al inicio es del día siguiente, y un servicio de más de doce horas se pregunta" },
   { version: "1.151.0", fecha: "2026-08-28", titulo: "El aporte a la corporación deja de recalcularse solo: cada servicio guarda el porcentaje con que se calculó" },

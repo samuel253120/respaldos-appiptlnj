@@ -405,4 +405,40 @@ module.exports = {
       return null;
     },
   },
+
+  /**
+   * Lo que el módulo guardaba y no devolvía: las sumas.
+   *
+   * Cada servicio anota cuánta gente asistió y cuánto se ofrendó, y el listado
+   * los mostraba uno por uno sin sumar nada: para saber cuánto se ofrendó en
+   * agosto había que ir fila por fila con una calculadora. Acotar por mes sí se
+   * podía —el rango de fechas funciona—, pero al pie no había ningún número.
+   *
+   *   GET /servicios/resumen   los totales de lo que se está viendo
+   *   GET /servicios/informe   lo mismo, abierto por mes y por tipo de servicio
+   *
+   * Las dos suman EXACTAMENTE las filas del listado —el motor presta su misma
+   * consulta—, así que el total responde a la búsqueda, a los filtros, al rango
+   * de fechas y al alcance de quien pregunta.
+   */
+  extraRoutes(router, { db, requirePerm, comoSeArmaElListado }) {
+    const sumas = require('../servicios-resumen');
+
+    router.get('/servicios/resumen', requirePerm('servicios', 'view'), (req, res) => {
+      const { params, whereSql } = comoSeArmaElListado(req);
+      res.json(sumas.resumen(db, whereSql, params));
+    });
+
+    router.get('/servicios/informe', requirePerm('servicios', 'view'), (req, res) => {
+      const { params, whereSql } = comoSeArmaElListado(req);
+      res.json({
+        desde: req.query.desde || null,
+        hasta: req.query.hasta || null,
+        tipo: req.query.f_tipo || null,
+        resumen: sumas.resumen(db, whereSql, params),
+        porMes: sumas.porMes(db, whereSql, params),
+        porTipo: sumas.porTipo(db, whereSql, params),
+      });
+    });
+  },
 };

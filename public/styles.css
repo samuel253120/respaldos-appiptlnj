@@ -983,8 +983,11 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
 .mini-list li > .mut { white-space: nowrap; }
 .mini-list li > span { min-width: 0; }
 
-/* resumen tesorería en el listado */
-.treasury-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+/* Los totales de lo que se está viendo, arriba del listado: primero en
+   Tesorería, después en Servicios. Las dos usan las mismas cifras. */
+.treasury-summary, .resumen-cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+/* La nota del promedio: de qué se sacó, cuando no salió de todos */
+.resumen-nota { font-size: 12px; color: var(--muted); margin: -8px 0 16px; }
 
 /* ---------- Impresión ---------- */
 .print-actions { display: flex; gap: 10px; margin-bottom: 18px; }
@@ -1357,8 +1360,8 @@ table.planilla-mes tfoot .pie.no td  { color: #b91c1c; }
    * cabe una. El «min-width: 0» es el seguro para el día en que los montos
    * lleguen a diez cifras: la tarjeta cede antes que la página.
    */
-  .fin-cards, .treasury-summary { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 8px; }
-  .fin, .treasury-summary > * { min-width: 0; }
+  .fin-cards, .treasury-summary, .resumen-cifras { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 8px; }
+  .fin, .treasury-summary > *, .resumen-cifras > * { min-width: 0; }
   .fin { padding: 10px 12px; }
   .fin .num { font-size: 18px; }
   .toolbar { padding: 10px 12px; gap: 8px; }

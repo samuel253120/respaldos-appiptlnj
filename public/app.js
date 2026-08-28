@@ -868,6 +868,11 @@ function route() {
   if (parts[0] === 'informes' && parts[1] === 'asistencia' && MOD['asistencias']) {
     return (location.hash = '#/asistencia/informes');
   }
+  if (parts[0] === 'servicios' && parts[1] === 'informe' && MOD['servicios']) {
+    const sl = document.querySelector('.side-link[data-mod="servicios"]');
+    if (sl) marcarActivo(sl);
+    return viewInformeServicios(precarga);
+  }
   if (parts[0] === 'solicitudes' && parts[1] === 'bandeja' && MOD['solicitudes']) {
     const sl = document.querySelector('.side-link[data-mod="solicitudes"]');
     if (sl) marcarActivo(sl);
@@ -2007,11 +2012,13 @@ async function viewList(name, filtrosIniciales) {
     <div class="page-head">
       <h2>${m.icon} ${esc(m.label)}</h2>
       <div class="actions">
+        ${name === 'servicios' ? '<button class="btn secondary" id="btnInformeServicios">📊 Informe</button>' : ''}
         ${m.perms.create ? `<button class="btn secondary" id="btnImportar">⬆️ Importar</button>` : ''}
         ${m.perms.create ? `<button class="btn" id="btnNew">➕ ${nuevoDe(m)} ${esc(m.labelSingular.toLowerCase())}</button>` : ''}
       </div>
     </div>
     ${name === 'tesoreria' ? '<div class="treasury-summary" id="treasurySummary"></div>' : ''}
+    ${name === 'servicios' ? '<div class="resumen-cifras" id="serviciosResumen"></div><div class="resumen-nota" id="serviciosResumenNota"></div>' : ''}
     <div class="card">
       <div class="toolbar" id="toolbar"></div>
       <div class="table-scroll"><div id="tableWrap"><p style="padding:20px">Cargando…</p></div></div>
@@ -2021,6 +2028,19 @@ async function viewList(name, filtrosIniciales) {
   if (m.perms.create) {
     document.getElementById('btnNew').addEventListener('click', () => (location.hash = `#/m/${name}/new`));
     document.getElementById('btnImportar').addEventListener('click', () => abrirImportador(m, () => load()));
+  }
+  const alInforme = document.getElementById('btnInformeServicios');
+  // El informe se abre con lo que se está mirando: el período y el tipo puestos
+  if (alInforme) {
+    alInforme.addEventListener('click', () => {
+      const suyos = new URLSearchParams();
+      if (st.desde) suyos.set('desde', st.desde);
+      if (st.hasta) suyos.set('hasta', st.hasta);
+      if (st.filters && st.filters.tipo) suyos.set('tipo', st.filters.tipo);
+      if (st.filters && st.filters.iglesia_id) suyos.set('iglesia_id', st.filters.iglesia_id);
+      const cola = suyos.toString();
+      location.hash = `#/servicios/informe${cola ? '?' + cola : ''}`;
+    });
   }
 
   // ------- barra de herramientas: búsqueda + filtros -------
@@ -2274,6 +2294,7 @@ async function viewList(name, filtrosIniciales) {
     }
 
     if (name === 'tesoreria') loadTreasurySummary(params);
+    if (name === 'servicios') cargarResumenDeServicios(params);
 
     // La planilla baja lo mismo que se está viendo —búsqueda, filtros, fechas
     // y orden—, pero entero y no solo la página. El enlace se rehace en cada
@@ -2485,6 +2506,41 @@ async function viewList(name, filtrosIniciales) {
     });
   }
 
+  /**
+   * Los totales de los servicios que se están viendo.
+   *
+   * Suma lo mismo que muestra el listado —la búsqueda, los filtros y el rango
+   * de fechas van tal cual—, así que acotar a agosto y mirar el total es una
+   * sola cosa. Antes había que ir fila por fila con una calculadora.
+   */
+  async function cargarResumenDeServicios(params) {
+    const el = document.getElementById('serviciosResumen');
+    const nota = document.getElementById('serviciosResumenNota');
+    if (!el) return;
+    try {
+      const r = await api('GET', '/servicios/resumen?' + params.toString());
+      el.innerHTML = `
+        <div class="fin blue"><div class="lbl">Servicios</div><div class="num">${esc(fmtNumero(r.servicios))}</div></div>
+        <div class="fin green"><div class="lbl">Ofrenda recibida</div><div class="num">${fmtMoney(r.ofrenda)}</div></div>
+        <div class="fin slate"><div class="lbl">Aporte a la corporación</div><div class="num">${fmtMoney(r.aporte)}</div></div>
+        <div class="fin slate"><div class="lbl">Asistencia</div><div class="num">${esc(fmtNumero(r.asistencia))}</div></div>
+        <div class="fin blue"><div class="lbl">Promedio por servicio</div><div class="num">${esc(fmtNumero(r.promedio_asistencia))}</div></div>`;
+      /*
+       * De cuántos servicios salió el promedio, cuando no salió de todos: un
+       * servicio al que nadie le anotó la asistencia no es un servicio al que
+       * no fue nadie, así que no entra en el promedio. Sin decirlo, la cifra se
+       * lee como si fuera de todos.
+       */
+      nota.textContent = r.servicios && r.con_asistencia !== r.servicios
+        ? `El promedio sale de ${fmtNumero(r.con_asistencia)} de los ${fmtNumero(r.servicios)} servicios: `
+          + 'los demás no tienen la asistencia anotada.'
+        : '';
+    } catch (e) {
+      el.innerHTML = '';
+      if (nota) nota.textContent = '';
+    }
+  }
+
   async function loadTreasurySummary(params) {
     const el = document.getElementById('treasurySummary');
     if (!el) return;
@@ -2526,6 +2582,182 @@ async function viewList(name, filtrosIniciales) {
  */
 function generadoPorOtroModulo(row) {
   return !!(row.traspaso_id || row.servicio_id);
+}
+
+/* =====================================================================
+ * Informe de servicios
+ *
+ * El módulo guardaba un año de servicios con su asistencia y su ofrenda, y no
+ * devolvía una sola suma: para llevar a la reunión cuánto se ofrendó y cómo
+ * viene la asistencia había que sacarlo con lápiz del listado.
+ *
+ * Acá está abierto por mes y por tipo de servicio, con el período a la vista,
+ * y sale impreso con el membrete de la institución.
+ * ===================================================================== */
+
+/** «2026-08» → «Agosto de 2026». */
+function mesLargo(mes) {
+  const [anio, m] = String(mes || '').split('-');
+  const n = Number(m);
+  return n >= 1 && n <= 12 ? `${MESES[n - 1]} de ${anio}` : String(mes || '');
+}
+
+async function viewInformeServicios(precarga) {
+  const m = MOD['servicios'];
+  if (!m) return (location.hash = '#/');
+  const st = {
+    desde: (precarga && precarga.desde) || '',
+    hasta: (precarga && precarga.hasta) || '',
+    tipo: (precarga && precarga.tipo) || '',
+    iglesia_id: (precarga && precarga.iglesia_id) || '',
+  };
+  const tipos = (m.fields.find((f) => f.name === 'tipo') || {}).options || [];
+
+  content().innerHTML = `
+    <div class="page-head no-print">
+      <h2>📊 Informe de Servicios</h2>
+      <div class="actions">
+        <button class="btn secondary" id="infVolver">← Volver al listado</button>
+        <button class="btn secondary" data-imprimir>🖨️ PDF</button>
+      </div>
+    </div>
+    <div class="card no-print">
+      <div class="toolbar">
+        <select id="infTipo" aria-label="Tipo de servicio">
+          <option value="">Todos los tipos de servicio</option>
+          ${tipos.map((t) => `<option value="${esc(t)}" ${st.tipo === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+        </select>
+        <select id="infIglesia" aria-label="Iglesia"><option value="">Todas las iglesias</option></select>
+        <label class="range">Desde <input type="date" id="infDesde" value="${esc(st.desde)}" /></label>
+        <label class="range">Hasta <input type="date" id="infHasta" value="${esc(st.hasta)}" /></label>
+        <button class="btn secondary" id="infAnio">Este año</button>
+      </div>
+    </div>
+    <div id="infServicios"><p style="padding:18px">Calculando…</p></div>`;
+
+  document.getElementById('infVolver').addEventListener('click', () => (location.hash = '#/m/servicios'));
+  const iglesias = await getOptions('iglesias').catch(() => []);
+  const selIglesia = document.getElementById('infIglesia');
+  selIglesia.innerHTML = '<option value="">Todas las iglesias</option>'
+    + (iglesias || []).map((i) => `<option value="${i.id}" ${String(st.iglesia_id) === String(i.id) ? 'selected' : ''}>${esc(i.label)}</option>`).join('');
+
+  const cambia = (id, campo) =>
+    document.getElementById(id).addEventListener('change', (e) => {
+      st[campo] = e.target.value;
+      cargar();
+    });
+  cambia('infTipo', 'tipo');
+  cambia('infIglesia', 'iglesia_id');
+  cambia('infDesde', 'desde');
+  cambia('infHasta', 'hasta');
+  document.getElementById('infAnio').addEventListener('click', () => {
+    const anio = new Date().getFullYear();
+    st.desde = `${anio}-01-01`;
+    st.hasta = `${anio}-12-31`;
+    document.getElementById('infDesde').value = st.desde;
+    document.getElementById('infHasta').value = st.hasta;
+    cargar();
+  });
+
+  async function cargar() {
+    const caja = document.getElementById('infServicios');
+    caja.innerHTML = '<p style="padding:18px">Calculando…</p>';
+    const params = new URLSearchParams();
+    if (st.desde) params.set('desde', st.desde);
+    if (st.hasta) params.set('hasta', st.hasta);
+    // Los filtros exactos viajan como los del listado: es la misma consulta
+    if (st.tipo) params.set('f_tipo', st.tipo);
+    if (st.iglesia_id) params.set('f_iglesia_id', st.iglesia_id);
+
+    let d;
+    try {
+      d = await api('GET', '/servicios/informe?' + params.toString());
+    } catch (e) {
+      caja.innerHTML = `<p style="padding:18px;color:var(--danger)">${esc(e.message)}</p>`;
+      return;
+    }
+
+    /*
+     * Un informe acotado que no lo dice se lee como si fuera el de todo, y se
+     * imprime igual: el período y el tipo van en el título, que es donde el ojo
+     * busca de qué es esta hoja.
+     */
+    const soloDe = st.tipo ? `solo «${st.tipo}», ` : '';
+    const periodo = d.desde || d.hasta
+      ? `${soloDe}del ${d.desde ? fechaLarga(d.desde) : 'principio'} al ${d.hasta ? fechaLarga(d.hasta) : 'día de hoy'}`
+      : `${soloDe}de todo lo registrado`;
+    const r = d.resumen;
+
+    const tabla = (titulo, filas, columna, comoSeLlama) => `
+      <div class="card" style="margin-bottom:18px">
+        <h3>${esc(titulo)}</h3>
+        ${filas.length ? `
+        <div style="overflow-x:auto">
+        <table class="grid informe grid-lista">
+          <thead><tr>
+            <th>${esc(columna)}</th><th>Servicios</th><th>Asistencia</th><th>Promedio</th>
+            <th>Ofrenda</th><th>Aporte</th><th>Queda para la iglesia</th>
+          </tr></thead>
+          <tbody>
+            ${filas.map((f) => `
+              <tr>
+                <td class="col-primera col-titular" data-label="${esc(columna)}">${esc(comoSeLlama(f))}</td>
+                <td class="num" data-label="Servicios">${esc(fmtNumero(f.servicios))}</td>
+                <td class="num" data-label="Asistencia">${esc(fmtNumero(f.asistencia))}</td>
+                <td class="num" data-label="Promedio">${esc(fmtNumero(f.promedio_asistencia))}</td>
+                <td class="num" data-label="Ofrenda">${fmtMoney(f.ofrenda)}</td>
+                <td class="num" data-label="Aporte">${fmtMoney(f.aporte)}</td>
+                <td class="num" data-label="Queda para la iglesia">${fmtMoney(f.queda)}</td>
+              </tr>`).join('')}
+          </tbody>
+          <tfoot><tr class="tot">
+            <td class="col-primera col-titular" data-label="${esc(columna)}"><b>Total</b></td>
+            <td class="num" data-label="Servicios"><b>${esc(fmtNumero(r.servicios))}</b></td>
+            <td class="num" data-label="Asistencia"><b>${esc(fmtNumero(r.asistencia))}</b></td>
+            <td class="num" data-label="Promedio"><b>${esc(fmtNumero(r.promedio_asistencia))}</b></td>
+            <td class="num" data-label="Ofrenda"><b>${fmtMoney(r.ofrenda)}</b></td>
+            <td class="num" data-label="Aporte"><b>${fmtMoney(r.aporte)}</b></td>
+            <td class="num" data-label="Queda para la iglesia"><b>${fmtMoney(r.queda)}</b></td>
+          </tr></tfoot>
+        </table></div>` : '<div class="empty-state" style="padding:22px">Sin servicios en este período.</div>'}
+      </div>`;
+
+    // De cuántos servicios salió el promedio, cuando no salió de todos
+    const deCuantos = r.servicios && r.con_asistencia !== r.servicios
+      ? `El promedio sale de ${fmtNumero(r.con_asistencia)} de los ${fmtNumero(r.servicios)} servicios: `
+        + 'los demás no tienen la asistencia anotada.'
+      : '';
+
+    caja.innerHTML = `
+      <div class="informe-hoja">
+        <div class="print-only">${membreteDelDocumento()}</div>
+        <h3 class="informe-tit">
+          Informe de servicios <span class="mut">${esc(periodo)}</span>
+        </h3>
+        <!-- Las mismas cifras que van arriba del listado, con el mismo formato:
+             las de dinero no caben en las tarjetas chicas del informe de
+             asistencia —se probó y «$ 8.005.000» se sale de la tarjeta y se
+             come su rótulo—, y estas son justamente las que el sistema ya usa
+             para el dinero en Tesorería. -->
+        <div class="resumen-cifras">
+          <div class="fin blue"><div class="lbl">Servicios</div><div class="num">${esc(fmtNumero(r.servicios))}</div></div>
+          <div class="fin slate"><div class="lbl">Asistencia</div><div class="num">${esc(fmtNumero(r.asistencia))}</div></div>
+          <div class="fin blue"><div class="lbl">Promedio por servicio</div><div class="num">${esc(fmtNumero(r.promedio_asistencia))}</div></div>
+          <div class="fin green"><div class="lbl">Ofrenda recibida</div><div class="num">${fmtMoney(r.ofrenda)}</div></div>
+          <div class="fin slate"><div class="lbl">Aporte a la corporación</div><div class="num">${fmtMoney(r.aporte)}</div></div>
+          <div class="fin green"><div class="lbl">Queda para la iglesia</div><div class="num">${fmtMoney(r.queda)}</div></div>
+        </div>
+        ${tabla('Mes por mes', d.porMes, 'Mes', (f) => mesLargo(f.mes))}
+        ${tabla('Por tipo de servicio', d.porTipo, 'Tipo de servicio', (f) => f.tipo)}
+        <div class="informe-pie mut">
+          ${pieDelDocumento()}<br>
+          La asistencia es la de adultos más niños, y el aporte a la corporación es el que cada servicio
+          guardó con su propio porcentaje.${deCuantos ? ` ${esc(deCuantos)}` : ''}
+        </div>
+      </div>`;
+  }
+
+  cargar();
 }
 
 function cellValue(f, row, col) {
