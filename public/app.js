@@ -4245,6 +4245,9 @@ function iniciarBuscadorDelMenu(barra) {
  * cuántos lo leyeron. Lo segundo importa tanto como lo primero: es lo que hace
  * que mandar un mensaje no sea tirar una moneda al aire.
  */
+/** «1 persona» / «46 personas», que es como se dice en castellano. */
+const cuantasPersonas = (n) => (n === 1 ? '1 persona' : `${n} personas`);
+
 async function viewMensajes() {
   content().innerHTML = `
     <div class="page-head"><h2>📣 Mensajes</h2></div>
@@ -4292,14 +4295,15 @@ async function viewMensajes() {
           <div class="fld" id="msgCampoIglesia" hidden>
             <label for="msgIglesia">Iglesia</label>
             <select id="msgIglesia">
-              ${d.iglesias.map((i) => `<option value="${i.id}">${esc(i.nombre)}</option>`).join('')}
+              ${d.iglesias.map((i) => `<option value="${i.id}" data-cuantos="${i.cuantos}">${esc(i.nombre)} · ${cuantasPersonas(i.cuantos)}</option>`).join('')}
             </select>
           </div>
           <div class="fld" id="msgCampoPerfil" hidden>
             <label for="msgPerfil">Perfil de permisos</label>
             <select id="msgPerfil">
-              ${d.perfiles.map((x) => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('')}
+              ${d.perfiles.map((x) => `<option value="${x.id}" data-cuantos="${x.cuantos}">${esc(x.nombre)} · ${cuantasPersonas(x.cuantos)}</option>`).join('')}
             </select>
+            ${d.perfiles.length ? '' : '<div class="help">Ninguno de los perfiles lo usa gente que usted alcance.</div>'}
           </div>
           <div class="fld full" id="msgCampoPersonas" hidden>
             <label for="msgPersonas">Personas</label>
@@ -4334,19 +4338,23 @@ async function viewMensajes() {
   const $ = (id) => document.getElementById(id);
   const destino = $('msgDestino');
 
-  /** Cuántas personas recibirían lo que está elegido ahora mismo. */
+  /**
+   * Cuántas personas recibirían lo que está elegido ahora mismo.
+   *
+   * Los cuatro destinos lo saben. Con la iglesia y el perfil no se sabía —«no
+   * vale la pena una ida y vuelta por cada clic»— y son justamente los dos que
+   * pueden alcanzar a mucha gente; ahora el número viene con la lista, contado
+   * sobre la misma gente que se va a alcanzar al mandar.
+   */
   const aCuantos = () => {
     const cual = destino.value;
     if (cual === 'todos') return d.cuantosEnTotal;
     if (cual === 'personas') return $('msgPersonas').selectedOptions.length;
-    // De una iglesia o un perfil no se sabe el número sin preguntar al
-    // servidor, y no vale la pena una ida y vuelta por cada clic: se dice al
-    // enviar, que es cuando importa
-    return null;
+    const elegido = (cual === 'iglesia' ? $('msgIglesia') : $('msgPerfil')).selectedOptions[0];
+    return elegido ? Number(elegido.dataset.cuantos) || 0 : 0;
   };
   const ponerElNumeroAlDia = () => {
-    const n = aCuantos();
-    $('msgACuantos').textContent = n === null ? '' : n === 1 ? 'Le llega a 1 persona' : `Le llega a ${n} personas`;
+    $('msgACuantos').textContent = `Le llega a ${cuantasPersonas(aCuantos())}`;
   };
 
   const mostrarLoQuePide = () => {
@@ -4357,7 +4365,9 @@ async function viewMensajes() {
     ponerElNumeroAlDia();
   };
   destino.addEventListener('change', mostrarLoQuePide);
-  $('msgPersonas').addEventListener('change', ponerElNumeroAlDia);
+  for (const cual of ['msgPersonas', 'msgIglesia', 'msgPerfil']) {
+    $(cual).addEventListener('change', ponerElNumeroAlDia);
+  }
   mostrarLoQuePide();
 
   // Lo que va quedando, para no toparse con el tope al final de escribir
@@ -4463,8 +4473,16 @@ async function viewMensajes() {
   }
   pintarElHistorial();
 
-  $('msgForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
+  /**
+   * Mandarlo.
+   *
+   * Cuando el servidor contesta con una pregunta en vez de un error —le va a
+   * llegar a mucha gente— se muestra con sus dos botones y, si la respuesta es
+   * que sí, se manda de nuevo con `igual_asi`. Es el mismo mecanismo de todo el
+   * sistema, y el número que dice la pregunta lo calcula el servidor en el
+   * momento: el de la pantalla es el de cuando se cargó.
+   */
+  async function mandar(igualAsi) {
     const cual = destino.value;
     const valor = cual === 'iglesia' ? $('msgIglesia').value
       : cual === 'perfil' ? $('msgPerfil').value
@@ -4482,8 +4500,9 @@ async function viewMensajes() {
         enlace: $('msgEnlace').value,
         destino: cual,
         valor,
+        igual_asi: !!igualAsi,
       });
-      toast(r.cuantos === 1 ? 'El mensaje le llegó a 1 persona' : `El mensaje les llegó a ${r.cuantos} personas`);
+      toast(`El mensaje le llegó a ${cuantasPersonas(r.cuantos)}`);
       $('msgTitulo').value = '';
       $('msgCuerpo').value = '';
       $('msgEnlace').value = '';
@@ -4493,10 +4512,19 @@ async function viewMensajes() {
       pintarElHistorial();
       refrescarCampanita();
     } catch (err) {
+      if (err.datos && err.datos.confirmar) {
+        preguntarSiIgualVa(err, () => mandar(true), 'msgError');
+        return;
+      }
       $('msgError').innerHTML = `<div class="aviso importante"><b>No se pudo enviar</b><span>${esc(err.message)}</span></div>`;
     } finally {
       boton.disabled = false;
     }
+  }
+
+  $('msgForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    mandar(false);
   });
 }
 
@@ -5611,7 +5639,7 @@ function preguntarEnDialogo({ titulo, cuerpo, aceptar = 'Aceptar', cancelar = 'C
   });
 }
 
-function preguntarSiIgualVa(err, seguir) {
+function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
   /*
    * Cada pregunta con su encabezado y sus botones.
    *
@@ -5648,6 +5676,11 @@ function preguntarSiIgualVa(err, seguir) {
       volver: 'Volver y anotarlo',
       seguir: 'No se sabe, guardar igual',
     },
+    le_llega_a_muchos: {
+      titulo: '📣 Le va a llegar a mucha gente',
+      volver: 'Volver y acotar a quién',
+      seguir: 'Sí, mandarlo',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',
@@ -5655,7 +5688,9 @@ function preguntarSiIgualVa(err, seguir) {
     seguir: 'Está bien, guardar así',
   };
 
-  const errEl = document.getElementById('formError');
+  // Las pantallas hechas a mano tienen su propia caja de errores; la de los
+  // formularios del motor es «formError», que es la de siempre
+  const errEl = document.getElementById(dondeVa);
   errEl.innerHTML = `
     <div class="aviso confirmar">
       <b>${esc(como.titulo)}</b>

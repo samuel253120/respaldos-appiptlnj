@@ -185,7 +185,10 @@ router.get('/avisos/mensajes', authRequired, puedeEnviar, (req, res) => {
 /** Mandar uno. */
 router.post('/avisos/mensajes', authRequired, puedeEnviar, (req, res) => {
   const salida = mensajes.enviar(req.user, req.body || {});
-  if (salida.error) return res.status(400).json({ error: salida.error });
+  // Si viene `confirmar`, no es un error sino una pregunta: la pantalla la
+  // muestra con sus dos botones y reintenta con `igual_asi`, igual que en el
+  // resto del sistema (ver `preguntarSiIgualVa` en public/app.js).
+  if (salida.error) return res.status(400).json(salida);
   res.status(201).json({ ok: true, ...salida });
 });
 

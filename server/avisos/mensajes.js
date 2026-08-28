@@ -43,6 +43,16 @@ const LARGO = { titulo: 120, cuerpo: 2000 };
  */
 const TOPE_DE_UN_ENVIO = 500;
 
+/**
+ * Desde cuántas personas se pregunta dos veces antes de mandar.
+ *
+ * Escribirle a los tres de la oficina es cosa de todos los días y preguntar ahí
+ * sería estorbo. Despertarle el teléfono a una iglesia entera no se puede
+ * deshacer del todo —retirarlo alcanza a quien no lo haya abierto todavía— y
+ * eso merece una frase que diga el número antes de que salga.
+ */
+const PREGUNTAR_DESDE = 10;
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS mensajes_enviados (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,7 +108,10 @@ const DESTINOS = {
     donde: (id) => ({ sql: 'usuarios.iglesia_id = ?', params: [Number(id) || 0] }),
     dice: (id) => {
       const i = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(Number(id) || 0);
-      return `A la iglesia ${i ? i.nombre : `n.º ${id}`}`;
+      if (!i) return `A la iglesia n.º ${id}`;
+      // Casi todas se llaman «Iglesia algo», y «A la iglesia Iglesia Central» se
+      // lee mal justo donde más se lee: en la pregunta de antes de mandar
+      return /^iglesia\b/i.test(i.nombre) ? `A ${i.nombre}` : `A la iglesia ${i.nombre}`;
     },
   },
   perfil: {
@@ -163,30 +176,49 @@ function aQuienesAlcanza(quienManda, destino, valor) {
 
   return db
     .prepare(
-      `SELECT usuarios.id, usuarios.nombre, usuarios.rol, usuarios.iglesia_id
+      `SELECT usuarios.id, usuarios.nombre, usuarios.rol, usuarios.iglesia_id, usuarios.perfil_id
          FROM usuarios WHERE ${donde.join(' AND ')} ORDER BY usuarios.nombre`
     )
     .all(...params);
 }
 
-/** Lo que la pantalla necesita para ofrecer los destinos. */
+/**
+ * Lo que la pantalla necesita para ofrecer los destinos.
+ *
+ * ── CADA DESTINO DICE A CUÁNTOS ALCANZA ──
+ *
+ * La pantalla decía a cuántos le llegaba con «a todos» y con las personas
+ * elegidas a dedo, y no decía nada con «a una iglesia» ni «a un perfil», que son
+ * justamente los dos que pueden alcanzar a mucha gente. El número se calcula
+ * contando la MISMA lista de gente alcanzable que se usa para mandar, así que no
+ * hay una consulta de más y los dos no pueden decir cosas distintas.
+ *
+ * Y de ahí sale, gratis, que no se ofrezca un destino que no lleva a nadie: la
+ * lista de perfiles se armaba mirando TODAS las cuentas del sistema, así que a
+ * la administradora de una iglesia se le ofrecía un perfil que solo usa gente de
+ * otra congregación y elegirlo devolvía un error que no explicaba nada.
+ */
 function aQuienPuedeEscribir(quienManda) {
   const alcanzables = aQuienesAlcanza(quienManda, 'todos');
-  const suyos = new Set(alcanzables.map((u) => u.iglesia_id).filter(Boolean));
-  const perfilesUsados = new Set(
-    db.prepare('SELECT DISTINCT perfil_id FROM usuarios WHERE perfil_id IS NOT NULL').all()
-      .map((r) => r.perfil_id)
-  );
 
-  const iglesias = suyos.size
-    ? db.prepare(`SELECT id, nombre FROM iglesias WHERE id IN (${[...suyos].map(() => '?').join(',')}) ORDER BY nombre`)
-      .all(...suyos)
+  const porIglesia = new Map();
+  const porPerfil = new Map();
+  for (const u of alcanzables) {
+    if (u.iglesia_id) porIglesia.set(u.iglesia_id, (porIglesia.get(u.iglesia_id) || 0) + 1);
+    if (u.perfil_id) porPerfil.set(u.perfil_id, (porPerfil.get(u.perfil_id) || 0) + 1);
+  }
+
+  const iglesias = porIglesia.size
+    ? db.prepare(`SELECT id, nombre FROM iglesias WHERE id IN (${[...porIglesia.keys()].map(() => '?').join(',')}) ORDER BY nombre`)
+      .all(...porIglesia.keys())
+      .map((i) => ({ ...i, cuantos: porIglesia.get(i.id) }))
     : [];
 
   let perfiles = [];
   try {
     perfiles = db.prepare('SELECT id, nombre FROM perfiles_permisos ORDER BY nombre').all()
-      .filter((p) => perfilesUsados.has(p.id));
+      .filter((p) => porPerfil.has(p.id))
+      .map((p) => ({ ...p, cuantos: porPerfil.get(p.id) }));
   } catch (e) {
     perfiles = []; // sin la tabla todavía, ese destino simplemente no se ofrece
   }
@@ -200,6 +232,7 @@ function aQuienPuedeEscribir(quienManda) {
     personas: alcanzables.map((u) => ({ id: u.id, nombre: u.nombre, iglesia_id: u.iglesia_id })),
     largo: LARGO,
     tope: TOPE_DE_UN_ENVIO,
+    preguntarDesde: PREGUNTAR_DESDE,
   };
 }
 
@@ -240,7 +273,7 @@ function loQueFalta({ titulo, cuerpo, destino, valor }) {
  * constancia, o no queda nada. A medias sería lo peor de los dos mundos —parte
  * de la gente enterada y el registro diciendo otra cosa—.
  */
-function enviar(quienManda, { titulo, cuerpo, urgente, enlace, destino, valor }) {
+function enviar(quienManda, { titulo, cuerpo, urgente, enlace, destino, valor, igual_asi }) {
   const problema = loQueFalta({ titulo, cuerpo, destino, valor });
   if (problema) return { error: problema };
 
@@ -250,6 +283,23 @@ function enviar(quienManda, { titulo, cuerpo, urgente, enlace, destino, valor })
   }
   if (gente.length > TOPE_DE_UN_ENVIO) {
     return { error: `Son ${gente.length} personas y de una vez se puede mandar a ${TOPE_DE_UN_ENVIO}. Acote a quién va.` };
+  }
+
+  /*
+   * Antes de despertar muchos teléfonos, se dice el número y se pregunta.
+   *
+   * El número que se muestra en la pantalla es el de cuando se cargó; este es el
+   * de AHORA, ya pasado por el alcance, y es el que importa. Se pregunta una
+   * sola vez: quien contesta que sí lo manda con `igual_asi` y no se le vuelve a
+   * preguntar.
+   */
+  if (gente.length >= PREGUNTAR_DESDE && !igual_asi) {
+    return {
+      error: `${DESTINOS[destino].dice(valor)}: le va a llegar a ${gente.length} personas. `
+        + 'Una vez mandado, solo se le puede retirar a quien no lo haya abierto todavía.',
+      confirmar: 'le_llega_a_muchos',
+      cuantos: gente.length,
+    };
   }
 
   const elTitulo = String(titulo).trim();
@@ -511,7 +561,7 @@ function loQueSeHaMandado(quienManda, cuantos = 30) {
 }
 
 module.exports = {
-  DESTINOS, LARGO, TOPE_DE_UN_ENVIO,
+  DESTINOS, LARGO, TOPE_DE_UN_ENVIO, PREGUNTAR_DESDE,
   aQuienPuedeEscribir, aQuienesAlcanza, enviar, loQueSeHaMandado, loQueFalta, enlaceLimpio,
   anotarLectura, retirar,
 };

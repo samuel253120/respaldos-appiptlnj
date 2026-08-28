@@ -196,6 +196,68 @@ test('mandarle a nadie se dice, en vez de dar por hecho que salió', () => {
     'creer que un mensaje salió cuando no salió es peor que no poder mandarlo');
 });
 
+// --------------------- antes de mandar: a cuántos va, y preguntar dos veces
+
+/*
+ * La pantalla decía a cuántos le llegaba con «a todos» y con las personas
+ * elegidas a dedo, y no decía nada con «a una iglesia» ni «a un perfil», que son
+ * justamente los dos que pueden alcanzar a mucha gente. Y el botón mandaba al
+ * primer clic.
+ */
+test('cada destino dice a cuántos alcanza', () => {
+  const puede = mensajes.aQuienPuedeEscribir(jefa);
+  const suya = puede.iglesias.find((i) => i.id === norte);
+  assert.equal(suya.cuantos, puede.cuantosEnTotal,
+    'en este escenario toda su gente es de su iglesia: los dos números tienen que calzar');
+  assert.ok(suya.cuantos > 0);
+  assert.equal(puede.preguntarDesde, mensajes.PREGUNTAR_DESDE);
+});
+
+test('y un perfil que no usa nadie que uno alcance no se ofrece', () => {
+  const solo = db.prepare("INSERT INTO perfiles_permisos (nombre, estado) VALUES ('Perfil ZZ de Nadie','Activo')")
+    .run().lastInsertRowid;
+  const delSur = db.prepare("INSERT INTO perfiles_permisos (nombre, estado) VALUES ('Perfil ZZ Solo del Sur','Activo')")
+    .run().lastInsertRowid;
+  db.prepare('UPDATE usuarios SET perfil_id = ? WHERE id = ?').run(delSur, carla.id);
+
+  const puede = mensajes.aQuienPuedeEscribir(jefa);
+  assert.ok(!puede.perfiles.some((p) => p.id === solo), 'uno que no usa nadie no lleva a ninguna parte');
+  assert.ok(!puede.perfiles.some((p) => p.id === delSur),
+    'y uno que solo usa gente de otra iglesia, elegirlo devolvía un error que no explicaba nada');
+  assert.ok(puede.perfiles.every((p) => p.cuantos > 0), 'todos los que se ofrecen llevan a alguien');
+});
+
+test('a poca gente no se pregunta nada', () => {
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'A los de la oficina', cuerpo: 'x', destino: 'personas', valor: [ana.id, beto.id],
+  });
+  assert.equal(salida.error, undefined, 'escribirle a los tres de la oficina es cosa de todos los días');
+  assert.equal(salida.cuantos, 2);
+});
+
+test('pero a mucha se pregunta antes, con el número', () => {
+  const suya = iglesiaDe('Iglesia de los Muchos ZZ', 'MSG-MUCH');
+  const jefe = cuenta('Jefe de los Muchos', { iglesia: suya, administra: [suya], rol: 'admin' });
+  for (let i = 0; i < mensajes.PREGUNTAR_DESDE; i++) {
+    cuenta(`Gente del Umbral ${i}`, { iglesia: suya, rol: 'consulta' });
+  }
+  const antes = db.prepare('SELECT COUNT(*) c FROM mensajes_enviados').get().c;
+
+  const preguntando = mensajes.enviar(jefe, { titulo: 'A todos los del umbral', cuerpo: 'Aviso general', destino: 'todos' });
+  assert.equal(preguntando.confirmar, 'le_llega_a_muchos');
+  assert.match(String(preguntando.error), new RegExp(`le va a llegar a ${mensajes.PREGUNTAR_DESDE} personas`));
+  assert.match(String(preguntando.error), /solo se le puede retirar a quien no lo haya abierto/);
+  assert.equal(preguntando.cuantos, mensajes.PREGUNTAR_DESDE);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM mensajes_enviados').get().c, antes,
+    'preguntar no puede dejar el mensaje mandado a medias');
+
+  const igual = mensajes.enviar(jefe, {
+    titulo: 'A todos los del umbral', cuerpo: 'Aviso general', destino: 'todos', igual_asi: true,
+  });
+  assert.equal(igual.error, undefined, 'y quien contesta que sí no tiene que volver a contestar');
+  assert.equal(igual.cuantos, mensajes.PREGUNTAR_DESDE);
+});
+
 // ----------------------------------------------------------- el enlace del aviso
 
 test('el enlace solo puede llevar a una pantalla de este sistema', () => {
@@ -284,8 +346,14 @@ test('cada destino queda escrito como se lee, no como número', () => {
   };
   assert.equal(dice({ destino: 'todos' }).destino_dice, 'A todas las personas que alcanza');
   const aLaIglesia = dice({ destino: 'iglesia', valor: norte });
-  assert.equal(aLaIglesia.destino_dice, 'A la iglesia Iglesia de los Mensajes Norte');
+  assert.equal(aLaIglesia.destino_dice, 'A Iglesia de los Mensajes Norte',
+    'casi todas se llaman «Iglesia algo»: «A la iglesia Iglesia de los Mensajes Norte» se lee mal');
   assert.equal(aLaIglesia.destino_id, norte);
+
+  // Y a una que no se llame así, se le pone el artículo
+  const conNombreSuelto = iglesiaDe('Betania de los Mensajes', 'MSG-BET');
+  cuenta('De Betania', { iglesia: conNombreSuelto, administra: [conNombreSuelto] });
+  assert.equal(mensajes.DESTINOS.iglesia.dice(conNombreSuelto), 'A la iglesia Betania de los Mensajes');
   const aUna = dice({ destino: 'personas', valor: [ana.id] });
   assert.equal(aUna.destino_dice, 'A una persona');
   assert.equal(aUna.destino_id, null, 'a un puñado de personas elegidas no le corresponde un número');
@@ -406,6 +474,13 @@ test('a más de quinientos de una vez no se manda: se pide acotar', () => {
   const antes = cuantosMensajes();
   const salida = mensajes.enviar(jefe, { titulo: 'A todos', cuerpo: 'De una vez', destino: 'todos' });
   assert.match(String(salida.error), new RegExp(`${cuantos} personas.*${mensajes.TOPE_DE_UN_ENVIO}`));
+  /*
+   * Y esto manda por encima de la pregunta de «le va a llegar a mucha gente»:
+   * son dos cosas distintas —una se contesta y se sigue, la otra no se puede
+   * seguir— y si la pregunta se adelantara, quien dijera que sí se toparía
+   * después con el tope y su «sí» no habría servido de nada.
+   */
+  assert.equal(salida.confirmar, undefined);
   assert.equal(cuantosMensajes(), antes, 'no se mandó a los primeros quinientos y se cortó');
   assert.equal(db.prepare('SELECT COUNT(*) c FROM notificaciones WHERE tipo = ? AND titulo = ?').get('mensaje', 'A todos').c, 0);
 });
@@ -909,6 +984,23 @@ test('la pantalla de los recibidos no marca nada al abrirse', () => {
     'abrirla no puede dar por leído lo que uno solo hojeó');
   assert.match(trozo, /data-leido="\$\{m\.id\}"/, 'se marca uno por uno, y a propósito');
   assert.match(trozo, /msg-texto">\$\{esc\(m\.cuerpo\)\}/, 'con el texto entero, que es para lo que sirve');
+});
+
+test('la pantalla dice el número en los cuatro destinos', () => {
+  const trozo = app.slice(app.indexOf('const aCuantos = () => {'), app.indexOf('const aCuantos = () => {') + 700);
+  assert.match(trozo, /elegido\.dataset\.cuantos/,
+    'la iglesia y el perfil son justo los dos que pueden alcanzar a mucha gente');
+  assert.ok(!/return null;/.test(trozo), 'ya no hay un destino que no diga nada');
+  assert.match(app, /data-cuantos="\$\{i\.cuantos\}"/);
+});
+
+test('y pregunta con los dos botones antes de mandarlo a mucha gente', () => {
+  assert.match(app, /le_llega_a_muchos: \{[\s\S]{0,60}Le va a llegar a mucha gente/);
+  const trozo = app.slice(app.indexOf('async function mandar(igualAsi)'),
+    app.indexOf('async function mandar(igualAsi)') + 2400);
+  assert.match(trozo, /preguntarSiIgualVa\(err, \(\) => mandar\(true\), 'msgError'\)/,
+    'y al decir que sí se manda de nuevo, no se pierde lo escrito');
+  assert.match(trozo, /igual_asi: !!igualAsi/);
 });
 
 test('en las preferencias, lo que no se puede apagar sale dicho y no como casilla', () => {
