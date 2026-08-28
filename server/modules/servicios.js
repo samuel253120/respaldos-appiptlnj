@@ -464,6 +464,70 @@ module.exports = {
   extraRoutes(router, { db, requirePerm, comoSeArmaElListado }) {
     const sumas = require('../servicios-resumen');
 
+    /**
+     * En qué servicios sirvió una persona: cuándo predicó, coordinó o leyó.
+     *
+     * El coordinador, el salmista y el predicador quedan enlazados a su ficha
+     * cuando son miembros —el módulo se tomó ese trabajo— y la ficha no mostraba
+     * nada de eso: la pregunta más natural, «¿cuándo predicó el hermano?», no se
+     * podía contestar desde donde uno la hace.
+     *
+     * La tabla va SIN APELLIDO en la consulta a propósito: el alcance escribe
+     * los nombres de las columnas a secas, y con un alias puesto la base no
+     * sabría de qué tabla habla.
+     */
+    router.get('/servicios/de-persona', requirePerm('servicios', 'view'), (req, res) => {
+      const quien = Number(req.query.id) || 0;
+      if (!quien) return res.status(400).json({ error: 'Indique de quién son los servicios.' });
+
+      const params = [];
+      const suyos = require('../alcance').condiciones(module.exports, req.user, params);
+      const donde = `WHERE (predicador_id = ? OR coordinador_id = ? OR salmista_id = ?)`
+        + (suyos ? ` AND (${suyos})` : '');
+      const enQuePapel = [quien, quien, quien];
+
+      const filas = db
+        .prepare(
+          `SELECT id, fecha, tipo, hora_inicio, hora_termino, iglesia_id,
+                  predicador_id, coordinador_id, salmista_id,
+                  mensaje_libro, mensaje_capitulo, mensaje_versiculo_inicial, mensaje_versiculo_final,
+                  salmo_libro, salmo_capitulo, salmo_versiculo_inicial, salmo_versiculo_final,
+                  asistencia_total, ofrenda_total
+             FROM servicios ${donde}
+            ORDER BY fecha DESC, id DESC LIMIT 100`
+        )
+        .all(...enQuePapel, ...params);
+
+      /*
+       * Las veces se cuentan sobre TODO lo que hay, no sobre las cien que se
+       * listan: quien lleva años predicando vería «100» y no es lo que pasó.
+       */
+      const veces = db
+        .prepare(
+          `SELECT COUNT(*) AS servicios,
+                  COALESCE(SUM(CASE WHEN predicador_id  = ? THEN 1 ELSE 0 END), 0) AS predico,
+                  COALESCE(SUM(CASE WHEN coordinador_id = ? THEN 1 ELSE 0 END), 0) AS coordino,
+                  COALESCE(SUM(CASE WHEN salmista_id    = ? THEN 1 ELSE 0 END), 0) AS leyo
+             FROM servicios ${donde}`
+        )
+        .get(...enQuePapel, ...enQuePapel, ...params);
+
+      res.json({
+        veces,
+        // Una misma persona puede haber hecho dos cosas en el mismo servicio
+        servicios: filas.map((f) => ({
+          ...f,
+          papeles: [
+            f.predicador_id === quien ? 'Predicó' : null,
+            f.coordinador_id === quien ? 'Coordinó' : null,
+            f.salmista_id === quien ? 'Leyó el salmo' : null,
+          ].filter(Boolean),
+          cita_mensaje: cita(f.mensaje_libro, f.mensaje_capitulo, f.mensaje_versiculo_inicial, f.mensaje_versiculo_final),
+          cita_salmo: cita(f.salmo_libro, f.salmo_capitulo, f.salmo_versiculo_inicial, f.salmo_versiculo_final),
+        })),
+      });
+    });
+
     router.get('/servicios/resumen', requirePerm('servicios', 'view'), (req, res) => {
       const { params, whereSql } = comoSeArmaElListado(req);
       res.json(sumas.resumen(db, whereSql, params));

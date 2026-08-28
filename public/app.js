@@ -3348,6 +3348,16 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
   if (name === 'no_miembros' && MOD['asistencias']) {
     sumar('asistencia', 'Asistencia', '✅', (c) => renderAsistenciaDeLaPersona('No miembro', id, c));
   }
+  /*
+   * Cuándo predicó, coordinó o leyó el salmo.
+   *
+   * El servicio deja enlazadas a su ficha las tres personas que lo sirvieron, y
+   * la ficha no mostraba nada de eso: «¿cuándo predicó el hermano?» no se podía
+   * contestar desde donde uno la hace.
+   */
+  if (name === 'miembros' && MOD['servicios']) {
+    sumar('servicios', 'Servicios', '🕊️', (c) => renderServiciosDeLaPersona(id, c));
+  }
   // «Para poder ver todo lo que pidió una persona» era el motivo del módulo, y
   // hasta acá había que ir al listado a buscarla por nombre
   if (name === 'miembros' && MOD['solicitudes']) {
@@ -5198,6 +5208,64 @@ function iniciarBuscadorGlobal() {
  * que PRESENTÓ, y aquellas en las que FIGURA sin haberlas presentado —el niño
  * de una presentación, la persona a la que se traslada una ayuda—.
  */
+/**
+ * En qué servicios ha servido esta persona.
+ *
+ * Las tres cosas juntas —cuándo predicó, cuándo coordinó y cuándo leyó el
+ * salmo—, con la fecha, el tipo de servicio y el pasaje. Cada fila abre su
+ * servicio.
+ */
+async function renderServiciosDeLaPersona(personaId, contenedor) {
+  if (!MOD['servicios']) return;
+  let d;
+  try {
+    d = await api('GET', `/servicios/de-persona?id=${personaId}`);
+  } catch (e) {
+    contenedor.innerHTML = '';
+    return;
+  }
+
+  const v = d.veces;
+  const cuantas = (n, una, varias) => `${fmtNumero(n)} ${n === 1 ? una : varias}`;
+  // Solo los papeles que de verdad tuvo: «Leyó el salmo 0 veces» no dice nada
+  const resumen = [
+    v.predico ? `📖 Predicó ${cuantas(v.predico, 'vez', 'veces')}` : null,
+    v.coordino ? `🎙️ Coordinó ${cuantas(v.coordino, 'vez', 'veces')}` : null,
+    v.leyo ? `📜 Leyó el salmo ${cuantas(v.leyo, 'vez', 'veces')}` : null,
+  ].filter(Boolean);
+
+  contenedor.innerHTML = `
+    <div class="card bandeja-tabla" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🕊️ En los servicios</b>
+        <span style="color:var(--muted);font-size:13px">${esc(resumen.join(' · ') || 'Todavía no ha servido en ninguno')}</span>
+      </div>
+      ${d.servicios.length ? `
+        <div class="table-scroll">
+          <table class="grid grid-lista">
+            <thead><tr>
+              <th>Fecha</th><th>Tipo de servicio</th><th>Qué hizo</th><th>Pasaje del mensaje</th><th>Salmo</th>
+            </tr></thead>
+            <tbody>
+              ${d.servicios.map((x) => `
+                <tr data-ir="#/m/servicios/edit/${x.id}" tabindex="0">
+                  <td data-col="fecha" data-label="Fecha"><b>${esc(fechaCorta(x.fecha))}</b></td>
+                  <td data-label="Tipo de servicio">${esc(x.tipo || '')}</td>
+                  <td data-label="Qué hizo">${x.papeles.map((p) => `<span class="badge">${esc(p)}</span>`).join(' ')}</td>
+                  <td data-label="Pasaje del mensaje">${esc(x.papeles.includes('Predicó') ? x.cita_mensaje : '')}</td>
+                  <td data-label="Salmo">${esc(x.papeles.includes('Leyó el salmo') ? x.cita_salmo : '')}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        ${v.servicios > d.servicios.length
+          ? `<div class="card-body" style="color:var(--muted);font-size:13px">Se muestran los ${
+              fmtNumero(d.servicios.length)} más recientes, de ${fmtNumero(v.servicios)}.</div>`
+          : ''}`
+        : '<div class="card-body" style="color:var(--muted);font-size:13px">No figura en ningún servicio registrado.</div>'}
+    </div>`;
+}
+
 async function renderSolicitudesDeLaPersona(tipo, personaId, contenedor) {
   if (!MOD['solicitudes']) return;
   let d;

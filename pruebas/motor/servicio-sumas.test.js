@@ -170,14 +170,16 @@ test('el motor le presta a las rutas del módulo la misma consulta del listado',
   assert.match(modulo, /comoSeArmaElListado\(req\)/);
 });
 
-test('el módulo ofrece las dos rutas: el total y el informe', () => {
+test('el módulo ofrece sus rutas: el total y el informe', () => {
   assert.equal(typeof servicios.extraRoutes, 'function');
   const rutas = [];
   servicios.extraRoutes(
     { get: (ruta) => rutas.push(ruta) },
     { db, requirePerm: () => {}, comoSeArmaElListado: () => ({ params: [], whereSql: '' }) }
   );
-  assert.deepEqual(rutas, ['/servicios/resumen', '/servicios/informe']);
+  for (const ruta of ['/servicios/resumen', '/servicios/informe']) {
+    assert.ok(rutas.includes(ruta), `falta la ruta ${ruta}`);
+  }
 });
 
 /* ------------------------------------------------------------- la pantalla */

@@ -215,7 +215,10 @@ async function montarEscenario(admin) {
   const servicioSur = await buscarOCrear('servicios',
     (f) => f.fecha === '2028-09-03' && String(f.iglesia_id) === String(sur.id),
     { fecha: '2028-09-03', tipo: 'Servicio Especial', iglesia_id: sur.id,
-      ofrenda_total: 7654321, asistencia_adultos: 4321 });
+      ofrenda_total: 7654321, asistencia_adultos: 4321,
+      // Y con una miembro del Sur predicando: así se puede comprobar que a nadie
+      // del Norte se le abre en qué sirvió una persona de allá
+      predicador: `${delSur.nombres} ${delSur.apellidos}`, predicador_id: delSur.id });
 
   const perfil = await buscarOCrear('perfiles_permisos', (f) => f.nombre === `Perfil ${MARCA}`,
     { nombre: `Perfil ${MARCA}`, estado: 'Activo', permisos: JSON.stringify({ miembros: ['view'] }) });
@@ -450,6 +453,19 @@ async function loAjenoNoSeVe(E, modulos) {
     suInforme.estado === 200 && suma(suInforme) < laDelSur
       && !JSON.stringify((suInforme.json || {}).porTipo || []).includes('7654321'),
     `respondió ${suInforme.estado} con una ofrenda de ${suma(suInforme)}`);
+
+  /*
+   * Y en qué servicios sirvió una persona de la otra iglesia. La ficha de esa
+   * persona ya está cerrada —eso se comprueba arriba—, pero esta ruta se pide
+   * por el número de la ficha, así que hay que ver qué contesta cuando el
+   * número es de alguien de allá.
+   */
+  const suPapel = await norte('GET', `/api/servicios/de-persona?id=${E.delSur.id}`);
+  const nada = suPapel.json && suPapel.json.veces && !suPapel.json.veces.servicios
+    && !(suPapel.json.servicios || []).length;
+  revisar('ni en qué servicios sirvió alguien de la otra iglesia',
+    suPapel.estado === 200 && nada,
+    `respondió ${suPapel.estado}: ${suPapel.texto.slice(0, 160).replace(/\s+/g, ' ')}`);
 }
 
 /* ------------------------------------------------------------------ *
