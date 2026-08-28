@@ -489,6 +489,40 @@ module.exports = {
       name: 'estado', label: 'Estado', type: 'select', default: 'Activo',
       options: ['Activo', 'Inactivo', 'En disciplina', 'Trasladado', 'Fallecido'],
     },
+    /*
+     * ------- De una salida quedaba el resultado, no adónde ni cuándo -------
+     *
+     * El estado decía «Trasladado» o «Fallecido» y ahí terminaba. No había
+     * dónde anotar a qué iglesia se fue, ni desde cuándo, ni la fecha de
+     * fallecimiento. «Cuántos se trasladaron este año y a qué iglesias» es una
+     * pregunta de informe anual, y había que reconstruirla leyendo bitácoras
+     * una por una. Cuando la iglesia que recibe pide el traslado, tampoco
+     * había dónde anotar que se mandó.
+     *
+     * Aparecen solos según el estado, como las fechas de matrimonio cuando se
+     * marca «Casado(a)». Y como aquellas: si el estado cambia después, lo
+     * escrito NO se borra —queda guardado, solo deja de mostrarse—, que es la
+     * regla de esta ficha desde el principio.
+     */
+    {
+      name: 'fecha_salida', label: 'Fecha del traslado', type: 'date',
+      noAntesDe: 'fecha_nacimiento', showIf: { field: 'estado', equals: 'Trasladado' },
+      help: 'Desde cuándo dejó de ser parte de esta congregación.',
+    },
+    {
+      name: 'iglesia_destino_id', label: 'Iglesia que la recibe', type: 'ref', ref: 'iglesias',
+      showIf: { field: 'estado', equals: 'Trasladado' },
+      help: 'Si es una de la organización, elíjala acá.',
+    },
+    {
+      name: 'iglesia_destino', label: 'O el nombre de la iglesia, si es de fuera', type: 'text',
+      showIf: { field: 'estado', equals: 'Trasladado' },
+      help: 'Solo si NO es una de la organización. Al elegirla arriba, esto se borra solo.',
+    },
+    {
+      name: 'fecha_fallecimiento', label: 'Fecha de fallecimiento', type: 'date',
+      noAntesDe: 'fecha_nacimiento', showIf: { field: 'estado', equals: 'Fallecido' },
+    },
     {
       /**
        * De este campo cuelga quién entra solo a la directiva de la iglesia
@@ -885,6 +919,44 @@ module.exports = {
               confirmar: 'tipo_miembro_no_calza_con_la_edad',
             };
           }
+        }
+      }
+
+      /**
+       * Cuando alguien se va, dónde queda anotado adónde.
+       *
+       * La iglesia de destino se ELIGE cuando es una de la organización, y se
+       * escribe a mano solo cuando no lo es. Elegida, el texto se borra: lo
+       * mismo guardado dos veces termina diciendo cosas distintas.
+       *
+       * Y se PREGUNTA cuando se marca un traslado sin decir adónde. Es el
+       * único momento en que alguien lo sabe: dos semanas después, no lo sabe
+       * nadie. No se bloquea —a veces de verdad no se sabe— pero se pregunta
+       * una vez, cuando se está marcando.
+       */
+      const estadoNuevo = data.estado !== undefined ? data.estado : (existing || {}).estado;
+      const seVaAhora = data.estado !== undefined && data.estado !== (existing || {}).estado;
+
+      if (estadoNuevo === 'Trasladado') {
+        const destinoId = data.iglesia_destino_id !== undefined
+          ? data.iglesia_destino_id
+          : (existing || {}).iglesia_destino_id;
+        const destinoTexto = data.iglesia_destino !== undefined
+          ? data.iglesia_destino
+          : (existing || {}).iglesia_destino;
+
+        if (destinoId) {
+          const suIglesia = data.iglesia_id !== undefined ? data.iglesia_id : (existing || {}).iglesia_id;
+          if (suIglesia && Number(destinoId) === Number(suIglesia)) {
+            return 'La iglesia que la recibe no puede ser la misma de la que se va.';
+          }
+          data.iglesia_destino = null;
+        } else if (seVaAhora && !String(destinoTexto || '').trim() && !confirmado) {
+          return {
+            error: 'No quedó anotado a qué iglesia se traslada. Es el único momento en que alguien lo '
+              + 'sabe: después hay que reconstruirlo leyendo el historial. Si de verdad no se sabe, confirme.',
+            confirmar: 'traslado_sin_destino',
+          };
         }
       }
 

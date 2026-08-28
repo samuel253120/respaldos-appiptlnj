@@ -5253,6 +5253,11 @@ function preguntarSiIgualVa(err, seguir) {
       volver: 'Volver y corregirlo',
       seguir: 'Así corresponde, guardar',
     },
+    traslado_sin_destino: {
+      titulo: '📍 ¿A qué iglesia se traslada?',
+      volver: 'Volver y anotarlo',
+      seguir: 'No se sabe, guardar igual',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',
