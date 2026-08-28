@@ -92,6 +92,40 @@ function avisoDeMovimientoRepetido(db, datos) {
   };
 }
 
+/**
+ * El aviso de un egreso grande sin su boleta, o null si no hay nada que decir.
+ *
+ * Desde qué monto se pregunta lo decide la iglesia en Configuración
+ * («Preguntar por el comprobante de un egreso desde»), como los demás plazos
+ * del sistema. En cero no pregunta nunca: hay tesorerías que documentan aparte
+ * y el sistema no está para discutírselo.
+ *
+ * No se pregunta por los movimientos que genera otro módulo —la ofrenda de un
+ * servicio, los dos lados de un traspaso—: esos no pasan por acá, pero si algún
+ * día pasaran, nadie les va a adjuntar una boleta a mano.
+ */
+function avisoDeEgresoSinRespaldo({ data, existing, tipo, monto }) {
+  if (tipo !== 'Egreso') return null;
+  if (existing && (existing.traspaso_id || existing.servicio_id)) return null;
+
+  const comprobante = data.comprobante !== undefined
+    ? data.comprobante
+    : existing ? existing.comprobante : null;
+  if (comprobante && String(comprobante).trim()) return null;
+
+  const desde = require('../ajustes').numero('egreso_pide_comprobante_desde', 0, 100000000);
+  if (!desde || (Number(monto) || 0) < desde) return null;
+
+  return {
+    error:
+      `Este egreso de ${enPesos(monto)} va sin la boleta ni el comprobante de la transferencia. `
+      + `Desde ${enPesos(desde)} conviene adjuntarlo: cuando llega una revisión, el respaldo que no `
+      + 'está en el sistema hay que buscarlo en una carpeta, movimiento por movimiento. Se puede '
+      + 'adjuntar después abriendo el movimiento. Si va sin respaldo, confirme.',
+    confirmar: 'egreso_sin_respaldo',
+  };
+}
+
 module.exports = {
   name: 'tesoreria',
   label: 'Tesorería',
@@ -104,8 +138,48 @@ module.exports = {
   // Un traspaso se podía imprimir y un movimiento no, siendo el mismo dinero
   printable: true,
   searchFields: ['concepto', 'categoria', 'notas'],
-  listFields: ['fecha', 'cuenta_id', 'tipo', 'categoria', 'concepto', 'monto'],
+  listFields: ['fecha', 'cuenta_id', 'tipo', 'categoria', 'concepto', 'monto', 'respaldo'],
   filterFields: ['cuenta_id', 'tipo', 'categoria'],
+  /*
+   * El respaldo de un movimiento: la boleta o el comprobante de la
+   * transferencia.
+   *
+   * El campo estaba, funcionaba y guardaba el archivo, pero nada lo pedía y no
+   * se veía en ninguna parte: medido sobre la primera página del libro, CERO de
+   * doscientos egresos lo tenían. Cuando llega una revisión, el respaldo hay que
+   * buscarlo en una carpeta física, movimiento por movimiento. El sistema ya
+   * tenía dónde guardarlo; lo que no tenía es el hábito, y el hábito lo hace la
+   * pantalla: una columna que se ve de un vistazo, un filtro para encontrar lo
+   * que falta, y una pregunta al guardar un egreso grande sin adjunto.
+   */
+  computed: [
+    {
+      name: 'respaldo', label: 'Respaldo', type: 'badge',
+      /*
+       * Solo dice que falta cuando falta de verdad: un ingreso no necesita
+       * boleta, y los movimientos que genera otro módulo —la ofrenda de un
+       * servicio, los dos lados de un traspaso— no los adjunta nadie a mano.
+       */
+      calc: (r) => {
+        if (r.comprobante) return { texto: '📎 Sí', nivel: 'ok' };
+        if (r.tipo !== 'Egreso' || r.traspaso_id || r.servicio_id) return { texto: '—', nivel: '' };
+        return { texto: 'Falta', nivel: 'medio' };
+      },
+    },
+  ],
+  filtrosPropios: [
+    {
+      nombre: 'respaldo', label: 'Respaldo', tipo: 'select',
+      opciones: ['Egresos sin respaldo', 'Con respaldo'],
+      donde: (valor) => (valor === 'Con respaldo'
+        ? { sql: "comprobante IS NOT NULL AND TRIM(comprobante) <> ''", params: [] }
+        : {
+            sql: `tipo = 'Egreso' AND traspaso_id IS NULL AND servicio_id IS NULL
+                    AND (comprobante IS NULL OR TRIM(comprobante) = '')`,
+            params: [],
+          }),
+    },
+  ],
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
     { name: 'fecha', label: 'Fecha', type: 'date', required: true, seccion: 'Qué movimiento es' },
@@ -237,6 +311,11 @@ module.exports = {
           tipo, monto, fecha, excluirMovimiento: existing ? existing.id : null,
         });
         if (aviso) return aviso;
+
+        // Y de última, el respaldo: es la que menos urge de las tres, porque no
+        // descuadra nada hoy, pero es la que se echa de menos en una revisión
+        const sinRespaldo = avisoDeEgresoSinRespaldo({ data, existing, tipo, monto });
+        if (sinRespaldo) return sinRespaldo;
       }
       return null;
     },

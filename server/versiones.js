@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.166.0", fecha: "2026-08-28", titulo: "El respaldo de un egreso se ve, se busca y se pregunta: una columna en el listado, un filtro de «egresos sin respaldo» y un aviso desde el monto que decida la iglesia" },
   { version: "1.165.0", fecha: "2026-08-28", titulo: "Tesorería devuelve papel: balance del período por mes, por categoría y por cuenta; cartola de una cuenta con el saldo corriendo fila a fila; y el comprobante de un movimiento" },
   { version: "1.164.0", fecha: "2026-08-28", titulo: "Mover el saldo inicial de una cuenta que ya tiene movimientos se pregunta antes de guardar, diciendo a cuánto quedaría el saldo" },
   { version: "1.163.0", fecha: "2026-08-28", titulo: "El mismo movimiento anotado dos veces se pregunta antes de guardarse: la cuenta dejó de descontar el doble en silencio" },

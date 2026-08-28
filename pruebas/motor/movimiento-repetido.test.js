@@ -57,9 +57,15 @@ function guardar(datos, { existing = null, confirmado = false } = {}) {
   return tesoreria.hooks.beforeSave({ ...datos }, { user: usuario, db, existing, confirmado, isNew: !existing });
 }
 
+/*
+ * Con su boleta adjunta, a propósito. Desde la 1.166.0 un egreso grande sin
+ * respaldo también se pregunta, y acá lo que se está probando es OTRA pregunta:
+ * si estos movimientos fueran sin comprobante, un «no se pregunta nada» no
+ * distinguiría entre «no está repetido» y «se preguntó por la boleta».
+ */
 const nuevo = (extra = {}) => ({
   fecha: DIA, tipo: 'Egreso', categoria: 'Compras', concepto: CONCEPTO,
-  monto: 250000, cuenta_id: cuenta, metodo: 'Efectivo', ...extra,
+  monto: 250000, cuenta_id: cuenta, metodo: 'Efectivo', comprobante: 'boleta-sillas.pdf', ...extra,
 });
 
 /* ------------------------------------------------------ lo que sí es el mismo */

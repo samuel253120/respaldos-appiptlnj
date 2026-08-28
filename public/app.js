@@ -2252,11 +2252,15 @@ async function viewList(name, filtrosIniciales) {
   filtrosPropios.forEach((f) => {
     const sel = document.getElementById('fp_' + f.nombre);
     if (!sel) return;
+    const pintar = (opts) => {
+      sel.innerHTML = `<option value="">— ${esc(f.label)} —</option>` +
+        opts.map((o) => `<option value="${esc(o.id)}" ${st.propios[f.nombre] === String(o.id) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
+    };
     if (f.tipo === 'ref' && f.ref) {
-      getOptions(f.ref).then((opts) => {
-        sel.innerHTML = `<option value="">— ${esc(f.label)} —</option>` +
-          opts.map((o) => `<option value="${o.id}" ${st.propios[f.nombre] === String(o.id) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
-      });
+      getOptions(f.ref).then(pintar);
+    } else if (f.opciones && f.opciones.length) {
+      // Una lista fija, que no sale de ninguna tabla: el valor es el texto mismo
+      pintar(f.opciones.map((o) => ({ id: o, label: o })));
     }
     sel.addEventListener('change', () => {
       st.propios[f.nombre] = sel.value;
@@ -6385,6 +6389,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       titulo: '💸 Puede que este movimiento ya esté anotado',
       volver: 'Volver y buscarlo',
       seguir: 'Son dos distintos, guardar',
+    },
+    egreso_sin_respaldo: {
+      titulo: '📎 Este egreso va sin su comprobante',
+      volver: 'Volver y adjuntarlo',
+      seguir: 'Guardar sin respaldo',
     },
     saldo_inicial_cambiado: {
       titulo: '🏦 Está moviendo el punto de partida de la cuenta',

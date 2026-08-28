@@ -200,6 +200,14 @@ const OPCIONES = [
           'este porcentaje como aporte para la corporación, que entra a su «Fondo para la corporación».',
       },
       {
+        clave: 'egreso_pide_comprobante_desde', label: 'Preguntar por el comprobante de un egreso desde',
+        tipo: 'number', defecto: '100000', min: 0, max: 100000000,
+        ayuda:
+          'Al guardar un egreso de este monto o más sin adjuntarle la boleta o el comprobante de la ' +
+          'transferencia, el sistema lo pregunta antes de guardar. No lo impide: hay gastos chicos y ' +
+          'urgentes que se documentan después. En cero, no pregunta nunca.',
+      },
+      {
         clave: 'ofrenda_registra_tesoreria', label: 'Registrar la ofrenda en tesorería', tipo: 'boolean', defecto: '1',
         ayuda:
           'Al guardar un servicio con ofrenda, el sistema anota tres movimientos: el ingreso de la ofrenda ' +

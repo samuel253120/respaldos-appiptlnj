@@ -200,8 +200,10 @@ app.get('/api/meta', authRequired, (req, res) => {
        * lo que hace falta para pintarlos: la condición SQL se queda en el
        * servidor, que es donde tiene que estar.
        */
-      filtrosPropios: (m.filtrosPropios || []).map(({ nombre, label, tipo, ref }) => ({
-        nombre, label, tipo: tipo || 'texto', ref: ref || null,
+      filtrosPropios: (m.filtrosPropios || []).map(({ nombre, label, tipo, ref, opciones }) => ({
+        // `opciones` es una lista fija —«Egresos sin respaldo», «Con respaldo»—:
+        // no apunta a otra tabla, así que viaja tal cual para poder pintarla
+        nombre, label, tipo: tipo || 'texto', ref: ref || null, opciones: opciones || null,
       })),
       // Si el módulo tiene fecha de nacimiento, se puede acotar por edad
       rangoDeEdad: (m.fields || []).some((f) => f.mostrarEdad),
