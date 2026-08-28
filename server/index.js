@@ -195,6 +195,16 @@ app.get('/api/meta', authRequired, (req, res) => {
       searchFields: m.searchFields,
       listFields: m.listFields,
       filterFields: m.filterFields,
+      /**
+       * Los filtros propios del módulo, para que la barra los ofrezca. Va solo
+       * lo que hace falta para pintarlos: la condición SQL se queda en el
+       * servidor, que es donde tiene que estar.
+       */
+      filtrosPropios: (m.filtrosPropios || []).map(({ nombre, label, tipo, ref }) => ({
+        nombre, label, tipo: tipo || 'texto', ref: ref || null,
+      })),
+      // Si el módulo tiene fecha de nacimiento, se puede acotar por edad
+      rangoDeEdad: (m.fields || []).some((f) => f.mostrarEdad),
       defaultSort: m.defaultSort,
       fields: [
         ...m.fields
@@ -221,8 +231,11 @@ app.get('/api/meta', authRequired, (req, res) => {
             calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
             computed: false,
           })).map(sinLoQueNoDiceNada),
-        ...(m.computed || []).map(({ name, label, type, help }) => sinLoQueNoDiceNada({
+        ...(m.computed || []).map(({ name, label, type, help, ordenarPor }) => sinLoQueNoDiceNada({
           name, label, type, help: help || null, computed: true, readonly: true,
+          // Un calculado no se puede ordenar… salvo que diga por qué columna
+          // se ordena en su lugar. La edad lo hace: por la fecha de nacimiento.
+          ordenable: !!ordenarPor,
         })),
       ],
       perms: {

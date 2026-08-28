@@ -234,6 +234,29 @@ module.exports = {
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono', 'email'],
   listFields: ['foto', 'tratamiento', 'nombres', 'apellidos', 'rut', 'edad', 'tipo_miembro', 'iglesia_id', 'estado'],
   filterFields: ['tipo_miembro', 'estado', 'iglesia_id'],
+  /**
+   * «Los de este cuerpo, con su teléfono» no se contestaba desde acá.
+   *
+   * La ficha de cada persona muestra en qué cuerpos participa, pero el listado
+   * no se podía acotar a uno: había que abrir el cuerpo, mirar sus
+   * integrantes, y volver a Miembros a buscar a cada uno. Con esto la pregunta
+   * se contesta donde está la gente, y la planilla que se baja trae lo mismo
+   * que se está viendo.
+   *
+   * Cuenta quien pertenece HOY —activo o en prueba—: a quien se retiró no se
+   * le sigue contando entre los del cuerpo.
+   */
+  filtrosPropios: [
+    {
+      nombre: 'cuerpo_id', label: 'Cuerpo o grupo', tipo: 'ref', ref: 'cuerpos',
+      donde: (valor) => ({
+        sql: `id IN (SELECT miembro_id FROM integrantes_cuerpo
+                      WHERE cuerpo_id = ? AND miembro_id IS NOT NULL
+                        AND estado IN ('Activo', 'En prueba'))`,
+        params: [Number(valor) || 0],
+      }),
+    },
+  ],
   defaultSort: { field: 'apellidos', dir: 'asc' },
   printable: true,
   computed: [
@@ -272,6 +295,10 @@ module.exports = {
     },
     {
       name: 'edad', label: 'Edad', type: 'texto',
+      // La edad no es una columna, pero la fecha de nacimiento sí: ordenar por
+      // edad es ordenar por ella al revés. Sin esto, pedir el listado por edad
+      // no ordenaba nada y nadie avisaba.
+      ordenarPor: { campo: 'fecha_nacimiento', invertido: true },
       calc: (r) => {
         const a = edadEnAnios(r.fecha_nacimiento);
         if (a == null) return '';

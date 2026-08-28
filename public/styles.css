@@ -312,7 +312,10 @@ table.grid .btn.danger.sm:hover { background: #fee2e2; border-color: #fecaca; co
 .card .card-body { padding: 18px 20px; }
 
 .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 11px 14px; border-bottom: 1px solid var(--border); }
-.toolbar input[type="search"], .toolbar input[type="date"], .toolbar select {
+/* El número va en la lista: sin él, la caja de la edad salía sin formato
+   —19 px de alto contra los 34 de sus vecinas— y no se podía tocar. */
+.toolbar input[type="search"], .toolbar input[type="date"],
+.toolbar input[type="number"], .toolbar select {
   padding: 7px 11px; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px;
   background: #fff; height: 34px;
 }
@@ -320,6 +323,7 @@ table.grid .btn.danger.sm:hover { background: #fee2e2; border-color: #fecaca; co
    traiga el nombre completo de la iglesia */
 .toolbar input[type="search"] { flex: 1 1 200px; min-width: 160px; max-width: 320px; }
 .toolbar select { flex: 0 1 auto; max-width: 190px; }
+.toolbar label.range input[type="number"] { width: 5.5em; }
 .toolbar .spacer { flex: 1; }
 .toolbar label.range { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 /**

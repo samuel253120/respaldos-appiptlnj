@@ -780,6 +780,174 @@ function scopeClause(def, user, params) {
   return alcance.condiciones(def, user, params);
 }
 
+  /**
+   * La consulta del listado: alcance, búsqueda, filtros, rango de fechas y
+   * orden. Se arma en un solo lugar porque la usan dos rutas —la que pinta
+   * la pantalla y la que baja la planilla—, y tienen que mirar exactamente
+   * lo mismo: si la planilla se armara aparte, un día traería filas que la
+   * pantalla no muestra, o de una iglesia que no le toca a quien la pide.
+   */
+function consultaDeUnListado(def, req) {
+  const fields = fieldMap(def);
+
+  const params = [];
+  const where = [];
+  const scope = scopeClause(def, req.user, params);
+  if (scope) where.push(scope);
+
+  // Solo por los campos que esta persona alcanza: un teléfono que no se le
+  // muestra tampoco sirve para encontrar a su dueño, porque si sirviera
+  // bastaría con probar números para averiguar de quién es cada uno.
+  //
+  // Cómo se compara —por palabras y sin tildes— está en server/busqueda.js,
+  // con lo que costaba antes escrito ahí.
+  const buscada = busqueda.condicion(req.query.q, sensibles.buscablesPara(def, req.user));
+  if (buscada) {
+    where.push(`(${buscada.sql})`);
+    params.push(...buscada.params);
+  }
+
+  // Filtros exactos: ?f_campo=valor (solo campos declarados)
+  for (const [key, val] of Object.entries(req.query)) {
+    if (!key.startsWith('f_') || val === '') continue;
+    const fname = key.slice(2);
+    if (!fields[fname] && fname !== 'id') continue;
+    where.push(`"${fname}" = ?`);
+    params.push(val);
+  }
+  // Lo que falta por llenar: ?sin=email trae los que no tienen correo.
+  // Sirve para que un conteo de «datos por completar» se pueda abrir como
+  // lista y llenarse, en vez de quedar en un número que nadie sabe a
+  // quiénes corresponde.
+  for (const nombre of String(req.query.sin || '').split(',').map((n) => n.trim()).filter(Boolean)) {
+    if (!fields[nombre]) continue;
+    where.push(`("${nombre}" IS NULL OR TRIM("${nombre}") = '')`);
+  }
+
+  /**
+   * Rango de edad: ?edad_desde=18&edad_hasta=30
+   *
+   * La edad no es una columna —se calcula al leer la ficha, así nunca
+   * queda vieja— y por eso no se podía filtrar por ella. Pero preguntarla
+   * es de todos los días: «los menores de 18 para el cuerpo de
+   * Infantiles», «los mayores de 60 para la visita». Se armaba bajando la
+   * planilla entera y filtrando en Excel.
+   *
+   * Se resuelve al revés: en vez de calcular la edad de cada fila, se
+   * convierte la edad pedida en la fecha de nacimiento que le corresponde,
+   * que SÍ es una columna. «18 o más» es haber nacido hace dieciocho años
+   * o antes; «30 o menos» es haber nacido DESPUÉS de hace treinta y un
+   * años, porque quien nació justo hace treinta y uno ya tiene treinta y
+   * uno. SQLite hace la resta, así que los años bisiestos salen bien
+   * solos.
+   *
+   * El campo lo dice el propio módulo: el que declara `mostrarEdad`.
+   */
+  const campoDeNacimiento = def.fields.find((f) => f.mostrarEdad && fields[f.name]);
+  if (campoDeNacimiento) {
+    const col = `"${campoDeNacimiento.name}"`;
+    /*
+     * Solo un número entero, y entero de verdad: `parseInt` leía «18 años» y
+     * «18; lo que sea» como 18. No es un agujero —el valor viaja como
+     * parámetro, nunca pegado al SQL— pero adivinar lo que alguien quiso decir
+     * es peor que no hacerle caso: si lo escrito no es un número, no se acota
+     * y el listado se ve entero.
+     */
+    const anios = (valor) => {
+      if (!/^\d{1,3}$/.test(String(valor || '').trim())) return null;
+      const n = Number(valor);
+      return n >= 0 && n <= 130 ? n : null;
+    };
+    const desdeEdad = anios(req.query.edad_desde);
+    const hastaEdad = anios(req.query.edad_hasta);
+    /*
+     * A quien no tiene fecha no hace falta dejarlo fuera a mano: `date()`
+     * devuelve nulo con lo que no sea una fecha —vacío, espacios, texto—, y
+     * comparar contra nulo no es cierto. Comprobado. Se dice acá porque la
+     * tentación es agregar la comprobación «por si acaso», y una condición que
+     * parece que cuida algo y no cuida nada es peor que no tenerla.
+     */
+    if (desdeEdad !== null) {
+      where.push(`date(${col}) <= date('now','localtime',?)`);
+      params.push(`-${desdeEdad} years`);
+    }
+    if (hastaEdad !== null) {
+      where.push(`date(${col}) > date('now','localtime',?)`);
+      params.push(`-${hastaEdad + 1} years`);
+    }
+  }
+
+  /**
+   * Los filtros que solo tienen sentido en un módulo.
+   *
+   * «De qué cuerpo es esta persona» no se contesta mirando una columna de
+   * su ficha: está en otra tabla. El módulo escribe la condición —sabe
+   * dónde mirar— y el motor la pega donde corresponde, con sus parámetros
+   * separados del SQL. Ver `filtrosPropios` en server/modules/miembros.js.
+   */
+  for (const filtro of def.filtrosPropios || []) {
+    const valor = req.query[filtro.nombre];
+    if (valor === undefined || valor === '') continue;
+    const trozo = filtro.donde(valor, { db, usuario: req.user });
+    if (!trozo || !trozo.sql) continue;
+    where.push(`(${trozo.sql})`);
+    params.push(...(trozo.params || []));
+  }
+
+  // Rango de fechas: ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD sobre dateField del módulo
+  const dateField = def.dateField || (fields['fecha'] ? 'fecha' : null);
+  if (dateField && req.query.desde) {
+    where.push(`"${dateField}" >= ?`);
+    params.push(req.query.desde);
+  }
+  if (dateField && req.query.hasta) {
+    where.push(`"${dateField}" <= ?`);
+    params.push(req.query.hasta);
+  }
+
+  let sortField = req.query.sort && (fields[req.query.sort] || req.query.sort === 'id') ? req.query.sort : def.defaultSort.field;
+  let alReves = false;
+
+  /**
+   * Ordenar por un dato que se calcula.
+   *
+   * La edad no es una columna, así que pedir `sort=edad` no ordenaba nada:
+   * el listado salía en el orden de siempre y nadie avisaba. Un campo
+   * calculado puede decir por qué columna se ordena en su lugar
+   * —`ordenarPor`—, y si va al revés: de más viejo a más joven es de fecha
+   * de nacimiento MÁS ANTIGUA a más nueva.
+   */
+  const calculado = (def.computed || []).find((c) => c.name === req.query.sort);
+  let vaciosAlFinal = null;
+  if (calculado && calculado.ordenarPor && fields[calculado.ordenarPor.campo]) {
+    sortField = calculado.ordenarPor.campo;
+    alReves = !!calculado.ordenarPor.invertido;
+    /*
+     * Quien no tiene el dato va al final, se pida como se pida.
+     *
+     * Sin esto, «de mayor a menor» encabezaba el listado con las fichas sin
+     * fecha de nacimiento, que no tienen edad: SQLite pone los vacíos
+     * primero al ordenar hacia arriba, y ordenar por edad hacia abajo es
+     * ordenar por fecha hacia arriba. Quien pide los más viejos no espera
+     * abrir con tres fichas en blanco.
+     */
+    vaciosAlFinal = `("${sortField}" IS NULL OR TRIM("${sortField}") = '') ASC`;
+  }
+
+  if (!fields[sortField] && sortField !== 'id') sortField = 'id';
+  let sortDir = (req.query.dir || def.defaultSort.dir) === 'asc' ? 'ASC' : 'DESC';
+  if (alReves) sortDir = sortDir === 'ASC' ? 'DESC' : 'ASC';
+
+  // Se desempata por id para que el orden sea estable y cronológico
+  // cuando varios registros comparten el mismo valor (p. ej. la misma fecha).
+  return {
+    params,
+    whereSql: where.length ? 'WHERE ' + where.join(' AND ') : '',
+    ordenSql: `ORDER BY ${vaciosAlFinal ? `${vaciosAlFinal}, ` : ''}"${sortField}" ${sortDir}`
+      + `${sortField === 'id' ? '' : `, id ${sortDir}`}`,
+  };
+}
+
 function buildRouter() {
   const router = express.Router();
   router.use(authRequired);
@@ -847,64 +1015,7 @@ function buildRouter() {
      * lo mismo: si la planilla se armara aparte, un día traería filas que la
      * pantalla no muestra, o de una iglesia que no le toca a quien la pide.
      */
-    const consultaDelListado = (req) => {
-      const params = [];
-      const where = [];
-      const scope = scopeClause(def, req.user, params);
-      if (scope) where.push(scope);
-
-      // Solo por los campos que esta persona alcanza: un teléfono que no se le
-      // muestra tampoco sirve para encontrar a su dueño, porque si sirviera
-      // bastaría con probar números para averiguar de quién es cada uno.
-      //
-      // Cómo se compara —por palabras y sin tildes— está en server/busqueda.js,
-      // con lo que costaba antes escrito ahí.
-      const buscada = busqueda.condicion(req.query.q, sensibles.buscablesPara(def, req.user));
-      if (buscada) {
-        where.push(`(${buscada.sql})`);
-        params.push(...buscada.params);
-      }
-
-      // Filtros exactos: ?f_campo=valor (solo campos declarados)
-      for (const [key, val] of Object.entries(req.query)) {
-        if (!key.startsWith('f_') || val === '') continue;
-        const fname = key.slice(2);
-        if (!fields[fname] && fname !== 'id') continue;
-        where.push(`"${fname}" = ?`);
-        params.push(val);
-      }
-      // Lo que falta por llenar: ?sin=email trae los que no tienen correo.
-      // Sirve para que un conteo de «datos por completar» se pueda abrir como
-      // lista y llenarse, en vez de quedar en un número que nadie sabe a
-      // quiénes corresponde.
-      for (const nombre of String(req.query.sin || '').split(',').map((n) => n.trim()).filter(Boolean)) {
-        if (!fields[nombre]) continue;
-        where.push(`("${nombre}" IS NULL OR TRIM("${nombre}") = '')`);
-      }
-
-      // Rango de fechas: ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD sobre dateField del módulo
-      const dateField = def.dateField || (fields['fecha'] ? 'fecha' : null);
-      if (dateField && req.query.desde) {
-        where.push(`"${dateField}" >= ?`);
-        params.push(req.query.desde);
-      }
-      if (dateField && req.query.hasta) {
-        where.push(`"${dateField}" <= ?`);
-        params.push(req.query.hasta);
-      }
-
-      let sortField = req.query.sort && (fields[req.query.sort] || req.query.sort === 'id') ? req.query.sort : def.defaultSort.field;
-      if (!fields[sortField] && sortField !== 'id') sortField = 'id';
-      const sortDir = (req.query.dir || def.defaultSort.dir) === 'asc' ? 'ASC' : 'DESC';
-
-      // Se desempata por id para que el orden sea estable y cronológico
-      // cuando varios registros comparten el mismo valor (p. ej. la misma fecha).
-      return {
-        params,
-        whereSql: where.length ? 'WHERE ' + where.join(' AND ') : '',
-        ordenSql: `ORDER BY "${sortField}" ${sortDir}${sortField === 'id' ? '' : `, id ${sortDir}`}`,
-      };
-    };
+    const consultaDelListado = (req) => consultaDeUnListado(def, req);
 
     // ---- listar ----
     router.get(base, requirePerm(def.name, 'view'), (req, res) => {
@@ -1353,6 +1464,7 @@ function buildRouter() {
 }
 
 module.exports = {
+  consultaDeUnListado,
   buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara,
   revisarLimites, buscarDuplicado, avisoDeDuplicado, TECHO,
   referenciasRotas, referenciasFueraDeAlcance,

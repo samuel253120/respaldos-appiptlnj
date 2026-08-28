@@ -2014,7 +2014,13 @@ async function viewList(name, filtrosIniciales) {
    * sea que no existe para el diseño: la barra queda exactamente igual que
    * antes. El botón tampoco se ve ahí.
    */
-  const hayQuePlegar = !!(iglesiaField || filterFields.length || m.dateField);
+  // Los filtros que el módulo resuelve por su cuenta —hoy, «de qué cuerpo
+  // es»— y el rango de edad, que no es una columna sino un cálculo
+  const filtrosPropios = m.filtrosPropios || [];
+  const hayRangoDeEdad = !!m.rangoDeEdad;
+
+  const hayQuePlegar = !!(iglesiaField || filterFields.length || filtrosPropios.length
+    || hayRangoDeEdad || m.dateField);
 
   tb.innerHTML = `
     <input type="search" id="q" placeholder="Buscar…" value="${esc(st.q)}"
@@ -2034,6 +2040,15 @@ async function viewList(name, filtrosIniciales) {
             return `<option value="${esc(v)}" ${st.filters[f.name] === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
           }).join('')}
         </select>`).join('')}
+      ${filtrosPropios.map((f) => `
+        <select id="fp_${esc(f.nombre)}" aria-label="Filtrar por ${esc(f.label)}">
+          <option value="">— ${esc(f.label)} —</option>
+        </select>`).join('')}
+      ${hayRangoDeEdad ? `
+        <label class="range">Edad <input type="number" id="fEdadDesde" min="0" max="130" inputmode="numeric"
+               placeholder="desde" value="${esc(st.edadDesde || '')}" aria-label="Edad desde" /></label>
+        <label class="range">a <input type="number" id="fEdadHasta" min="0" max="130" inputmode="numeric"
+               placeholder="hasta" value="${esc(st.edadHasta || '')}" aria-label="Edad hasta" /></label>` : ''}
       ${m.dateField ? `
         <label class="range">Desde <input type="date" id="fDesde" value="${esc(st.desde)}" /></label>
         <label class="range">Hasta <input type="date" id="fHasta" value="${esc(st.hasta)}" /></label>` : ''}
@@ -2054,7 +2069,10 @@ async function viewList(name, filtrosIniciales) {
    * recortada sin motivo visible parece una lista a la que le faltan fichas.
    */
   const cuantosFiltros = () =>
-    Object.values(st.filters).filter(Boolean).length + (st.desde ? 1 : 0) + (st.hasta ? 1 : 0);
+    Object.values(st.filters).filter(Boolean).length
+    + Object.values(st.propios || {}).filter(Boolean).length
+    + (st.edadDesde ? 1 : 0) + (st.edadHasta ? 1 : 0)
+    + (st.desde ? 1 : 0) + (st.hasta ? 1 : 0);
 
   const botonDeFiltros = document.getElementById('tbFiltros');
   const ponerElBotonAlDia = () => {
@@ -2142,6 +2160,50 @@ async function viewList(name, filtrosIniciales) {
 
   if (iglesiaField) bindFilter('f_iglesia_id', 'iglesia_id');
   filterFields.forEach((f) => bindFilter('f_' + f.name, f.name));
+
+  // Los filtros propios del módulo: se llenan con los registros de a dónde
+  // apuntan, igual que cualquier otro filtro de relación
+  st.propios = st.propios || {};
+  filtrosPropios.forEach((f) => {
+    const sel = document.getElementById('fp_' + f.nombre);
+    if (!sel) return;
+    if (f.tipo === 'ref' && f.ref) {
+      getOptions(f.ref).then((opts) => {
+        sel.innerHTML = `<option value="">— ${esc(f.label)} —</option>` +
+          opts.map((o) => `<option value="${o.id}" ${st.propios[f.nombre] === String(o.id) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
+      });
+    }
+    sel.addEventListener('change', () => {
+      st.propios[f.nombre] = sel.value;
+      st.page = 1;
+      ponerElBotonAlDia();
+      load();
+    });
+  });
+
+  /*
+   * La edad se escribe, no se elige: se espera a que la persona termine de
+   * teclear, como en el buscador. Preguntando en cada tecla, escribir «18»
+   * pediría primero todos los de 1 año.
+   */
+  if (hayRangoDeEdad) {
+    let relojEdad;
+    const acotarPorEdad = (donde, cual) => {
+      const el = document.getElementById(donde);
+      if (!el) return;
+      el.addEventListener('input', () => {
+        clearTimeout(relojEdad);
+        relojEdad = setTimeout(() => {
+          st[cual] = el.value;
+          st.page = 1;
+          ponerElBotonAlDia();
+          load();
+        }, 400);
+      });
+    };
+    acotarPorEdad('fEdadDesde', 'edadDesde');
+    acotarPorEdad('fEdadHasta', 'edadHasta');
+  }
   if (m.dateField) {
     document.getElementById('fDesde').addEventListener('change', (e) => {
       st.desde = e.target.value; st.page = 1; ponerElBotonAlDia(); load();
@@ -2157,6 +2219,9 @@ async function viewList(name, filtrosIniciales) {
     const params = new URLSearchParams({ page: st.page, sort: st.sort, dir: st.dir });
     if (st.q) params.set('q', st.q);
     for (const [k, v] of Object.entries(st.filters)) if (v) params.set('f_' + k, v);
+    for (const [k, v] of Object.entries(st.propios || {})) if (v) params.set(k, v);
+    if (st.edadDesde) params.set('edad_desde', st.edadDesde);
+    if (st.edadHasta) params.set('edad_hasta', st.edadHasta);
     if (st.desde) params.set('desde', st.desde);
     if (st.hasta) params.set('hasta', st.hasta);
     if (st.sin) params.set('sin', st.sin);
@@ -2270,7 +2335,14 @@ async function viewList(name, filtrosIniciales) {
                 }</th>`;
               }
               const alineado = f && ['money', 'number'].includes(f.type) ? ' num' : '';
-              if (f && f.computed) return `<th class="no-sort${alineado}" style="cursor:default">${esc(lbl)}</th>`;
+              // Un calculado no se ordena, salvo que sepa por qué columna
+              // hacerlo: la edad, por la fecha de nacimiento (ver
+              // `ordenarPor` en server/modules/miembros.js). Sin esto, la
+              // cabecera «Edad» seguía siendo un rótulo muerto aunque el
+              // servidor ya supiera ordenarla.
+              if (f && f.computed && !f.ordenable) {
+                return `<th class="no-sort${alineado}" style="cursor:default">${esc(lbl)}</th>`;
+              }
               const arrow = st.sort === c ? `<span class="arrow">${st.dir === 'asc' ? '▲' : '▼'}</span>` : '';
               return `<th data-col="${c}"${alineado ? ` class="${alineado.trim()}"` : ''}>${esc(lbl)} ${arrow}</th>`;
             }).join('')}

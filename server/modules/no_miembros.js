@@ -74,6 +74,21 @@ module.exports = {
   display: '{nombres} {apellidos}',
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono', 'email', 'direccion'],
   listFields: ['nombres', 'apellidos', 'rut', 'telefono', 'asistencia', 'iglesia_id'],
+  /**
+   * Los de un grupo, preguntado desde acá. Igual que en Miembros, pero por el
+   * otro enlace de la ficha de integrante: esta gente no está en la membresía.
+   */
+  filtrosPropios: [
+    {
+      nombre: 'cuerpo_id', label: 'Cuerpo o grupo', tipo: 'ref', ref: 'cuerpos',
+      donde: (valor) => ({
+        sql: `id IN (SELECT no_miembro_id FROM integrantes_cuerpo
+                      WHERE cuerpo_id = ? AND no_miembro_id IS NOT NULL
+                        AND estado IN ('Activo', 'En prueba'))`,
+        params: [Number(valor) || 0],
+      }),
+    },
+  ],
   filterFields: ['asistencia', 'iglesia_id'],
   defaultSort: { field: 'apellidos', dir: 'asc' },
 
