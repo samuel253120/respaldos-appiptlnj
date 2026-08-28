@@ -82,9 +82,23 @@ function comoSeCompara(texto) {
  * buscables: campo por campo, 35 ms; pegados, 8 ms. Los dos dan exactamente lo
  * mismo, porque lo tecleado se parte en palabras y una palabra nunca lleva un
  * espacio adentro: no hay manera de que calce a caballo entre dos campos.
+ *
+ * ── Lo que no es una columna ──
+ *
+ * `extras` son trozos de SQL que un módulo agrega a lo buscable para lo que no
+ * está guardado en ninguna columna. El caso que lo trajo: la cita bíblica de un
+ * servicio se arma al leer —«Juan 3:16» son tres columnas—, así que buscarla
+ * como la dice la gente no encontraba nada.
+ *
+ * Son trozos ESCRITOS EN EL MÓDULO, nunca nada que venga de una petición: lo
+ * tecleado sigue viajando como parámetro, como siempre. Un módulo que ponga acá
+ * un campo reservado lo estaría abriendo a quien no lo alcanza, así que el
+ * registro se niega a cargarlo (ver server/registry.js).
  */
-function textoBuscable(campos) {
-  const pegados = campos.map((c) => `coalesce("${c}",'')`).join(" || ' ' || ");
+function textoBuscable(campos, extras) {
+  const pegados = (campos || []).map((c) => `coalesce("${c}",'')`)
+    .concat((extras || []).map((e) => `coalesce(${e},'')`))
+    .join(" || ' ' || ");
   const expr = LETRAS.reduce((dentro, [de, a]) => `replace(${dentro},'${de}','${a}')`, `(${pegados})`);
   return `lower(${expr})`;
 }
@@ -112,8 +126,8 @@ const PARECE_RUT = /^[0-9.\-]{7,12}[0-9kK]$/;
 const deCorrido = (texto) => String(texto || '').split('.').join('').split('-').join('');
 
 /** La columna pegada, además sin puntos ni guiones, como trozo de SQL. */
-function textoDeCorrido(campos) {
-  return `replace(replace(${textoBuscable(campos)},'.',''),'-','')`;
+function textoDeCorrido(campos, extras) {
+  return `replace(replace(${textoBuscable(campos, extras)},'.',''),'-','')`;
 }
 
 /**
@@ -123,12 +137,13 @@ function textoDeCorrido(campos) {
  * que estar —de ahí el AND—. El orden no importa: «Pérez María» encuentra lo
  * mismo que «María Pérez».
  */
-function condicion(texto, campos) {
+function condicion(texto, campos, extras) {
   const palabras = palabrasDe(texto);
-  if (!palabras.length || !campos || !campos.length) return null;
+  const cuantos = (campos || []).length + (extras || []).length;
+  if (!palabras.length || !cuantos) return null;
 
-  const donde = textoBuscable(campos);
-  const corrido = textoDeCorrido(campos);
+  const donde = textoBuscable(campos, extras);
+  const corrido = textoDeCorrido(campos, extras);
   const params = [];
   const sql = palabras.map((palabra) => {
     params.push(`%${comoSeCompara(palabra)}%`);

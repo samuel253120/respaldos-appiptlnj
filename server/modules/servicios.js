@@ -112,6 +112,26 @@ function duracionEnPalabras(minutos) {
  */
 const HORAS_QUE_YA_SON_MUCHAS = 12;
 
+/**
+ * La cita bíblica escrita como se dice, para poder buscarla: «Juan 3:16».
+ *
+ * No es una columna: son tres, y los dos puntos los pone la pantalla al leer,
+ * así que ninguna fila contiene ese texto y buscarlo daba cero.
+ *
+ * El CAST a entero no es adorno. El motor guarda los números como REAL, así que
+ * el capítulo 3 está en la base como 3.0: pegado sin más, el texto buscable
+ * decía «juan 3.0:16.0» y «Juan 3:16» no lo encontraba. Se vio probándolo, no
+ * leyéndolo. En pantalla nunca se notó porque un 3.0 de la base llega a la
+ * pantalla como 3.
+ *
+ * Y sin libro no se escribe nada: un servicio sin salmo anotado dejaba un « :»
+ * suelto en lo buscable, que no ayuda a encontrar nada.
+ */
+const citaBuscable = (pasaje) =>
+  `CASE WHEN coalesce(${pasaje}_libro,'') = '' THEN '' ELSE ${pasaje}_libro`
+  + ` || ' ' || coalesce(CAST(${pasaje}_capitulo AS INTEGER),'')`
+  + ` || ':' || coalesce(CAST(${pasaje}_versiculo_inicial AS INTEGER),'') END`;
+
 /*
  * El mismo servicio registrado dos veces mete su ofrenda dos veces.
  *
@@ -177,7 +197,27 @@ module.exports = {
   display: '{fecha} — {tipo}',
   dateField: 'fecha',
   printable: true,
-  searchFields: ['coordinador', 'salmista', 'predicador', 'observaciones'],
+  /*
+   * Por lo que la gente se acuerda de un culto.
+   *
+   * Buscaba por las personas y las observaciones, y no por el tipo ni por el
+   * libro predicado, que son las dos maneras en que se nombra un servicio: «el
+   * de la vigilia» y «el que predicaron de Éxodo». Medido con doce servicios
+   * cargados: «Coordinadora» daba 4 y «Vigilia», «Éxodo» y «Especial» daban
+   * CERO, que no se lee como «busque de otra forma» sino como «no está».
+   */
+  searchFields: ['coordinador', 'salmista', 'predicador', 'observaciones',
+    'tipo', 'salmo_libro', 'mensaje_libro'],
+
+  /*
+   * Y la cita como la dice la gente: «Juan 3:16».
+   *
+   * No es una columna —son tres, y los dos puntos los pone la pantalla al
+   * leer—, así que ninguna fila contiene ese texto y buscarlo daba cero. Acá se
+   * arma en la propia consulta, del mismo modo en que se lee, para que se
+   * encuentre tal como se dice. «Juan 3» también sirve, y «3:16» solo.
+   */
+  buscaTambien: [citaBuscable('mensaje'), citaBuscable('salmo')],
   listFields: ['fecha', 'hora_inicio', 'tipo', 'predicador', 'cita_mensaje', 'asistencia_total', 'ofrenda_total'],
   defaultSort: { field: 'fecha', dir: 'desc' },
 

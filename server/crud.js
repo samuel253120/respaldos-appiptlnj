@@ -824,7 +824,7 @@ function consultaDeUnListado(def, req) {
   //
   // Cómo se compara —por palabras y sin tildes— está en server/busqueda.js,
   // con lo que costaba antes escrito ahí.
-  const buscada = busqueda.condicion(req.query.q, sensibles.buscablesPara(def, req.user));
+  const buscada = busqueda.condicion(req.query.q, sensibles.buscablesPara(def, req.user), def.buscaTambien);
   if (buscada) {
     where.push(`(${buscada.sql})`);
     params.push(...buscada.params);

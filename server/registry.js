@@ -106,7 +106,41 @@ function normalize(def) {
     f.label = f.label || f.name;
     f.type = f.type || 'text';
   }
+  def.buscaTambien = def.buscaTambien || [];
   revisarLoReservado(def);
+  revisarLoQueSeBuscaDeMas(def);
+}
+
+/**
+ * Lo que un módulo agrega a la búsqueda no puede abrir un dato reservado.
+ *
+ * `buscaTambien` son trozos de SQL que se pegan a lo buscable para encontrar
+ * por algo que no es una columna —la cita bíblica de un servicio, que se arma
+ * con tres—. Quien no alcanza un grupo reservado tampoco puede dar con alguien
+ * buscando por un dato de ese grupo: es la regla de server/sensibles.js, y un
+ * trozo de SQL escrito acá se la saltaría entera, porque el motor le quita los
+ * campos reservados a la lista de buscables pero no puede leer adentro de una
+ * expresión.
+ *
+ * Así que se revisa al cargar y el servidor no parte si alguien lo intenta. Es
+ * un error de programación, no de datos: mejor que reviente al arrancar y no
+ * que se descubra el día que un dato de salud aparezca en un resultado.
+ */
+function revisarLoQueSeBuscaDeMas(def) {
+  if (!def.buscaTambien.length) return;
+  const sensibles = require('./sensibles');
+  const reservados = [...sensibles.gruposDe(def).values()].flat();
+  for (const trozo of def.buscaTambien) {
+    for (const campo of reservados) {
+      if (new RegExp(`\\b${campo}\\b`).test(trozo)) {
+        throw new Error(
+          `El módulo ${def.name} busca de más por «${campo}», que es un campo reservado. ` +
+          `Quien no tiene su llave no puede encontrar a nadie por ese dato, y una expresión en ` +
+          `buscaTambien se saltaría el recorte que el motor hace campo por campo.`
+        );
+      }
+    }
+  }
 }
 
 /**

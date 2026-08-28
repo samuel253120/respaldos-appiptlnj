@@ -148,7 +148,10 @@ test('el listado de cualquier módulo busca por acá', () => {
   const crud = require('fs').readFileSync(
     require('path').join(__dirname, '../../server/crud.js'), 'utf8'
   );
-  assert.match(crud, /busqueda\.condicion\(req\.query\.q, sensibles\.buscablesPara\(def, req\.user\)\)/);
+  // Con lo que el módulo agregue a lo buscable: desde la 1.155.0 un módulo puede
+  // sumar lo que no es una columna —la cita bíblica de un servicio—, y el
+  // listado tiene que pasárselo (ver `buscaTambien` en server/registry.js)
+  assert.match(crud, /busqueda\.condicion\(req\.query\.q, sensibles\.buscablesPara\(def, req\.user\), def\.buscaTambien\)/);
   assert.ok(!/const like = buscables\.map/.test(crud), 'quedó el camino viejo, que es el que fallaba');
 });
 
@@ -156,8 +159,8 @@ test('y el buscador de arriba también, que si no parece roto', () => {
   const buscador = require('fs').readFileSync(
     require('path').join(__dirname, '../../server/buscador.js'), 'utf8'
   );
-  assert.match(buscador, /busqueda\.condicion\(q, buscables\)/,
-    'el buscador de arriba y el listado tienen que encontrar lo mismo');
+  assert.match(buscador, /busqueda\.condicion\(q, buscables, def\.buscaTambien\)/,
+    'el buscador de arriba y el listado tienen que encontrar lo mismo, con lo agregado incluido');
   assert.ok(!/const like = buscables\.map/.test(buscador));
 });
 
