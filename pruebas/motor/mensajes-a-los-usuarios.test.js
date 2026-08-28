@@ -410,6 +410,90 @@ test('a más de quinientos de una vez no se manda: se pide acotar', () => {
   assert.equal(db.prepare('SELECT COUNT(*) c FROM notificaciones WHERE tipo = ? AND titulo = ?').get('mensaje', 'A todos').c, 0);
 });
 
+// -------------------------- que al destinatario no se le pierdan los mensajes
+
+/*
+ * La campanita traía los últimos veinte y nada más. Con veintisiete sin leer,
+ * el número rojo decía veintisiete y la lista dejaba llegar a veinte: siete
+ * avisos sin abrir que no había cómo alcanzar, y una cuenta que no bajaba a
+ * cero aunque uno leyera todo lo que veía.
+ */
+test('la campanita pone primero lo que está sin leer, y dice si quedaron más atrás', () => {
+  const suyo = cuenta('Quien Recibe de a Montones', { iglesia: norte });
+  for (let i = 1; i <= 27; i++) {
+    mensajes.enviar(jefa, { titulo: `Aviso número ${i}`, cuerpo: 'x', destino: 'personas', valor: [suyo.id] });
+  }
+  const panel = avisos.paraLaCampanita(suyo.id, 20);
+  assert.equal(panel.sinLeer, 27);
+  assert.equal(panel.ultimos.length, 20);
+  assert.equal(panel.hayMas, true, 'sin esto, la pantalla no sabe que tiene que ofrecer «ver más»');
+
+  const masGrande = avisos.paraLaCampanita(suyo.id, 40);
+  assert.equal(masGrande.ultimos.length, 27, 'pidiendo más se alcanza a todos');
+  assert.equal(masGrande.hayMas, false);
+});
+
+test('y un aviso viejo sin leer no queda debajo de uno nuevo ya leído', () => {
+  const suyo = cuenta('Quien Deja Uno sin Abrir', { iglesia: norte });
+  const viejo = mensajes.enviar(jefa, { titulo: 'El viejo sin abrir', cuerpo: 'x', destino: 'personas', valor: [suyo.id] });
+  for (let i = 1; i <= 25; i++) {
+    const nuevo = mensajes.enviar(jefa, { titulo: `Nuevo ${i}`, cuerpo: 'x', destino: 'personas', valor: [suyo.id] });
+    const aviso = db.prepare('SELECT id FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+      .get(suyo.id, `mensaje:${nuevo.id}`);
+    avisos.marcarLeida(suyo.id, aviso.id);
+  }
+  const panel = avisos.paraLaCampanita(suyo.id, 20);
+  assert.equal(panel.sinLeer, 1);
+  assert.equal(panel.ultimos[0].titulo, 'El viejo sin abrir',
+    'por fecha quedaba el vigésimo sexto y no se veía nunca; es justo el que había que leer');
+  assert.equal(viejo.error, undefined);
+});
+
+test('los mensajes recibidos son solo los mensajes, y solo los de uno', () => {
+  const suyo = cuenta('Quien Guarda lo Suyo', { iglesia: norte });
+  const otro = cuenta('Quien No Tiene Nada', { iglesia: norte });
+  mensajes.enviar(jefa, { titulo: 'Para el que guarda', cuerpo: 'Texto largo', destino: 'personas', valor: [suyo.id] });
+  avisos.crear({ usuario_id: suyo.id, tipo: 'cumpleanos_hoy', clave: 'cumple:99', titulo: 'Alguien cumple' });
+
+  const mios = avisos.recibidos(suyo.id, {});
+  assert.equal(mios.total, 1, 'los avisos que hace el sistema no son mensajes de nadie');
+  assert.equal(mios.mensajes[0].titulo, 'Para el que guarda');
+  assert.equal(mios.mensajes[0].de, jefa.nombre);
+  assert.equal(mios.mensajes[0].cuerpo, 'Texto largo', 'con su texto entero: es para volver a leerlo');
+
+  const delOtro = avisos.recibidos(otro.id, {});
+  assert.equal(delOtro.total, 0, 'y nadie ve los de otro');
+  assert.deepEqual(delOtro.mensajes, [], 'ni en la lista, que es por donde se colarían');
+});
+
+test('mirarlos no marca nada como leído', () => {
+  /*
+   * Quien abre esa pantalla puede estar releyendo lo del mes pasado. Dar por
+   * leído de una pasada todo lo que aparece le mentiría a quien lo mandó, que
+   * cuenta los leídos para saber si hace falta insistir.
+   */
+  const suyo = cuenta('Quien Solo Mira', { iglesia: norte });
+  const salida = mensajes.enviar(jefa, { titulo: 'Sin abrir todavía', cuerpo: 'x', destino: 'personas', valor: [suyo.id] });
+  avisos.recibidos(suyo.id, {});
+  avisos.recibidos(suyo.id, { limit: 100 });
+  assert.equal(avisos.paraLaCampanita(suyo.id, 5).sinLeer, 1);
+  assert.equal(mensajes.loQueSeHaMandado(jefa, 200).find((m) => m.id === salida.id).leidos, 0);
+});
+
+test('la lista se pide por partes sin repetir ni saltarse ninguno', () => {
+  const suyo = cuenta('Quien Recibe Muchos', { iglesia: norte });
+  for (let i = 1; i <= 12; i++) {
+    mensajes.enviar(jefa, { titulo: `Por partes ${i}`, cuerpo: 'x', destino: 'personas', valor: [suyo.id] });
+  }
+  const primera = avisos.recibidos(suyo.id, { limit: 5 });
+  const segunda = avisos.recibidos(suyo.id, { limit: 5, offset: 5 });
+  const tercera = avisos.recibidos(suyo.id, { limit: 5, offset: 10 });
+  assert.equal(primera.total, 12);
+  assert.deepEqual([primera.hayMas, segunda.hayMas, tercera.hayMas], [true, true, false]);
+  const juntos = [...primera.mensajes, ...segunda.mensajes, ...tercera.mensajes].map((m) => m.id);
+  assert.equal(new Set(juntos).size, 12, 'ni repetidos ni saltados');
+});
+
 // ------------------------------------------ de parte de quién viene el aviso
 
 /*
@@ -806,6 +890,25 @@ test('la campanita muestra de quién viene, cuando viene de alguien', () => {
     app.indexOf('function abrirElPanelDeAvisos(') + 2200);
   assert.match(trozo, /a\.de \? `<div class="cam-de">de \$\{esc\(a\.de\)\}<\/div>` : ''/,
     'y solo cuando viene de alguien: los avisos del sistema no se firman');
+});
+
+test('la campanita separa los ya leídos y ofrece ver más', () => {
+  const trozo = app.slice(app.indexOf('async function abrirElPanelDeAvisos('),
+    app.indexOf('async function abrirElPanelDeAvisos(') + 3200);
+  assert.match(trozo, /const primerLeido = d\.ultimos\.findIndex\(\(a\) => a\.leida\);/,
+    'ver un aviso de la semana pasada encima de uno de hoy parece que la lista está desordenada');
+  assert.match(trozo, /cam-corte">Ya leídos/);
+  assert.match(trozo, /d\.hayMas \? '<div class="cam-mas">/, 'y se puede llegar a los de más atrás');
+  assert.match(trozo, /href="#\/mis-mensajes"/, 'con la puerta a los mensajes recibidos donde se los busca');
+});
+
+test('la pantalla de los recibidos no marca nada al abrirse', () => {
+  const trozo = app.slice(app.indexOf('async function viewMisMensajes('),
+    app.indexOf('async function viewMisMensajes(') + 3600);
+  assert.ok(!/\/leido'\)|\/avisos\/leidos/.test(trozo.split('data-leido')[0]),
+    'abrirla no puede dar por leído lo que uno solo hojeó');
+  assert.match(trozo, /data-leido="\$\{m\.id\}"/, 'se marca uno por uno, y a propósito');
+  assert.match(trozo, /msg-texto">\$\{esc\(m\.cuerpo\)\}/, 'con el texto entero, que es para lo que sirve');
 });
 
 test('en las preferencias, lo que no se puede apagar sale dicho y no como casilla', () => {

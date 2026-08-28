@@ -18,6 +18,17 @@ router.get('/avisos', authRequired, (req, res) => {
   res.json(avisos.paraLaCampanita(req.user.id, Math.min(Number(req.query.limit) || 20, 100)));
 });
 
+/**
+ * Los mensajes que le escribieron a uno.
+ *
+ * No pide llave, al revés que las de más abajo: acá no se está escribiendo a
+ * nadie, se está leyendo lo propio. Va atada al usuario de la sesión, como todo
+ * lo de este archivo.
+ */
+router.get('/avisos/recibidos', authRequired, (req, res) => {
+  res.json(avisos.recibidos(req.user.id, { limit: req.query.limit, offset: req.query.offset }));
+});
+
 /** Solo el número, para refrescar sin traerse la lista entera. */
 router.get('/avisos/cuantos', authRequired, (req, res) => {
   const c = db

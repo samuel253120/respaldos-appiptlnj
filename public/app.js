@@ -883,6 +883,10 @@ function route() {
     if (cl) marcarActivo(cl);
     return viewMiPerfil(precarga);
   }
+  if (parts[0] === 'mis-mensajes') {
+    // Sin llave: son los mensajes que le escribieron a uno, no los que uno manda
+    return viewMisMensajes();
+  }
   if (parts[0] === 'mensajes' && tieneLlave('avisos_enviar')) {
     const ml = document.querySelector('.side-link[data-mod="_mensajes"]');
     if (ml) marcarActivo(ml);
@@ -4496,6 +4500,80 @@ async function viewMensajes() {
   });
 }
 
+/**
+ * Los mensajes que le escribieron a uno.
+ *
+ * La contraparte de la pantalla de quien manda. Hacía falta porque la campanita
+ * no sirve para volver a un mensaje: muestra un puñado, mezcla los avisos que
+ * hace el sistema y, en cuanto llegan otros, el de la semana pasada deja de
+ * estar en ninguna parte. Y lo que se pierde así no es un aviso de cumpleaños,
+ * es lo que alguien escribió a mano para que se hiciera algo.
+ *
+ * Abrirla NO marca nada como leído. Quien la abre puede estar releyendo lo de
+ * hace un mes, y dar por leído de una pasada todo lo que aparece le mentiría a
+ * quien lo mandó, que cuenta los leídos para saber si hace falta insistir.
+ */
+async function viewMisMensajes() {
+  content().innerHTML = `
+    <div class="page-head"><h2>📬 Mis mensajes</h2></div>
+    <div class="card"><div class="card-body">Cargando…</div></div>`;
+
+  let traidos = 30;
+
+  async function pintar() {
+    let d;
+    try {
+      d = await api('GET', `/avisos/recibidos?limit=${traidos}`);
+    } catch (e) {
+      content().innerHTML = `
+        <div class="page-head"><h2>📬 Mis mensajes</h2></div>
+        <div class="card"><div class="card-body">${esc(e.message)}</div></div>`;
+      return;
+    }
+
+    content().innerHTML = `
+      <div class="page-head"><h2>📬 Mis mensajes</h2></div>
+      ${d.total === 0 ? `
+        <div class="card"><div class="card-body mut">
+          Todavía no le han escrito ninguno. Acá van a quedar los mensajes que le manden,
+          para poder volver a leerlos.
+        </div></div>` : `
+        <p class="mut" style="margin:0 0 14px">
+          ${d.total === 1 ? 'Un mensaje' : `${d.total} mensajes`} que le han escrito.
+          Los avisos que genera el sistema no salen acá: están en la campanita.
+        </p>
+        <div class="mis-msg">
+          ${d.mensajes.map((m) => `
+            <article class="card msg-recibido ${m.leida ? '' : 'sin-leer'}">
+              <div class="card-body">
+                <h3>${esc(m.titulo)}${m.leida ? '' : ' <span class="badge blue">Sin leer</span>'}</h3>
+                <div class="mut msg-quien">${m.de ? `de ${esc(m.de)} · ` : ''}${esc(cuandoFue(m.created_at))}</div>
+                ${m.cuerpo ? `<p class="msg-texto">${esc(m.cuerpo)}</p>` : ''}
+                <div class="msg-acciones">
+                  ${m.enlace ? `<a class="btn sm" href="${esc(m.enlace)}">Ir a lo que dice</a>` : ''}
+                  ${m.leida ? '' : `<button type="button" class="btn sm" data-leido="${m.id}">Marcar como leído</button>`}
+                </div>
+              </div>
+            </article>`).join('')}
+        </div>
+        ${d.hayMas ? '<div style="margin-top:14px"><button type="button" class="btn" id="misMas">Ver más</button></div>' : ''}
+      `}`;
+
+    content().querySelectorAll('[data-leido]').forEach((boton) => {
+      boton.addEventListener('click', async () => {
+        boton.disabled = true;
+        await api('POST', `/avisos/${boton.dataset.leido}/leido`).catch(() => {});
+        refrescarCampanita();
+        pintar();
+      });
+    });
+    const mas = document.getElementById('misMas');
+    if (mas) mas.addEventListener('click', () => { traidos += 30; pintar(); });
+  }
+
+  pintar();
+}
+
 /* ---------------- los avisos: la campanita ---------------- */
 /**
  * La campanita de arriba: cuántos avisos hay sin leer, y cuáles.
@@ -4526,6 +4604,12 @@ async function refrescarCampanita() {
   }
 }
 
+/*
+ * Cuántos avisos pide el panel. Sube con «ver más» y vuelve a lo mínimo cada
+ * vez que se cierra: quien lo abre mañana no quiere la lista larga de hoy.
+ */
+let CAM_CUANTOS = 20;
+
 async function abrirElPanelDeAvisos() {
   const panel = document.getElementById('camPanel');
   const boton = document.getElementById('camAbrir');
@@ -4533,13 +4617,21 @@ async function abrirElPanelDeAvisos() {
   panel.hidden = false;
   boton.setAttribute('aria-expanded', 'true');
 
-  let d = { sinLeer: 0, ultimos: [] };
+  let d = { sinLeer: 0, ultimos: [], hayMas: false };
   try {
-    d = await api('GET', '/avisos?limit=20');
+    d = await api('GET', `/avisos?limit=${CAM_CUANTOS}`);
   } catch (e) {
     panel.innerHTML = `<div class="cam-vacio">${esc(e.message)}</div>`;
     return;
   }
+
+  /*
+   * Los sin leer van primero —los ordena el servidor— y acá se dice dónde
+   * empiezan los ya leídos. Sin esa línea, ver un aviso de la semana pasada
+   * encima de uno de hoy parece que la lista está desordenada.
+   */
+  const primerLeido = d.ultimos.findIndex((a) => a.leida);
+  const hayDeLosDos = primerLeido > 0;
 
   panel.innerHTML = `
     <div class="cam-cabecera">
@@ -4547,7 +4639,8 @@ async function abrirElPanelDeAvisos() {
       ${d.sinLeer ? '<button type="button" class="enlace-suave" id="camTodos">Marcar todos como leídos</button>' : ''}
     </div>
     ${d.ultimos.length ? `<ul class="cam-lista">
-      ${d.ultimos.map((a) => `
+      ${d.ultimos.map((a, i) => `
+        ${hayDeLosDos && i === primerLeido ? '<li class="cam-corte">Ya leídos</li>' : ''}
         <li class="${a.leida ? 'leido' : 'sin-leer'}" data-id="${a.id}" data-enlace="${esc(a.enlace || '')}">
           <div class="cam-t">${esc(a.titulo)}</div>
           ${a.de ? `<div class="cam-de">de ${esc(a.de)}</div>` : ''}
@@ -4555,7 +4648,19 @@ async function abrirElPanelDeAvisos() {
           <div class="cam-f">${esc(cuandoFue(a.created_at))}</div>
         </li>`).join('')}
     </ul>` : '<div class="cam-vacio">No tiene avisos. Acá van a llegar.</div>'}
-    <div class="cam-pie"><a href="#/perfil?tab=avisos">⚙️ Elegir qué avisos recibir</a></div>`;
+    ${d.hayMas ? '<div class="cam-mas"><button type="button" class="enlace-suave" id="camMas">Ver más avisos</button></div>' : ''}
+    <div class="cam-pie">
+      <a href="#/mis-mensajes">📬 Mis mensajes</a>
+      <a href="#/perfil?tab=avisos">⚙️ Elegir qué avisos recibir</a>
+    </div>`;
+
+  const mas = document.getElementById('camMas');
+  if (mas) {
+    mas.addEventListener('click', () => {
+      CAM_CUANTOS += 20;
+      abrirElPanelDeAvisos();
+    });
+  }
 
   const todos = document.getElementById('camTodos');
   if (todos) {
@@ -4565,7 +4670,8 @@ async function abrirElPanelDeAvisos() {
       abrirElPanelDeAvisos();
     });
   }
-  panel.querySelectorAll('.cam-lista li').forEach((li) => {
+  // La línea que separa los ya leídos no es un aviso: no se marca ni se abre
+  panel.querySelectorAll('.cam-lista li[data-id]').forEach((li) => {
     li.addEventListener('click', async () => {
       await api('POST', `/avisos/${li.dataset.id}/leido`).catch(() => {});
       refrescarCampanita();
@@ -4578,6 +4684,7 @@ async function abrirElPanelDeAvisos() {
 function cerrarElPanelDeAvisos() {
   const panel = document.getElementById('camPanel');
   if (!panel) return;
+  CAM_CUANTOS = 20; // quien lo abra mañana no quiere la lista larga de hoy
   panel.hidden = true;
   const boton = document.getElementById('camAbrir');
   if (boton) boton.setAttribute('aria-expanded', 'false');

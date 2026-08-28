@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.145.0", fecha: "2026-08-28", titulo: "Los mensajes dejan de perdérsele a quien los recibe: la campanita pone primero lo sin leer y hay una pantalla propia con todo lo que le han escrito" },
   { version: "1.144.0", fecha: "2026-08-28", titulo: "El mensaje llega firmado: quien lo recibe ve de quién viene, en la campanita y en el teléfono" },
   { version: "1.143.0", fecha: "2026-08-28", titulo: "Un mensaje mandado por error se puede retirar: se le quita a quien todavía no lo abrió, y a quien ya lo leyó le queda" },
   { version: "1.142.0", fecha: "2026-08-28", titulo: "«40 de 40 leídos» deja de convertirse solo en «0 de 40»: el conteo se guarda al leerlo y sobrevive al borrado de los avisos" },

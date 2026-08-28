@@ -1271,6 +1271,12 @@ table.planilla-mes tfoot .pie.no td  { color: #b91c1c; }
 .cam-lista li.sin-leer { border-left: 3px solid var(--marca-azul); padding-left: 11px; background: #fbfdff; }
 .cam-lista li.leido { opacity: 0.72; }
 .cam-t { font-weight: 600; font-size: 13.5px; }
+/* Dónde empiezan los ya leídos, cuando los sin leer van primero */
+.cam-lista li.cam-corte {
+  font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  background: #f8fafc; padding: 6px 14px; cursor: default;
+}
+.cam-mas { padding: 8px 14px; border-top: 1px solid #eef1f6; text-align: center; }
 /* De parte de quién viene el aviso: solo lo llevan los escritos a mano */
 .cam-de { font-size: 12px; color: var(--marca-azul); margin-top: 2px; font-weight: 600; }
 .cam-c { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
@@ -3008,6 +3014,12 @@ ul.mini-list li.salido > span:first-child { opacity: .72; }
 .msg-pie { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 /* Lo que se puede hacer con un mensaje ya mandado */
 .msg-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 7px; }
+/* La pantalla de los mensajes que le escribieron a uno */
+.mis-msg { display: flex; flex-direction: column; gap: 12px; }
+.msg-recibido h3 { margin: 0 0 4px; font-size: 1.02rem; }
+.msg-recibido.sin-leer { border-left: 4px solid var(--marca-azul); }
+.msg-quien { font-size: 12.5px; }
+.msg-texto { margin: 9px 0 0; white-space: pre-wrap; }
 /* Uno retirado se lee tachado y apagado: la constancia queda, el aviso no */
 ul.mini-list li.retirado > span:first-child { opacity: .72; }
 ul.mini-list li.retirado .msg-t { text-decoration: line-through; }

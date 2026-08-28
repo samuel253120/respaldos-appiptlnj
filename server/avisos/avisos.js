@@ -232,18 +232,61 @@ function crear({ usuario_id, tipo, clave, titulo, cuerpo, de, enlace, iglesia_id
   return db.prepare('SELECT * FROM notificaciones WHERE id = ?').get(r.lastInsertRowid);
 }
 
-/** Lo que esta persona no ha leído, y cuántos son. */
+/**
+ * Lo que esta persona no ha leído, y cuántos son.
+ *
+ * ── POR QUÉ LOS SIN LEER VAN PRIMERO ──
+ *
+ * La campanita traía los últimos veinte, sin más. Con veintisiete sin leer, el
+ * número rojo decía veintisiete y la lista dejaba llegar a veinte: siete avisos
+ * sin abrir que no había cómo alcanzar por ninguna parte, y una cuenta que no
+ * bajaba a cero aunque uno leyera todo lo que veía.
+ *
+ * Ahora lo sin leer va primero —que es lo que el número promete— y se dice si
+ * quedaron más atrás, para poder pedirlos.
+ */
 function paraLaCampanita(usuarioId, cuantos = 20) {
+  const tope = Math.min(Number(cuantos) || 20, 100);
   const sinLeer = db
     .prepare('SELECT COUNT(*) c FROM notificaciones WHERE usuario_id = ? AND leida = 0')
     .get(usuarioId).c;
-  const ultimos = db
+  // Se pide uno de más solo para saber si hay más: así la pantalla puede
+  // ofrecer «ver más» sin tener que preguntar de nuevo
+  const traidos = db
     .prepare(
       `SELECT id, tipo, titulo, cuerpo, de, enlace, leida, created_at
-         FROM notificaciones WHERE usuario_id = ? ORDER BY id DESC LIMIT ?`
+         FROM notificaciones WHERE usuario_id = ?
+        ORDER BY leida ASC, id DESC LIMIT ?`
     )
-    .all(usuarioId, cuantos);
-  return { sinLeer, ultimos };
+    .all(usuarioId, tope + 1);
+  return { sinLeer, ultimos: traidos.slice(0, tope), hayMas: traidos.length > tope };
+}
+
+/**
+ * Los mensajes que le han escrito a esta persona.
+ *
+ * La contraparte de «lo que se ha mandado», del otro lado. Un mensaje escrito
+ * por alguien no es un aviso más: se lee, se responde y se vuelve a buscar
+ * —«¿a qué hora era la reunión?»—, y la campanita no sirve para eso, porque
+ * muestra un puñado y mezcla los avisos que hace el sistema.
+ *
+ * Alcanza hasta donde alcanzan los avisos: los leídos se borran solos a los
+ * noventa días (ver `limpiarLosViejos`). Mientras tanto están todos acá.
+ */
+function recibidos(usuarioId, { limit = 30, offset = 0 } = {}) {
+  const tope = Math.min(Number(limit) || 30, 100);
+  const desde = Math.max(Number(offset) || 0, 0);
+  const total = db
+    .prepare("SELECT COUNT(*) c FROM notificaciones WHERE usuario_id = ? AND tipo = 'mensaje'")
+    .get(usuarioId).c;
+  const mensajes = db
+    .prepare(
+      `SELECT id, titulo, cuerpo, de, enlace, leida, created_at
+         FROM notificaciones WHERE usuario_id = ? AND tipo = 'mensaje'
+        ORDER BY id DESC LIMIT ? OFFSET ?`
+    )
+    .all(usuarioId, tope, desde);
+  return { total, mensajes, hayMas: desde + mensajes.length < total };
 }
 
 /**
@@ -369,5 +412,5 @@ function avisar({ usuario_id, tipo, clave, titulo, cuerpo, de, enlace, iglesia_i
 module.exports = {
   TIPOS, CANALES,
   avisar, crear, paraLaCampanita, marcarLeida, marcarTodasLeidas, limpiarLosViejos,
-  preferenciasDe, quiere,
+  preferenciasDe, quiere, recibidos,
 };
