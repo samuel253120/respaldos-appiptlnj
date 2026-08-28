@@ -9,6 +9,89 @@
  *
  * Incluye ruta extra GET /api/tesoreria/resumen con totales y balance.
  */
+const { comoSeLee } = require('../fechas');
+
+/**
+ * El texto de un concepto, como se compara.
+ *
+ * Sin tildes, sin mayúsculas y sin espacios de más, porque quien anota dos
+ * veces la misma compra no la escribe dos veces igual: «Sillas para el salón»
+ * y «sillas PARA el SALON» son el mismo gasto y hay que reconocerlas.
+ */
+const comoSeCompara = (t) =>
+  String(t == null ? '' : t)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** Un monto como se lee acá. */
+const enPesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
+
+/**
+ * El movimiento igual a este que ya estaba anotado, o null si no hay ninguno.
+ *
+ * «Igual» es: la misma cuenta, el mismo día, el mismo tipo, el mismo monto y el
+ * mismo concepto. Los cuatro primeros se preguntan en SQL; el concepto se
+ * compara en JavaScript y no en la consulta, porque el LOWER de SQLite no sabe
+ * de tildes —«SALÓN» y «salón» le parecen distintos— y es justo la diferencia
+ * que hay que pasar por alto.
+ *
+ * No hace falta excluir de la búsqueda el movimiento que se está guardando: acá
+ * se llega solo cuando cambió algo de esos cinco datos (ver `seguiIgual` en el
+ * hook), y con cualquiera de ellos distinto la fila guardada ya no calza con lo
+ * que se busca. Se probó quitando la exclusión: ninguna prueba se cae. Si algún
+ * día esto lo llama alguien más, esa condición hay que volver a ponerla.
+ */
+function elQueYaEstaba(db, datos) {
+  const fecha = String(datos.fecha == null ? '' : datos.fecha).slice(0, 10);
+  const candidatos = db
+    .prepare(
+      `SELECT t.id, t.concepto, t.comprobante, t.created_at, u.nombre AS quien
+         FROM tesoreria t
+         LEFT JOIN usuarios u ON u.id = t.created_by
+        WHERE t.cuenta_id = ? AND t.fecha = ? AND t.tipo = ? AND t.monto = ?
+        ORDER BY t.id`
+    )
+    .all(datos.cuenta_id, fecha, datos.tipo, Number(datos.monto) || 0);
+
+  const suyo = comoSeCompara(datos.concepto);
+  return candidatos.find((c) => comoSeCompara(c.concepto) === suyo) || null;
+}
+
+/**
+ * El aviso de movimiento repetido, o null si no hay ninguno.
+ *
+ * Se pregunta, no se bloquea: dos compras iguales el mismo día existen —dos
+ * sacos de cemento, dos pasajes— y el sistema no está para discutírselo a la
+ * tesorera. Lo que no puede es dejar pasar en silencio el mismo egreso anotado
+ * dos veces, porque la cuenta descuenta el doble y el descuadre no se ve hasta
+ * que se cuenta la plata.
+ */
+function avisoDeMovimientoRepetido(db, datos) {
+  const otro = datos.otro;
+  if (!otro) return null;
+
+  // Con qué se distingue de este: cuándo se anotó, quién y si tiene comprobante
+  const senas = [
+    otro.created_at ? `anotado el ${comoSeLee(String(otro.created_at).slice(0, 10))}` : null,
+    otro.quien ? `por ${otro.quien}` : null,
+    otro.comprobante ? 'con comprobante' : null,
+  ].filter(Boolean).join(', ');
+
+  const queEs = datos.tipo === 'Ingreso' ? 'un ingreso' : 'un egreso';
+  return {
+    error:
+      `Ya hay ${queEs} de ${enPesos(datos.monto)} con ese mismo concepto en esta cuenta `
+      + `el ${comoSeLee(String(datos.fecha).slice(0, 10))}`
+      + `${senas ? ` (${senas})` : ''}. `
+      + 'Si es este mismo, abra ese en vez de anotarlo de nuevo: registrado dos veces, la cuenta '
+      + `${datos.tipo === 'Ingreso' ? 'suma' : 'descuenta'} el doble. Si de verdad fueron dos, confirme.`,
+    confirmar: 'movimiento_ya_anotado',
+  };
+}
+
 module.exports = {
   name: 'tesoreria',
   label: 'Tesorería',
@@ -112,13 +195,42 @@ module.exports = {
        */
       data.cuerpo_id = cuenta.cuerpo_id || null;
 
-      // ¿Este egreso deja la cuenta en rojo? No se bloquea —una cuenta puede
-      // quedar en rojo de verdad— pero se pregunta, porque el caso corriente
-      // no es ese sino el cero de más (ver server/saldos.js).
       if (!confirmado) {
         const tipo = data.tipo !== undefined ? data.tipo : existing ? existing.tipo : null;
         const monto = data.monto !== undefined ? data.monto : existing ? existing.monto : 0;
         const fecha = data.fecha !== undefined ? data.fecha : existing ? existing.fecha : null;
+        const concepto = data.concepto !== undefined ? data.concepto : existing ? existing.concepto : null;
+
+        /*
+         * Lo primero que se pregunta es si este movimiento ya está anotado: es
+         * lo que cuesta plata. La confirmación es una sola para todo el guardado
+         * —así funciona el mecanismo—, así que la pregunta que se muestra tiene
+         * que ser la que más importa. Un movimiento repetido descuadra la cuenta
+         * en silencio; un saldo en rojo, en cambio, se ve.
+         *
+         * Al CORREGIR uno que ya está guardado solo se pregunta si cambió algo
+         * de lo que lo hace «el mismo». Si no, el repetido ya estaba ahí antes
+         * de abrir la ficha y alguien ya dijo que eran dos: volver a preguntarlo
+         * cada vez que se le arregla una coma es ruido, y el ruido enseña a
+         * confirmar sin leer, que es lo contrario de lo que esto busca.
+         */
+        const seguiIgual = existing
+          && String(existing.cuenta_id) === String(cuentaId)
+          && String(existing.fecha).slice(0, 10) === String(fecha).slice(0, 10)
+          && existing.tipo === tipo
+          && Number(existing.monto) === Number(monto)
+          && comoSeCompara(existing.concepto) === comoSeCompara(concepto);
+
+        const otro = seguiIgual ? null
+          : elQueYaEstaba(db, { cuenta_id: cuentaId, fecha, tipo, monto, concepto });
+        if (otro) {
+          const repetido = avisoDeMovimientoRepetido(db, { fecha, tipo, monto, otro });
+          if (repetido) return repetido;
+        }
+
+        // ¿Este egreso deja la cuenta en rojo? No se bloquea —una cuenta puede
+        // quedar en rojo de verdad— pero se pregunta, porque el caso corriente
+        // no es ese sino el cero de más (ver server/saldos.js).
         const aviso = require('../saldos').avisoSiQuedaEnRojo(cuentaId, {
           tipo, monto, fecha, excluirMovimiento: existing ? existing.id : null,
         });

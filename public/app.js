@@ -6006,6 +6006,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y corregirlo',
       seguir: 'Está bien, guardar así',
     },
+    movimiento_ya_anotado: {
+      titulo: '💸 Puede que este movimiento ya esté anotado',
+      volver: 'Volver y buscarlo',
+      seguir: 'Son dos distintos, guardar',
+    },
     solicitudes_sin_responsable_activo: {
       titulo: '📨 Esta cuenta lleva solicitudes abiertas',
       volver: 'Volver y trasladarlas',
