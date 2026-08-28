@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.160.0", fecha: "2026-08-28", titulo: "El registro de un servicio se llena en menos: seis secciones en vez de nueve, y en el teléfono baja de 2.836 a 2.466 px" },
   { version: "1.159.0", fecha: "2026-08-28", titulo: "La ofrenda entra a Tesorería como llegó: lo que se recibió en efectivo y lo que llegó al banco, cada uno con su método" },
   { version: "1.158.0", fecha: "2026-08-28", titulo: "La asistencia de un servicio deja de admitir números que no existen: nada de negativos, y una multitud se pregunta antes de guardarse" },
   { version: "1.157.0", fecha: "2026-08-28", titulo: "El pasaje se comprueba contra el libro: «Judas 40:900» se pregunta antes de guardarse, con los capítulos de cada libro" },

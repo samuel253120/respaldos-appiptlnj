@@ -263,40 +263,49 @@ module.exports = {
   ],
 
   fields: [
-    // Un servicio se agenda antes de celebrarse: admite fecha adelante.
-    { name: 'fecha', label: 'Fecha', type: 'date', required: true, futuro: true, seccion: 'Fecha y hora' },
+    /*
+     * ---- El servicio: cuándo, de qué tipo y quién lo coordinó ----
+     *
+     * Las dos horas van juntas —se llenan en el mismo momento, al terminar— y
+     * el coordinador va acá y no en una sección propia. El formulario se llena
+     * en el teléfono al terminar el culto, y tenía nueve secciones para
+     * veintitrés campos, cuatro de ellas con UN SOLO campo: cada encabezado se
+     * llevaba lo que ocupan dos campos.
+     */
+    { name: 'fecha', label: 'Fecha', type: 'date', required: true, futuro: true, seccion: 'El servicio' },
     { name: 'hora_inicio', label: 'Hora de inicio', type: 'time' },
+    {
+      name: 'hora_termino', label: 'Hora de término', type: 'time',
+      help: 'Si el servicio terminó de madrugada —una vigilia—, anótela igual: se entiende que fue del día siguiente.',
+    },
     {
       name: 'tipo', label: 'Tipo de servicio', type: 'select', default: TIPOS_DE_SERVICIO[0],
       options: TIPOS_DE_SERVICIO,
     },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
-
-    // ---- Coordinación ----
     {
       name: 'coordinador', label: 'Coordinador(a)', type: 'persona', ref: 'miembros', buscador: true,
-      seccion: 'Coordinador',
       help: 'Búsquelo entre los miembros o escriba el nombre si no está registrado.',
     },
 
-    // ---- Salmo (devocional) ----
+    // ---- El salmo: quién lo leyó y qué leyó, que es una sola cosa ----
     {
       name: 'salmista', label: 'Salmista (quien leyó el salmo)', type: 'persona', ref: 'miembros', buscador: true,
-      seccion: 'Salmista',
+      seccion: 'El salmo',
       help: 'Búsquelo entre los miembros o escriba el nombre si no está registrado.',
     },
     {
       name: 'salmo_libro', label: 'Salmo: libro', type: 'select', options: LIBROS, buscador: true,
-      seccion: 'Lectura del salmo', ancho: 'completo', help: 'Escriba las primeras letras del libro.',
+      ancho: 'completo', help: 'Escriba las primeras letras del libro.',
     },
-    { name: 'salmo_capitulo', label: 'Salmo: capítulo', type: 'number' },
-    { name: 'salmo_versiculo_inicial', label: 'Salmo: versículo inicial', type: 'number' },
-    { name: 'salmo_versiculo_final', label: 'Salmo: versículo final', type: 'number' },
+    { name: 'salmo_capitulo', label: 'Salmo: capítulo', type: 'number', ancho: 'tercio' },
+    { name: 'salmo_versiculo_inicial', label: 'Salmo: versículo inicial', type: 'number', ancho: 'tercio' },
+    { name: 'salmo_versiculo_final', label: 'Salmo: versículo final', type: 'number', ancho: 'tercio' },
 
     // ---- Mensaje ----
     {
       name: 'predicador', label: 'Predicador(a)', type: 'persona', ref: 'miembros', buscador: true,
-      seccion: 'Predicador',
+      seccion: 'El mensaje',
       help: 'Búsquelo entre los miembros o escriba el nombre si no está registrado.',
     },
     /*
@@ -313,11 +322,11 @@ module.exports = {
      */
     {
       name: 'mensaje_libro', label: 'Mensaje: libro', type: 'select', options: LIBROS, buscador: true,
-      seccion: 'Mensaje bíblico', ancho: 'completo', help: 'Escriba las primeras letras del libro.',
+      ancho: 'completo', help: 'Escriba las primeras letras del libro.',
     },
-    { name: 'mensaje_capitulo', label: 'Mensaje: capítulo', type: 'number' },
-    { name: 'mensaje_versiculo_inicial', label: 'Mensaje: versículo inicial', type: 'number' },
-    { name: 'mensaje_versiculo_final', label: 'Mensaje: versículo final', type: 'number' },
+    { name: 'mensaje_capitulo', label: 'Mensaje: capítulo', type: 'number', ancho: 'tercio' },
+    { name: 'mensaje_versiculo_inicial', label: 'Mensaje: versículo inicial', type: 'number', ancho: 'tercio' },
+    { name: 'mensaje_versiculo_final', label: 'Mensaje: versículo final', type: 'number', ancho: 'tercio' },
 
     /*
      * ---- Asistencia ----
@@ -337,7 +346,7 @@ module.exports = {
     // ---- Ofrenda ----
     {
       name: 'ofrenda_total', label: 'Ofrenda recibida (total)', type: 'money', seccion: 'Ofrenda',
-      help: 'Todo lo que se recibió. Entra completo a la tesorería de la iglesia.', min: 0,
+      help: 'Todo lo que se recibió, en efectivo y por transferencia.', min: 0,
     },
     /*
      * El porcentaje con que se calculó queda GUARDADO en el servicio.
@@ -366,20 +375,19 @@ module.exports = {
     {
       name: 'ofrenda_transferencia', label: 'De la ofrenda, por transferencia', type: 'money', min: 0,
       help:
-        'Lo que de esta ofrenda llegó al banco. Si todo fue en efectivo, déjelo en blanco. '
-        + 'Entra a Tesorería como un ingreso aparte, con su método, para poder cuadrarlo con la cartola.',
+        'Lo que llegó al banco; si todo fue en efectivo, déjelo en blanco. Entra a Tesorería como un '
+        + 'ingreso aparte, para cuadrar con la cartola.',
     },
     {
       name: 'ofrenda_efectivo', label: 'De la ofrenda, en efectivo', type: 'money', readonly: true,
       calcula: { tipo: 'resta', campos: ['ofrenda_total', 'ofrenda_transferencia'] },
-      help: 'Se calcula solo: el total de la ofrenda menos lo que llegó por transferencia.',
+      help: 'El total de la ofrenda menos lo que llegó por transferencia.',
     },
     {
       name: 'ofrenda_porcentaje', label: 'Porcentaje del aporte (%)', type: 'number', min: 0, max: 100,
       help:
-        'El que rige al registrar el servicio, tomado de Configuración → Organización. Queda guardado acá: '
-        + 'si mañana la organización cambia el porcentaje, este servicio conserva el suyo. Cámbielo solo si '
-        + 'este servicio en particular aportó otro.',
+        'El que rige hoy, de Configuración → Organización. Queda guardado acá: si la organización lo '
+        + 'cambia, este servicio conserva el suyo.',
     },
     {
       name: 'ofrenda_fondo', label: 'Aporte a la corporación', type: 'money', readonly: true,
@@ -388,21 +396,17 @@ module.exports = {
         porcentajeCampo: 'ofrenda_porcentaje', opcion: 'ofrenda_porcentaje_fondo',
       },
       help:
-        'Se calcula solo, con el porcentaje de acá arriba. En Tesorería sale como egreso de la cuenta de la ' +
-        'iglesia y entra al «Fondo para la corporación».',
+        'Con el porcentaje de acá arriba. En Tesorería sale de la cuenta de la iglesia y entra a su '
+        + '«Fondo para la corporación».',
     },
     {
       name: 'ofrenda_iglesia', label: 'Queda para la iglesia', type: 'money', readonly: true,
       calcula: { tipo: 'resta', campos: ['ofrenda_total', 'ofrenda_fondo'] },
-      help: 'Total de la ofrenda menos el aporte a la corporación. Es lo que le queda a la cuenta de la iglesia.',
+      help: 'El total menos el aporte. Es lo que le queda a la cuenta de la iglesia.',
     },
 
     // ---- Cierre ----
-    {
-      name: 'hora_termino', label: 'Hora de término', type: 'time', seccion: 'Cierre',
-      help: 'Si el servicio terminó de madrugada —una vigilia—, anótela igual: se entiende que fue del día siguiente.',
-    },
-    { name: 'observaciones', label: 'Observaciones generales', type: 'textarea' },
+    { name: 'observaciones', label: 'Observaciones generales', type: 'textarea', seccion: 'Observaciones' },
 
     // Los movimientos que la ofrenda de este servicio dejó en Tesorería
     { name: 'movimiento_iglesia_id', type: 'number', oculto: true, readonly: true },

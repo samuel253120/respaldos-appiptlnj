@@ -1308,7 +1308,12 @@ table.planilla-mes tfoot .pie.no td  { color: #b91c1c; }
 .backdrop.show { display: block; }
 @media (max-width: 900px) {
   body { font-size: 15px; }
-  .form-grid { grid-template-columns: 1fr; padding: 14px; gap: 14px; }
+  /* Una sola columna, salvo lo que el módulo pida en tercios: el capítulo y los
+     dos versículos de una cita se leen juntos y caben juntos, y así no se
+     llevan tres filas del teléfono para tres números de dos dígitos. */
+  .form-grid { grid-template-columns: repeat(3, 1fr); padding: 14px; gap: 14px 10px; }
+  .form-grid > * { grid-column: 1 / -1; }
+  .form-grid > .tercio { grid-column: span 1; }
   .form-bloques { padding: 12px; gap: 10px; }
   .form-bloque { padding: 2px 11px 8px; }
   .dash-cols { grid-template-columns: 1fr; }

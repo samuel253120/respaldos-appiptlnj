@@ -6259,9 +6259,18 @@ function fieldHtml(f, row, isNew) {
   const val = row[f.name] != null ? row[f.name] : isNew && f.default != null ? f.default : '';
   const req = f.required ? '<span class="req">*</span>' : '';
   const help = f.help ? `<div class="help">${esc(f.help)}</div>` : '';
-  // Ancho completo: lo que de suyo ocupa toda la fila, y lo que el módulo pida
-  // (un buscador de libros al lado de tres casillas de números queda apretado)
-  const wide = f.ancho === 'completo' || ['textarea', 'richtext', 'multiref', 'permisos'].includes(f.type) ? ' full' : '';
+  /*
+   * Ancho completo: lo que de suyo ocupa toda la fila, y lo que el módulo pida
+   * (un buscador de libros al lado de tres casillas de números queda apretado).
+   *
+   * Y `ancho: 'tercio'` para lo que se lee de un vistazo y va junto —el
+   * capítulo y los dos versículos de una cita—: en el computador ya caían en la
+   * misma fila, pero en el teléfono cada casilla se llevaba una fila entera y
+   * tres números cortos ocupaban lo mismo que tres preguntas distintas.
+   */
+  const wide = f.ancho === 'completo' || ['textarea', 'richtext', 'multiref', 'permisos'].includes(f.type)
+    ? ' full'
+    : f.ancho === 'tercio' ? ' tercio' : '';
   let input = '';
   switch (f.type) {
     case 'textarea':

@@ -39,15 +39,28 @@ test('y la hoja impresa tampoco lo muestra', () => {
   assert.match(hoja, /fila\('Pasaje', row\.cita_mensaje\)/);
 });
 
-test('la sección «Mensaje bíblico» sigue abriéndose, ahora con el libro', () => {
-  const libro = servicios.fields.find((f) => f.name === 'mensaje_libro');
-  assert.equal(libro.seccion, 'Mensaje bíblico',
-    'sin esto, el libro y los versículos quedan colgando de la sección del predicador');
+test('lo que quedó del mensaje no anda suelto', () => {
+  /*
+   * Cuando se sacó «Tema del mensaje» —que era el campo que abría la sección—
+   * esta prueba exigía que el libro la abriera en su lugar, para que él y los
+   * versículos no quedaran colgando de la sección del predicador. Desde la
+   * 1.160.0 cuelgan de ella A PROPÓSITO: quién predicó y sobre qué pasaje son
+   * una sola cosa y van en una sola sección, que es lo que bajó el formulario
+   * de nueve secciones a seis (ver servicio-formulario-corto.test.js).
+   *
+   * Lo que esta prueba sigue vigilando es lo de siempre: que ningún campo del
+   * mensaje quede fuera de una sección, y que dos campos no abran la misma.
+   */
+  const suya = servicios.fields.find((f) => f.name === 'predicador').seccion;
+  assert.ok(suya, 'el predicador tiene que abrir su sección');
+  for (const campo of ['mensaje_libro', 'mensaje_capitulo', 'mensaje_versiculo_final']) {
+    assert.ok(!servicios.fields.find((f) => f.name === campo).seccion,
+      `«${campo}» abre una sección propia: el mensaje se parte en dos`);
+  }
 
-  // Y ninguna otra sección se quedó sin quien la abra
   const secciones = servicios.fields.filter((f) => f.seccion).map((f) => f.seccion);
   assert.equal(new Set(secciones).size, secciones.length, 'dos campos no pueden abrir la misma sección');
-  for (const cual of ['Predicador', 'Mensaje bíblico', 'Asistencia']) {
+  for (const cual of [suya, 'Asistencia', 'Ofrenda']) {
     assert.ok(secciones.includes(cual), `nadie abre «${cual}»`);
   }
 });
