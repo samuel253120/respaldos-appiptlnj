@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.157.0", fecha: "2026-08-28", titulo: "El pasaje se comprueba contra el libro: «Judas 40:900» se pregunta antes de guardarse, con los capítulos de cada libro" },
   { version: "1.156.0", fecha: "2026-08-28", titulo: "La ficha de una persona dice en qué servicios ha servido: cuándo predicó, cuándo coordinó y cuándo leyó el salmo, con su pasaje" },
   { version: "1.155.0", fecha: "2026-08-28", titulo: "Los servicios se buscan por lo que uno recuerda: el tipo, el libro predicado y la cita como se dice —«Juan 3:16»—" },
   { version: "1.154.0", fecha: "2026-08-28", titulo: "El Registro de Servicios suma: los totales de lo que se está viendo van arriba del listado, y hay un informe por mes y por tipo de servicio que se imprime" },

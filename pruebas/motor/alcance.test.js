@@ -273,7 +273,18 @@ const NO_MIEMBROS = {
 };
 const BITACORA = modulo('bitacora', ['iglesia_id', 'miembro_id', 'descripcion']);
 
-const conCuerpo = usuario({ id: 7, iglesias: '[1]', cuerpos: '[3]' });
+/*
+ * El cuerpo y la persona van con números NEGATIVOS, que ninguna tabla llega a
+ * usar, y no es un capricho: estas pruebas comparten la base con las demás y
+ * corren a la vez que ellas. Con el cuerpo «3» y la persona «999» —números que
+ * otro archivo puede estar creando en ese mismo momento— la comprobación de más
+ * abajo, «un miembro que no es de sus cuerpos queda fuera», se cae sola el día
+ * que a alguien le toque el 999 y quede inscrito en el cuerpo 3. Pasó: la
+ * batería salió roja una vez y verde la siguiente, sin que nada hubiera
+ * cambiado. Un cuerpo que no existe tiene garantizadamente cero integrantes,
+ * que es justo lo que estas pruebas quieren decir.
+ */
+const conCuerpo = usuario({ id: 7, iglesias: '[1]', cuerpos: '[-3]' });
 
 test('una solicitud también es suya si la tiene a cargo', () => {
   const params = [];
@@ -285,9 +296,9 @@ test('una solicitud también es suya si la tiene a cargo', () => {
 
 test('y fila por fila dice lo mismo que el listado', () => {
   // Si acá dijera otra cosa, se vería en la lista algo que no se deja abrir
-  const deSuGente = { iglesia_id: 1, miembro_id: 999, responsable_id: 99 };
-  const suya = { iglesia_id: 1, miembro_id: 999, responsable_id: 7 };
-  const ajena = { iglesia_id: 1, miembro_id: 999, responsable_id: 99 };
+  const deSuGente = { iglesia_id: 1, miembro_id: -999, responsable_id: 99 };
+  const suya = { iglesia_id: 1, miembro_id: -999, responsable_id: 7 };
+  const ajena = { iglesia_id: 1, miembro_id: -999, responsable_id: 99 };
   assert.equal(alcance.alcanza(SOLICITUDES, suya, conCuerpo), true, 'la que lleva él, sí');
   assert.equal(alcance.alcanza(SOLICITUDES, ajena, conCuerpo), false, 'la que no es suya ni de su gente, no');
   assert.equal(alcance.alcanza(SOLICITUDES, deSuGente, conCuerpo), false);
@@ -310,7 +321,7 @@ test('la regla general sigue valiendo donde sí acierta', () => {
   const sql = alcance.condiciones(BITACORA, conCuerpo, params);
   assert.ok(/"miembro_id" IN|1 = 0/.test(sql), `tendría que acotar por su gente, y quedó: ${sql}`);
   assert.ok(!/responsable_id/.test(sql), 'la bitácora no tiene responsable: la excepción no le toca');
-  assert.equal(alcance.alcanza(BITACORA, { iglesia_id: 1, miembro_id: 999 }, conCuerpo), false,
+  assert.equal(alcance.alcanza(BITACORA, { iglesia_id: 1, miembro_id: -999 }, conCuerpo), false,
     'un miembro que no es de sus cuerpos sigue quedando fuera');
 });
 
@@ -332,6 +343,6 @@ test('el registro de No Miembros no se acota por su ficha de miembro', () => {
     `su miembro_id dice en qué ficha se convirtió al inscribirse, no de quién es: ${sql}`);
   // La que nunca se inscribió, y la que se inscribió en un cuerpo ajeno: las dos se ven
   assert.equal(alcance.alcanza(NO_MIEMBROS, { iglesia_id: 1, miembro_id: null }, conCuerpo), true);
-  assert.equal(alcance.alcanza(NO_MIEMBROS, { iglesia_id: 1, miembro_id: 999 }, conCuerpo), true,
+  assert.equal(alcance.alcanza(NO_MIEMBROS, { iglesia_id: 1, miembro_id: -999 }, conCuerpo), true,
     'con la regla general puesta, esta ficha desaparecía del registro');
 });

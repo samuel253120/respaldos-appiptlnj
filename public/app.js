@@ -6029,6 +6029,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y abrir el que está',
       seguir: 'Es otro servicio, guardar',
     },
+    el_pasaje_no_calza_con_el_libro: {
+      titulo: '📖 Revise el pasaje',
+      volver: 'Volver y corregirlo',
+      seguir: 'Está bien escrito, guardar',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',

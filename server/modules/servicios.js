@@ -31,7 +31,7 @@
  * mantienen al día con el servicio: si se corrige la ofrenda se corrigen, y
  * si se elimina el servicio se van con él.
  */
-const { LIBROS, cita } = require('../biblia');
+const { LIBROS, cita, loQueNoCalza } = require('../biblia');
 const { sincronizarOfrenda } = require('../ofrenda-tesoreria');
 const { fechaLarga } = require('../formato');
 
@@ -426,6 +426,31 @@ module.exports = {
         const hasta = Number(dato(`${pasaje}_versiculo_final`));
         if (Number.isFinite(desde) && Number.isFinite(hasta) && hasta && desde && hasta < desde) {
           return `En ${pasaje === 'salmo' ? 'el salmo' : 'el mensaje'}, el versículo final no puede ser anterior al inicial`;
+        }
+      }
+
+      /*
+       * El pasaje contra el libro.
+       *
+       * El libro se elige de una lista, pero el capítulo y el versículo eran
+       * números libres: se guardaba «Judas 40:900-999» —Judas tiene un capítulo—
+       * y después se leía así en el listado y salía impreso en la hoja.
+       *
+       * Se pregunta y no se bloquea, como con todo lo demás de este módulo: se
+       * ataja el dedo que resbaló sin discutirle a quien sabe lo que escribió.
+       * Va al final porque es lo menos grave de lo que se pregunta acá.
+       */
+      for (const pasaje of ['mensaje', 'salmo']) {
+        const raro = loQueNoCalza(
+          dato(`${pasaje}_libro`), dato(`${pasaje}_capitulo`),
+          dato(`${pasaje}_versiculo_inicial`), dato(`${pasaje}_versiculo_final`)
+        );
+        if (raro && !confirmado) {
+          return {
+            error: `En ${pasaje === 'salmo' ? 'el salmo' : 'el mensaje'}: ${raro} `
+              + 'Si está bien escrito, confirme.',
+            confirmar: 'el_pasaje_no_calza_con_el_libro',
+          };
         }
       }
       return null;
