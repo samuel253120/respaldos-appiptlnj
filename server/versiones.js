@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.164.0", fecha: "2026-08-28", titulo: "Mover el saldo inicial de una cuenta que ya tiene movimientos se pregunta antes de guardar, diciendo a cuánto quedaría el saldo" },
   { version: "1.163.0", fecha: "2026-08-28", titulo: "El mismo movimiento anotado dos veces se pregunta antes de guardarse: la cuenta dejó de descontar el doble en silencio" },
   { version: "1.162.0", fecha: "2026-08-28", titulo: "El saldo de una cuenta es lo que hay hoy: la ofrenda de un servicio agendado deja de sumar antes de tiempo, y lo anotado más adelante se dice como «agendado»" },
   { version: "1.161.0", fecha: "2026-08-28", titulo: "El resumen de Tesorería deja de contar como ingreso la plata que solo cambió de bolsillo: los traslados internos se dicen aparte, en «Movido entre cuentas»" },

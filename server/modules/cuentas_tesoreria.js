@@ -41,6 +41,41 @@ function movimientosDe(cuentaId, db) {
   return fila || { ingresos: 0, egresos: 0, movimientos: 0 };
 }
 
+/** Un monto como se lee acá. */
+const enPesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
+
+/**
+ * El aviso de que se está moviendo el saldo inicial de una cuenta que ya tiene
+ * movimientos, o null si no hay nada que preguntar.
+ *
+ * Nada que preguntar es: una cuenta nueva —todavía no hay saldos que correr—,
+ * un guardado que no toca el saldo inicial, o una cuenta sin un solo movimiento
+ * anotado, donde el punto de partida ES el saldo y moverlo no descuadra nada.
+ */
+function avisoSiSeMueveElPuntoDePartida(db, { data, existing, confirmado }) {
+  if (confirmado || !existing || data.saldo_inicial === undefined) return null;
+
+  const antes = Number(existing.saldo_inicial) || 0;
+  const ahora = Number(data.saldo_inicial) || 0;
+  if (antes === ahora) return null;
+
+  const m = movimientosDe(existing.id, db);
+  if (!m.movimientos) return null;
+
+  const saldoAntes = antes + m.ingresos - m.egresos;
+  const saldoDespues = ahora + m.ingresos - m.egresos;
+
+  return {
+    error:
+      `Esta cuenta tiene ${Number(m.movimientos).toLocaleString('es-CL')} `
+      + `${m.movimientos === 1 ? 'movimiento anotado' : 'movimientos anotados'}, y su saldo pasaría de `
+      + `${enPesos(saldoAntes)} a ${enPesos(saldoDespues)}. El saldo inicial es el punto de partida: `
+      + 'no cuelga de ningún movimiento, así que moverlo corre todos los saldos de esta cuenta sin que '
+      + 'quede una fila que lo explique. Si de verdad el punto de partida era otro, confirme.',
+    confirmar: 'saldo_inicial_cambiado',
+  };
+}
+
 module.exports = {
   name: 'cuentas_tesoreria',
   label: 'Cuentas de Tesorería',
@@ -111,7 +146,7 @@ module.exports = {
   ],
 
   hooks: {
-    beforeSave(data, { isNew, existing, id, db }) {
+    beforeSave(data, { isNew, existing, id, db, confirmado }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
       const ambito = dato('ambito');
 
@@ -164,6 +199,26 @@ module.exports = {
       }
 
       if (isNew && !data.fecha_apertura) data.fecha_apertura = new Date().toISOString().slice(0, 10);
+
+      /*
+       * Mover el punto de partida corre todos los saldos de la cuenta.
+       *
+       * Todo saldo del sistema es «saldo inicial + ingresos − egresos», y el
+       * saldo inicial es el único número del que no cuelga ningún movimiento:
+       * no hay una fila que lo respalde ni que se pueda revisar después. Se
+       * editaba como cualquier otro campo de la ficha, con la misma facilidad
+       * con que se corrige un teléfono. Medido en la cuenta general de la
+       * corporación, con 3.001 movimientos anotados: cambiarlo a $99.000.000
+       * llevó el saldo de $63.830.034 a $162.830.034 sin preguntar nada.
+       *
+       * Queda anotado en el Registro de Cambios —con el antes, el después y
+       * quién lo hizo—, y eso es lo que salva el caso. Lo que faltaba era el
+       * momento anterior. Se pregunta, no se bloquea: el punto de partida se
+       * escribe mal la primera vez y hay que poder corregirlo.
+       */
+      const aviso = avisoSiSeMueveElPuntoDePartida(db, { data, existing, confirmado });
+      if (aviso) return aviso;
+
       return null;
     },
 

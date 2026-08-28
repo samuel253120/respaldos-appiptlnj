@@ -6011,6 +6011,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y buscarlo',
       seguir: 'Son dos distintos, guardar',
     },
+    saldo_inicial_cambiado: {
+      titulo: '🏦 Está moviendo el punto de partida de la cuenta',
+      volver: 'Volver y dejarlo como estaba',
+      seguir: 'El punto de partida era otro, guardar',
+    },
     solicitudes_sin_responsable_activo: {
       titulo: '📨 Esta cuenta lleva solicitudes abiertas',
       volver: 'Volver y trasladarlas',
