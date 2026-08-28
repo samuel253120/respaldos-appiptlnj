@@ -10,24 +10,12 @@
  * Incluye ruta extra GET /api/tesoreria/resumen con totales y balance.
  */
 const { comoSeLee } = require('../fechas');
-
-/**
- * El texto de un concepto, como se compara.
- *
- * Sin tildes, sin mayúsculas y sin espacios de más, porque quien anota dos
- * veces la misma compra no la escribe dos veces igual: «Sillas para el salón»
- * y «sillas PARA el SALON» son el mismo gasto y hay que reconocerlas.
+/*
+ * Cómo se compara un texto escrito por una persona, y cuándo no hay que volver
+ * a preguntar, viven en server/repetido.js: son las mismas reglas que usa la
+ * pregunta de Traspasos, y escritas dos veces un día dirían dos cosas.
  */
-const comoSeCompara = (t) =>
-  String(t == null ? '' : t)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-
-/** Un monto como se lee acá. */
-const enPesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
+const { comoSeCompara, enPesos, seguiIgual, senasDe } = require('../repetido');
 
 /**
  * El movimiento igual a este que ya estaba anotado, o null si no hay ninguno.
@@ -74,11 +62,7 @@ function avisoDeMovimientoRepetido(db, datos) {
   if (!otro) return null;
 
   // Con qué se distingue de este: cuándo se anotó, quién y si tiene comprobante
-  const senas = [
-    otro.created_at ? `anotado el ${comoSeLee(String(otro.created_at).slice(0, 10))}` : null,
-    otro.quien ? `por ${otro.quien}` : null,
-    otro.comprobante ? 'con comprobante' : null,
-  ].filter(Boolean).join(', ');
+  const senas = senasDe(otro);
 
   const queEs = datos.tipo === 'Ingreso' ? 'un ingreso' : 'un egreso';
   return {
@@ -302,14 +286,13 @@ module.exports = {
          * cada vez que se le arregla una coma es ruido, y el ruido enseña a
          * confirmar sin leer, que es lo contrario de lo que esto busca.
          */
-        const seguiIgual = existing
-          && String(existing.cuenta_id) === String(cuentaId)
-          && String(existing.fecha).slice(0, 10) === String(fecha).slice(0, 10)
-          && existing.tipo === tipo
-          && Number(existing.monto) === Number(monto)
-          && comoSeCompara(existing.concepto) === comoSeCompara(concepto);
+        // Los cinco datos que hacen que dos movimientos sean «el mismo»
+        const sinCambios = seguiIgual(existing, { cuenta_id: cuentaId, fecha, tipo, monto, concepto }, [
+          ['cuenta_id', 'igual'], ['fecha', 'fecha'], ['tipo', 'igual'],
+          ['monto', 'numero'], ['concepto', 'texto'],
+        ]);
 
-        const otro = seguiIgual ? null
+        const otro = sinCambios ? null
           : elQueYaEstaba(db, { cuenta_id: cuentaId, fecha, tipo, monto, concepto });
         if (otro) {
           const repetido = avisoDeMovimientoRepetido(db, { fecha, tipo, monto, otro });

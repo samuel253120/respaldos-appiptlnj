@@ -6552,6 +6552,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y buscarlo',
       seguir: 'Son dos distintos, guardar',
     },
+    traspaso_ya_anotado: {
+      titulo: '🔁 Puede que este traspaso ya esté anotado',
+      volver: 'Volver y buscarlo',
+      seguir: 'Son dos distintos, guardar',
+    },
     egreso_sin_respaldo: {
       titulo: '📎 Este egreso va sin su comprobante',
       volver: 'Volver y adjuntarlo',

@@ -20,6 +20,36 @@
  * iglesia le traspasa a la corporación, mirado desde esa iglesia, sí salió—.
  * Está explicado en server/entre-cuentas.js.
  */
+const repetido = require('../repetido');
+const { comoSeLee } = require('../fechas');
+
+/**
+ * El traspaso igual a este que ya estaba anotado, o null si no hay ninguno.
+ *
+ * «Igual» es: el mismo día, de la misma cuenta a la misma cuenta, por el mismo
+ * monto y con el mismo concepto. La forma —transferencia, cheque, efectivo— no
+ * entra: el mismo aporte puede anotarse de dos maneras y sigue siendo uno solo.
+ *
+ * Los cuatro primeros se preguntan en SQL; el concepto se compara en JavaScript,
+ * por lo que dice server/repetido.js. No hace falta excluir el traspaso que se
+ * está guardando: acá se llega solo cuando cambió algo de esos cinco datos, así
+ * que la fila guardada ya no calza con lo que se busca.
+ */
+function elQueYaEstaba(db, { fecha, origenId, destinoId, monto, concepto }) {
+  const candidatos = db
+    .prepare(
+      `SELECT t.id, t.concepto, t.comprobante, t.created_at, u.nombre AS quien
+         FROM traspasos t
+         LEFT JOIN usuarios u ON u.id = t.created_by
+        WHERE t.fecha = ? AND t.cuenta_origen_id = ? AND t.cuenta_destino_id = ? AND t.monto = ?
+        ORDER BY t.id`
+    )
+    .all(String(fecha == null ? '' : fecha).slice(0, 10), origenId, destinoId, Number(monto) || 0);
+
+  const suyo = repetido.comoSeCompara(concepto);
+  return candidatos.find((c) => repetido.comoSeCompara(c.concepto) === suyo) || null;
+}
+
 module.exports = {
   name: 'traspasos',
   label: 'Traspasos entre Cuentas',
@@ -98,13 +128,44 @@ module.exports = {
 
       data.iglesia_id = origen.iglesia_id || null;
 
-      // ¿Se está sacando de la cuenta de origen más de lo que hay? Se pregunta
-      // antes de dejarla en rojo. Los dos lados del traspaso que ya estuvieran
-      // guardados no cuentan: este guardado los rehace enteros.
       if (!confirmado) {
+        const fecha = data.fecha !== undefined ? data.fecha : existing ? existing.fecha : null;
+        const concepto = data.concepto !== undefined ? data.concepto : existing ? existing.concepto : null;
+
+        /*
+         * Lo primero, si este traspaso ya está anotado: es lo que cuesta plata.
+         * La confirmación es una sola para todo el guardado, así que la pregunta
+         * que se muestra tiene que ser la que más importa. Un traspaso repetido
+         * mueve dos cuentas en silencio —medido: uno de $400.000 anotado tres
+         * veces movió $1.200.000 que nunca se movieron— mientras que un saldo en
+         * rojo se ve.
+         */
+        const sinCambios = repetido.seguiIgual(
+          existing,
+          { fecha, cuenta_origen_id: origenId, cuenta_destino_id: destinoId, monto, concepto },
+          [['fecha', 'fecha'], ['cuenta_origen_id', 'igual'], ['cuenta_destino_id', 'igual'],
+           ['monto', 'numero'], ['concepto', 'texto']]
+        );
+        const otro = sinCambios ? null
+          : elQueYaEstaba(db, { fecha, origenId, destinoId, monto, concepto });
+        if (otro) {
+          return {
+            error:
+              `Ya hay un traspaso de ${repetido.enPesos(monto)} con ese mismo concepto, de `
+              + `"${origen.nombre}" a "${destino.nombre}", el ${comoSeLee(String(fecha).slice(0, 10))}`
+              + `${repetido.senasDe(otro) ? ` (${repetido.senasDe(otro)})` : ''}. `
+              + 'Si es este mismo, abra ese en vez de anotarlo de nuevo: registrado dos veces, la plata '
+              + 'se mueve dos veces y las dos cuentas quedan descuadradas. Si de verdad fueron dos, confirme.',
+            confirmar: 'traspaso_ya_anotado',
+          };
+        }
+
+        // ¿Se está sacando de la cuenta de origen más de lo que hay? Se pregunta
+        // antes de dejarla en rojo. Los dos lados del traspaso que ya estuvieran
+        // guardados no cuentan: este guardado los rehace enteros.
         const aviso = require('../saldos').avisoSiQuedaEnRojo(origenId, {
           tipo: 'Egreso', monto,
-          fecha: data.fecha !== undefined ? data.fecha : existing ? existing.fecha : null,
+          fecha,
           excluirTraspaso: existing ? existing.id : null,
           queEs: 'Este traspaso',
         });

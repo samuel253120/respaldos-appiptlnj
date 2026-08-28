@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.171.0", fecha: "2026-08-28", titulo: "El mismo traspaso anotado dos veces también se pregunta: era el agujero que quedaba un módulo más allá del libro" },
   { version: "1.170.0", fecha: "2026-08-28", titulo: "Hacer clic en el saldo de una cuenta lleva a su cartola —a ver esa plata— y no a editarle el nombre" },
   { version: "1.169.0", fecha: "2026-08-28", titulo: "El libro empieza arriba: el saldo de cada cuenta muestra las que tienen algo y pliega las que están en cero, de 1.950 px a 770" },
   { version: "1.168.0", fecha: "2026-08-28", titulo: "Las cifras caben enteras en su tarjeta —y si no, la letra baja en vez de cortarse— y el dinero se guarda al peso, sin centavos" },
