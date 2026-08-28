@@ -2706,8 +2706,18 @@ async function viewList(name, filtrosIniciales) {
       const conAlgo = cuentas.filter(tieneAlgo);
       const enCero = cuentas.filter((c) => !tieneAlgo(c));
 
+      /*
+       * El clic lleva a la CARTOLA de la cuenta, no a su formulario.
+       *
+       * La fila se ve como un enlace y lo era, pero llevaba a editar la cuenta:
+       * su nombre, su responsable, su saldo inicial. Quien hace clic en «$
+       * 65.696.114» no va a cambiarle el nombre a la cuenta —va a ver de dónde
+       * salió esa cifra—. Desde la 1.165.0 eso tiene dónde: la cartola, con el
+       * saldo corriendo fila a fila. Editarla sigue a un clic desde ahí, con el
+       * botón «Volver a la cuenta».
+       */
       const filaDeCuenta = (c) => `
-        <li data-ir="#/m/cuentas_tesoreria/edit/${c.id}">
+        <li data-ir="#/cuentas_tesoreria/cartola/${c.id}" title="Ver la cartola de esta cuenta">
           <span class="sc-n">${esc(c.nombre)}
             <span class="badge ${c.tipo === 'General' ? 'blue' : ''}">${esc(c.ambito)}</span>
             ${Number(c.agendado) ? `
@@ -2979,16 +2989,29 @@ async function viewBalanceTesoreria(precarga) {
 async function viewCartolaCuenta(cuentaId, precarga) {
   const m = MOD['cuentas_tesoreria'];
   if (!m) return (location.hash = '#/');
+  /*
+   * Sin período, el año corriente.
+   *
+   * La cartola nació pudiendo mostrar todo, y está bien que pueda: el botón
+   * «Todo» sigue ahí. Lo que no sirve es que sea lo primero que aparece. Desde
+   * la 1.170.0 acá se llega haciendo clic en el saldo de una cuenta, y medido en
+   * la cuenta general de la corporación eso eran 3.001 filas: 683 KB, 852 ms y
+   * una página de 96.495 px. Una cartola se lee por período, como la del banco.
+   */
+  const anio = new Date().getFullYear();
   const st = {
-    desde: (precarga && precarga.desde) || '',
-    hasta: (precarga && precarga.hasta) || '',
+    desde: (precarga && precarga.desde) || `${anio}-01-01`,
+    hasta: (precarga && precarga.hasta) || `${anio}-12-31`,
   };
 
   content().innerHTML = `
     <div class="page-head no-print">
       <h2>🧾 Cartola de la cuenta</h2>
       <div class="actions">
-        <button class="btn secondary" id="carVolver">← Volver a la cuenta</button>
+        <!-- Dice a dónde va, no de dónde se viene: desde la 1.170.0 a la cartola se
+             llega desde el saldo de la cuenta en Tesorería, así que «volver» sería
+             mentira. Es también el botón de editarla, como en cualquier ficha. -->
+        <button class="btn secondary" id="carVolver">🏦 Ficha de la cuenta</button>
         <button class="btn secondary" data-imprimir>🖨️ PDF</button>
       </div>
     </div>
@@ -14144,8 +14167,11 @@ async function renderTesoreriaCuerpo(cuerpoId, caja) {
           : ''}
       </div>
       ${cuentas.rows.length ? `<ul class="mini-list">
+        <!-- El mismo clic que en Tesorería: el saldo lleva a la cartola de esa
+             cuenta, no a su formulario. Es el mismo defecto y merece el mismo
+             arreglo; editarla sigue a un clic desde ahí. -->
         ${cuentas.rows.map((c) => `
-          <li data-ir="#/m/cuentas_tesoreria/edit/${c.id}">
+          <li data-ir="#/cuentas_tesoreria/cartola/${c.id}" title="Ver la cartola de esta cuenta">
             <span>${esc(c.nombre)}
               <span class="badge ${c.tipo === 'General' ? 'blue' : ''}">${esc(c.tipo)}</span>
               ${c.estado === 'Cerrada' ? '<span class="badge">Cerrada</span>' : ''}</span>
