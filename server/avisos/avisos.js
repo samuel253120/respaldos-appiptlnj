@@ -86,6 +86,14 @@ const TIPOS = {
       + 'Es de lo poco que avisa a tiempo de que alguien se está alejando; cuando se nota sin ayuda, '
       + 'ya pasaron meses. El aviso dice cuántas de esas faltas fueron justificadas.',
   },
+  cumplio_la_mayoria: {
+    label: 'Menores que ya cumplieron 18 años',
+    urgente: false,
+    ayuda:
+      'Fichas que siguen como "Miembro Menor de Edad" después de cumplir los 18. Nadie vuelve a '
+      + 'abrir esas fichas, así que el tipo se queda viejo solo, y de él sale quién compone la '
+      + 'directiva de la iglesia.',
+  },
 };
 
 /** Los canales por los que puede salir un aviso. */

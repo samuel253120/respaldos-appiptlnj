@@ -57,6 +57,12 @@ const TIPOS_DE_MIEMBRO = [
   'Miembro Nuevo', 'Miembro Menor de Edad', 'Miembro Oyente', 'Miembro Activo', 'Miembro Líder',
 ];
 
+/** Con qué entra quien recién se registra, mientras nadie diga otra cosa. */
+const TIPO_DE_ENTRADA = 'Miembro Nuevo';
+
+/** El que le toca a quien todavía no cumple 18. */
+const TIPO_DE_MENOR = 'Miembro Menor de Edad';
+
 /**
  * Deja al día el usuario del sistema enlazado a este miembro: comparten el
  * RUT, el nombre, el correo, el teléfono y la foto. Si el miembro pasa a fallecido o
@@ -212,6 +218,20 @@ function edadEnAnios(fechaNacimiento) {
   const mes = hoy.getMonth() - nace.getMonth();
   if (mes < 0 || (mes === 0 && hoy.getDate() < nace.getDate())) anios--;
   return anios >= 0 && anios < 130 ? anios : null;
+}
+
+/**
+ * Qué tipo le corresponde a alguien por su edad, si es que la edad lo decide.
+ *
+ * Solo la minoría de edad manda: un menor es «Miembro Menor de Edad» y punto
+ * —así lo dejó la migración que completó los que ya estaban, en la 1.60.x—.
+ * De los 18 para arriba la edad no decide nada: nuevo, oyente, activo o líder
+ * lo elige la iglesia, y por eso acá se devuelve null en vez de inventar uno.
+ */
+function tipoQueLeCorresponde(fechaNacimiento) {
+  const anios = edadEnAnios(fechaNacimiento);
+  if (anios == null) return null;
+  return anios < 18 ? TIPO_DE_MENOR : null;
 }
 
 /** Meses cumplidos, para los menores de un año. */
@@ -470,8 +490,17 @@ module.exports = {
       options: ['Activo', 'Inactivo', 'En disciplina', 'Trasladado', 'Fallecido'],
     },
     {
+      /**
+       * De este campo cuelga quién entra solo a la directiva de la iglesia
+       * (ver server/directiva.js), y estaba en blanco en TODAS las fichas de
+       * la base cargada: 603 de 603. Un campo del que depende una regla
+       * automática y que nadie llena es una regla que no se está aplicando,
+       * sin que nadie lo note. Ahora nace con un valor —el que corresponda a
+       * la edad, ver `tipoQueLeCorresponde`— y el panel avisa de las fichas
+       * que lo tienen en blanco.
+       */
       name: 'tipo_miembro', label: 'Tipo de miembro', type: 'select',
-      options: TIPOS_DE_MIEMBRO,
+      options: TIPOS_DE_MIEMBRO, default: TIPO_DE_ENTRADA,
       help: 'Menor de edad: quien todavía no cumple 18 años. Oyente: asiste sin estar en plena membresía.',
     },
 
@@ -808,6 +837,57 @@ module.exports = {
         data.responsable_telefono = null;
       }
 
+      /**
+       * El tipo de miembro y la edad no pueden decir cosas distintas.
+       *
+       * Nada revisaba esto: se podía dejar «Miembro Menor de Edad» puesto en
+       * alguien de 45 años, y —lo que pasa de verdad— el menor que cumple 18
+       * se queda con el tipo de menor para siempre, porque nadie vuelve a
+       * abrir su ficha. De ese campo cuelga quién entra a la directiva.
+       *
+       * Al CREAR, el tipo se pone solo cuando la edad lo decide: un menor nace
+       * como «Miembro Menor de Edad» aunque el formulario ofreciera otro.
+       *
+       * Al EDITAR se PREGUNTA, no se corrige a la fuerza: la iglesia puede
+       * tener sus razones, y cambiarle el tipo a alguien por debajo sin
+       * avisar es peor que dejarlo contradictorio. Y se pregunta solo cuando
+       * ESTE guardado toca el tipo o la fecha: si no, corregir un teléfono
+       * volvería a preguntar lo mismo cada vez.
+       */
+      const nace = data.fecha_nacimiento !== undefined
+        ? data.fecha_nacimiento
+        : existing ? existing.fecha_nacimiento : null;
+      const tipo = data.tipo_miembro !== undefined
+        ? data.tipo_miembro
+        : existing ? existing.tipo_miembro : null;
+      const leToca = tipoQueLeCorresponde(nace);
+
+      if (!id && leToca && tipo !== leToca) {
+        data.tipo_miembro = leToca;
+      } else if (id && !confirmado && tipo) {
+        const tocaElTipo = data.tipo_miembro !== undefined && data.tipo_miembro !== (existing || {}).tipo_miembro;
+        const tocaLaFecha = data.fecha_nacimiento !== undefined
+          && data.fecha_nacimiento !== (existing || {}).fecha_nacimiento;
+        const anios = edadEnAnios(nace);
+        if ((tocaElTipo || tocaLaFecha) && anios != null) {
+          if (tipo === TIPO_DE_MENOR && anios >= 18) {
+            return {
+              error: `Tiene ${anios} años y quedaría como "${TIPO_DE_MENOR}". `
+                + 'De ese tipo depende quién entra a la directiva de la iglesia. '
+                + 'Si de todas maneras corresponde, confirme.',
+              confirmar: 'tipo_miembro_no_calza_con_la_edad',
+            };
+          }
+          if (tipo !== TIPO_DE_MENOR && anios < 18) {
+            return {
+              error: `Todavía no cumple 18 años —tiene ${anios}— y quedaría como "${tipo}". `
+                + `A los menores les corresponde "${TIPO_DE_MENOR}". Si de todas maneras corresponde, confirme.`,
+              confirmar: 'tipo_miembro_no_calza_con_la_edad',
+            };
+          }
+        }
+      }
+
       // A quien el ministerio le impone un trato —Guía de Obra por su cargo,
       // Pastor o Pastora por el suyo o por su cónyuge— no se le puede fijar a
       // mano el de Hermano, Hermana u Oficial.
@@ -924,3 +1004,5 @@ module.exports = {
  * una sola lista, agregar una categoría la deja ofrecida también ahí.
  */
 module.exports.TIPOS_DE_MIEMBRO = TIPOS_DE_MIEMBRO;
+module.exports.TIPO_DE_MENOR = TIPO_DE_MENOR;
+module.exports.tipoQueLeCorresponde = tipoQueLeCorresponde;

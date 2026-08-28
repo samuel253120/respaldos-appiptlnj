@@ -1928,7 +1928,8 @@ async function renderPendientes(zona) {
 function stateOf(name) {
   if (!listState[name]) {
     const m = MOD[name];
-    listState[name] = { q: '', page: 1, sort: m.defaultSort.field, dir: m.defaultSort.dir, filters: {}, desde: '', hasta: '', sin: '' };
+    listState[name] = { q: '', page: 1, sort: m.defaultSort.field, dir: m.defaultSort.dir,
+      filters: {}, propios: {}, desde: '', hasta: '', edadDesde: '', edadHasta: '', sin: '' };
   }
   return listState[name];
 }
@@ -1959,8 +1960,35 @@ async function viewList(name, filtrosIniciales) {
   // menú no quede colgado el filtro de la vez anterior.
   const sinPedido = (filtrosIniciales || {}).sin;
   if (sinPedido !== undefined || st.sin) {
-    const campo = String(sinPedido || '');
-    st.sin = fieldsBy[campo] ? campo : '';
+    /*
+     * Acepta VARIOS campos separados por coma, que es lo que el servidor
+     * entiende: «sin=responsable_nombre,responsable_id» son los menores que no
+     * tienen ninguno de los dos. Leyendo un solo nombre, esa dirección no
+     * calzaba con ningún campo y el filtro se caía entero, así que el enlace
+     * del panel abría el listado completo como si nada faltara.
+     */
+    st.sin = String(sinPedido || '')
+      .split(',').map((c) => c.trim()).filter((c) => fieldsBy[c]).join(',');
+    st.page = 1;
+  }
+
+  /*
+   * El rango de edad y los filtros propios del módulo, también desde la
+   * dirección: es como el aviso de «ya cumplieron 18» lleva a quiénes son.
+   */
+  const rango = filtrosIniciales || {};
+  if (rango.edad_desde !== undefined || st.edadDesde) {
+    st.edadDesde = String(rango.edad_desde || '');
+    st.page = 1;
+  }
+  if (rango.edad_hasta !== undefined || st.edadHasta) {
+    st.edadHasta = String(rango.edad_hasta || '');
+    st.page = 1;
+  }
+  st.propios = st.propios || {};
+  for (const f of m.filtrosPropios || []) {
+    if (rango[f.nombre] === undefined && !st.propios[f.nombre]) continue;
+    st.propios[f.nombre] = String(rango[f.nombre] || '');
     st.page = 1;
   }
 
@@ -5219,6 +5247,11 @@ function preguntarSiIgualVa(err, seguir) {
       titulo: '🧍 Puede que esta persona ya esté registrada',
       volver: 'Volver y buscarla',
       seguir: 'Es otra persona, crear la ficha',
+    },
+    tipo_miembro_no_calza_con_la_edad: {
+      titulo: '🎂 El tipo de miembro no calza con su edad',
+      volver: 'Volver y corregirlo',
+      seguir: 'Así corresponde, guardar',
     },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {

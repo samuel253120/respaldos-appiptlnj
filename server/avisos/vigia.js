@@ -344,8 +344,69 @@ function faltasSeguidas(usuario, dejar) {
   }
 }
 
+/**
+ * Menores que ya cumplieron 18 y siguen con el tipo de menor.
+ *
+ * Es la única contradicción que llega SOLA: nadie toca esas fichas, y el día
+ * del cumpleaños el tipo deja de ser cierto sin que nadie guarde nada. La
+ * comprobación al guardar no la alcanza nunca, porque no hay guardado.
+ *
+ * Importa porque de ese campo sale quién compone la directiva de la iglesia
+ * (ver server/directiva.js): un tipo viejo es una regla aplicándose sobre un
+ * dato que ya no corresponde.
+ *
+ * No se corrige solo. Cambiarle el tipo a alguien sin que nadie lo mire es
+ * meterse en algo que decide la iglesia —¿queda como nuevo, como oyente, como
+ * activo?—, y esa respuesta el sistema no la tiene.
+ */
+function cumplieronLaMayoria(usuario, dejar) {
+  const { can } = require('../permissions');
+  if (!can(usuario, 'miembros', 'edit')) return;   // avisarle a quien no puede corregirlo no sirve
+
+  const { TIPO_DE_MENOR } = require('../modules/miembros');
+  const alcance = require('../alcance');
+  const params = [TIPO_DE_MENOR];
+  const donde = [
+    'tipo_miembro = ?',
+    "estado NOT IN ('Fallecido', 'Trasladado')",
+    "fecha_nacimiento IS NOT NULL",
+    "date(fecha_nacimiento) <= date('now','localtime','-18 years')",
+  ];
+  const iglesias = alcance.iglesiasDe(usuario);
+  if (iglesias.length) {
+    donde.push(`iglesia_id IN (${iglesias.map(() => '?').join(',')})`);
+    params.push(...iglesias);
+  }
+
+  let grandes = [];
+  try {
+    grandes = db
+      .prepare(`SELECT id, nombres, apellidos FROM miembros WHERE ${donde.join(' AND ')} ORDER BY apellidos, nombres`)
+      .all(...params);
+  } catch (e) {
+    return;   // una base a medio migrar no puede tumbar la pasada del día
+  }
+  if (!grandes.length) return;
+
+  const NOMBRA = 3;
+  const nombres = grandes.slice(0, NOMBRA).map((m) => `${m.nombres} ${m.apellidos}`).join(', ');
+  const resto = grandes.length - NOMBRA;
+  dejar({
+    tipo: 'cumplio_la_mayoria',
+    // La clave lleva a quiénes son: mientras sean los mismos no se repite el
+    // aviso, y en cuanto cumpla otro vuelve a salir
+    clave: `mayoria:${grandes.map((m) => m.id).join(',')}`,
+    titulo: grandes.length === 1
+      ? 'Una ficha sigue como menor de edad'
+      : `${grandes.length} fichas siguen como menores de edad`,
+    detalle: `${nombres}${resto > 0 ? ` y ${resto} más` : ''} ya cumplieron 18 años y siguen como `
+      + `"${TIPO_DE_MENOR}". De ese tipo sale quién compone la directiva de la iglesia.`,
+    ruta: '#/m/miembros?f_tipo_miembro=' + encodeURIComponent(TIPO_DE_MENOR) + '&edad_desde=18',
+  });
+}
+
 const REVISIONES = [credencialesPorVencer, solicitudesSinRespuesta, solicitudesSinResponsableActivo,
-  cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas, faltasSeguidas];
+  cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas, faltasSeguidas, cumplieronLaMayoria];
 
 // ------------------------------------------------------------- la pasada ----
 
@@ -431,5 +492,5 @@ function empezar() {
 
 module.exports = {
   empezar, mirar, pasada, leToca, REVISIONES,
-  solicitudesSinRespuesta, solicitudesSinResponsableActivo,
+  solicitudesSinRespuesta, solicitudesSinResponsableActivo, cumplieronLaMayoria,
 };

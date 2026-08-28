@@ -41,6 +41,13 @@ const LO_QUE_IMPORTA = [
   { campo: 'fecha_ingreso', label: 'Fecha de ingreso a la iglesia', para: 'Para saber desde cuándo son parte y calcular antigüedad.' },
   { campo: 'emergencia_telefono', label: 'Contacto de emergencia', para: 'A quién llamar si algo pasa en una actividad.' },
   { campo: 'estado', label: 'Estado', para: 'Sin él no se sabe si la persona sigue en la iglesia, se trasladó o falleció.' },
+  /*
+   * De este cuelga quién entra solo a la directiva de la iglesia, y estaba en
+   * blanco en las 603 fichas de la base cargada sin que nada lo dijera. Un
+   * campo del que depende una regla automática y que nadie llena es una regla
+   * que no se está aplicando.
+   */
+  { campo: 'tipo_miembro', label: 'Tipo de miembro', para: 'De él sale quién compone la directiva de la iglesia.' },
 ];
 
 /** Los miembros que alcanza quien pregunta, como trozo de SQL. */
