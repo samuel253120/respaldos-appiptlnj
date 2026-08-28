@@ -3004,6 +3004,11 @@ ul.mini-list li.salido > span:first-child { opacity: .72; }
 
 /* ---------- Mensajes escritos a mano ---------- */
 .msg-pie { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+/* Lo que se puede hacer con un mensaje ya mandado */
+.msg-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 7px; }
+/* Uno retirado se lee tachado y apagado: la constancia queda, el aviso no */
+ul.mini-list li.retirado > span:first-child { opacity: .72; }
+ul.mini-list li.retirado .msg-t { text-decoration: line-through; }
 /* Una casilla con su texto al lado se toca entera, no solo el cuadrito */
 .fld label.con-casilla {
   display: flex; align-items: center; gap: 9px; font-weight: 500; cursor: pointer;

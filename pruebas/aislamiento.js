@@ -620,7 +620,13 @@ async function niSePuedeApuntarALoAjeno(E, admin) {
    * módulo y no esta prueba, porque esta prueba miraba a quién se le puede
    * ESCRIBIR y no lo que se puede LEER. Ahora mira las dos.
    */
-  const reservado = `Texto reservado ${MARCA}`;
+  /*
+   * El texto lleva la hora de esta corrida y no solo la marca: la prueba se
+   * corre muchas veces sobre la misma base, y con un texto repetido «el aviso
+   * sigue en su campanita» lo daba por bueno encontrando el de la corrida
+   * anterior —o sea, pasaba aunque el de ahora se hubiera borrado—.
+   */
+  const reservado = `Texto reservado ${MARCA} ${Date.now()}`;
   const propio = await norte('POST', '/api/avisos/mensajes', {
     titulo: `Asunto interno del Norte ${MARCA}`, cuerpo: reservado,
     destino: 'personas', valor: [E.ayudante.id],
@@ -641,6 +647,22 @@ async function niSePuedeApuntarALoAjeno(E, admin) {
     propio.estado === 201 && suPropioHistorial.estado === 200
       && suPropioHistorial.texto.includes(reservado),
     `mandó ${propio.estado} y su propio historial ${suPropioHistorial.estado}`);
+
+  /*
+   * Retirar es más que mirar: le borra el aviso a gente. Va por el mismo
+   * alcance —lo que no se ve, no se toca— y por eso se comprueba acá y no solo
+   * en las pruebas del motor: un 200 de más en esta ruta le saca de la
+   * campanita un mensaje a una iglesia entera que no es la suya.
+   */
+  const retiroAjeno = await deAlla('POST', `/api/avisos/mensajes/${(propio.json || {}).id}/retirar`);
+  const delQueLoRecibio = sesion(E.ayudante.token);
+  const suCampanita = await delQueLoRecibio('GET', '/api/avisos?limit=50');
+  revisar('ni le retira un mensaje a la otra iglesia',
+    [400, 403, 404].includes(retiroAjeno.estado),
+    `respondió ${retiroAjeno.estado}: ${retiroAjeno.texto.slice(0, 120).replace(/\s+/g, ' ')}`);
+  revisar('y el aviso sigue en la campanita de quien lo recibió',
+    suCampanita.estado === 200 && suCampanita.texto.includes(reservado),
+    `respondió ${suCampanita.estado}`);
 
   const sinLlave = await secre('GET', '/api/avisos/mensajes/destinatarios');
   revisar('y sin la llave de enviar, la puerta está cerrada',

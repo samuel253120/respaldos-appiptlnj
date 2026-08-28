@@ -372,8 +372,11 @@ test('lo que se ha mandado dice a cuántos llegó y cuántos lo abrieron', () =>
 test('pero no dice QUIÉNES lo leyeron', () => {
   const uno = mensajes.loQueSeHaMandado(jefa, 200)[0];
   assert.deepEqual(Object.keys(uno).sort(), [
-    'created_at', 'cuantos', 'cuerpo', 'destino_dice', 'enlace', 'id', 'leidos', 'quien', 'titulo', 'urgente',
+    'created_at', 'cuantos', 'cuerpo', 'destino_dice', 'enlace', 'id', 'leidos',
+    'quien', 'quien_retiro', 'retirado_en', 'sin_leer', 'titulo', 'urgente',
   ], 'saber quién abrió qué sería vigilar a la gente por dentro del sistema; para eso está preguntarle');
+  // Los números dicen cuántos, nunca quiénes
+  for (const clave of ['leidos', 'cuantos', 'sin_leer']) assert.equal(typeof uno[clave], 'number');
 });
 
 test('lo más nuevo va primero, que es lo que se mira', () => {
@@ -405,6 +408,104 @@ test('a más de quinientos de una vez no se manda: se pide acotar', () => {
   assert.match(String(salida.error), new RegExp(`${cuantos} personas.*${mensajes.TOPE_DE_UN_ENVIO}`));
   assert.equal(cuantosMensajes(), antes, 'no se mandó a los primeros quinientos y se cortó');
   assert.equal(db.prepare('SELECT COUNT(*) c FROM notificaciones WHERE tipo = ? AND titulo = ?').get('mensaje', 'A todos').c, 0);
+});
+
+// ------------------------------------------ retirar un mensaje ya mandado
+
+/*
+ * Se equivocó en la hora, o lo mandó a la iglesia entera cuando iba a tres
+ * personas. Antes no había nada que hacer: el aviso quedaba en cuarenta
+ * campanitas y lo único posible era mandar otro pidiendo disculpas.
+ *
+ * Retirar borra los avisos que siguen SIN LEER. Los ya leídos no se tocan: esa
+ * gente ya lo vio, y borrárselo sería reescribirle lo que recuerda.
+ */
+const leDejaron = (quien, titulo) =>
+  suyos(quien.id).some((n) => n.titulo === titulo);
+
+test('retirar le saca el aviso a quien no lo abrió, y no a quien sí', () => {
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'La reunión es a las 7', cuerpo: 'Mañana a las 19:00.',
+    destino: 'personas', valor: [ana.id, beto.id],
+  });
+  const suyoDeAna = db.prepare('SELECT id FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+    .get(ana.id, `mensaje:${salida.id}`);
+  avisos.marcarLeida(ana.id, suyoDeAna.id);
+
+  const r = mensajes.retirar(jefa, salida.id);
+  assert.equal(r.error, undefined);
+  assert.equal(r.borrados, 1, 'solo el que seguía sin abrir');
+
+  assert.ok(leDejaron(ana, 'La reunión es a las 7'), 'la que ya lo había leído lo conserva');
+  assert.ok(!leDejaron(beto, 'La reunión es a las 7'), 'al que no lo había abierto se le quitó');
+});
+
+test('y lo que ya se había leído sigue contando', () => {
+  const mio = mensajes.loQueSeHaMandado(jefa, 200).find((m) => m.titulo === 'La reunión es a las 7');
+  assert.equal(mio.cuantos, 2, 'a cuántos llegó no cambia: llegó');
+  assert.equal(mio.leidos, 1, 'y quien lo leyó, lo leyó');
+  assert.equal(mio.sin_leer, 0);
+  assert.ok(mio.retirado_en, 'queda marcado como retirado');
+  assert.equal(mio.quien_retiro, jefa.nombre);
+});
+
+test('queda la constancia de que hubo una corrección', () => {
+  const salida = mensajes.loQueSeHaMandado(jefa, 200).find((m) => m.titulo === 'La reunión es a las 7');
+  const anotado = db.prepare(
+    "SELECT * FROM registro_cambios WHERE modulo = 'Mensajes' AND accion = 'Retiro' AND registro_id = ?"
+  ).get(salida.id);
+  assert.ok(anotado, 'retirar algo que ya vio gente no puede pasar sin dejar rastro');
+  assert.equal(anotado.usuario, jefa.nombre);
+  assert.match(anotado.detalle, /Retirado de 1 campanita/);
+});
+
+test('no se retira dos veces', () => {
+  const salida = mensajes.loQueSeHaMandado(jefa, 200).find((m) => m.titulo === 'La reunión es a las 7');
+  assert.match(String(mensajes.retirar(jefa, salida.id).error), /ya estaba retirado/i);
+});
+
+test('ni uno que ya nadie tiene sin abrir: se dice por qué', () => {
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'Este lo leyeron todos', cuerpo: 'x', destino: 'personas', valor: [ana.id],
+  });
+  const suyo = db.prepare('SELECT id FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+    .get(ana.id, `mensaje:${salida.id}`);
+  avisos.marcarLeida(ana.id, suyo.id);
+
+  const r = mensajes.retirar(jefa, salida.id);
+  assert.match(String(r.error), /no hay nada que retirar/i,
+    'poner el sello de «retirado» sobre algo que ya vieron todos sería mentirle a quien lo mire después');
+  assert.equal(
+    db.prepare('SELECT retirado_en FROM mensajes_enviados WHERE id = ?').get(salida.id).retirado_en, null
+  );
+});
+
+test('y no se le retira nada a la otra iglesia', () => {
+  const jefeDeAlla = cuenta('Jefe que Retira de Más', { iglesia: sur, administra: [sur], rol: 'admin' });
+  const mio = mensajes.enviar(jefa, {
+    titulo: 'Que no me lo toquen', cuerpo: 'x', destino: 'personas', valor: [ana.id, beto.id],
+  });
+  const r = mensajes.retirar(jefeDeAlla, mio.id);
+  assert.match(String(r.error), /no está entre los que usted puede ver/i,
+    'retirar es el mismo alcance que mirar: lo que no se ve, no se toca');
+  assert.equal(
+    db.prepare('SELECT COUNT(*) c FROM notificaciones WHERE clave = ?').get(`mensaje:${mio.id}`).c, 2,
+    'y los avisos siguen donde estaban'
+  );
+});
+
+test('el historial dice a cuántos se les puede retirar todavía', () => {
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'Para mirar el sin abrir', cuerpo: 'x', destino: 'personas', valor: [ana.id, beto.id],
+  });
+  const mio = () => mensajes.loQueSeHaMandado(jefa, 200).find((m) => m.id === salida.id);
+  assert.equal(mio().sin_leer, 2);
+  const suyo = db.prepare('SELECT id FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+    .get(ana.id, `mensaje:${salida.id}`);
+  avisos.marcarLeida(ana.id, suyo.id);
+  assert.equal(mio().sin_leer, 1, 'sin ese número, el botón de retirar no sabe si sirve de algo');
+  mensajes.retirar(jefa, salida.id);
+  assert.equal(mio().sin_leer, 0);
 });
 
 // ------------------------------ el conteo de leídos, que no se puede borrar solo
@@ -610,6 +711,27 @@ test('la puerta del menú se abre solo con la llave, y la ruta también', () => 
   assert.match(app, /name: '_mensajes',[\s\S]{0,200}si: \(\) => tieneLlave\('avisos_enviar'\)/);
   assert.match(app, /parts\[0\] === 'mensajes' && tieneLlave\('avisos_enviar'\)/,
     'y escribir la dirección a mano tampoco entra');
+});
+
+test('la pantalla ofrece retirar solo cuando le queda a alguien sin abrir', () => {
+  const trozo = app.slice(app.indexOf('async function pintarElHistorial('),
+    app.indexOf('async function pintarElHistorial(') + 4500);
+  assert.match(trozo, /!m\.retirado_en && m\.sin_leer/,
+    'ofrecerlo cuando ya nadie lo tiene sin abrir es ofrecer un botón que solo puede fallar');
+  assert.match(trozo, /confirm\(loQueSeVaARetirar\(m\)\)/, 'y se pregunta antes, con el número');
+  assert.match(app, /Se le va a quitar de la campanita \$\{aCuantos\}/);
+});
+
+test('«volver a mandar» copia el texto y NO el destino', () => {
+  const desde = app.indexOf("querySelectorAll('[data-repetir]')");
+  const trozo = app.slice(desde, app.indexOf('Copiado arriba', desde) + 80);
+  assert.ok(desde > 0 && trozo.length > 200, 'no se encontró el trozo que copia el mensaje');
+  for (const campo of ['msgTitulo', 'msgCuerpo', 'msgEnlace', 'msgUrgente']) {
+    assert.ok(trozo.includes(campo), `no copia ${campo}`);
+  }
+  assert.ok(!/msgDestino|msgPersonas|msgIglesia|msgPerfil/.test(trozo),
+    'dejar puesto «a toda la iglesia» es justo el clic que uno no quiere dar sin pensarlo');
+  assert.match(trozo, /Revise a quién va antes de mandarlo/);
 });
 
 test('en las preferencias, lo que no se puede apagar sale dicho y no como casilla', () => {

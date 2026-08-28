@@ -4371,6 +4371,19 @@ async function viewMensajes() {
     contar('msgCuerpo', 'msgCuentaCuerpo', d.largo.cuerpo),
   ];
 
+  /** Lo que se le va a decir a quien aprieta «Retirar», antes de hacerlo. */
+  const loQueSeVaARetirar = (m) => {
+    const aCuantos = m.sin_leer === 1
+      ? 'a la persona que todavía no lo abre'
+      : `a las ${m.sin_leer} personas que todavía no lo abren`;
+    const yaLoVieron = m.leidos === 0
+      ? 'Nadie alcanzó a abrirlo.'
+      : m.leidos === 1
+        ? 'Una persona ya lo abrió, y a esa no se le puede quitar.'
+        : `${m.leidos} personas ya lo abrieron, y a esas no se les puede quitar.`;
+    return `¿Retirar «${m.titulo}»?\n\nSe le va a quitar de la campanita ${aCuantos}.\n${yaLoVieron}`;
+  };
+
   async function pintarElHistorial() {
     const caja = $('msgHistorial');
     let h;
@@ -4385,13 +4398,64 @@ async function viewMensajes() {
       return;
     }
     caja.innerHTML = `<ul class="mini-list">${h.mensajes.map((m) => `
-      <li>
+      <li class="${m.retirado_en ? 'retirado' : ''}">
         <span>
-          ${esc(m.titulo)}${m.urgente ? ' <span class="badge red">Urgente</span>' : ''}
-          <div class="mut" style="font-size:12.5px">${esc(m.destino_dice)} · ${esc(m.quien || '')} · ${esc(cuandoFue(m.created_at))}</div>
+          <span class="msg-t">${esc(m.titulo)}</span>${m.urgente ? ' <span class="badge red">Urgente</span>' : ''}${m.retirado_en ? ' <span class="badge yellow">Retirado</span>' : ''}
+          <div class="mut" style="font-size:12.5px">${esc(m.destino_dice)} · ${esc(m.quien || '')} · ${esc(cuandoFue(m.created_at))}${
+            m.retirado_en ? ` · lo retiró ${esc(m.quien_retiro || 'alguien')} ${esc(cuandoFue(m.retirado_en))}` : ''}</div>
+          <div class="msg-acciones">
+            <button type="button" class="btn sm" data-repetir="${m.id}">↻ Volver a mandar</button>
+            ${!m.retirado_en && m.sin_leer
+              ? `<button type="button" class="btn sm danger" data-retirar="${m.id}">Retirar</button>` : ''}
+          </div>
         </span>
         <span class="mut" style="white-space:nowrap">${m.leidos} de ${m.cuantos} leído${m.leidos === 1 ? '' : 's'}</span>
       </li>`).join('')}</ul>`;
+
+    /*
+     * Retirar le saca el aviso a quien todavía no lo abrió. Se pregunta antes y
+     * se dice el número, porque es lo que decide: retirar algo que ya leyeron
+     * treinta personas no arregla nada, y saberlo es lo que hace elegir entre
+     * retirarlo o mandar otro diciendo que hubo un error.
+     */
+    caja.querySelectorAll('[data-retirar]').forEach((boton) => {
+      boton.addEventListener('click', async () => {
+        const m = h.mensajes.find((x) => x.id === Number(boton.dataset.retirar));
+        if (!m || !confirm(loQueSeVaARetirar(m))) return;
+        boton.disabled = true;
+        try {
+          const r = await api('POST', `/avisos/mensajes/${m.id}/retirar`);
+          toast(r.borrados === 1
+            ? 'Retirado: se le quitó a 1 persona'
+            : `Retirado: se le quitó a ${r.borrados} personas`);
+          pintarElHistorial();
+        } catch (e) {
+          toast(e.message, true);
+          boton.disabled = false;
+        }
+      });
+    });
+
+    /*
+     * Volver a mandar copia el texto y NO el destino. Restaurarlo a medias sería
+     * peor: de un mensaje a personas elegidas no queda escrito a quiénes fue, y
+     * dejar puesto «a toda la iglesia» es justo el clic que uno no quiere dar
+     * sin pensarlo.
+     */
+    caja.querySelectorAll('[data-repetir]').forEach((boton) => {
+      boton.addEventListener('click', () => {
+        const m = h.mensajes.find((x) => x.id === Number(boton.dataset.repetir));
+        if (!m) return;
+        $('msgTitulo').value = m.titulo;
+        $('msgCuerpo').value = m.cuerpo || '';
+        $('msgEnlace').value = m.enlace || '';
+        $('msgUrgente').checked = !!m.urgente;
+        cuentas.forEach((poner) => poner());
+        $('msgTitulo').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        $('msgTitulo').focus();
+        toast('Copiado arriba. Revise a quién va antes de mandarlo.');
+      });
+    });
   }
   pintarElHistorial();
 

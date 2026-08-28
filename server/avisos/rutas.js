@@ -178,4 +178,18 @@ router.post('/avisos/mensajes', authRequired, puedeEnviar, (req, res) => {
   res.status(201).json({ ok: true, ...salida });
 });
 
+/**
+ * Retirar uno.
+ *
+ * Va por POST y no por DELETE porque no se borra el mensaje: se le saca el
+ * aviso a quien todavía no lo abrió y la constancia queda, marcada como
+ * retirada. Es lo mismo que hace `/usuarios/:id/restablecer-clave`, que tampoco
+ * borra la cuenta.
+ */
+router.post('/avisos/mensajes/:id(\\d+)/retirar', authRequired, puedeEnviar, (req, res) => {
+  const salida = mensajes.retirar(req.user, Number(req.params.id));
+  if (salida.error) return res.status(400).json({ error: salida.error });
+  res.json({ ok: true, ...salida });
+});
+
 module.exports = router;

@@ -55,6 +55,8 @@ db.exec(`
     destino_dice TEXT,
     cuantos INTEGER NOT NULL DEFAULT 0,
     leidos INTEGER NOT NULL DEFAULT 0,
+    retirado_en TEXT,
+    retirado_por INTEGER,
     enviado_por INTEGER,
     iglesia_id INTEGER,
     created_at TEXT DEFAULT (datetime('now','localtime'))
@@ -69,7 +71,11 @@ db.exec(`
  * ya venía andando, «CREATE TABLE IF NOT EXISTS» no toca nada y la columna no
  * aparecería nunca.
  */
-for (const [columna, tipo] of [['leidos', 'INTEGER NOT NULL DEFAULT 0']]) {
+for (const [columna, tipo] of [
+  ['leidos', 'INTEGER NOT NULL DEFAULT 0'],
+  ['retirado_en', 'TEXT'],
+  ['retirado_por', 'INTEGER'],
+]) {
   const tiene = db.prepare('PRAGMA table_info(mensajes_enviados)').all().some((c) => c.name === columna);
   if (!tiene) db.exec(`ALTER TABLE mensajes_enviados ADD COLUMN ${columna} ${tipo}`);
 }
@@ -319,6 +325,90 @@ function enviar(quienManda, { titulo, cuerpo, urgente, enlace, destino, valor })
 }
 
 /**
+ * Los mensajes que esta persona puede ver, como trozo de SQL sobre `m`.
+ *
+ * Se ve lo que mandó la gente que uno ve: el mismo alcance con el que se decide
+ * a quién se le puede escribir. Está en una sola parte porque lo usan el
+ * historial y el retiro, y separarlos sería dejar que se pueda retirar algo que
+ * no se puede ni mirar.
+ *
+ * La tabla de la subconsulta va SIN ALIAS: estas condiciones nombran sus
+ * columnas como «usuarios.id» y con un alias apuntarían a una tabla que no
+ * existe. Está explicado en server/alcance.js, arriba de `condicionesDeUsuarios`.
+ */
+function soloLosQueVe(quien, params) {
+  const suyo = require('../alcance').condicionesDeUsuarios(quien, params);
+  return suyo ? `m.enviado_por IN (SELECT usuarios.id FROM usuarios WHERE ${suyo})` : null;
+}
+
+/** Un mensaje pedido por su número, ya comprobado contra el alcance. */
+function unoQueAlcanza(quien, id) {
+  const params = [Number(id) || 0];
+  const suyos = soloLosQueVe(quien, params);
+  return db
+    .prepare(`SELECT m.* FROM mensajes_enviados m WHERE m.id = ?${suyos ? ` AND ${suyos}` : ''}`)
+    .get(...params);
+}
+
+/**
+ * Retira un mensaje: le saca el aviso a quien todavía no lo ha abierto.
+ *
+ * ── QUÉ SE PUEDE DESHACER Y QUÉ NO ──
+ *
+ * Se equivocó en la hora, o lo mandó a la iglesia entera cuando iba a tres
+ * personas. Hasta acá no había nada que hacer: el aviso quedaba en cuarenta
+ * campanitas y lo único posible era mandar otro pidiendo disculpas.
+ *
+ * Retirar borra los avisos que siguen SIN LEER. Los ya leídos no se tocan: esa
+ * gente ya lo vio, y borrárselo sería reescribirle lo que recuerda —y además
+ * dejaría a quien lo mandó creyendo que nadie se enteró—. Por eso el conteo de
+ * leídos se conserva tal cual y el registro queda marcado como retirado, con la
+ * hora y con quién lo hizo: la constancia es de que hubo una corrección, no de
+ * que no pasó nada.
+ *
+ * Corregir es esto mismo con otro nombre: retirar y volver a mandar.
+ */
+function retirar(quien, id) {
+  const suyo = unoQueAlcanza(quien, id);
+  if (!suyo) return { error: 'Ese mensaje no está entre los que usted puede ver.' };
+  if (suyo.retirado_en) return { error: 'Ese mensaje ya estaba retirado.' };
+
+  const clave = `mensaje:${suyo.id}`;
+  const sinLeer = db
+    .prepare('SELECT COUNT(*) c FROM notificaciones WHERE clave = ? AND leida = 0')
+    .get(clave).c;
+  if (!sinLeer) {
+    return {
+      error: 'Ya no le queda sin abrir a nadie: no hay nada que retirar. '
+        + 'Lo que la gente leyó, leído está; si hay que corregirlo, mande otro mensaje diciéndolo.',
+    };
+  }
+
+  const sacar = db.transaction(() => {
+    const borrados = db.prepare('DELETE FROM notificaciones WHERE clave = ? AND leida = 0').run(clave).changes;
+    db.prepare(
+      "UPDATE mensajes_enviados SET retirado_en = datetime('now','localtime'), retirado_por = ? WHERE id = ?"
+    ).run(quien.id, suyo.id);
+    return borrados;
+  });
+  const borrados = sacar.immediate();
+
+  try {
+    require('../bitacora').anotarCambio({
+      def: { name: 'mensajes', label: 'Mensajes', display: '{titulo}' },
+      accion: 'Retiro',
+      fila: { id: suyo.id, titulo: suyo.titulo, iglesia_id: suyo.iglesia_id },
+      detalle: `Retirado de ${borrados} campanita(s). Ya lo habían leído ${suyo.leidos} persona(s).`,
+      usuario: quien,
+    });
+  } catch (e) {
+    // El mensaje ya se retiró: que falle la anotación no puede deshacerlo
+  }
+
+  return { id: suyo.id, borrados, leidos: suyo.leidos };
+}
+
+/**
  * Alguien abrió su aviso: queda anotado en el mensaje.
  *
  * ── POR QUÉ SE GUARDA Y NO SE CUENTA ──
@@ -381,24 +471,19 @@ function anotarLectura(claves) {
  * aislamiento tampoco lo miraba; ahora sí.
  */
 function loQueSeHaMandado(quienManda, cuantos = 30) {
-  const alcance = require('../alcance');
   const params = [];
-  /*
-   * La tabla de la subconsulta va SIN ALIAS: estas condiciones nombran sus
-   * columnas como «usuarios.id» y con un alias apuntarían a una tabla que no
-   * existe. Está explicado en server/alcance.js, arriba de
-   * `condicionesDeUsuarios`, y también en `aQuienesAlcanza`, más arriba.
-   */
-  const suyo = alcance.condicionesDeUsuarios(quienManda, params);
-  const donde = suyo
-    ? `WHERE m.enviado_por IN (SELECT usuarios.id FROM usuarios WHERE ${suyo})`
-    : '';
+  const suyos = soloLosQueVe(quienManda, params);
+  const donde = suyos ? `WHERE ${suyos}` : '';
   params.push(Math.min(Number(cuantos) || 30, 200));
 
   const filas = db
     .prepare(
-      `SELECT m.*, u.nombre AS quien
-         FROM mensajes_enviados m LEFT JOIN usuarios u ON u.id = m.enviado_por
+      `SELECT m.*, u.nombre AS quien, r.nombre AS quien_retiro,
+              (SELECT COUNT(*) FROM notificaciones
+                WHERE notificaciones.clave = 'mensaje:' || m.id AND notificaciones.leida = 0) AS sin_leer
+         FROM mensajes_enviados m
+         LEFT JOIN usuarios u ON u.id = m.enviado_por
+         LEFT JOIN usuarios r ON r.id = m.retirado_por
         ${donde}
         ORDER BY m.id DESC LIMIT ?`
     )
@@ -413,6 +498,10 @@ function loQueSeHaMandado(quienManda, cuantos = 30) {
     destino_dice: m.destino_dice,
     cuantos: m.cuantos,
     leidos: m.leidos,
+    // Cuántos lo tienen todavía sin abrir: es a cuántos se les puede retirar
+    sin_leer: m.sin_leer,
+    retirado_en: m.retirado_en,
+    quien_retiro: m.quien_retiro,
     quien: m.quien,
     created_at: m.created_at,
   }));
@@ -421,5 +510,5 @@ function loQueSeHaMandado(quienManda, cuantos = 30) {
 module.exports = {
   DESTINOS, LARGO, TOPE_DE_UN_ENVIO,
   aQuienPuedeEscribir, aQuienesAlcanza, enviar, loQueSeHaMandado, loQueFalta, enlaceLimpio,
-  anotarLectura,
+  anotarLectura, retirar,
 };
