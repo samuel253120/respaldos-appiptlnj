@@ -95,6 +95,28 @@ function palabrasDe(texto) {
 }
 
 /**
+ * Un RUT se escribe de mil maneras y todas tienen que encontrar a la persona.
+ *
+ * Está guardado como venga —«21.000.000-3» en unas fichas y «21000000-3» en
+ * otras, según por dónde entró— y se teclea también como sea: con puntos, sin
+ * puntos, sin guion, o copiado de una planilla. Comparar el texto tal cual
+ * dejaba fuera justo la forma más cómoda: medido, «21.000.000-3» encontraba a
+ * su dueña, «21000000-3» también, «21000000» también, y «210000003» daba CERO.
+ *
+ * En vez de adivinar en qué formato está guardado, se comparan los dos sin
+ * puntos ni guiones. Así calzan todas las combinaciones de las dos partes.
+ */
+const PARECE_RUT = /^[0-9.\-]{7,12}[0-9kK]$/;
+
+/** El mismo texto sin lo que separa un RUT: puntos y guiones. */
+const deCorrido = (texto) => String(texto || '').split('.').join('').split('-').join('');
+
+/** La columna pegada, además sin puntos ni guiones, como trozo de SQL. */
+function textoDeCorrido(campos) {
+  return `replace(replace(${textoBuscable(campos)},'.',''),'-','')`;
+}
+
+/**
  * La condición de búsqueda y sus parámetros, o null si no hay nada que buscar.
  *
  * Cada palabra tiene que estar en alguna parte de lo buscable, y todas tienen
@@ -106,10 +128,21 @@ function condicion(texto, campos) {
   if (!palabras.length || !campos || !campos.length) return null;
 
   const donde = textoBuscable(campos);
-  const params = palabras.map((palabra) => `%${comoSeCompara(palabra)}%`);
-  const sql = palabras.map(() => `${donde} LIKE ?`).join(' AND ');
+  const corrido = textoDeCorrido(campos);
+  const params = [];
+  const sql = palabras.map((palabra) => {
+    params.push(`%${comoSeCompara(palabra)}%`);
+    if (!PARECE_RUT.test(palabra.trim())) return `${donde} LIKE ?`;
+    // Un RUT: también se compara de corrido, para que dé lo mismo cómo se
+    // teclee y en qué formato esté guardado
+    params.push(`%${comoSeCompara(deCorrido(palabra))}%`);
+    return `(${donde} LIKE ? OR ${corrido} LIKE ?)`;
+  }).join(' AND ');
 
   return { sql, params };
 }
 
-module.exports = { condicion, comoSeCompara, palabrasDe, textoBuscable, PALABRAS_QUE_SE_MIRAN, LETRAS };
+module.exports = {
+  condicion, comoSeCompara, palabrasDe, textoBuscable, deCorrido,
+  PALABRAS_QUE_SE_MIRAN, LETRAS, PARECE_RUT,
+};

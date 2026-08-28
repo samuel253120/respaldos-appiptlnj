@@ -251,7 +251,17 @@ module.exports = {
   group: 'Personas',
   order: 20,
   display: '{nombres:primero} {apellidos}',
-  searchFields: ['nombres', 'apellidos', 'rut', 'telefono', 'email'],
+  /*
+   * La dirección entra en la búsqueda: los dos registros de gente guardan la
+   * misma clase de persona y se buscaban distinto —No miembros sí buscaba por
+   * dirección y Miembros no—, así que «Los Aromos» encontraba a los visitantes
+   * de esa calle y no a los miembros. Sirve para las visitas por sector, que
+   * es justo para lo que la propia ficha dice que se pide la dirección.
+   *
+   * Y no abre nada: quien no tiene permiso para VER la dirección tampoco la
+   * puede usar para buscar (ver server/sensibles.js).
+   */
+  searchFields: ['nombres', 'apellidos', 'rut', 'telefono', 'email', 'direccion'],
   listFields: ['foto', 'tratamiento', 'nombres', 'apellidos', 'rut', 'edad', 'tipo_miembro', 'iglesia_id', 'estado'],
   filterFields: ['tipo_miembro', 'estado', 'iglesia_id'],
   /**
@@ -361,11 +371,6 @@ module.exports = {
       name: 'rut', label: 'RUT', type: 'rut', unique: true, reservado: 'miembros_identidad',
       help: 'Con o sin puntos. Se valida el dígito verificador y evita miembros repetidos.',
     },
-    {
-      name: 'tratamiento_personalizado', label: 'Trato (fijado a mano)', type: 'select',
-      options: TRATAMIENTOS,
-      help: 'Solo si le corresponde un trato distinto del que calcula el sistema. En blanco, se calcula solo.',
-    },
     { name: 'nombres', label: 'Nombres', recorta: 'primero', type: 'text', required: true },
     { name: 'apellidos', label: 'Apellidos', type: 'text', required: true },
     {
@@ -375,6 +380,21 @@ module.exports = {
     {
       name: 'genero', label: 'Sexo', type: 'select',
       options: ['Femenino', 'Masculino'],
+    },
+    {
+      /*
+       * Va al FINAL de la identificación, y no antes del nombre.
+       *
+       * Estaba cuarto en la pantalla —después de la foto, la iglesia y el
+       * RUT— o sea que lo primero que se decidía al registrar a alguien era
+       * una excepción que casi nadie debe tocar: el trato lo calcula el
+       * sistema solo. Quien lo necesita lo encuentra igual acá abajo; quien
+       * no, deja de tener que decidir sobre algo que no entiende antes de
+       * haber escrito el nombre.
+       */
+      name: 'tratamiento_personalizado', label: 'Trato (fijado a mano)', type: 'select',
+      options: TRATAMIENTOS,
+      help: 'Solo si le corresponde un trato distinto del que calcula el sistema. En blanco, se calcula solo.',
     },
 
     /*
