@@ -101,6 +101,8 @@ module.exports = {
   order: 40,
   display: '{tipo}: {concepto}',
   dateField: 'fecha',
+  // Un traspaso se podía imprimir y un movimiento no, siendo el mismo dinero
+  printable: true,
   searchFields: ['concepto', 'categoria', 'notas'],
   listFields: ['fecha', 'cuenta_id', 'tipo', 'categoria', 'concepto', 'monto'],
   filterFields: ['cuenta_id', 'tipo', 'categoria'],
@@ -252,23 +254,31 @@ module.exports = {
 
   extraRoutes(router, { db, requirePerm, scopeClause }) {
     // Resumen financiero: totales generales, del período filtrado y por categoría.
-    router.get('/tesoreria/resumen', requirePerm('tesoreria', 'view'), (req, res) => {
+    /*
+     * Qué movimientos se están mirando: el alcance de quien pregunta más los
+     * filtros y el rango de fechas de la pantalla. Lo arman igual el resumen de
+     * arriba del listado y el informe que se imprime, para que no puedan decir
+     * cifras distintas del mismo período.
+     *
+     * Sin alias en la tabla: las condiciones que emite server/alcance.js traen
+     * los nombres de columna a secas, y la regla de los traslados también (ver
+     * server/entre-cuentas.js).
+     */
+    const loQueSeEstaMirando = (req) => {
       const params = [];
       const where = [];
       const scope = scopeClause(req.user, params);
       if (scope) where.push(scope);
-      if (req.query.f_iglesia_id) {
-        where.push('iglesia_id = ?');
-        params.push(req.query.f_iglesia_id);
-      }
-      if (req.query.f_cuerpo_id) {
-        where.push('cuerpo_id = ?');
-        params.push(req.query.f_cuerpo_id);
-      }
-      if (req.query.f_cuenta_id) {
-        where.push('cuenta_id = ?');
-        params.push(req.query.f_cuenta_id);
-      }
+      const filtro = (q, columna) => {
+        if (!req.query[q]) return;
+        where.push(`${columna} = ?`);
+        params.push(req.query[q]);
+      };
+      filtro('f_iglesia_id', 'iglesia_id');
+      filtro('f_cuerpo_id', 'cuerpo_id');
+      filtro('f_cuenta_id', 'cuenta_id');
+      filtro('f_categoria', 'categoria');
+      filtro('f_tipo', 'tipo');
       if (req.query.desde) {
         where.push('fecha >= ?');
         params.push(req.query.desde);
@@ -277,7 +287,11 @@ module.exports = {
         where.push('fecha <= ?');
         params.push(req.query.hasta);
       }
-      const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+      return { whereSql: where.length ? 'WHERE ' + where.join(' AND ') : '', params };
+    };
+
+    router.get('/tesoreria/resumen', requirePerm('tesoreria', 'view'), (req, res) => {
+      const { whereSql, params } = loQueSeEstaMirando(req);
       /*
        * Lo que entró y lo que salió, sin la plata que solo cambió de bolsillo:
        * el aporte que una ofrenda pasa al fondo de su misma iglesia y los dos
@@ -312,6 +326,32 @@ module.exports = {
         .all(...suyasResumen);
 
       res.json({ ...cuentas, porCategoria, porCuenta });
+    });
+
+    /*
+     * El balance del período: el papel que se lleva a la reunión de la
+     * directiva y se archiva.
+     *
+     * El módulo guardaba bien y devolvía poco: había totales en pantalla y una
+     * planilla Excel, y el balance del mes se terminaba armando a mano en otra
+     * planilla a partir de ese Excel. Una suma hecha a mano cada mes es una
+     * suma que alguna vez sale mal sin que nadie pueda comprobarlo.
+     *
+     * Es el mismo recorte del resumen —mismo alcance, mismos filtros, mismo
+     * período— y las mismas cuentas de server/entre-cuentas.js, para que el
+     * papel impreso y la pantalla no puedan discrepar.
+     */
+    router.get('/tesoreria/informe', requirePerm('tesoreria', 'view'), (req, res) => {
+      const { whereSql, params } = loQueSeEstaMirando(req);
+      const entreCuentas = require('../entre-cuentas');
+      res.json({
+        desde: req.query.desde || null,
+        hasta: req.query.hasta || null,
+        resumen: entreCuentas.totalesDe(db, whereSql, params),
+        porMes: entreCuentas.porMesDe(db, whereSql, params),
+        porCategoria: entreCuentas.porCategoriaDe(db, whereSql, params),
+        porCuenta: entreCuentas.porCuentaDe(db, whereSql, params),
+      });
     });
   },
 };

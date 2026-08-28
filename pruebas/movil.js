@@ -311,8 +311,33 @@ const MIRAR = `
   // bandeja de solicitudes— no cuelgan del listado de ninguno, así que sin
   // nombrarlas acá no las revisaría nadie
   const rutas = ['#/', '#/asistencia', '#/asistencia/informes', '#/documentos/libro',
-    '#/servicios/informe', '#/solicitudes/bandeja', '#/mensajes', '#/mis-mensajes',
-    '#/perfil', '#/config'];
+    '#/servicios/informe', '#/tesoreria/balance', '#/solicitudes/bandeja', '#/mensajes',
+    '#/mis-mensajes', '#/perfil', '#/config'];
+
+  /*
+   * La cartola de una cuenta y el comprobante de un movimiento son pantallas de
+   * un registro concreto: sin un id de verdad no se abren, y una pantalla que no
+   * se abre no se revisa. Se toman los primeros que haya; si la base viene sin
+   * cuentas ni movimientos, simplemente no se agregan.
+   */
+  const conId = await pg.evaluate(async () => {
+    const h = { Authorization: 'Bearer ' + localStorage.getItem('token') };
+    const trae = async (ruta) => {
+      try {
+        const d = await (await fetch(ruta, { headers: h })).json();
+        return ((d.rows || d.data || d) || [])[0];
+      } catch (e) { return null; }
+    };
+    const [cuenta, movimiento] = await Promise.all([
+      trae('/api/cuentas_tesoreria?limit=1'),
+      trae('/api/tesoreria?limit=1'),
+    ]);
+    return [
+      cuenta && cuenta.id ? `#/cuentas_tesoreria/cartola/${cuenta.id}` : null,
+      movimiento && movimiento.id ? `#/print/tesoreria/${movimiento.id}` : null,
+    ].filter(Boolean);
+  });
+  rutas.push(...conId);
   for (const m of modulos) {
     rutas.push(`#/m/${m}`, `#/m/${m}/new`);
   }

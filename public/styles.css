@@ -377,6 +377,14 @@ table.grid th.col-mini { font-size: 15px; }
 /* Plata ya anotada con fecha de más adelante: no está en la caja todavía, así
    que se dice en un tono que no se confunda con un saldo (ver server/saldos.js) */
 .badge.agendado { background: #ede9fe; color: #5b21b6; font-weight: 500; }
+/* Las firmas de un comprobante van más juntas que las de un acta: la hoja es corta */
+.print-generic .acta-firmas { margin-top: 46px; }
+/* El monto de un comprobante: es lo primero que se mira y lo que se verifica */
+.comprobante-monto { margin: 18px 0; padding: 14px 18px; border: 1px solid #cbd5e1; border-radius: 6px; }
+.comprobante-monto .lbl { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: #475569; }
+.comprobante-monto .num { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* En la cartola, la columna del saldo se lee como una columna de cifras */
+table.cartola td.num { font-variant-numeric: tabular-nums; }
 /* El valor esperado de una lista: se lee, no se destaca */
 .valor-normal { color: var(--muted); }
 

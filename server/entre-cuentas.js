@@ -90,6 +90,77 @@ function totalesDe(db, whereSql, params) {
   };
 }
 
+/**
+ * Mes por mes, con la misma resta.
+ *
+ * Los dos lados de un traslado caen siempre en el mismo mes —los del traspaso
+ * comparten su fecha, y los del aporte, la del servicio—, así que emparejarlos
+ * sobre todo lo que se está mirando y después agrupar por mes da lo mismo que
+ * emparejarlos mes a mes, y se hace en una sola pasada.
+ */
+function porMesDe(db, whereSql, params) {
+  const dentro = completosDentro(whereSql);
+  const suma = (cuando) => `SUM(CASE WHEN ${cuando} THEN monto ELSE 0 END)`;
+  return db
+    .prepare(
+      `SELECT substr(fecha, 1, 7) AS mes,
+              COALESCE(${suma(`tipo = 'Ingreso' AND NOT (${dentro})`)}, 0) AS ingresos,
+              COALESCE(${suma(`tipo = 'Egreso'  AND NOT (${dentro})`)}, 0) AS egresos,
+              COALESCE(${suma(`tipo = 'Ingreso' AND (${dentro})`)}, 0)     AS movido,
+              COUNT(*) AS movimientos
+         FROM tesoreria ${whereSql}
+        GROUP BY substr(fecha, 1, 7)
+        ORDER BY substr(fecha, 1, 7)`
+    )
+    .all(...params, ...params, ...params, ...params);
+}
+
+/**
+ * Cuenta por cuenta, con la misma resta: cuánto entró y cuánto salió de cada una.
+ *
+ * Sin JOIN y con la tabla sin alias, a propósito: el recorte que llega
+ * (`whereSql`) trae los nombres de columna a secas —así los emite
+ * server/alcance.js— y la condición de los traslados también. Poner un alias
+ * obligaría a reescribir las dos a mano, que es la clase de arreglo que un día
+ * se olvida. Los nombres de las cuentas se pegan después, en una sola consulta.
+ */
+function porCuentaDe(db, whereSql, params) {
+  const dentro = completosDentro(whereSql);
+  const suma = (cuando) => `SUM(CASE WHEN ${cuando} THEN monto ELSE 0 END)`;
+  const filas = db
+    .prepare(
+      `SELECT cuenta_id,
+              COALESCE(${suma(`tipo = 'Ingreso' AND NOT (${dentro})`)}, 0) AS ingresos,
+              COALESCE(${suma(`tipo = 'Egreso'  AND NOT (${dentro})`)}, 0) AS egresos,
+              COUNT(*) AS movimientos
+         FROM tesoreria ${whereSql}
+        GROUP BY cuenta_id`
+    )
+    .all(...params, ...params, ...params);
+  if (!filas.length) return [];
+
+  const cuentas = db
+    .prepare(
+      `SELECT id, nombre, ambito, tipo FROM cuentas_tesoreria
+        WHERE id IN (${filas.map(() => '?').join(',')})`
+    )
+    .all(...filas.map((f) => f.cuenta_id));
+  const porId = new Map(cuentas.map((c) => [c.id, c]));
+
+  return filas
+    .map((f) => {
+      const c = porId.get(f.cuenta_id) || {};
+      return {
+        id: f.cuenta_id,
+        nombre: c.nombre || `Cuenta ${f.cuenta_id}`,
+        ambito: c.ambito || '',
+        tipo: c.tipo || '',
+        ingresos: f.ingresos, egresos: f.egresos, movimientos: f.movimientos,
+      };
+    })
+    .sort((a, b) => (a.ambito + a.nombre).localeCompare(b.ambito + b.nombre, 'es'));
+}
+
 /** El desglose por categoría, sin los traslados: dice en qué se gastó, no de dónde a dónde se movió. */
 function porCategoriaDe(db, whereSql, params) {
   const fuera = completosDentro(whereSql);
@@ -102,4 +173,4 @@ function porCategoriaDe(db, whereSql, params) {
     .all(...params, ...params);
 }
 
-module.exports = { PAR, MARCADO, completosDentro, totalesDe, porCategoriaDe };
+module.exports = { PAR, MARCADO, completosDentro, totalesDe, porCategoriaDe, porMesDe, porCuentaDe };

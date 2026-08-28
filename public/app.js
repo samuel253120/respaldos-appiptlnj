@@ -873,6 +873,16 @@ function route() {
     if (sl) marcarActivo(sl);
     return viewInformeServicios(precarga);
   }
+  if (parts[0] === 'tesoreria' && parts[1] === 'balance' && MOD['tesoreria']) {
+    const sl = document.querySelector('.side-link[data-mod="tesoreria"]');
+    if (sl) marcarActivo(sl);
+    return viewBalanceTesoreria(precarga);
+  }
+  if (parts[0] === 'cuentas_tesoreria' && parts[1] === 'cartola' && parts[2] && MOD['cuentas_tesoreria']) {
+    const sl = document.querySelector('.side-link[data-mod="cuentas_tesoreria"]');
+    if (sl) marcarActivo(sl);
+    return viewCartolaCuenta(parts[2], precarga);
+  }
   if (parts[0] === 'solicitudes' && parts[1] === 'bandeja' && MOD['solicitudes']) {
     const sl = document.querySelector('.side-link[data-mod="solicitudes"]');
     if (sl) marcarActivo(sl);
@@ -2013,6 +2023,7 @@ async function viewList(name, filtrosIniciales) {
       <h2>${m.icon} ${esc(m.label)}</h2>
       <div class="actions">
         ${name === 'servicios' ? '<button class="btn secondary" id="btnInformeServicios">📊 Informe</button>' : ''}
+        ${name === 'tesoreria' ? '<button class="btn secondary" id="btnBalance">📊 Balance</button>' : ''}
         ${m.perms.create ? `<button class="btn secondary" id="btnImportar">⬆️ Importar</button>` : ''}
         ${m.perms.create ? `<button class="btn" id="btnNew">➕ ${nuevoDe(m)} ${esc(m.labelSingular.toLowerCase())}</button>` : ''}
       </div>
@@ -2040,6 +2051,21 @@ async function viewList(name, filtrosIniciales) {
       if (st.filters && st.filters.iglesia_id) suyos.set('iglesia_id', st.filters.iglesia_id);
       const cola = suyos.toString();
       location.hash = `#/servicios/informe${cola ? '?' + cola : ''}`;
+    });
+  }
+
+  // El balance se abre con lo que se está mirando: el período y los filtros puestos
+  const alBalance = document.getElementById('btnBalance');
+  if (alBalance) {
+    alBalance.addEventListener('click', () => {
+      const suyos = new URLSearchParams();
+      if (st.desde) suyos.set('desde', st.desde);
+      if (st.hasta) suyos.set('hasta', st.hasta);
+      for (const campo of ['iglesia_id', 'cuenta_id', 'categoria', 'tipo', 'cuerpo_id']) {
+        if (st.filters && st.filters[campo]) suyos.set(campo, st.filters[campo]);
+      }
+      const cola = suyos.toString();
+      location.hash = `#/tesoreria/balance${cola ? '?' + cola : ''}`;
     });
   }
 
@@ -2594,6 +2620,355 @@ async function viewList(name, filtrosIniciales) {
  */
 function generadoPorOtroModulo(row) {
   return !!(row.traspaso_id || row.servicio_id);
+}
+
+/* =====================================================================
+ * El balance de Tesorería
+ *
+ * El módulo guardaba bien y devolvía poco: había totales en pantalla y una
+ * planilla Excel, y el balance del mes —lo que entró, lo que salió, por
+ * categoría, cuenta por cuenta— se terminaba armando a mano en otra planilla a
+ * partir de ese Excel. Es justamente el papel que se lleva a la reunión de la
+ * directiva y se archiva.
+ *
+ * Las cifras son las mismas del resumen de arriba del listado, sacadas del
+ * mismo recorte en el servidor, para que la hoja impresa y la pantalla no
+ * puedan discrepar.
+ * ===================================================================== */
+async function viewBalanceTesoreria(precarga) {
+  const m = MOD['tesoreria'];
+  if (!m) return (location.hash = '#/');
+  const st = {
+    desde: (precarga && precarga.desde) || '',
+    hasta: (precarga && precarga.hasta) || '',
+    iglesia_id: (precarga && precarga.iglesia_id) || '',
+    cuenta_id: (precarga && precarga.cuenta_id) || '',
+  };
+
+  content().innerHTML = `
+    <div class="page-head no-print">
+      <h2>📊 Balance de Tesorería</h2>
+      <div class="actions">
+        <button class="btn secondary" id="balVolver">← Volver al listado</button>
+        <button class="btn secondary" data-imprimir>🖨️ PDF</button>
+      </div>
+    </div>
+    <div class="card no-print">
+      <div class="toolbar">
+        <select id="balIglesia" aria-label="Iglesia"><option value="">Todas las iglesias</option></select>
+        <select id="balCuenta" aria-label="Cuenta"><option value="">Todas las cuentas</option></select>
+        <label class="range">Desde <input type="date" id="balDesde" value="${esc(st.desde)}" /></label>
+        <label class="range">Hasta <input type="date" id="balHasta" value="${esc(st.hasta)}" /></label>
+        <button class="btn secondary" id="balAnio">Este año</button>
+        <button class="btn secondary" id="balMes">Este mes</button>
+      </div>
+    </div>
+    <div id="balCuerpo"><p style="padding:18px">Calculando…</p></div>`;
+
+  document.getElementById('balVolver').addEventListener('click', () => (location.hash = '#/m/tesoreria'));
+
+  const [iglesias, cuentas] = await Promise.all([
+    getOptions('iglesias').catch(() => []),
+    api('GET', '/cuentas_tesoreria/activas').then((d) => d || []).catch(() => []),
+  ]);
+  const llenar = (id, filas, elegido, todos) => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = `<option value="">${todos}</option>`
+      + (filas || []).map((f) => `<option value="${f.id}" ${String(elegido) === String(f.id) ? 'selected' : ''}>${esc(f.label || f.nombre)}</option>`).join('');
+  };
+  llenar('balIglesia', iglesias, st.iglesia_id, 'Todas las iglesias');
+  llenar('balCuenta', cuentas, st.cuenta_id, 'Todas las cuentas');
+
+  const cambia = (id, campo) =>
+    document.getElementById(id).addEventListener('change', (e) => { st[campo] = e.target.value; cargar(); });
+  cambia('balIglesia', 'iglesia_id');
+  cambia('balCuenta', 'cuenta_id');
+  cambia('balDesde', 'desde');
+  cambia('balHasta', 'hasta');
+
+  const ponerRango = (desde, hasta) => {
+    st.desde = desde; st.hasta = hasta;
+    document.getElementById('balDesde').value = desde;
+    document.getElementById('balHasta').value = hasta;
+    cargar();
+  };
+  document.getElementById('balAnio').addEventListener('click', () => {
+    const a = new Date().getFullYear();
+    ponerRango(`${a}-01-01`, `${a}-12-31`);
+  });
+  document.getElementById('balMes').addEventListener('click', () => {
+    const h = new Date();
+    const mes = String(h.getMonth() + 1).padStart(2, '0');
+    const ultimo = new Date(h.getFullYear(), h.getMonth() + 1, 0).getDate();
+    ponerRango(`${h.getFullYear()}-${mes}-01`, `${h.getFullYear()}-${mes}-${ultimo}`);
+  });
+
+  async function cargar() {
+    const caja = document.getElementById('balCuerpo');
+    caja.innerHTML = '<p style="padding:18px">Calculando…</p>';
+    const params = new URLSearchParams();
+    if (st.desde) params.set('desde', st.desde);
+    if (st.hasta) params.set('hasta', st.hasta);
+    if (st.iglesia_id) params.set('f_iglesia_id', st.iglesia_id);
+    if (st.cuenta_id) params.set('f_cuenta_id', st.cuenta_id);
+
+    let d;
+    try {
+      d = await api('GET', '/tesoreria/informe?' + params.toString());
+    } catch (e) {
+      caja.innerHTML = `<p style="padding:18px;color:var(--danger)">${esc(e.message)}</p>`;
+      return;
+    }
+    const r = d.resumen;
+    // Un balance acotado que no lo dice se lee como si fuera el de todo, y se
+    // imprime igual: el período va en el título, que es donde el ojo busca de
+    // qué es esta hoja.
+    const periodo = d.desde || d.hasta
+      ? `del ${d.desde ? fechaLarga(d.desde) : 'principio'} al ${d.hasta ? fechaLarga(d.hasta) : 'día de hoy'}`
+      : 'de todo lo registrado';
+    const deQuien = [
+      st.iglesia_id ? (iglesias.find((i) => String(i.id) === String(st.iglesia_id)) || {}).label : null,
+      st.cuenta_id ? (cuentas.find((c) => String(c.id) === String(st.cuenta_id)) || {}).label : null,
+    ].filter(Boolean).join(' · ');
+
+    const tabla = (titulo, filas, columna, comoSeLlama, nota) => `
+      <div class="card" style="margin-bottom:18px">
+        <h3>${esc(titulo)}</h3>
+        ${filas.length ? `
+        <div style="overflow-x:auto">
+        <table class="grid informe grid-lista">
+          <thead><tr>
+            <th>${esc(columna)}</th><th>Movimientos</th><th>Entró</th><th>Salió</th><th>Diferencia</th>
+          </tr></thead>
+          <tbody>
+            ${filas.map((f) => {
+              const dif = Number(f.ingresos) - Number(f.egresos);
+              return `
+              <tr>
+                <td class="col-primera col-titular" data-label="${esc(columna)}">${esc(comoSeLlama(f))}</td>
+                <td class="num" data-label="Movimientos">${esc(fmtNumero(f.movimientos))}</td>
+                <td class="num" data-label="Entró">${fmtMoney(f.ingresos)}</td>
+                <td class="num" data-label="Salió">${fmtMoney(f.egresos)}</td>
+                <td class="num" data-label="Diferencia"><span class="${dif < 0 ? 'saldo-negativo' : ''}">${fmtMoney(dif)}</span></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+          <tfoot><tr class="tot">
+            <td class="col-primera col-titular" data-label="${esc(columna)}"><b>Total</b></td>
+            <td class="num" data-label="Movimientos"><b>${esc(fmtNumero(r.movimientos))}</b></td>
+            <td class="num" data-label="Entró"><b>${fmtMoney(r.ingresos)}</b></td>
+            <td class="num" data-label="Salió"><b>${fmtMoney(r.egresos)}</b></td>
+            <td class="num" data-label="Diferencia"><b><span class="${r.balance < 0 ? 'saldo-negativo' : ''}">${fmtMoney(r.balance)}</span></b></td>
+          </tr></tfoot>
+        </table></div>
+        ${nota ? `<p class="mut" style="padding:0 18px 14px;margin:0">${nota}</p>` : ''}`
+        : '<div class="empty-state" style="padding:22px">Sin movimientos en este período.</div>'}
+      </div>`;
+
+    // El desglose por categoría llega en una sola lista con los dos tipos: se
+    // parte en dos tablas, que es como se lee un balance
+    const entradas = d.porCategoria.filter((c) => c.tipo === 'Ingreso');
+    const salidas = d.porCategoria.filter((c) => c.tipo === 'Egreso');
+    const porCategoria = (titulo, filas, total) => `
+      <div class="card" style="margin-bottom:18px">
+        <h3>${esc(titulo)}</h3>
+        ${filas.length ? `
+        <div style="overflow-x:auto">
+        <table class="grid informe grid-lista">
+          <thead><tr><th>Categoría</th><th>Monto</th><th>Parte del total</th></tr></thead>
+          <tbody>
+            ${filas.map((f) => `
+              <tr>
+                <td class="col-primera col-titular" data-label="Categoría">${esc(f.categoria || 'Sin categoría')}</td>
+                <td class="num" data-label="Monto">${fmtMoney(f.total)}</td>
+                <td class="num" data-label="Parte del total">${total ? Math.round((Number(f.total) / total) * 100) : 0}%</td>
+              </tr>`).join('')}
+          </tbody>
+          <tfoot><tr class="tot">
+            <td class="col-primera col-titular" data-label="Categoría"><b>Total</b></td>
+            <td class="num" data-label="Monto"><b>${fmtMoney(total)}</b></td>
+            <td class="num" data-label="Parte del total"><b>100%</b></td>
+          </tr></tfoot>
+        </table></div>` : '<div class="empty-state" style="padding:22px">Nada en este período.</div>'}
+      </div>`;
+
+    caja.innerHTML = `
+      <div class="informe-hoja">
+        <div class="print-only">${membreteDelDocumento()}</div>
+        <h3 class="informe-tit">
+          Balance de tesorería <span class="mut">${esc(periodo)}${deQuien ? ` · ${esc(deQuien)}` : ''}</span>
+        </h3>
+        <div class="resumen-cifras">
+          <div class="fin green"><div class="lbl">Entró</div><div class="num">${fmtMoney(r.ingresos)}</div></div>
+          <div class="fin red"><div class="lbl">Salió</div><div class="num">${fmtMoney(r.egresos)}</div></div>
+          <div class="fin blue"><div class="lbl">Diferencia</div><div class="num ${r.balance < 0 ? 'saldo-negativo' : ''}">${fmtMoney(r.balance)}</div></div>
+          <div class="fin slate"><div class="lbl">Movimientos</div><div class="num">${esc(fmtNumero(r.movimientos))}</div></div>
+          ${Number(r.movido) > 0 ? `
+            <div class="fin slate"><div class="lbl">Movido entre cuentas</div><div class="num">${fmtMoney(r.movido)}</div></div>` : ''}
+        </div>
+        ${tabla('Mes por mes', d.porMes, 'Mes', (f) => mesLargo(f.mes))}
+        ${porCategoria('En qué entró', entradas, r.ingresos)}
+        ${porCategoria('En qué se gastó', salidas, r.egresos)}
+        ${tabla('Cuenta por cuenta', d.porCuenta, 'Cuenta', (f) => `${f.nombre} · ${f.ambito}`)}
+        <div class="informe-pie mut">
+          ${pieDelDocumento()}<br>
+          Las cifras no cuentan la plata que solo cambió de cuenta —el aporte que una ofrenda pasa al
+          fondo, y los traspasos— cuando los dos lados del traslado caen dentro de este período y de
+          estos filtros. ${Number(r.movido) > 0
+            ? `Acá son ${fmtMoney(r.movido)}, que van aparte.`
+            : 'Acá no hubo ninguno.'}
+        </div>
+      </div>`;
+  }
+
+  cargar();
+}
+
+/* =====================================================================
+ * La cartola de una cuenta
+ *
+ * Movimiento a movimiento, con el saldo corriendo fila a fila: es lo que se
+ * compara con la cartola del banco. Y de paso contesta «cuánto había en la
+ * cuenta del proyecto al 30 de junio», que antes no se podía preguntar de
+ * ninguna forma —había que bajar todo a una planilla y sumar—: es el saldo
+ * anterior de una cartola que empiece el 1 de julio.
+ * ===================================================================== */
+async function viewCartolaCuenta(cuentaId, precarga) {
+  const m = MOD['cuentas_tesoreria'];
+  if (!m) return (location.hash = '#/');
+  const st = {
+    desde: (precarga && precarga.desde) || '',
+    hasta: (precarga && precarga.hasta) || '',
+  };
+
+  content().innerHTML = `
+    <div class="page-head no-print">
+      <h2>🧾 Cartola de la cuenta</h2>
+      <div class="actions">
+        <button class="btn secondary" id="carVolver">← Volver a la cuenta</button>
+        <button class="btn secondary" data-imprimir>🖨️ PDF</button>
+      </div>
+    </div>
+    <div class="card no-print">
+      <div class="toolbar">
+        <label class="range">Desde <input type="date" id="carDesde" value="${esc(st.desde)}" /></label>
+        <label class="range">Hasta <input type="date" id="carHasta" value="${esc(st.hasta)}" /></label>
+        <button class="btn secondary" id="carMes">Este mes</button>
+        <button class="btn secondary" id="carAnio">Este año</button>
+        <button class="btn secondary" id="carTodo">Todo</button>
+      </div>
+    </div>
+    <div id="carCuerpo"><p style="padding:18px">Cargando…</p></div>`;
+
+  document.getElementById('carVolver')
+    .addEventListener('click', () => (location.hash = `#/m/cuentas_tesoreria/edit/${cuentaId}`));
+
+  const cambia = (id, campo) =>
+    document.getElementById(id).addEventListener('change', (e) => { st[campo] = e.target.value; cargar(); });
+  cambia('carDesde', 'desde');
+  cambia('carHasta', 'hasta');
+  const ponerRango = (desde, hasta) => {
+    st.desde = desde; st.hasta = hasta;
+    document.getElementById('carDesde').value = desde;
+    document.getElementById('carHasta').value = hasta;
+    cargar();
+  };
+  document.getElementById('carMes').addEventListener('click', () => {
+    const h = new Date();
+    const mes = String(h.getMonth() + 1).padStart(2, '0');
+    const ultimo = new Date(h.getFullYear(), h.getMonth() + 1, 0).getDate();
+    ponerRango(`${h.getFullYear()}-${mes}-01`, `${h.getFullYear()}-${mes}-${ultimo}`);
+  });
+  document.getElementById('carAnio').addEventListener('click', () => {
+    const a = new Date().getFullYear();
+    ponerRango(`${a}-01-01`, `${a}-12-31`);
+  });
+  document.getElementById('carTodo').addEventListener('click', () => ponerRango('', ''));
+
+  async function cargar() {
+    const caja = document.getElementById('carCuerpo');
+    caja.innerHTML = '<p style="padding:18px">Cargando…</p>';
+    const params = new URLSearchParams();
+    if (st.desde) params.set('desde', st.desde);
+    if (st.hasta) params.set('hasta', st.hasta);
+
+    let d;
+    try {
+      d = await api('GET', `/cuentas_tesoreria/${cuentaId}/cartola?` + params.toString());
+    } catch (e) {
+      caja.innerHTML = `<p style="padding:18px;color:var(--danger)">${esc(e.message)}</p>`;
+      return;
+    }
+    const periodo = d.desde || d.hasta
+      ? `del ${d.desde ? fechaLarga(d.desde) : 'principio'} al ${d.hasta ? fechaLarga(d.hasta) : 'día de hoy'}`
+      : 'de todo lo registrado';
+
+    caja.innerHTML = `
+      <div class="informe-hoja">
+        <div class="print-only">${membreteDelDocumento()}</div>
+        <h3 class="informe-tit">
+          Cartola de ${esc(d.cuenta.nombre)}
+          <span class="mut">${esc(d.cuenta.ambito)} · ${esc(periodo)}</span>
+        </h3>
+        <div class="resumen-cifras">
+          <div class="fin slate">
+            <div class="lbl">Saldo anterior${d.desde ? ` · al ${fechaCorta(d.desde)}` : ''}</div>
+            <div class="num ${d.saldo_anterior < 0 ? 'saldo-negativo' : ''}">${fmtMoney(d.saldo_anterior)}</div>
+          </div>
+          <div class="fin green"><div class="lbl">Entró</div><div class="num">${fmtMoney(d.ingresos)}</div></div>
+          <div class="fin red"><div class="lbl">Salió</div><div class="num">${fmtMoney(d.egresos)}</div></div>
+          <div class="fin blue">
+            <div class="lbl">Saldo final</div>
+            <div class="num ${d.saldo_final < 0 ? 'saldo-negativo' : ''}">${fmtMoney(d.saldo_final)}</div>
+          </div>
+        </div>
+        <div class="card">
+          ${d.movimientos.length ? `
+          <div style="overflow-x:auto">
+          <table class="grid informe grid-lista cartola">
+            <thead><tr>
+              <th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Entró</th><th>Salió</th><th>Saldo</th>
+            </tr></thead>
+            <tbody>
+              <tr class="tot">
+                <td class="col-primera col-titular" data-label="Fecha">${d.desde ? esc(fechaCorta(d.desde)) : ''}</td>
+                <td data-label="Concepto"><b>Saldo anterior</b></td>
+                <td data-label="Categoría"></td>
+                <td class="num" data-label="Entró"></td>
+                <td class="num" data-label="Salió"></td>
+                <td class="num" data-label="Saldo"><b><span class="${d.saldo_anterior < 0 ? 'saldo-negativo' : ''}">${fmtMoney(d.saldo_anterior)}</span></b></td>
+              </tr>
+              ${d.movimientos.map((mv) => `
+                <tr data-ir="#/m/tesoreria/edit/${mv.id}">
+                  <td class="col-primera col-titular" data-label="Fecha">${esc(fechaCorta(mv.fecha))}</td>
+                  <td data-label="Concepto">${esc(mv.concepto)}${Number(mv.entre_cuentas)
+                    ? ' <span class="badge agendado">entre cuentas</span>' : ''}</td>
+                  <td data-label="Categoría">${esc(mv.categoria || '')}</td>
+                  <td class="num" data-label="Entró">${mv.tipo === 'Ingreso' ? fmtMoney(mv.monto) : ''}</td>
+                  <td class="num" data-label="Salió">${mv.tipo === 'Egreso' ? fmtMoney(mv.monto) : ''}</td>
+                  <td class="num" data-label="Saldo"><span class="${mv.saldo < 0 ? 'saldo-negativo' : ''}">${fmtMoney(mv.saldo)}</span></td>
+                </tr>`).join('')}
+            </tbody>
+            <tfoot><tr class="tot">
+              <td class="col-primera col-titular" data-label="Fecha">${d.hasta ? esc(fechaCorta(d.hasta)) : ''}</td>
+              <td data-label="Concepto"><b>Saldo final</b></td>
+              <td data-label="Categoría"></td>
+              <td class="num" data-label="Entró"><b>${fmtMoney(d.ingresos)}</b></td>
+              <td class="num" data-label="Salió"><b>${fmtMoney(d.egresos)}</b></td>
+              <td class="num" data-label="Saldo"><b><span class="${d.saldo_final < 0 ? 'saldo-negativo' : ''}">${fmtMoney(d.saldo_final)}</span></b></td>
+            </tr></tfoot>
+          </table></div>` : '<div class="empty-state" style="padding:26px">Esta cuenta no tiene movimientos en este período.</div>'}
+        </div>
+        <div class="informe-pie mut">
+          ${pieDelDocumento()}<br>
+          El saldo corre por fecha y, dentro de un mismo día, por el orden en que se anotaron los
+          movimientos. El saldo anterior incluye el saldo inicial de la cuenta y todo lo anterior al
+          período.
+        </div>
+      </div>`;
+  }
+
+  cargar();
 }
 
 /* =====================================================================
@@ -8247,6 +8622,7 @@ async function viewPrint(name, id) {
   else if (name === 'certificados') sheet = printCertificado(row, formatoCert, { conPagina: true });
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
+  else if (name === 'tesoreria') sheet = printMovimiento(m, row);
   else sheet = printGenerico(m, row);
 
   content().innerHTML = `
@@ -9602,6 +9978,54 @@ function printSolicitud(m, row, extras) {
       <div class="acta-firmas">
         <div class="firma">${esc(row.responsable_id_label || 'Responsable')}<br>A cargo de la solicitud</div>
         <div class="firma">Pastor(a) / Encargado(a)<br>Resuelve</div>
+      </div>
+      <div class="doc-pie">${pieDelDocumento()}</div>
+    </div>`;
+}
+
+/**
+ * El comprobante de un movimiento.
+ *
+ * Un traspaso se imprimía y un movimiento no, siendo el mismo dinero. La ficha
+ * a secas —campo por campo, como sale de printGenerico— no sirve de
+ * comprobante: lo que se archiva o se le entrega a alguien tiene que decir de
+ * un vistazo cuánto, de qué cuenta, por qué concepto y quién lo anotó.
+ */
+function printMovimiento(m, row) {
+  const esEgreso = row.tipo === 'Egreso';
+  const dato = (llave, valor) => (valor == null || valor === ''
+    ? '' : `<tr><td class="k">${esc(llave)}</td><td>${esc(valor)}</td></tr>`);
+
+  // De dónde salió, cuando no lo escribió una persona
+  const origen = row.traspaso_id
+    ? 'Generado por un traspaso entre cuentas'
+    : row.servicio_id ? 'Generado por la ofrenda de un servicio' : null;
+
+  return `
+    <div class="print-sheet print-generic">
+      ${membreteDelDocumento()}
+      <h1>Comprobante de ${esEgreso ? 'egreso' : 'ingreso'}</h1>
+      <div class="sub">N.º ${row.id} · ${esc(fechaLarga(row.fecha))}</div>
+      <div class="comprobante-monto">
+        <div class="lbl">${esEgreso ? 'Sale de la cuenta' : 'Entra a la cuenta'}</div>
+        <div class="num">${fmtMoney(row.monto)}</div>
+      </div>
+      <table>
+        ${dato('Concepto', row.concepto)}
+        ${dato('Categoría', row.categoria)}
+        ${dato('Cuenta de tesorería', row.cuenta_id_label)}
+        ${dato('Iglesia', row.iglesia_id_label)}
+        ${dato('Cuerpo / Grupo', row.cuerpo_id_label)}
+        ${dato('Método', row.metodo)}
+        ${dato('Comprobante adjunto', row.comprobante ? 'Sí' : '')}
+        ${dato('Notas', row.notas)}
+        ${dato('Origen', origen)}
+      </table>
+      <!-- El mismo bloque de firmas que ya usan las actas, para que un papel del
+           sistema se vea como los demás papeles del sistema -->
+      <div class="acta-firmas">
+        <div class="firma">Tesorería</div>
+        <div class="firma">${esEgreso ? 'Recibí conforme' : 'Entregó'}</div>
       </div>
       <div class="doc-pie">${pieDelDocumento()}</div>
     </div>`;
@@ -12738,6 +13162,7 @@ async function renderEstadoCuenta(cuentaId, contenedor) {
             ? `<button class="btn sm" id="btnMovNuevo">➕ Registrar movimiento</button>`
             : e.estado === 'Cerrada' ? '<span class="badge red">Cuenta cerrada</span>' : ''}
           ${modMov ? `<button class="btn sm secondary" id="btnVerMovs">Ver todos los movimientos</button>` : ''}
+          ${modMov ? `<button class="btn sm secondary" id="btnCartola">🧾 Cartola</button>` : ''}
         </div>
         <div class="fin-cards" style="padding:0 18px 6px">
           <div class="fin slate"><div class="lbl">Saldo inicial</div><div class="num">${fmtMoney(e.saldo_inicial)}</div></div>
@@ -12772,6 +13197,8 @@ async function renderEstadoCuenta(cuentaId, contenedor) {
     if (bn) bn.addEventListener('click', () => (location.hash = `#/m/tesoreria/new?cuenta_id=${cuentaId}`));
     const bv = document.getElementById('btnVerMovs');
     if (bv) bv.addEventListener('click', () => (location.hash = `#/m/tesoreria?f_cuenta_id=${cuentaId}`));
+    const bc = document.getElementById('btnCartola');
+    if (bc) bc.addEventListener('click', () => (location.hash = `#/cuentas_tesoreria/cartola/${cuentaId}`));
   } catch (err) {
     contenedor.innerHTML = '';
   }

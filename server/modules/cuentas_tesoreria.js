@@ -266,6 +266,79 @@ module.exports = {
       res.json(filas.map((c) => ({ id: c.id, label: `${c.nombre} · ${c.ambito}` })));
     });
 
+    /*
+     * La cartola de una cuenta: movimiento a movimiento, con el saldo corriendo
+     * fila a fila. Es lo que se compara con la cartola del banco.
+     *
+     * Lo que faltaba no era solo el papel. «Cuánto había en la cuenta del
+     * proyecto al 30 de junio» no se podía contestar de ninguna forma: había
+     * que bajar todo a una planilla y sumar. Acá esa pregunta es el saldo
+     * anterior de una cartola que empiece el 1 de julio, y también el saldo que
+     * lleva cada fila.
+     *
+     * El saldo corre por fecha y, dentro de un mismo día, por el orden en que
+     * se anotaron: dos movimientos del mismo día no tienen entre ellos más
+     * orden que ese, y es el mismo con que se leen en el listado.
+     */
+    router.get('/cuentas_tesoreria/:id(\\d+)/cartola', requirePerm('tesoreria', 'view'), (req, res) => {
+      const cuenta = db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(req.params.id);
+      if (!cuenta) return res.status(404).json({ error: 'Cuenta no encontrada' });
+      if (!require('../alcance').alcanzaIglesia(req.user, cuenta.iglesia_id)) {
+        return res.status(403).json({ error: 'Esa cuenta está fuera de lo que tiene asignado' });
+      }
+
+      const desde = req.query.desde || null;
+      const hasta = req.query.hasta || null;
+      const inicial = Number(cuenta.saldo_inicial) || 0;
+
+      /*
+       * Con qué saldo empieza la hoja: el inicial de la cuenta más todo lo
+       * anterior al período. Sin esto la cartola de julio empezaría en cero y
+       * no cuadraría con nada.
+       */
+      const anterior = desde
+        ? db
+            .prepare(
+              `SELECT COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE -monto END), 0) AS s
+                 FROM tesoreria WHERE cuenta_id = ? AND fecha < ?`
+            )
+            .get(cuenta.id, desde).s
+        : 0;
+
+      const cond = ['cuenta_id = ?'];
+      const params = [cuenta.id];
+      if (desde) { cond.push('fecha >= ?'); params.push(desde); }
+      if (hasta) { cond.push('fecha <= ?'); params.push(hasta); }
+      const donde = `WHERE ${cond.join(' AND ')}`;
+
+      const saldoAnterior = inicial + anterior;
+      const movimientos = db
+        .prepare(
+          `SELECT id, fecha, tipo, categoria, concepto, monto, metodo, comprobante,
+                  traspaso_id, servicio_id, entre_cuentas,
+                  ? + SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE -monto END)
+                      OVER (ORDER BY fecha, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS saldo
+             FROM tesoreria ${donde}
+            ORDER BY fecha, id`
+        )
+        .all(saldoAnterior, ...params);
+
+      const suma = (t) => movimientos.reduce((a, m) => a + (m.tipo === t ? Number(m.monto) || 0 : 0), 0);
+      const ingresos = suma('Ingreso');
+      const egresos = suma('Egreso');
+
+      res.json({
+        cuenta: { id: cuenta.id, nombre: cuenta.nombre, ambito: cuenta.ambito, tipo: cuenta.tipo, estado: cuenta.estado },
+        desde, hasta,
+        saldo_inicial: inicial,
+        saldo_anterior: saldoAnterior,
+        ingresos,
+        egresos,
+        saldo_final: saldoAnterior + ingresos - egresos,
+        movimientos,
+      });
+    });
+
     // Estado de una cuenta: saldo, totales y sus últimos movimientos.
     router.get('/cuentas_tesoreria/:id(\\d+)/estado', requirePerm('cuentas_tesoreria', 'view'), (req, res) => {
       const cuenta = db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(req.params.id);
