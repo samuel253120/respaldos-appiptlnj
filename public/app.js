@@ -4701,7 +4701,7 @@ async function abrirElPanelDeAvisos() {
     ${d.ultimos.length ? `<ul class="cam-lista">
       ${d.ultimos.map((a, i) => `
         ${hayDeLosDos && i === primerLeido ? '<li class="cam-corte">Ya leídos</li>' : ''}
-        <li class="${a.leida ? 'leido' : 'sin-leer'}" data-id="${a.id}" data-enlace="${esc(a.enlace || '')}">
+        <li class="${a.leida ? 'leido' : 'sin-leer'}" data-id="${a.id}" data-tipo="${esc(a.tipo || '')}" data-enlace="${esc(a.enlace || '')}">
           <div class="cam-t">${esc(a.titulo)}</div>
           ${a.de ? `<div class="cam-de">de ${esc(a.de)}</div>` : ''}
           ${a.cuerpo ? `<div class="cam-c">${esc(a.cuerpo)}</div>` : ''}
@@ -4736,7 +4736,13 @@ async function abrirElPanelDeAvisos() {
       await api('POST', `/avisos/${li.dataset.id}/leido`).catch(() => {});
       refrescarCampanita();
       cerrarElPanelDeAvisos();
+      /*
+       * En el panel el texto va recortado a tres líneas, así que tocarlo tiene
+       * que llevar a alguna parte. Si el aviso trae enlace, ahí; y si es un
+       * mensaje escrito a mano, a «Mis mensajes», que es donde está entero.
+       */
       if (li.dataset.enlace) location.hash = li.dataset.enlace.replace(/^#/, '');
+      else if (li.dataset.tipo === 'mensaje') location.hash = '/mis-mensajes';
     });
   });
 }

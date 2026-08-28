@@ -442,9 +442,10 @@ function pasada() {
       : `Tiene ${empujables.length} avisos nuevos`;
     const soloUno = empujables[0];
     const cuerpo = empujables.length === 1
-      // Si viene de alguien, se dice: es la misma regla del empujón de un aviso
-      // suelto (ver `avisar`, en avisos.js)
-      ? (soloUno.de ? `${soloUno.de}: ${soloUno.cuerpo || ''}`.trim() : soloUno.cuerpo || '')
+      // Si viene de alguien, se dice; y se recorta a lo que se alcanza a leer en
+      // una pantalla bloqueada. Es la misma regla del empujón de un aviso
+      // suelto (ver `avisar` y `paraElTelefono`, en avisos.js)
+      ? avisos.paraElTelefono(soloUno.de ? `${soloUno.de}: ${soloUno.cuerpo || ''}` : soloUno.cuerpo)
       : empujables.slice(0, 3).map((f) => f.titulo).join(' · ');
     navegador
       .empujar(usuario.id, { titulo, cuerpo, enlace: '#/', etiqueta: 'resumen' })

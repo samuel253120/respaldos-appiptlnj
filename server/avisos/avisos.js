@@ -116,6 +116,37 @@ const TIPOS = {
   },
 };
 
+/**
+ * Cuánto texto viaja al teléfono.
+ *
+ * El aviso que sale al teléfono llevaba el cuerpo ENTERO. Con un mensaje escrito
+ * a mano eso son hasta dos mil caracteres, y dos cosas iban mal con eso:
+ *
+ *   · en la pantalla bloqueada se leen dos líneas y el resto no se ve nunca, así
+ *     que lo demás viaja para nada;
+ *
+ *   · y la carga tiene techo. Con el largo máximo y palabras acentuadas daba
+ *     4.317 bytes contra los 4.096 que garantiza el estándar de avisos del
+ *     navegador: el servicio lo rechaza, el error se atrapa donde se empuja y
+ *     queda solo en el registro del servidor. Quien lo mandó ve «llegó a 40»
+ *     igual.
+ *
+ * Con un extracto, la carga no se acerca nunca al techo y en el teléfono se lee
+ * lo mismo que se leía. El texto completo está en la campanita y en «Mis
+ * mensajes», que es donde se va a buscar.
+ */
+const LARGO_EN_EL_TELEFONO = 160;
+
+/** Un texto recortado a lo que se alcanza a leer en una pantalla bloqueada. */
+function paraElTelefono(texto) {
+  const t = String(texto || '').trim();
+  if (t.length <= LARGO_EN_EL_TELEFONO) return t;
+  // Se corta en un espacio, no a mitad de palabra
+  const cortado = t.slice(0, LARGO_EN_EL_TELEFONO);
+  const ultimoEspacio = cortado.lastIndexOf(' ');
+  return `${(ultimoEspacio > LARGO_EN_EL_TELEFONO - 30 ? cortado.slice(0, ultimoEspacio) : cortado).trimEnd()}…`;
+}
+
 /** Los canales por los que puede salir un aviso. */
 const CANALES = {
   sistema: { label: 'En el sistema', ayuda: 'La campanita de arriba. Siempre está: es donde queda la constancia.' },
@@ -416,7 +447,7 @@ function avisar({ usuario_id, tipo, clave, titulo, cuerpo, de, enlace, iglesia_i
    * el título es lo poco que se alcanza a leer en una pantalla bloqueada, y
    * gastarlo en un nombre puede dejar fuera justamente lo que había que decir.
    */
-  const loQueSeLee = de ? `${de}: ${cuerpo || ''}`.trim() : cuerpo;
+  const loQueSeLee = paraElTelefono(de ? `${de}: ${cuerpo || ''}` : cuerpo);
   navegador
     .empujar(usuario_id, { titulo, cuerpo: loQueSeLee, enlace, etiqueta: clave || tipo })
     .then(() => db.prepare('UPDATE notificaciones SET empujada = 1 WHERE id = ?').run(fila.id))
@@ -428,5 +459,5 @@ function avisar({ usuario_id, tipo, clave, titulo, cuerpo, de, enlace, iglesia_i
 module.exports = {
   TIPOS, CANALES,
   avisar, crear, paraLaCampanita, marcarLeida, marcarTodasLeidas, limpiarLosViejos,
-  preferenciasDe, quiere, recibidos,
+  preferenciasDe, quiere, recibidos, paraElTelefono, LARGO_EN_EL_TELEFONO,
 };

@@ -1279,7 +1279,13 @@ table.planilla-mes tfoot .pie.no td  { color: #b91c1c; }
 .cam-mas { padding: 8px 14px; border-top: 1px solid #eef1f6; text-align: center; }
 /* De parte de quién viene el aviso: solo lo llevan los escritos a mano */
 .cam-de { font-size: 12px; color: var(--marca-azul); margin-top: 2px; font-weight: 600; }
-.cam-c { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+/* El texto del aviso, recortado a tres líneas.
+   Sin esto, un mensaje de mil quinientos caracteres medía 598 px y el panel
+   entero mide 592: un solo aviso tapaba todos los demás. El texto completo está
+   en «Mis mensajes», y tocar el aviso lleva allá. */
+.cam-c { font-size: 12.5px; color: var(--muted); margin-top: 2px;
+         display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+         overflow: hidden; }
 .cam-f { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
 .cam-vacio { padding: 26px 16px; text-align: center; color: var(--muted); font-size: 13px; }
 .cam-pie { padding: 9px 14px; border-top: 1px solid #eef1f6; background: #f8fafc; font-size: 12.5px; }

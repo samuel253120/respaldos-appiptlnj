@@ -922,6 +922,75 @@ test('un mensaje cuyo autor ya no existe no se le abre a cualquiera', () => {
   assert.ok(titulosQueVe(general).includes('De una cuenta que ya no está'));
 });
 
+// ------------------------------- el mensaje largo: en la campanita y en el teléfono
+
+/*
+ * El texto podía tener hasta dos mil caracteres y viajaba entero a los dos
+ * lados. En la campanita, mil quinientos caracteres medían 598 px sobre un panel
+ * de 592: un solo aviso tapaba todos los demás. Y al teléfono, con el largo
+ * máximo y palabras acentuadas, la carga daba 4.317 bytes contra los 4.096 que
+ * garantiza el estándar; el servicio la rechaza y el error queda solo en el
+ * registro del servidor.
+ */
+test('al teléfono va un extracto, no el texto entero', () => {
+  empujones.length = 0;
+  const largo = 'La campaña parte el primero de octubre y cada cuerpo entrega su plan antes del viernes. '.repeat(20);
+  mensajes.enviar(jefa, {
+    titulo: 'Instrucciones de la campaña', cuerpo: largo,
+    destino: 'personas', valor: [ana.id], urgente: true,
+  });
+  assert.equal(empujones.length, 1);
+  const alTelefono = empujones[0].aviso.cuerpo;
+  assert.ok(alTelefono.length <= avisos.LARGO_EN_EL_TELEFONO + 1, `viajaron ${alTelefono.length} caracteres`);
+  assert.ok(alTelefono.endsWith('…'), 'y se dice que sigue');
+  assert.ok(alTelefono.startsWith(`${jefa.nombre}: La campaña parte`), 'con la firma y el principio de lo que dice');
+});
+
+test('y la carga del empujón no se acerca al techo del estándar', () => {
+  const carga = JSON.stringify({
+    titulo: 'á'.repeat(120),
+    cuerpo: avisos.paraElTelefono('ó'.repeat(2000)),
+    enlace: '#/m/solicitudes',
+    etiqueta: 'mensaje:12345',
+  });
+  assert.ok(Buffer.byteLength(carga) < 1000,
+    `la carga da ${Buffer.byteLength(carga)} bytes; antes daba 4.317 contra un techo de 4.096`);
+});
+
+test('lo corto viaja tal cual, sin puntos suspensivos', () => {
+  empujones.length = 0;
+  mensajes.enviar(jefa, {
+    titulo: 'Se suspende', cuerpo: 'Por la lluvia.', destino: 'personas', valor: [ana.id], urgente: true,
+  });
+  assert.equal(empujones[0].aviso.cuerpo, `${jefa.nombre}: Por la lluvia.`);
+});
+
+test('el recorte no parte una palabra por la mitad', () => {
+  // El «abc» de adelante corre el corte para que caiga DENTRO de una palabra:
+  // con las palabras justo calzadas, cortar a lo bruto daba el mismo resultado
+  // y la prueba no probaba nada
+  const cortado = avisos.paraElTelefono(`abc ${'palabra '.repeat(40)}`);
+  assert.ok(!/palab…$/.test(cortado), `quedó «${cortado.slice(-20)}»`);
+  assert.match(cortado, /palabra…$/);
+  // pero una sola palabra larguísima se corta igual: no hay dónde
+  assert.equal(avisos.paraElTelefono('x'.repeat(500)).length, avisos.LARGO_EN_EL_TELEFONO + 1);
+});
+
+test('el texto entero se guarda igual: lo que se recorta es lo que viaja', () => {
+  const largo = 'Cada cuerpo entrega su plan antes del viernes. '.repeat(20);
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'Con todo el texto', cuerpo: largo, destino: 'personas', valor: [ana.id],
+  });
+  assert.equal(mensajes.unEnvio(jefa, salida.id).cuerpo, largo.trim());
+  assert.equal(avisos.recibidos(ana.id, { limit: 1 }).mensajes[0].cuerpo, largo.trim());
+
+  // Y el aviso guardado también: la campanita es donde queda la constancia, y
+  // una constancia recortada no es una constancia
+  const suyo = db.prepare('SELECT cuerpo FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+    .get(ana.id, `mensaje:${salida.id}`);
+  assert.equal(suyo.cuerpo, largo.trim());
+});
+
 // ----------------------------- a quiénes fue, y poder releer lo que se mandó
 
 /*
@@ -1192,6 +1261,19 @@ test('la pantalla deja abrir un envío y ver a quiénes fue', () => {
   assert.match(trozo, /e\.destinatarios\.map\(\(x\) => `<li>/, 'con la lista, no solo el título');
   assert.match(trozo, /es de antes de que se guardara/,
     'de un mensaje viejo se dice que no quedó anotado, en vez de mostrar una lista vacía');
+});
+
+test('en la campanita el texto va recortado, y tocarlo lleva a donde está entero', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../../public/styles.css'), 'utf8');
+  const regla = css.slice(css.indexOf('.cam-c {'), css.indexOf('.cam-c {') + 260);
+  assert.match(regla, /-webkit-line-clamp: 3/,
+    'mil quinientos caracteres medían 598 px sobre un panel de 592: tapaban todo lo demás');
+  assert.match(regla, /overflow: hidden/);
+
+  const trozo = app.slice(app.indexOf("panel.querySelectorAll('.cam-lista li[data-id]')"),
+    app.indexOf("panel.querySelectorAll('.cam-lista li[data-id]')") + 1200);
+  assert.match(trozo, /li\.dataset\.tipo === 'mensaje'\) location\.hash = '\/mis-mensajes'/,
+    'un texto recortado que no lleva a ninguna parte es peor que no recortarlo');
 });
 
 test('en las preferencias, lo que no se puede apagar sale dicho y no como casilla', () => {
