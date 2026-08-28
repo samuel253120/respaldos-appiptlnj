@@ -21,8 +21,10 @@
  * predicador invitado). Cuando la persona sí es miembro, queda enlazada a
  * su ficha.
  *
- * Ofrenda: entra completa a la tesorería de la iglesia y de ahí sale el
- * aporte para la corporación —el porcentaje definido en Configuración →
+ * Ofrenda: entra completa a la tesorería de la iglesia —como llegó: lo que se
+ * recibió en efectivo y lo que llegó por transferencia se anotan por separado,
+ * cada uno con su método, para poder cuadrar con la cartola del banco— y de ahí
+ * sale el aporte para la corporación —el porcentaje definido en Configuración →
  * Organización, 10% por defecto—. Si la opción «Registrar la ofrenda en
  * tesorería» está activa, el servicio deja tres movimientos: el ingreso de
  * la ofrenda completa en la cuenta general de la iglesia, el egreso del
@@ -349,6 +351,29 @@ module.exports = {
      * Lo que se aportó entonces es un hecho. Se anota con el servicio, se ve, y
      * se cambia a mano cuando de verdad hay que cambiarlo.
      */
+    /*
+     * Cómo llegó la ofrenda.
+     *
+     * Los tres movimientos que el servicio deja en Tesorería se anotaban con
+     * método «Efectivo», escrito fijo. Con parte de la ofrenda llegando por
+     * transferencia —cada vez más—, el libro de la iglesia decía que había
+     * entrado en efectivo, y cuadrarlo con el banco no salía.
+     *
+     * Se pregunta solo lo que hace falta preguntar: cuánto llegó al banco. Lo
+     * demás es efectivo y se calcula solo, así que el reparto cuadra por
+     * construcción y no hay una tercera cifra que pueda no sumar.
+     */
+    {
+      name: 'ofrenda_transferencia', label: 'De la ofrenda, por transferencia', type: 'money', min: 0,
+      help:
+        'Lo que de esta ofrenda llegó al banco. Si todo fue en efectivo, déjelo en blanco. '
+        + 'Entra a Tesorería como un ingreso aparte, con su método, para poder cuadrarlo con la cartola.',
+    },
+    {
+      name: 'ofrenda_efectivo', label: 'De la ofrenda, en efectivo', type: 'money', readonly: true,
+      calcula: { tipo: 'resta', campos: ['ofrenda_total', 'ofrenda_transferencia'] },
+      help: 'Se calcula solo: el total de la ofrenda menos lo que llegó por transferencia.',
+    },
     {
       name: 'ofrenda_porcentaje', label: 'Porcentaje del aporte (%)', type: 'number', min: 0, max: 100,
       help:
@@ -379,8 +404,9 @@ module.exports = {
     },
     { name: 'observaciones', label: 'Observaciones generales', type: 'textarea' },
 
-    // Los tres movimientos que la ofrenda de este servicio dejó en Tesorería
+    // Los movimientos que la ofrenda de este servicio dejó en Tesorería
     { name: 'movimiento_iglesia_id', type: 'number', oculto: true, readonly: true },
+    { name: 'movimiento_transferencia_id', type: 'number', oculto: true, readonly: true },
     { name: 'movimiento_aporte_id', type: 'number', oculto: true, readonly: true },
     { name: 'movimiento_fondo_id', type: 'number', oculto: true, readonly: true },
   ],
@@ -439,6 +465,19 @@ module.exports = {
           confirmar: 'el_servicio_duro_muchas_horas',
         };
       }
+      /*
+       * Lo que llegó al banco no puede ser más que la ofrenda entera: si lo
+       * fuera, «en efectivo» quedaría en negativo y los movimientos de
+       * Tesorería con él. Esto no se pregunta, se corrige: no es un dato raro
+       * sino una resta que no da.
+       */
+      const porBanco = Number(dato('ofrenda_transferencia')) || 0;
+      const laOfrenda = Number(dato('ofrenda_total')) || 0;
+      if (porBanco > laOfrenda) {
+        return `Por transferencia llegaron $${porBanco.toLocaleString('es-CL')} y la ofrenda total dice `
+          + `$${laOfrenda.toLocaleString('es-CL')}. Corrija el total o lo que llegó al banco.`;
+      }
+
       /*
        * Y cuánta gente. El tope inferior lo pone el motor con el `min` del
        * campo; acá se mira el otro lado, que no se puede topar: cinco mil

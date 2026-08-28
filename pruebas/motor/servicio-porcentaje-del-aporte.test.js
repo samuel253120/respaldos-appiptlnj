@@ -25,6 +25,15 @@ require('../../server/registry');
 const servicios = require('../../server/modules/servicios');
 const { movimientosDeLaOfrenda } = require('../../server/ofrenda-tesoreria');
 
+/*
+ * Los movimientos se buscan POR SU COLUMNA y no por su lugar en la lista: desde
+ * la 1.159.0 la ofrenda deja un ingreso más —lo que llegó por transferencia— y
+ * el que estaba en el lugar 1 pasó a ser otro. Buscado por su nombre, esto no
+ * se vuelve a caer la próxima vez que la lista crezca.
+ */
+const elDelAporte = (fila) =>
+  movimientosDeLaOfrenda(fila, db).find((m) => m.columna === 'movimiento_aporte_id');
+
 const app = fs.readFileSync(path.join(__dirname, '../../public/app.js'), 'utf8');
 
 const iglesia = db
@@ -84,7 +93,7 @@ test('y su movimiento de tesorería sigue diciendo el porcentaje con que se calc
   ponerElAjuste(20);
   const viejo = { fecha: '2026-03-08', tipo: 'Servicio General', iglesia_id: iglesia,
     ofrenda_total: 200000, ofrenda_fondo: 20000, ofrenda_porcentaje: 10 };
-  const [, aporte] = movimientosDeLaOfrenda(viejo, db);
+  const aporte = elDelAporte(viejo);
   assert.match(aporte.concepto, /\(10%\)/,
     'un movimiento que dice «(20%)» sobre un monto calculado al 10% no lo puede cuadrar nadie');
   assert.equal(aporte.monto, 20000);
@@ -111,7 +120,7 @@ test('cambiarlo a mano en el servicio sí recalcula: es el camino para hacerlo a
   const cambiado = comoLoGuardaElMotor({ ofrenda_porcentaje: 20 }, guardado);
   assert.equal(cambiado.ofrenda_porcentaje, 20);
   assert.equal(cambiado.ofrenda_fondo, 40000);
-  assert.match(movimientosDeLaOfrenda({ ...guardado, ...cambiado }, db)[1].concepto, /\(20%\)/);
+  assert.match(elDelAporte({ ...guardado, ...cambiado }).concepto, /\(20%\)/);
 });
 
 test('el cero es un porcentaje, no un «no tiene»', () => {

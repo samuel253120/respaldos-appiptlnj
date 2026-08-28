@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.159.0", fecha: "2026-08-28", titulo: "La ofrenda entra a Tesorería como llegó: lo que se recibió en efectivo y lo que llegó al banco, cada uno con su método" },
   { version: "1.158.0", fecha: "2026-08-28", titulo: "La asistencia de un servicio deja de admitir números que no existen: nada de negativos, y una multitud se pregunta antes de guardarse" },
   { version: "1.157.0", fecha: "2026-08-28", titulo: "El pasaje se comprueba contra el libro: «Judas 40:900» se pregunta antes de guardarse, con los capítulos de cada libro" },
   { version: "1.156.0", fecha: "2026-08-28", titulo: "La ficha de una persona dice en qué servicios ha servido: cuándo predicó, cuándo coordinó y cuándo leyó el salmo, con su pasaje" },

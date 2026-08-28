@@ -9450,6 +9450,11 @@ function printServicio(m, row) {
       <h3>Ofrenda</h3>
       <table class="meta-tbl">
         ${fila('Recibida (total)', fmtMoney(row.ofrenda_total))}
+        <!-- El reparto solo cuando lo hay: una hoja que dice «por transferencia
+             $0» en todos los servicios de la iglesia no informa, estorba. -->
+        ${Number(row.ofrenda_transferencia) > 0 ? `
+          ${fila('En efectivo', fmtMoney(row.ofrenda_efectivo))}
+          ${fila('Por transferencia', fmtMoney(row.ofrenda_transferencia))}` : ''}
         ${fila(`Aporte a la corporación${row.ofrenda_porcentaje != null && row.ofrenda_porcentaje !== '' ? ` (${row.ofrenda_porcentaje}%)` : ''}`, fmtMoney(row.ofrenda_fondo))}
         ${fila('Queda para la iglesia', fmtMoney(row.ofrenda_iglesia))}
       </table>
