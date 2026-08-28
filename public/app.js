@@ -6034,6 +6034,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y corregirlo',
       seguir: 'Está bien escrito, guardar',
     },
+    fue_mucha_gente_al_servicio: {
+      titulo: '🧍 Revise la asistencia',
+      volver: 'Volver y corregirla',
+      seguir: 'Fue esa gente, guardar',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',

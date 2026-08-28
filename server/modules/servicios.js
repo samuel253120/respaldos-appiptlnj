@@ -113,6 +113,18 @@ function duracionEnPalabras(minutos) {
 const HORAS_QUE_YA_SON_MUCHAS = 12;
 
 /**
+ * Más gente que esto en un servicio y se pregunta.
+ *
+ * No es un tope: es el número a partir del cual lo más probable es que se haya
+ * ido un dígito y no que hayan ido cinco mil personas. Un aniversario grande no
+ * llega ahí, y el que llegue lo confirma y queda anotado.
+ *
+ * Lo que se atajaba antes por este lado era nada: se guardaban 999.999 adultos
+ * sin que el sistema dijera una palabra.
+ */
+const GENTE_QUE_YA_ES_MUCHA = 5000;
+
+/**
  * La cita bíblica escrita como se dice, para poder buscarla: «Juan 3:16».
  *
  * No es una columna: son tres, y los dos puntos los pone la pantalla al leer,
@@ -305,9 +317,15 @@ module.exports = {
     { name: 'mensaje_versiculo_inicial', label: 'Mensaje: versículo inicial', type: 'number' },
     { name: 'mensaje_versiculo_final', label: 'Mensaje: versículo final', type: 'number' },
 
-    // ---- Asistencia ----
-    { name: 'asistencia_adultos', label: 'Asistencia de adultos', type: 'number', seccion: 'Asistencia' },
-    { name: 'asistencia_ninos', label: 'Asistencia de niños', type: 'number' },
+    /*
+     * ---- Asistencia ----
+     *
+     * Con tope inferior en cero, que es la misma línea que la ofrenda ya tenía.
+     * Sin él se guardaba un servicio con MENOS treinta adultos y el total
+     * general —que se suma solo— quedaba en menos treinta.
+     */
+    { name: 'asistencia_adultos', label: 'Asistencia de adultos', type: 'number', seccion: 'Asistencia', min: 0 },
+    { name: 'asistencia_ninos', label: 'Asistencia de niños', type: 'number', min: 0 },
     {
       name: 'asistencia_total', label: 'Total general de asistencia', type: 'number', readonly: true,
       calcula: { tipo: 'suma', campos: ['asistencia_adultos', 'asistencia_ninos'] },
@@ -421,6 +439,24 @@ module.exports = {
           confirmar: 'el_servicio_duro_muchas_horas',
         };
       }
+      /*
+       * Y cuánta gente. El tope inferior lo pone el motor con el `min` del
+       * campo; acá se mira el otro lado, que no se puede topar: cinco mil
+       * personas en un servicio son posibles, así que se pregunta.
+       */
+      const adultos = Number(dato('asistencia_adultos')) || 0;
+      const ninos = Number(dato('asistencia_ninos')) || 0;
+      if (adultos + ninos > GENTE_QUE_YA_ES_MUCHA && !confirmado) {
+        return {
+          error:
+            `Este servicio queda con ${(adultos + ninos).toLocaleString('es-CL')} asistentes `
+            + `(${adultos.toLocaleString('es-CL')} adulto${adultos === 1 ? '' : 's'} y `
+            + `${ninos.toLocaleString('es-CL')} niño${ninos === 1 ? '' : 's'}). `
+            + 'Revise si se le fue un dígito; si de verdad fue tanta gente, confirme.',
+          confirmar: 'fue_mucha_gente_al_servicio',
+        };
+      }
+
       for (const pasaje of ['salmo', 'mensaje']) {
         const desde = Number(dato(`${pasaje}_versiculo_inicial`));
         const hasta = Number(dato(`${pasaje}_versiculo_final`));

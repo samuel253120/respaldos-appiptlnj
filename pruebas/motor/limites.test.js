@@ -94,6 +94,9 @@ test('los campos de dinero del sistema tienen el límite que les corresponde', (
   for (const [modulo, nombre] of [
     ['cuotas_cuerpo', 'monto'], ['cuerpos', 'cuota_mensual'],
     ['ayudas_sociales', 'valor_estimado'], ['inventarios', 'valor_estimado'], ['servicios', 'ofrenda_total'],
+    // La asistencia de un servicio: se guardaba «menos treinta adultos» y el
+    // total general, que se suma solo, quedaba en menos treinta
+    ['servicios', 'asistencia_adultos'], ['servicios', 'asistencia_ninos'],
   ]) {
     assert.equal(campoDe(modulo, nombre).min, 0, `${modulo}.${nombre} no debería admitir negativos`);
   }
