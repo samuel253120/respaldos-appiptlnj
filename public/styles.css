@@ -2463,7 +2463,8 @@ input.fuera-de-rango { border-color: var(--danger); background: #fff5f5; }
      casilla son trece píxeles— porque cada una gana por especificidad */
   input[type="checkbox"], input[type="radio"],
   .fld.check input[type="checkbox"], .multiref .mr-item input[type="checkbox"],
-  .perm-tabla input[type="checkbox"], ul.perfil-elegir input[type="checkbox"] {
+  .perm-tabla input[type="checkbox"], ul.perfil-elegir input[type="checkbox"],
+  .fld label.con-casilla input[type="checkbox"] {
     width: 22px; height: 22px; flex: none;
   }
   /* Los iconos de corregir y borrar de un historial */
@@ -3000,3 +3001,19 @@ table.libro tbody tr:nth-child(even) td { background: #fafbfe; }
 /* Quien ya salió de un cuerpo se lee más apagado en la ficha de la persona:
    la lista mostraba a los retirados igual que a los vigentes. */
 ul.mini-list li.salido > span:first-child { opacity: .72; }
+
+/* ---------- Mensajes escritos a mano ---------- */
+.msg-pie { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+/* Una casilla con su texto al lado se toca entera, no solo el cuadrito */
+.fld label.con-casilla {
+  display: flex; align-items: center; gap: 9px; font-weight: 500; cursor: pointer;
+  min-height: 44px; margin: 0;
+}
+.fld label.con-casilla input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
+/* El tamaño va acotado al computador a propósito. En el teléfono la casilla
+   la agranda a 22 px la regla del dedo, que la nombra una por una; escribir
+   acá un tamaño sin acotar la pisaría —misma especificidad, y esta línea va
+   después— y quedaría más chica de lo que se puede tocar sin equivocarse. */
+@media (min-width: 701px) {
+  .fld label.con-casilla input[type="checkbox"] { width: 18px; height: 18px; }
+}

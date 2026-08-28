@@ -883,6 +883,11 @@ function route() {
     if (cl) marcarActivo(cl);
     return viewMiPerfil(precarga);
   }
+  if (parts[0] === 'mensajes' && tieneLlave('avisos_enviar')) {
+    const ml = document.querySelector('.side-link[data-mod="_mensajes"]');
+    if (ml) marcarActivo(ml);
+    return viewMensajes();
+  }
   if (parts[0] === 'config' && tieneLlave('sistema_configuracion')) {
     const cl = document.querySelector('.side-link[data-mod="_config"]');
     if (cl) marcarActivo(cl);
@@ -1588,6 +1593,8 @@ async function renderClaveUsuario(usuarioId, contenedor) {
 const ENLACES_PROPIOS = [
   { name: '_asistencia', grupo: 'Reuniones', order: 10, icon: '📋', label: 'Asistencia',
     href: '#/asistencia', si: () => !!MOD['asistencias'] },
+  { name: '_mensajes', grupo: 'Sistema', order: 69, icon: '📣', label: 'Mensajes',
+    href: '#/mensajes', si: () => tieneLlave('avisos_enviar') },
   { name: '_cuenta', grupo: 'Sistema', order: 70, icon: '🙋', label: 'Mi perfil', href: '#/perfil' },
   { name: '_config', grupo: 'Sistema', order: 71, icon: '⚙️', label: 'Configuración',
     href: '#/config', si: () => tieneLlave('sistema_configuracion') },
@@ -3950,10 +3957,16 @@ async function renderMisAvisos(caja) {
               <td style="text-align:center">
                 <!-- De qué es cada casilla lo dicen su fila y su columna, y eso
                      solo lo junta quien ve la tabla entera: a quien la escucha
-                     hay que decírselo en la casilla misma. -->
-                <input type="checkbox" data-tipo="${t.clave}" data-canal="sistema"
-                  aria-label="${esc(t.label)}: recibirlo en el sistema"
-                  ${d.preferencias[t.clave] && d.preferencias[t.clave].sistema ? 'checked' : ''} />
+                     hay que decírselo en la casilla misma.
+
+                     Los que no se pueden apagar salen dichos y no como una
+                     casilla trancada: una casilla que no obedece es peor que no
+                     tenerla, porque parece que uno eligió algo. -->
+                ${t.siempre
+                  ? '<span class="mut" style="font-size:12.5px" title="Los mensajes escritos por una persona no se pueden apagar acá: es donde queda la constancia de que llegaron">Siempre</span>'
+                  : `<input type="checkbox" data-tipo="${t.clave}" data-canal="sistema"
+                       aria-label="${esc(t.label)}: recibirlo en el sistema"
+                       ${d.preferencias[t.clave] && d.preferencias[t.clave].sistema ? 'checked' : ''} />`}
               </td>
               <td style="text-align:center">
                 <input type="checkbox" data-tipo="${t.clave}" data-canal="navegador"
@@ -4212,6 +4225,211 @@ function iniciarBuscadorDelMenu(barra) {
     caja.value = '';
     filtrar();
   }));
+}
+
+/* ---------------- mensajes escritos a mano ---------------- */
+/**
+ * Escribirle a la gente que usa el sistema.
+ *
+ * Todo lo demás que avisa el sistema lo escribe el sistema mirando los datos.
+ * Esto es una persona escribiéndole a otras: «la reunión se cambió a las 8»,
+ * «desde el lunes las solicitudes se ingresan por acá». Antes eso salía por
+ * fuera —un grupo de mensajería, un papel en la pared— donde no queda
+ * constancia de quién dijo qué ni de si llegó.
+ *
+ * La pantalla tiene dos mitades: escribir uno, y lo que ya se ha mandado con
+ * cuántos lo leyeron. Lo segundo importa tanto como lo primero: es lo que hace
+ * que mandar un mensaje no sea tirar una moneda al aire.
+ */
+async function viewMensajes() {
+  content().innerHTML = `
+    <div class="page-head"><h2>📣 Mensajes</h2></div>
+    <div class="card"><div class="card-body">Cargando…</div></div>`;
+
+  let d;
+  try {
+    d = await api('GET', '/avisos/mensajes/destinatarios');
+  } catch (e) {
+    content().innerHTML = `
+      <div class="page-head"><h2>📣 Mensajes</h2></div>
+      <div class="card"><div class="card-body">${esc(e.message)}</div></div>`;
+    return;
+  }
+
+  content().innerHTML = `
+    <div class="page-head"><h2>📣 Mensajes</h2></div>
+    <div class="card">
+      <div class="toolbar"><b>✍️ Escribir un mensaje</b></div>
+      <div class="card-body">
+        <p class="mut" style="margin-top:0">
+          Llega a la campanita de cada persona y, si lo tiene encendido, también a su teléfono.
+          Alcanza solo a quienes usted ve en Usuarios.
+        </p>
+        <div id="msgError"></div>
+        <form id="msgForm" class="form-grid">
+          <div class="fld full">
+            <label for="msgTitulo">Título <span class="req">*</span></label>
+            <input type="text" id="msgTitulo" maxlength="${d.largo.titulo}" required
+                   placeholder="Lo que se lee en la campanita" />
+            <div class="help" id="msgCuentaTitulo"></div>
+          </div>
+          <div class="fld full">
+            <label for="msgCuerpo">Mensaje <span class="req">*</span></label>
+            <textarea id="msgCuerpo" rows="4" maxlength="${d.largo.cuerpo}" required
+                      placeholder="Lo que hay que decir"></textarea>
+            <div class="help" id="msgCuentaCuerpo"></div>
+          </div>
+          <div class="fld">
+            <label for="msgDestino">¿A quién?</label>
+            <select id="msgDestino">
+              ${d.destinos.map((x) => `<option value="${esc(x.clave)}">${esc(x.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="fld" id="msgCampoIglesia" hidden>
+            <label for="msgIglesia">Iglesia</label>
+            <select id="msgIglesia">
+              ${d.iglesias.map((i) => `<option value="${i.id}">${esc(i.nombre)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="fld" id="msgCampoPerfil" hidden>
+            <label for="msgPerfil">Perfil de permisos</label>
+            <select id="msgPerfil">
+              ${d.perfiles.map((x) => `<option value="${x.id}">${esc(x.nombre)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="fld full" id="msgCampoPersonas" hidden>
+            <label for="msgPersonas">Personas</label>
+            <select id="msgPersonas" multiple size="6">
+              ${d.personas.map((u) => `<option value="${u.id}">${esc(u.nombre)}</option>`).join('')}
+            </select>
+            <div class="help">Se eligen varias manteniendo apretado Ctrl, o tocándolas en el teléfono.</div>
+          </div>
+          <div class="fld full">
+            <label for="msgEnlace">Enlace (opcional)</label>
+            <input type="text" id="msgEnlace" placeholder="#/m/solicitudes" />
+            <div class="help">Una pantalla de este sistema, para que el mensaje lleve a algún lado.</div>
+          </div>
+          <div class="fld full">
+            <label class="con-casilla" for="msgUrgente">
+              <input type="checkbox" id="msgUrgente" />
+              Es urgente: que suene en el teléfono ahora, no en el resumen del día
+            </label>
+          </div>
+          <div class="full msg-pie">
+            <button type="submit" class="btn" id="msgEnviar">📣 Enviar</button>
+            <span class="mut" id="msgACuantos"></span>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar"><b>🗂️ Lo que se ha mandado</b></div>
+      <div id="msgHistorial"><div class="card-body mut">Cargando…</div></div>
+    </div>`;
+
+  const $ = (id) => document.getElementById(id);
+  const destino = $('msgDestino');
+
+  /** Cuántas personas recibirían lo que está elegido ahora mismo. */
+  const aCuantos = () => {
+    const cual = destino.value;
+    if (cual === 'todos') return d.cuantosEnTotal;
+    if (cual === 'personas') return $('msgPersonas').selectedOptions.length;
+    // De una iglesia o un perfil no se sabe el número sin preguntar al
+    // servidor, y no vale la pena una ida y vuelta por cada clic: se dice al
+    // enviar, que es cuando importa
+    return null;
+  };
+  const ponerElNumeroAlDia = () => {
+    const n = aCuantos();
+    $('msgACuantos').textContent = n === null ? '' : n === 1 ? 'Le llega a 1 persona' : `Le llega a ${n} personas`;
+  };
+
+  const mostrarLoQuePide = () => {
+    const cual = destino.value;
+    $('msgCampoIglesia').hidden = cual !== 'iglesia';
+    $('msgCampoPerfil').hidden = cual !== 'perfil';
+    $('msgCampoPersonas').hidden = cual !== 'personas';
+    ponerElNumeroAlDia();
+  };
+  destino.addEventListener('change', mostrarLoQuePide);
+  $('msgPersonas').addEventListener('change', ponerElNumeroAlDia);
+  mostrarLoQuePide();
+
+  // Lo que va quedando, para no toparse con el tope al final de escribir
+  const contar = (campo, cuenta, tope) => {
+    const poner = () => {
+      const largo = $(campo).value.length;
+      $(cuenta).textContent = largo > tope * 0.8 ? `${largo} de ${tope} caracteres` : '';
+    };
+    $(campo).addEventListener('input', poner);
+    poner();
+    return poner;
+  };
+  const cuentas = [
+    contar('msgTitulo', 'msgCuentaTitulo', d.largo.titulo),
+    contar('msgCuerpo', 'msgCuentaCuerpo', d.largo.cuerpo),
+  ];
+
+  async function pintarElHistorial() {
+    const caja = $('msgHistorial');
+    let h;
+    try {
+      h = await api('GET', '/avisos/mensajes?limit=30');
+    } catch (e) {
+      caja.innerHTML = `<div class="card-body mut">${esc(e.message)}</div>`;
+      return;
+    }
+    if (!h.mensajes.length) {
+      caja.innerHTML = '<div class="card-body mut">Todavía no se ha mandado ninguno.</div>';
+      return;
+    }
+    caja.innerHTML = `<ul class="mini-list">${h.mensajes.map((m) => `
+      <li>
+        <span>
+          ${esc(m.titulo)}${m.urgente ? ' <span class="badge red">Urgente</span>' : ''}
+          <div class="mut" style="font-size:12.5px">${esc(m.destino_dice)} · ${esc(m.quien || '')} · ${esc(cuandoFue(m.created_at))}</div>
+        </span>
+        <span class="mut" style="white-space:nowrap">${m.leidos} de ${m.cuantos} leído${m.leidos === 1 ? '' : 's'}</span>
+      </li>`).join('')}</ul>`;
+  }
+  pintarElHistorial();
+
+  $('msgForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const cual = destino.value;
+    const valor = cual === 'iglesia' ? $('msgIglesia').value
+      : cual === 'perfil' ? $('msgPerfil').value
+        : cual === 'personas' ? [...$('msgPersonas').selectedOptions].map((o) => Number(o.value))
+          : null;
+
+    const boton = $('msgEnviar');
+    boton.disabled = true;
+    $('msgError').innerHTML = '';
+    try {
+      const r = await api('POST', '/avisos/mensajes', {
+        titulo: $('msgTitulo').value,
+        cuerpo: $('msgCuerpo').value,
+        urgente: $('msgUrgente').checked,
+        enlace: $('msgEnlace').value,
+        destino: cual,
+        valor,
+      });
+      toast(r.cuantos === 1 ? 'El mensaje le llegó a 1 persona' : `El mensaje les llegó a ${r.cuantos} personas`);
+      $('msgTitulo').value = '';
+      $('msgCuerpo').value = '';
+      $('msgEnlace').value = '';
+      $('msgUrgente').checked = false;
+      cuentas.forEach((poner) => poner()); // si no, queda diciendo «118 de 120» sobre un campo vacío
+      ponerElNumeroAlDia();
+      pintarElHistorial();
+      refrescarCampanita();
+    } catch (err) {
+      $('msgError').innerHTML = `<div class="aviso importante"><b>No se pudo enviar</b><span>${esc(err.message)}</span></div>`;
+    } finally {
+      boton.disabled = false;
+    }
+  });
 }
 
 /* ---------------- los avisos: la campanita ---------------- */

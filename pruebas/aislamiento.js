@@ -564,6 +564,49 @@ async function niSePuedeApuntarALoAjeno(E, admin) {
       cuerpo_id: E.jovenes.id, iglesia_id: E.norte.id, fecha: '2026-08-20',
       numero_acta: `X-${MARCA}`, tipo: 'Ordinaria', desarrollo: 'Metida',
     }));
+
+  /*
+   * Los mensajes escritos a mano.
+   *
+   * La llave de enviarlos no puede convertirse en una manera de escribirle a
+   * cuentas de otra iglesia, ni de averiguar cuáles existen: quien manda ve
+   * exactamente a los mismos que ve en Usuarios, ni uno más.
+   */
+  const alcanzables = await norte('GET', '/api/avisos/mensajes/destinatarios');
+  const enUsuarios = await norte('GET', '/api/usuarios?limit=200');
+  if (alcanzables.estado === 200 && enUsuarios.estado === 200) {
+    const puedeEscribir = (alcanzables.json.personas || []).map((u) => u.id);
+    const ve = new Set((enUsuarios.json.rows || []).map((u) => u.id));
+    const colados = puedeEscribir.filter((id) => !ve.has(id));
+    revisar('a quién puede escribirle es exactamente a quién ve en Usuarios',
+      colados.length === 0, `se colaron ${colados.length}: ${colados.join(', ')}`);
+    revisar('y él mismo no está entre sus destinatarios',
+      !puedeEscribir.includes(E.adminNorte.id), 'se puede mandar mensajes a sí mismo');
+    const iglesiasQueOfrece = (alcanzables.json.iglesias || []).map((i) => i.id);
+    revisar('ni se le ofrece la iglesia ajena para escribirle entera',
+      !iglesiasQueOfrece.includes(E.sur.id), `ofrece ${iglesiasQueOfrece.join(', ')}`);
+  } else {
+    revisar('a quién puede escribirle es exactamente a quién ve en Usuarios', false,
+      `no pude preguntarlo: ${alcanzables.estado} / ${enUsuarios.estado}`);
+  }
+
+  const aLaAjena = await norte('POST', '/api/avisos/mensajes', {
+    titulo: `Colado ${MARCA}`, cuerpo: 'A ver si llega', destino: 'personas', valor: [E.delOtroLado.id],
+  });
+  revisar('escribirle derecho a una cuenta de la otra iglesia no llega a nadie',
+    aLaAjena.estado === 400 || (aLaAjena.json && aLaAjena.json.cuantos === 0),
+    `respondió ${aLaAjena.estado} y llegó a ${(aLaAjena.json || {}).cuantos}`);
+
+  const aLaIglesiaAjena = await norte('POST', '/api/avisos/mensajes', {
+    titulo: `Colado entero ${MARCA}`, cuerpo: 'A ver si llega', destino: 'iglesia', valor: E.sur.id,
+  });
+  revisar('ni mandándole un mensaje a la iglesia ajena entera',
+    aLaIglesiaAjena.estado === 400 || (aLaIglesiaAjena.json && aLaIglesiaAjena.json.cuantos === 0),
+    `respondió ${aLaIglesiaAjena.estado} y llegó a ${(aLaIglesiaAjena.json || {}).cuantos}`);
+
+  const sinLlave = await secre('GET', '/api/avisos/mensajes/destinatarios');
+  revisar('y sin la llave de enviar, la puerta está cerrada',
+    sinLlave.estado === 403, `respondió ${sinLlave.estado}`);
 }
 
 /* ------------------------------------------------------------------ *

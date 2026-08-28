@@ -250,6 +250,18 @@ const LLAVES = [
       'corresponde es no dejar que lo vea.',
   },
   {
+    name: 'avisos_enviar',
+    label: 'Enviar mensajes a los usuarios',
+    group: 'Sistema',
+    acciones: ['view'],
+    defecto: ['admin'],
+    ayuda:
+      'Escribir un mensaje y mandárselo a las personas que usan el sistema: llega a su campanita y, '
+      + 'si lo tienen encendido, también a su teléfono. Solo se puede mandar a quien uno ya alcanza en '
+      + 'Usuarios, así que esta llave no amplía a quién se ve. Queda constancia de cada envío —quién lo '
+      + 'mandó, a cuántos y qué decía— y de cuántos lo leyeron.',
+  },
+  {
     name: 'solicitudes_tramitar',
     label: 'Trasladar y cerrar solicitudes de otros',
     group: 'Sistema',

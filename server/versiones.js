@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.140.0", fecha: "2026-08-28", titulo: "Se le puede escribir a la gente que usa el sistema: el mensaje llega a su campanita y a su teléfono, y queda dicho a cuántos llegó y cuántos lo leyeron" },
   { version: "1.139.0", fecha: "2026-08-28", titulo: "El RUT se encuentra escrito como sea, la dirección también se busca, y el formulario pide el nombre antes que el trato" },
   { version: "1.138.0", fecha: "2026-08-28", titulo: "De un traslado queda adónde y desde cuándo, y de un fallecimiento su fecha: «quiénes se fueron este año» ya se puede contestar" },
   { version: "1.137.0", fecha: "2026-08-28", titulo: "El tipo de miembro deja de nacer en blanco, avisa cuando no calza con la edad y cuando un menor ya cumplió 18" },

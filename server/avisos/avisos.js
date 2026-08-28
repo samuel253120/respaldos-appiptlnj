@@ -86,6 +86,26 @@ const TIPOS = {
       + 'Es de lo poco que avisa a tiempo de que alguien se está alejando; cuando se nota sin ayuda, '
       + 'ya pasaron meses. El aviso dice cuántas de esas faltas fueron justificadas.',
   },
+  mensaje: {
+    label: 'Mensajes de la administración',
+    urgente: true,
+    /*
+     * Este no se puede apagar en la campanita.
+     *
+     * Los demás avisos los escribe el sistema mirando los datos: si a alguien
+     * no le sirven, que los apague. Un mensaje lo escribe una PERSONA para
+     * otra, y quien lo manda no tiene manera de saber que no llegó —no hay
+     * acuse de recibo—. Poder silenciarlo en secreto convierte cada mensaje en
+     * una moneda al aire.
+     *
+     * El teléfono sí se puede apagar: sonar es una interrupción y eso es cosa
+     * de cada uno. La constancia queda igual en la campanita.
+     */
+    siempre: true,
+    ayuda:
+      'Lo que le escriba quien administra el sistema. La campanita no se puede apagar —es donde '
+      + 'queda la constancia— pero el aviso en el teléfono sí.',
+  },
   cumplio_la_mayoria: {
     label: 'Menores que ya cumplieron 18 años',
     urgente: false,
@@ -140,7 +160,9 @@ function preferenciasDe(usuario) {
   for (const [tipo, def] of Object.entries(TIPOS)) {
     const suyo = guardadas[tipo] || {};
     salida[tipo] = {
-      sistema: suyo.sistema === undefined ? true : !!suyo.sistema,
+      // Un tipo con `siempre` no se puede apagar en la campanita: se responde
+      // encendido pase lo que pase, para que la pantalla lo muestre así
+      sistema: def.siempre ? true : suyo.sistema === undefined ? true : !!suyo.sistema,
       navegador: suyo.navegador === undefined ? !!def.urgente : !!suyo.navegador,
     };
   }
@@ -152,6 +174,8 @@ function quiere(usuario, tipo, canal) {
   const def = TIPOS[tipo];
   if (!def) return false;
   if (def.llave && !require('../permissions').can(usuario, def.llave, 'view')) return false;
+  // Los que no se pueden apagar en el sistema: ver `siempre` en TIPOS
+  if (def.siempre && canal === 'sistema') return true;
   return !!preferenciasDe(usuario)[tipo][canal];
 }
 
@@ -242,12 +266,20 @@ function limpiarLosViejos(dias = 90) {
  * guardando una solicitud no tiene por qué esperar eso. Si falla, el aviso ya
  * está en la campanita igual.
  */
-function avisar({ usuario_id, tipo, clave, titulo, cuerpo, enlace, iglesia_id }) {
+function avisar({ usuario_id, tipo, clave, titulo, cuerpo, enlace, iglesia_id, urgente }) {
   const fila = crear({ usuario_id, tipo, clave, titulo, cuerpo, enlace, iglesia_id });
   if (!fila) return null;
 
   const def = TIPOS[tipo];
-  if (!def || !def.urgente) return fila; // los de rutina salen en el resumen del día
+  if (!def) return fila;
+  /*
+   * Casi siempre lo urgente lo decide el TIPO. Pero hay avisos que lo deciden
+   * uno por uno: un mensaje escrito a mano puede ser «la reunión se cambió a
+   * las 8» o «cuando puedan, revisen las fichas». Quien lo escribe sabe cuál
+   * de los dos es; el tipo, no.
+   */
+  const interrumpe = urgente === undefined ? !!def.urgente : !!urgente;
+  if (!interrumpe) return fila; // los de rutina salen en el resumen del día
 
   const usuario = db
     .prepare('SELECT id, rol, avisos, permisos, perfil_id FROM usuarios WHERE id = ?')

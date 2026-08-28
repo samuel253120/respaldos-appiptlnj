@@ -54,7 +54,11 @@ router.get('/avisos/preferencias', authRequired, (req, res) => {
   res.json({
     tipos: Object.entries(avisos.TIPOS)
       .filter(([, def]) => !def.llave || require('../permissions').can(usuario, def.llave, 'view'))
-      .map(([clave, def]) => ({ clave, label: def.label, ayuda: def.ayuda, urgente: !!def.urgente })),
+      // `siempre` marca los que no se pueden apagar en la campanita: la pantalla
+      // los muestra fijos en vez de ofrecer una casilla que no obedece
+      .map(([clave, def]) => ({
+        clave, label: def.label, ayuda: def.ayuda, urgente: !!def.urgente, siempre: !!def.siempre,
+      })),
     canales: avisos.CANALES,
     preferencias: avisos.preferenciasDe(usuario),
     llavePublica: navegador.llavePublica(),
@@ -140,6 +144,38 @@ router.post('/avisos/probar', authRequired, async (req, res) => {
     return res.status(400).json({ error });
   }
   res.json({ ok: true, ...r });
+});
+
+/* ------------------------------------------------- mensajes escritos a mano --
+ *
+ * Estas tres SÍ piden llave, al revés que todo lo de arriba: acá no se está
+ * mirando lo propio, se está escribiendo a otros.
+ */
+const mensajes = require('./mensajes');
+
+/** Solo quien puede enviar mensajes pasa de acá. */
+function puedeEnviar(req, res, siguiente) {
+  if (!require('../permissions').can(req.user, 'avisos_enviar', 'view')) {
+    return res.status(403).json({ error: 'No tiene permiso para enviar mensajes a los usuarios.' });
+  }
+  siguiente();
+}
+
+/** A quiénes puede escribirle esta persona, y de qué maneras elegirlos. */
+router.get('/avisos/mensajes/destinatarios', authRequired, puedeEnviar, (req, res) => {
+  res.json(mensajes.aQuienPuedeEscribir(req.user));
+});
+
+/** Lo que se ha mandado, con cuántos lo leyeron. */
+router.get('/avisos/mensajes', authRequired, puedeEnviar, (req, res) => {
+  res.json({ mensajes: mensajes.loQueSeHaMandado(req.user, req.query.limit) });
+});
+
+/** Mandar uno. */
+router.post('/avisos/mensajes', authRequired, puedeEnviar, (req, res) => {
+  const salida = mensajes.enviar(req.user, req.body || {});
+  if (salida.error) return res.status(400).json({ error: salida.error });
+  res.status(201).json({ ok: true, ...salida });
 });
 
 module.exports = router;
