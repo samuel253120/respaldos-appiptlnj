@@ -148,10 +148,15 @@ test('el listado de cualquier módulo busca por acá', () => {
   const crud = require('fs').readFileSync(
     require('path').join(__dirname, '../../server/crud.js'), 'utf8'
   );
-  // Con lo que el módulo agregue a lo buscable: desde la 1.155.0 un módulo puede
-  // sumar lo que no es una columna —la cita bíblica de un servicio—, y el
-  // listado tiene que pasárselo (ver `buscaTambien` en server/registry.js)
-  assert.match(crud, /busqueda\.condicion\(req\.query\.q, sensibles\.buscablesPara\(def, req\.user\), def\.buscaTambien\)/);
+  /*
+   * Con lo que el módulo agregue a lo buscable: desde la 1.155.0 un módulo puede
+   * sumar lo que no es una columna —la cita bíblica de un servicio— y el listado
+   * tiene que pasárselo. Desde la 1.167.0 ya no se le pasa la lista entera sino
+   * la que le corresponde a QUIEN busca: un trozo puede tocar un dato reservado
+   * —el monto de un movimiento— y entonces solo lo recibe quien tiene su llave
+   * (ver `buscaTambienPara` en server/sensibles.js).
+   */
+  assert.match(crud, /busqueda\.condicion\(req\.query\.q, sensibles\.buscablesPara\(def, req\.user\), sensibles\.buscaTambienPara\(def, req\.user\)\)/);
   assert.ok(!/const like = buscables\.map/.test(crud), 'quedó el camino viejo, que es el que fallaba');
 });
 
@@ -159,8 +164,8 @@ test('y el buscador de arriba también, que si no parece roto', () => {
   const buscador = require('fs').readFileSync(
     require('path').join(__dirname, '../../server/buscador.js'), 'utf8'
   );
-  assert.match(buscador, /busqueda\.condicion\(q, buscables, def\.buscaTambien\)/,
-    'el buscador de arriba y el listado tienen que encontrar lo mismo, con lo agregado incluido');
+  assert.match(buscador, /busqueda\.condicion\(q, buscables, require\('\.\/sensibles'\)\.buscaTambienPara\(def, usuario\)\)/,
+    'el buscador de arriba y el listado tienen que encontrar lo mismo, con lo agregado y con el mismo recorte');
   assert.ok(!/const like = buscables\.map/.test(buscador));
 });
 

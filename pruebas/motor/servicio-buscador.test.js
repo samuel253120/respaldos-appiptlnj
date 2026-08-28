@@ -54,7 +54,14 @@ servicio({ fecha: '2029-02-18', tipo: 'Clase de Dorcas', observaciones: 'Sin nov
 
 /** Cuántos servicios de ESTA iglesia encuentra lo que se teclee. */
 function encuentra(texto) {
-  const c = busqueda.condicion(texto, servicios.searchFields, servicios.buscaTambien);
+  /*
+   * Los trozos van como SQL a secas: desde la 1.167.0 el módulo los declara como
+   * { sql, reservado } —para que uno que toca un dato reservado se le dé solo a
+   * quien tiene su llave— y quien los usa los pide ya recortados. Acá ninguno lo
+   * es, así que basta con sacarles el sql.
+   */
+  const trozos = servicios.buscaTambien.map((t) => (typeof t === 'string' ? t : t.sql));
+  const c = busqueda.condicion(texto, servicios.searchFields, trozos);
   if (!c) return 0;
   return db
     .prepare(`SELECT COUNT(*) AS n FROM servicios WHERE iglesia_id = ? AND (${c.sql})`)
@@ -107,14 +114,14 @@ test('el capítulo guardado como número no rompe la cita', () => {
     .get('Juan', iglesia).c;
   assert.equal(crudo, 3);
   const armada = db
-    .prepare(`SELECT ${servicios.buscaTambien[0]} AS cita FROM servicios WHERE mensaje_libro = ? AND iglesia_id = ?`)
+    .prepare(`SELECT ${servicios.buscaTambien[0].sql} AS cita FROM servicios WHERE mensaje_libro = ? AND iglesia_id = ?`)
     .get('Juan', iglesia).cita;
   assert.equal(armada, 'Juan 3:16');
 });
 
 test('un servicio sin libro no deja un « :» suelto en lo buscable', () => {
   const armada = db
-    .prepare(`SELECT ${servicios.buscaTambien[1]} AS cita FROM servicios WHERE tipo = ? AND iglesia_id = ?`)
+    .prepare(`SELECT ${servicios.buscaTambien[1].sql} AS cita FROM servicios WHERE tipo = ? AND iglesia_id = ?`)
     .get('Clase de Dorcas', iglesia).cita;
   assert.equal(armada, '');
 });
@@ -164,6 +171,8 @@ test('y uno que quisiera buscar por un dato reservado no carga', () => {
 });
 
 test('el buscador de arriba busca lo mismo que el listado', () => {
-  assert.match(crud, /busqueda\.condicion\(req\.query\.q, sensibles\.buscablesPara\(def, req\.user\), def\.buscaTambien\)/);
-  assert.match(buscador, /busqueda\.condicion\(q, buscables, def\.buscaTambien\)/);
+  // Los dos piden los trozos ya recortados para quien busca (ver la 1.167.0 y
+  // `buscaTambienPara` en server/sensibles.js)
+  assert.match(crud, /sensibles\.buscaTambienPara\(def, req\.user\)/);
+  assert.match(buscador, /buscaTambienPara\(def, usuario\)/);
 });

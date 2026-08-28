@@ -139,7 +139,7 @@ function buscar(texto, usuario) {
     // Por palabras y sin tildes, igual que el listado de cada módulo: el
     // buscador de arriba y el listado tienen que encontrar lo mismo, o el de
     // arriba parece roto. Ver server/busqueda.js.
-    const buscada = busqueda.condicion(q, buscables, def.buscaTambien);
+    const buscada = busqueda.condicion(q, buscables, require('./sensibles').buscaTambienPara(def, usuario));
     if (!buscada) continue;
     donde.push(`(${buscada.sql})`);
     params.push(...buscada.params);

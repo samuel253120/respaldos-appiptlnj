@@ -157,7 +157,23 @@ function buscablesPara(def, usuario) {
   return campos.filter((n) => !prohibidos.has(n));
 }
 
+/**
+ * Qué trozos de `buscaTambien` puede usar esta persona.
+ *
+ * Lo mismo que `buscablesPara` pero para las expresiones: un trozo que declara
+ * pertenecer a un grupo reservado se le da solo a quien alcanza ese grupo. Sin
+ * esto, buscar «250000» encontraría el movimiento de doscientos cincuenta mil
+ * aunque su monto esté tapado en pantalla, y probando números se averiguaría
+ * uno por uno: el dato quedaría igual de expuesto que si se mostrara.
+ */
+function buscaTambienPara(def, usuario) {
+  const fuera = new Set(vedados(def, usuario, null));
+  return (def.buscaTambien || [])
+    .filter((t) => !t.reservado || !fuera.has(t.reservado))
+    .map((t) => t.sql);
+}
+
 module.exports = {
   alcanza, alcanzaGrupo, limpiar, limpiarVarias, protegerAlGuardar,
-  gruposDe, grupoDe, vedados, buscablesPara, LLAVE,
+  gruposDe, grupoDe, vedados, buscablesPara, buscaTambienPara, LLAVE,
 };

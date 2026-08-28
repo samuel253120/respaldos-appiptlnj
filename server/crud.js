@@ -824,7 +824,7 @@ function consultaDeUnListado(def, req) {
   //
   // Cómo se compara —por palabras y sin tildes— está en server/busqueda.js,
   // con lo que costaba antes escrito ahí.
-  const buscada = busqueda.condicion(req.query.q, sensibles.buscablesPara(def, req.user), def.buscaTambien);
+  const buscada = busqueda.condicion(req.query.q, sensibles.buscablesPara(def, req.user), sensibles.buscaTambienPara(def, req.user));
   if (buscada) {
     where.push(`(${buscada.sql})`);
     params.push(...buscada.params);
@@ -845,6 +845,46 @@ function consultaDeUnListado(def, req) {
   for (const nombre of String(req.query.sin || '').split(',').map((n) => n.trim()).filter(Boolean)) {
     if (!fields[nombre]) continue;
     where.push(`("${nombre}" IS NULL OR TRIM("${nombre}") = '')`);
+  }
+
+  /**
+   * Rango de montos: ?monto_desde=500000&monto_hasta=900000
+   *
+   * «Los egresos sobre quinientos mil de este año» es la pregunta con que
+   * empieza cualquier revisión, y se contestaba bajando la planilla entera y
+   * filtrando en Excel. El campo lo dice el propio módulo: el primero de tipo
+   * `money` que además esté en el listado.
+   *
+   * Un monto reservado no se acota: quien no puede ver los montos tampoco
+   * puede ir tanteando rangos hasta dar con una cifra, que sería la misma
+   * fuga por otra puerta (es la regla de server/sensibles.js).
+   */
+  const campoDeMonto = require('./registry').tieneRangoDeMonto(def)
+    ? def.fields.find((f) => f.type === 'money' && fields[f.name] && (def.listFields || []).includes(f.name))
+    : null;
+  if (campoDeMonto && !sensibles.vedados(def, req.user, null).includes(sensibles.grupoDe(campoDeMonto))) {
+    /*
+     * Solo un número, y con o sin los puntos con que se escribe la plata acá:
+     * «500.000» y «500000» son lo mismo. Lo que no sea un número no acota nada
+     * y el listado se ve entero, igual que con la edad: adivinar lo que alguien
+     * quiso decir es peor que no hacerle caso.
+     */
+    const enPesos = (valor) => {
+      const limpio = String(valor == null ? '' : valor).trim().split('.').join('').replace(/^\$\s*/, '');
+      if (!/^\d{1,12}$/.test(limpio)) return null;
+      return Number(limpio);
+    };
+    const col = `"${campoDeMonto.name}"`;
+    const montoDesde = enPesos(req.query.monto_desde);
+    const montoHasta = enPesos(req.query.monto_hasta);
+    if (montoDesde !== null) {
+      where.push(`${col} >= ?`);
+      params.push(montoDesde);
+    }
+    if (montoHasta !== null) {
+      where.push(`${col} <= ?`);
+      params.push(montoHasta);
+    }
   }
 
   /**

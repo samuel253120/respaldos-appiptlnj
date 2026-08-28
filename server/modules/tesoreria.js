@@ -138,8 +138,20 @@ module.exports = {
   // Un traspaso se podía imprimir y un movimiento no, siendo el mismo dinero
   printable: true,
   searchFields: ['concepto', 'categoria', 'notas'],
+  /*
+   * Un gasto se recuerda por su monto: «el de los doscientos cincuenta mil».
+   * Medido antes de esto, «250000» y «250.000» daban CERO los dos.
+   *
+   * Va en `buscaTambien` y no en `searchFields` porque el monto se guarda como
+   * número y el motor lo pegaría con su decimal —«250000.0»—, que no es lo que
+   * nadie teclea. Y declara su grupo reservado: quien no puede ver los montos
+   * tampoco puede encontrar un movimiento probando cifras en el buscador, que
+   * sería la misma fuga por otra puerta (ver server/sensibles.js).
+   */
+  buscaTambien: [{ sql: 'CAST(monto AS INTEGER)', reservado: 'tesoreria_montos' }],
   listFields: ['fecha', 'cuenta_id', 'tipo', 'categoria', 'concepto', 'monto', 'respaldo'],
-  filterFields: ['cuenta_id', 'tipo', 'categoria'],
+  // El método ya se podía filtrar por dirección y la barra no lo ofrecía
+  filterFields: ['cuenta_id', 'tipo', 'categoria', 'metodo'],
   /*
    * El respaldo de un movimiento: la boleta o el comprobante de la
    * transferencia.

@@ -207,6 +207,8 @@ app.get('/api/meta', authRequired, (req, res) => {
       })),
       // Si el módulo tiene fecha de nacimiento, se puede acotar por edad
       rangoDeEdad: (m.fields || []).some((f) => f.mostrarEdad),
+      // Y si tiene un monto en el listado, por rango de montos
+      rangoDeMonto: require('./registry').tieneRangoDeMonto(m),
       defaultSort: m.defaultSort,
       fields: [
         ...m.fields

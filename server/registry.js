@@ -106,7 +106,15 @@ function normalize(def) {
     f.label = f.label || f.name;
     f.type = f.type || 'text';
   }
-  def.buscaTambien = def.buscaTambien || [];
+  /*
+   * Un trozo de `buscaTambien` puede venir como texto —el caso corriente— o
+   * como { sql, reservado }, cuando lo que busca es un dato de un grupo
+   * reservado: el monto de un movimiento, que solo alcanza quien tiene su
+   * llave. Se normalizan todos a la forma larga para no preguntarlo dos veces
+   * más adelante.
+   */
+  def.buscaTambien = (def.buscaTambien || []).map((t) =>
+    (typeof t === 'string' ? { sql: t, reservado: null } : { sql: t.sql, reservado: t.reservado || null }));
   revisarLoReservado(def);
   revisarLoQueSeBuscaDeMas(def);
 }
@@ -130,15 +138,24 @@ function revisarLoQueSeBuscaDeMas(def) {
   if (!def.buscaTambien.length) return;
   const sensibles = require('./sensibles');
   const reservados = [...sensibles.gruposDe(def).values()].flat();
+  const grupos = sensibles.gruposDe(def);
   for (const trozo of def.buscaTambien) {
     for (const campo of reservados) {
-      if (new RegExp(`\\b${campo}\\b`).test(trozo)) {
-        throw new Error(
-          `El módulo ${def.name} busca de más por «${campo}», que es un campo reservado. ` +
-          `Quien no tiene su llave no puede encontrar a nadie por ese dato, y una expresión en ` +
-          `buscaTambien se saltaría el recorte que el motor hace campo por campo.`
-        );
-      }
+      if (!new RegExp(`\\b${campo}\\b`).test(trozo.sql)) continue;
+      /*
+       * Salvo que el trozo diga a qué grupo pertenece, y sea el del campo que
+       * usa: entonces el motor sabe a quién ofrecérselo y a quién no, igual que
+       * hace campo por campo. Buscar un movimiento por su monto es legítimo
+       * para quien puede ver los montos.
+       */
+      const suGrupo = [...grupos.entries()].find(([, campos]) => campos.includes(campo));
+      if (trozo.reservado && suGrupo && trozo.reservado === suGrupo[0]) continue;
+      throw new Error(
+        `El módulo ${def.name} busca de más por «${campo}», que es un campo reservado. ` +
+        `Quien no tiene su llave no puede encontrar a nadie por ese dato, y una expresión en ` +
+        `buscaTambien se saltaría el recorte que el motor hace campo por campo. ` +
+        `Si de verdad corresponde, declare el trozo como { sql, reservado: '${suGrupo ? suGrupo[0] : 'grupo'}' }.`
+      );
     }
   }
 }
@@ -202,7 +219,20 @@ function allModules() {
   return Object.values(modules).sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
 }
 
+/**
+ * ¿A este módulo se le puede acotar por rango de montos?
+ *
+ * Cuando tiene un campo de dinero que además se ve en el listado: acotar por
+ * una cifra que no está a la vista sería pedirle a alguien que adivine. Vive
+ * acá y no escrito dos veces —en la descripción del sistema y en el motor—
+ * para que la pantalla ofrezca exactamente lo que el listado sabe hacer.
+ */
+function tieneRangoDeMonto(def) {
+  return (def.fields || []).some((f) => f.type === 'money' && (def.listFields || []).includes(f.name));
+}
+
 module.exports = {
+  tieneRangoDeMonto,
   modules, getModule, allModules, displayOf,
   // Para poder comprobar desde las pruebas que un módulo mal declarado no pasa
   normalizarParaPruebas: normalize,

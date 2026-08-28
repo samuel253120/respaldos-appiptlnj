@@ -122,6 +122,28 @@ function palabrasDe(texto) {
  */
 const PARECE_RUT = /^[0-9.\-]{7,12}[0-9kK]$/;
 
+/**
+ * Un número escrito con separadores, que es como se escriben en Chile.
+ *
+ * Mismo problema que el RUT, y por eso mismo se resuelve igual. Un gasto se
+ * recuerda por su monto —«el de los doscientos cincuenta mil»— y se teclea con
+ * puntos o sin ellos, mientras que el monto está guardado a secas. Medido:
+ * «250000» daba CERO y «250.000» también, porque ninguna de las dos es el texto
+ * que hay en la columna.
+ *
+ * La regla no vive en Tesorería sino acá, con la del RUT, porque es la misma:
+ * si lo tecleado es solo dígitos y separadores, se compara también de corrido.
+ * El RUT ya entraba por la suya —lleva un dígito verificador que puede ser una
+ * k— y sigue entrando; esto agrega los números a secas.
+ */
+const PARECE_NUMERO = /^[0-9][0-9.\-]*[0-9]$/;
+
+/** ¿Se compara además de corrido, sin puntos ni guiones? */
+const seComparaDeCorrido = (palabra) => {
+  const limpia = palabra.trim();
+  return PARECE_RUT.test(limpia) || PARECE_NUMERO.test(limpia);
+};
+
 /** El mismo texto sin lo que separa un RUT: puntos y guiones. */
 const deCorrido = (texto) => String(texto || '').split('.').join('').split('-').join('');
 
@@ -147,9 +169,9 @@ function condicion(texto, campos, extras) {
   const params = [];
   const sql = palabras.map((palabra) => {
     params.push(`%${comoSeCompara(palabra)}%`);
-    if (!PARECE_RUT.test(palabra.trim())) return `${donde} LIKE ?`;
-    // Un RUT: también se compara de corrido, para que dé lo mismo cómo se
-    // teclee y en qué formato esté guardado
+    if (!seComparaDeCorrido(palabra)) return `${donde} LIKE ?`;
+    // Un RUT o un monto: también se compara de corrido, para que dé lo mismo
+    // cómo se teclee y en qué formato esté guardado
     params.push(`%${comoSeCompara(deCorrido(palabra))}%`);
     return `(${donde} LIKE ? OR ${corrido} LIKE ?)`;
   }).join(' AND ');
@@ -159,5 +181,5 @@ function condicion(texto, campos, extras) {
 
 module.exports = {
   condicion, comoSeCompara, palabrasDe, textoBuscable, deCorrido,
-  PALABRAS_QUE_SE_MIRAN, LETRAS, PARECE_RUT,
+  PALABRAS_QUE_SE_MIRAN, LETRAS, PARECE_RUT, PARECE_NUMERO, seComparaDeCorrido,
 };

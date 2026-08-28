@@ -2011,6 +2011,14 @@ async function viewList(name, filtrosIniciales) {
     st.edadHasta = String(rango.edad_hasta || '');
     st.page = 1;
   }
+  if (rango.monto_desde !== undefined || st.montoDesde) {
+    st.montoDesde = String(rango.monto_desde || '');
+    st.page = 1;
+  }
+  if (rango.monto_hasta !== undefined || st.montoHasta) {
+    st.montoHasta = String(rango.monto_hasta || '');
+    st.page = 1;
+  }
   st.propios = st.propios || {};
   for (const f of m.filtrosPropios || []) {
     if (rango[f.nombre] === undefined && !st.propios[f.nombre]) continue;
@@ -2103,9 +2111,10 @@ async function viewList(name, filtrosIniciales) {
   // es»— y el rango de edad, que no es una columna sino un cálculo
   const filtrosPropios = m.filtrosPropios || [];
   const hayRangoDeEdad = !!m.rangoDeEdad;
+  const hayRangoDeMonto = !!m.rangoDeMonto;
 
   const hayQuePlegar = !!(iglesiaField || filterFields.length || filtrosPropios.length
-    || hayRangoDeEdad || m.dateField);
+    || hayRangoDeEdad || hayRangoDeMonto || m.dateField);
 
   tb.innerHTML = `
     <input type="search" id="q" placeholder="Buscar…" value="${esc(st.q)}"
@@ -2134,6 +2143,11 @@ async function viewList(name, filtrosIniciales) {
                placeholder="desde" value="${esc(st.edadDesde || '')}" aria-label="Edad desde" /></label>
         <label class="range">a <input type="number" id="fEdadHasta" min="0" max="130" inputmode="numeric"
                placeholder="hasta" value="${esc(st.edadHasta || '')}" aria-label="Edad hasta" /></label>` : ''}
+      ${hayRangoDeMonto ? `
+        <label class="range">Monto <input type="number" id="fMontoDesde" min="0" step="1" inputmode="numeric"
+               placeholder="desde" value="${esc(st.montoDesde || '')}" aria-label="Monto desde" /></label>
+        <label class="range">a <input type="number" id="fMontoHasta" min="0" step="1" inputmode="numeric"
+               placeholder="hasta" value="${esc(st.montoHasta || '')}" aria-label="Monto hasta" /></label>` : ''}
       ${m.dateField ? `
         <label class="range">Desde <input type="date" id="fDesde" value="${esc(st.desde)}" /></label>
         <label class="range">Hasta <input type="date" id="fHasta" value="${esc(st.hasta)}" /></label>` : ''}
@@ -2157,6 +2171,7 @@ async function viewList(name, filtrosIniciales) {
     Object.values(st.filters).filter(Boolean).length
     + Object.values(st.propios || {}).filter(Boolean).length
     + (st.edadDesde ? 1 : 0) + (st.edadHasta ? 1 : 0)
+    + (st.montoDesde ? 1 : 0) + (st.montoHasta ? 1 : 0)
     + (st.desde ? 1 : 0) + (st.hasta ? 1 : 0);
 
   const botonDeFiltros = document.getElementById('tbFiltros');
@@ -2293,6 +2308,29 @@ async function viewList(name, filtrosIniciales) {
     acotarPorEdad('fEdadDesde', 'edadDesde');
     acotarPorEdad('fEdadHasta', 'edadHasta');
   }
+  /*
+   * El monto también se escribe, no se elige: se espera a que la persona
+   * termine de teclear, igual que la edad. Preguntando en cada tecla, escribir
+   * «500000» pediría primero todo lo que vale cinco pesos o más.
+   */
+  if (hayRangoDeMonto) {
+    let relojMonto;
+    const acotarPorMonto = (donde, cual) => {
+      const el = document.getElementById(donde);
+      if (!el) return;
+      el.addEventListener('input', () => {
+        clearTimeout(relojMonto);
+        relojMonto = setTimeout(() => {
+          st[cual] = el.value;
+          st.page = 1;
+          ponerElBotonAlDia();
+          load();
+        }, 400);
+      });
+    };
+    acotarPorMonto('fMontoDesde', 'montoDesde');
+    acotarPorMonto('fMontoHasta', 'montoHasta');
+  }
   if (m.dateField) {
     document.getElementById('fDesde').addEventListener('change', (e) => {
       st.desde = e.target.value; st.page = 1; ponerElBotonAlDia(); load();
@@ -2311,6 +2349,8 @@ async function viewList(name, filtrosIniciales) {
     for (const [k, v] of Object.entries(st.propios || {})) if (v) params.set(k, v);
     if (st.edadDesde) params.set('edad_desde', st.edadDesde);
     if (st.edadHasta) params.set('edad_hasta', st.edadHasta);
+    if (st.montoDesde) params.set('monto_desde', st.montoDesde);
+    if (st.montoHasta) params.set('monto_hasta', st.montoHasta);
     if (st.desde) params.set('desde', st.desde);
     if (st.hasta) params.set('hasta', st.hasta);
     if (st.sin) params.set('sin', st.sin);
