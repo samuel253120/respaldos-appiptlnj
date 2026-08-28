@@ -2459,6 +2459,56 @@ function marcasDeAsistenciaConSuFechaDeToma() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Los que ya no están salen de sus cuerpos.
+ *
+ * La regla que retira de sus cuerpos a quien queda como Fallecido o
+ * Trasladado se agregó en la 1.132.0 (ver server/ya-no-esta.js), y de ahí en
+ * adelante corre sola en cada guardado. Las bases que ya venían andando
+ * arrastran a los que se dieron de baja antes: siguen figurando como
+ * integrantes vigentes, así que la pantalla de asistencia los sigue
+ * convocando, la planilla del mes les sigue abriendo su columna y el aviso de
+ * faltas seguidas los va a nombrar.
+ *
+ * Se les escribe el mismo motivo que escribe la regla, así que si alguno
+ * estaba mal marcado, corregirle el estado en su ficha lo devuelve solo a sus
+ * cuerpos —la vuelta atrás también es parte de la regla—.
+ *
+ * La fecha de retiro es la de hoy y no la del día en que se fue, que nadie
+ * guardó: inventarla sería peor que dejarla en el día en que el sistema se dio
+ * cuenta.
+ */
+function losQueYaNoEstanSalenDeSusCuerpos() {
+  const NOMBRE = 'los que ya no están salen de sus cuerpos';
+  if (yaAplicada(NOMBRE)) return;
+
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('integrantes_cuerpo') || !hayTabla('miembros')) return marcarAplicada(NOMBRE);
+
+  const { MOTIVO, YA_NO_ESTA } = require('./ya-no-esta');
+  const hoy = require('./fechas').hoy();
+  let cuantas = 0;
+
+  for (const estado of YA_NO_ESTA) {
+    const info = db
+      .prepare(
+        `UPDATE integrantes_cuerpo
+            SET estado = 'Retirado', fecha_retiro = ?, motivo_retiro = ?,
+                updated_at = datetime('now','localtime')
+          WHERE estado IN ('En prueba', 'Activo')
+            AND miembro_id IN (SELECT id FROM miembros WHERE estado = ?)`
+      )
+      .run(hoy, MOTIVO[estado], estado);
+    cuantas += info.changes;
+  }
+
+  if (cuantas) {
+    console.log(`👋 ${cuantas} ficha(s) de integrante quedaron retiradas: su persona ya no está en la iglesia.`);
+  }
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2511,6 +2561,7 @@ function ejecutarMigraciones() {
     ['solicitudes numeradas por iglesia', solicitudesNumeradasPorIglesia],
     ['texto con formato saneado de nuevo', textoConFormatoSaneadoDeNuevo],
     ['marcas de asistencia con su fecha de toma', marcasDeAsistenciaConSuFechaDeToma],
+    ['los que ya no están salen de sus cuerpos', losQueYaNoEstanSalenDeSusCuerpos],
   ];
 
   for (const [nombre, paso] of pasos) {

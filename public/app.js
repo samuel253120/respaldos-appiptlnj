@@ -4577,6 +4577,27 @@ async function renderAsistenciaDeLaPersona(tipo, personaId, contenedor) {
     </div>`;
 }
 
+/**
+ * Cómo pertenece hoy a ese cuerpo, dicho en la ficha de la persona.
+ *
+ * La lista mostraba todos los cuerpos igual, vigentes y retirados, porque el
+ * servidor mandaba el estado y la pantalla no lo miraba. Así, la ficha de
+ * quien falleció —a quien el sistema retira solo de sus cuerpos, ver
+ * server/ya-no-esta.js— seguía leyéndose como si perteneciera a todos.
+ */
+function insigniaDePertenencia(c) {
+  if (c.en === 'Retirado') return ' <span class="badge red">Retirado</span>';
+  if (c.en === 'En prueba') return ' <span class="badge yellow">En prueba</span>';
+  return '';
+}
+
+/** El motivo y la fecha de la salida, para la columna de la derecha. */
+function porQueSalio(c) {
+  if (c.en !== 'Retirado' || !c.salida) return '';
+  const partes = [c.salida.motivo, c.salida.el ? `el ${fechaCorta(c.salida.el)}` : ''].filter(Boolean);
+  return partes.length ? partes.join(' · ') : 'Retirado';
+}
+
 async function renderCuerposDelMiembro(miembroId, contenedor) {
   if (!MOD['cuerpos']) return;
   let d;
@@ -4591,9 +4612,9 @@ async function renderCuerposDelMiembro(miembroId, contenedor) {
       <div class="toolbar"><b>👥 Cuerpos y grupos</b></div>
       ${d.cuerpos.length
         ? `<ul class="mini-list">${d.cuerpos.map((c) => `
-            <li data-id="${c.id}">
-              <span>${esc(c.nombre)}${c.lidera ? ' <span class="badge blue">Lidera</span>' : ''}</span>
-              <span class="mut">${esc(c.tipo || '')}</span>
+            <li data-id="${c.id}" class="${c.en === 'Retirado' ? 'salido' : ''}">
+              <span>${esc(c.nombre)}${c.lidera ? ' <span class="badge blue">Lidera</span>' : ''}${insigniaDePertenencia(c)}</span>
+              <span class="mut">${esc(porQueSalio(c) || c.tipo || '')}</span>
             </li>`).join('')}</ul>`
         : `<div class="card-body" style="color:var(--muted);font-size:13px">No participa en ningún cuerpo ni grupo.</div>`}
     </div>`;

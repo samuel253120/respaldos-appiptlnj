@@ -349,11 +349,15 @@ module.exports = {
         suyos.set(c.id, { id: c.id, nombre: c.nombre, tipo: c.tipo, estado: c.estado, lidera: true, en: 'Activo' });
       }
       for (const f of cuerposDe(db, id, { conRetirados: true })) {
+        // El motivo del retiro se manda para poder decir POR QUÉ salió: la
+        // pantalla mostraba los cuerpos retirados igual que los vigentes, así
+        // que la ficha de quien falleció seguía leyéndose como si perteneciera.
+        const salida = { motivo: f.motivo_retiro || null, el: f.fecha_retiro || null };
         const ya = suyos.get(f.cuerpo_id);
-        if (ya) { ya.en = f.estado; ya.desde = f.fecha_ingreso; continue; }
+        if (ya) { ya.en = f.estado; ya.desde = f.fecha_ingreso; ya.salida = salida; continue; }
         suyos.set(f.cuerpo_id, {
           id: f.cuerpo_id, nombre: f.nombre, tipo: f.tipo, estado: f.estado_cuerpo,
-          lidera: false, en: f.estado, desde: f.fecha_ingreso,
+          lidera: false, en: f.estado, desde: f.fecha_ingreso, salida,
         });
       }
       res.json({ cuerpos: [...suyos.values()].sort((a, b) => a.nombre.localeCompare(b.nombre)) });
@@ -572,6 +576,16 @@ module.exports = {
      */
     afterSave(fila, { db, user }) {
       sincronizarUsuario(fila, db);
+
+      /**
+       * Quien ya no está en la iglesia sale de sus cuerpos.
+       *
+       * Va antes que la regla de la directiva: las dos pueden querer retirar
+       * la misma ficha, y la primera es la que deja escrito el motivo. La
+       * regla entera —y qué pasa si el estado se vuelve atrás— está en
+       * server/ya-no-esta.js.
+       */
+      require('../ya-no-esta').alGuardarUnMiembro(db, fila, user);
 
       /**
        * Los miembros líderes componen la directiva de su iglesia.

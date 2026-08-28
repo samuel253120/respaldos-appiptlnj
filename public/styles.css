@@ -2992,3 +2992,7 @@ table.libro tbody tr:nth-child(even) td { background: #fafbfe; }
   .cert-boda .cert-epigrafe,
   .cert-sheet .cert-pie { flex: none; }
 }
+
+/* Quien ya salió de un cuerpo se lee más apagado en la ficha de la persona:
+   la lista mostraba a los retirados igual que a los vigentes. */
+ul.mini-list li.salido > span:first-child { opacity: .72; }

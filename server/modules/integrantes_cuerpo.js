@@ -204,6 +204,28 @@ module.exports = {
           + 'Ábrala en vez de crear otra.';
       }
 
+      /**
+       * A quien ya no está en la iglesia no se le vuelve a inscribir.
+       *
+       * Al marcar una ficha como Fallecido o Trasladado, sus fichas de
+       * integrante se retiran solas (ver server/ya-no-esta.js). Sin esta
+       * comprobación esa salida se podía deshacer desde acá sin querer —basta
+       * abrir la ficha de integrante y ponerle «Activo»— y la persona volvía a
+       * la lista del cuerpo, a la planilla del mes y al aviso de faltas.
+       *
+       * Solo estorba si la ficha va a quedar VIGENTE: dejarla retirada, o
+       * corregirle la fecha de retiro, tiene que seguir siendo posible.
+       */
+      if (tipo === 'Miembro' && dato('estado') !== 'Retirado') {
+        const { yaNoEsta } = require('../ya-no-esta');
+        const persona = db.prepare('SELECT estado FROM miembros WHERE id = ?').get(personaId);
+        if (yaNoEsta(persona)) {
+          return `${data.persona || 'Esa persona'} figura como ${String(persona.estado).toLowerCase()} `
+            + 'en su ficha de miembro, así que ya no pertenece a los cuerpos de la iglesia. '
+            + 'Si sigue participando, corrija primero su estado en Miembros.';
+        }
+      }
+
       data.iglesia_id = cuerpo ? cuerpo.iglesia_id : null;
 
       // El fin de la prueba se calcula solo, con los meses que define el cuerpo

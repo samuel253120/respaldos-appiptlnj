@@ -48,6 +48,26 @@ const revisar = (queSeEspera, condicion, detalle) => {
 };
 
 let TOKEN = '';
+/** El día de hoy en la zona horaria que tiene configurada el servidor. */
+async function hoyDelServidor() {
+  try {
+    const config = await api('GET', '/configuracion');
+    const buscar = (o) => {
+      if (Array.isArray(o)) return o.map(buscar).find(Boolean);
+      if (o && typeof o === 'object') {
+        if (o.clave === 'zona_horaria') return o.valor;
+        return Object.values(o).map(buscar).find(Boolean);
+      }
+      return null;
+    };
+    const zona = buscar(config);
+    if (zona) return new Intl.DateTimeFormat('sv-SE', { timeZone: zona }).format(new Date());
+  } catch (e) {
+    // sin poder preguntarla, la del computador es mejor que nada
+  }
+  return new Intl.DateTimeFormat('sv-SE').format(new Date());
+}
+
 async function api(metodo, ruta, cuerpo) {
   const r = await fetch(`${URL}/api${ruta}`, {
     method: metodo,
@@ -90,7 +110,19 @@ print(round(d[0].get_width() * 25.4 / 72), round(d[0].get_height() * 25.4 / 72),
    * cabría en cualquier hoja y la prueba no diría nada: lo que se revisa es
    * que la hoja completa entre.
    */
-  const HOY = new Date().toISOString().slice(0, 10);
+  /*
+   * El día de hoy EN LA ZONA DEL SERVIDOR, no en la del computador que corre
+   * la prueba.
+   *
+   * `toISOString()` da siempre la fecha en UTC. El servidor anota con la zona
+   * que la institución tenga configurada, y valida que una fecha de emisión no
+   * venga del futuro. Con una zona al oeste de Greenwich —America/Santiago,
+   * que es la de fábrica— las dos no coinciden entre la medianoche UTC y la
+   * medianoche de allá: la prueba mandaba el día siguiente y el servidor lo
+   * rechazaba con razón. Fallaba todos los días durante esas horas y ninguna
+   * de las dos partes estaba mala.
+   */
+  const HOY = await hoyDelServidor();
   const CASOS = [
     ['Membresía', { nombre_titular: 'Nombre Completo De Prueba Apellido' }],
     ['Presentación de niños', {
