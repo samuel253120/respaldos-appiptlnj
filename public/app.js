@@ -5719,6 +5719,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y acotar a quién',
       seguir: 'Sí, mandarlo',
     },
+    el_servicio_duro_muchas_horas: {
+      titulo: '🕐 Revise la hora',
+      volver: 'Volver y corregirla',
+      seguir: 'Duró eso, guardar',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',
@@ -9104,7 +9109,7 @@ function printServicio(m, row) {
       <div class="sub">${esc(iglesiaDeTrabajo(row.iglesia_id_label))} — ${fechaLarga(row.fecha)}</div>
       <table class="meta-tbl">
         ${fila('Tipo de servicio', row.tipo)}
-        ${fila('Horario', [row.hora_inicio, row.hora_termino].filter(Boolean).join(' a '))}
+        ${fila('Horario', row.horario)}
         ${fila('Coordinador(a)', row.coordinador)}
       </table>
 

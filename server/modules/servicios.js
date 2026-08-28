@@ -5,6 +5,11 @@
  * empezó y terminó, quién coordinó, quién leyó el salmo y cuál, quién
  * predicó y sobre qué pasaje, cuánta gente asistió y cuánto se ofrendó.
  *
+ * Horario: un servicio puede cruzar la medianoche —una vigilia empieza a las
+ * diez de la noche y termina de madrugada—, y por eso una hora de término
+ * anterior a la de inicio se entiende como del día siguiente y no como un
+ * error. La hoja impresa lo dice entero: «22:00 a 02:30 del día siguiente».
+ *
  * Personas: coordinador, salmista y predicador son campos de tipo "persona".
  * Se buscan entre los miembros registrados, pero también se puede escribir
  * el nombre de alguien que no está en el registro (un visitante, un
@@ -33,6 +38,74 @@ const TIPOS_DE_SERVICIO = [
   'Otro',
 ];
 
+/*
+ * El horario de un servicio, sabiendo que hay servicios que cruzan la
+ * medianoche.
+ *
+ * «Servicio Vigilia» es uno de los tipos que este mismo módulo ofrece, y una
+ * vigilia empieza a las diez de la noche y termina de madrugada. Así que una
+ * hora de término anterior a la de inicio no es un error: es el día siguiente.
+ */
+const MINUTOS_DE_UN_DIA = 24 * 60;
+
+/** Las horas se guardan como «HH:MM», pero de una importación pueden venir con segundos. */
+function hhmm(hora) {
+  const partes = /^(\d{1,2}):(\d{2})/.exec(String(hora == null ? '' : hora).trim());
+  if (!partes) return '';
+  const h = Number(partes[1]);
+  const m = Number(partes[2]);
+  if (!(h >= 0 && h <= 23 && m >= 0 && m <= 59)) return '';
+  return `${String(h).padStart(2, '0')}:${partes[2]}`;
+}
+
+const enMinutos = (hora) => {
+  const texto = hhmm(hora);
+  return texto ? Number(texto.slice(0, 2)) * 60 + Number(texto.slice(3)) : null;
+};
+
+/** Si el término es anterior al inicio, el servicio terminó al día siguiente. */
+function terminaAlDiaSiguiente(inicio, termino) {
+  const a = enMinutos(inicio);
+  const b = enMinutos(termino);
+  return a !== null && b !== null && b < a;
+}
+
+/** Cuánto duró, en minutos, contando el cruce de la medianoche. */
+function cuantoDuro(inicio, termino) {
+  const a = enMinutos(inicio);
+  const b = enMinutos(termino);
+  if (a === null || b === null) return null;
+  return b >= a ? b - a : b + MINUTOS_DE_UN_DIA - a;
+}
+
+/** «22:00 a 02:30 del día siguiente», que es como se dice. */
+function horarioEnPalabras(inicio, termino) {
+  const desde = hhmm(inicio);
+  const hasta = hhmm(termino);
+  if (!desde && !hasta) return '';
+  if (!hasta) return desde;
+  if (!desde) return `hasta las ${hasta}`;
+  return `${desde} a ${hasta}${terminaAlDiaSiguiente(inicio, termino) ? ' del día siguiente' : ''}`;
+}
+
+/** «4 horas y 30 minutos», para decirlo en un aviso. */
+function duracionEnPalabras(minutos) {
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  const enHoras = horas === 1 ? '1 hora' : `${horas} horas`;
+  const enMinutosSueltos = resto === 1 ? '1 minuto' : `${resto} minutos`;
+  if (!horas) return enMinutosSueltos;
+  return resto ? `${enHoras} y ${enMinutosSueltos}` : enHoras;
+}
+
+/**
+ * Más que esto y se pregunta. No es un tope: es el largo a partir del cual lo
+ * más probable es que la hora esté mal escrita y no que el servicio haya
+ * durado eso. Una vigilia de las diez de la noche a las ocho de la mañana dura
+ * diez horas y pasa sin que nadie tenga que confirmar nada.
+ */
+const HORAS_QUE_YA_SON_MUCHAS = 12;
+
 module.exports = {
   name: 'servicios',
   label: 'Registro de Servicios',
@@ -49,6 +122,21 @@ module.exports = {
 
   // Citas armadas al leer, para verlas de un vistazo en el listado y al imprimir
   computed: [
+    /*
+     * El horario va armado y no como dos horas sueltas: «22:00 a 02:30», en la
+     * hoja impresa, se lee como un error de tipeo si no se dice de qué día es
+     * cada una.
+     *
+     * No va en el listado, y se probó: la frase entera parte en cuatro líneas
+     * la fila de cada vigilia y en dos la de todos los demás servicios, porque
+     * la columna es angosta. El listado sigue mostrando la hora de inicio, que
+     * es la que se busca de un vistazo, y el horario completo se ve donde hay
+     * espacio para leerlo.
+     */
+    {
+      name: 'horario', label: 'Horario', type: 'texto',
+      calc: (r) => horarioEnPalabras(r.hora_inicio, r.hora_termino),
+    },
     {
       name: 'cita_salmo', label: 'Salmo leído', type: 'texto',
       calc: (r) => cita(r.salmo_libro, r.salmo_capitulo, r.salmo_versiculo_inicial, r.salmo_versiculo_final),
@@ -166,7 +254,10 @@ module.exports = {
     },
 
     // ---- Cierre ----
-    { name: 'hora_termino', label: 'Hora de término', type: 'time', seccion: 'Cierre' },
+    {
+      name: 'hora_termino', label: 'Hora de término', type: 'time', seccion: 'Cierre',
+      help: 'Si el servicio terminó de madrugada —una vigilia—, anótela igual: se entiende que fue del día siguiente.',
+    },
     { name: 'observaciones', label: 'Observaciones generales', type: 'textarea' },
 
     // Los tres movimientos que la ofrenda de este servicio dejó en Tesorería
@@ -176,7 +267,7 @@ module.exports = {
   ],
 
   hooks: {
-    beforeSave(data, { existing }) {
+    beforeSave(data, { existing, confirmado }) {
       const dato = (nombre) => (data[nombre] !== undefined ? data[nombre] : existing ? existing[nombre] : null);
 
       /*
@@ -191,10 +282,30 @@ module.exports = {
       if (suPorcentaje === null || suPorcentaje === undefined || suPorcentaje === '') {
         data.ofrenda_porcentaje = require('../ajustes').numero('ofrenda_porcentaje_fondo', 0, 100);
       }
+      /*
+       * Acá se rechazaba todo servicio cuya hora de término fuera anterior a
+       * la de inicio, comparando las dos como si fueran del mismo día. Con eso
+       * una vigilia —22:00 a 02:30— no se podía registrar, y quien la
+       * registraba tenía tres salidas y las tres malas: dejar la hora en
+       * blanco, inventar una, o no anotar el servicio.
+       *
+       * Ahora un término anterior al inicio se entiende como del día
+       * siguiente, que es lo que efectivamente pasó. El error de tipeo que la
+       * regla quería atajar se sigue atajando, por el otro lado: si el
+       * servicio sale durando más de doce horas se pregunta antes de guardar,
+       * y quien sabe que duró eso lo confirma.
+       */
       const inicio = dato('hora_inicio');
       const termino = dato('hora_termino');
-      if (inicio && termino && termino < inicio) {
-        return 'La hora de término no puede ser anterior a la hora de inicio';
+      const duro = cuantoDuro(inicio, termino);
+      if (duro !== null && duro > HORAS_QUE_YA_SON_MUCHAS * 60 && !confirmado) {
+        return {
+          error:
+            `Este servicio queda durando ${duracionEnPalabras(duro)}: de las ${hhmm(inicio)} a las `
+            + `${hhmm(termino)}${terminaAlDiaSiguiente(inicio, termino) ? ' del día siguiente' : ''}. `
+            + 'Si la hora está mal escrita, corríjala; si el servicio de verdad duró eso, confirme.',
+          confirmar: 'el_servicio_duro_muchas_horas',
+        };
       }
       for (const pasaje of ['salmo', 'mensaje']) {
         const desde = Number(dato(`${pasaje}_versiculo_inicial`));
