@@ -286,6 +286,9 @@ function enviar(quienManda, { titulo, cuerpo, urgente, enlace, destino, valor })
         clave: `mensaje:${mensajeId}`,
         titulo: elTitulo,
         cuerpo: elCuerpo,
+        // De parte de quién. Un mensaje sin firma se lee como si lo dijera «el
+        // sistema», y el sistema no cambia la hora de una reunión
+        de: quienManda.nombre || null,
         enlace: elEnlace,
         iglesia_id: quien.iglesia_id || null,
         urgente: interrumpe,

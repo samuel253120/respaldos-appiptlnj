@@ -410,6 +410,73 @@ test('a más de quinientos de una vez no se manda: se pide acotar', () => {
   assert.equal(db.prepare('SELECT COUNT(*) c FROM notificaciones WHERE tipo = ? AND titulo = ?').get('mensaje', 'A todos').c, 0);
 });
 
+// ------------------------------------------ de parte de quién viene el aviso
+
+/*
+ * El aviso llegaba con título, texto y fecha, y nada más: el nombre de quien lo
+ * mandó quedaba guardado en el registro del envío y no viajaba. Un mensaje sin
+ * firma se lee como si lo dijera «el sistema», y el sistema no cambia la hora de
+ * una reunión: la cambia una persona a la que uno le puede preguntar.
+ */
+test('el aviso de un mensaje dice de quién viene', () => {
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'Se adelanta el ensayo', cuerpo: 'Media hora antes.', destino: 'personas', valor: [ana.id],
+  });
+  const suyo = db.prepare('SELECT * FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+    .get(ana.id, `mensaje:${salida.id}`);
+  assert.equal(suyo.de, jefa.nombre);
+
+  const enLaCampanita = avisos.paraLaCampanita(ana.id, 5).ultimos[0];
+  assert.equal(enLaCampanita.de, jefa.nombre, 'y la campanita lo trae, que es donde se lee');
+});
+
+test('los avisos que escribe el sistema no llevan firma', () => {
+  /*
+   * No vienen de nadie: los hace el sistema mirando los datos, y firmarlos
+   * sería inventar un autor. Se prueban las dos puertas —la que usa el vigía y
+   * la que usan los avisos sueltos— porque por cualquiera de las dos se podría
+   * colar una firma de más.
+   */
+  const delVigia = avisos.crear({
+    usuario_id: ana.id, tipo: 'credencial_por_vencer', clave: 'credencial_vence:31', titulo: 'Vence una credencial',
+  });
+  assert.equal(delVigia.de, null);
+
+  const suelto = avisos.avisar({
+    usuario_id: ana.id, tipo: 'solicitud_asignada', clave: 'solicitud:404', titulo: 'Le tocó una solicitud',
+  });
+  assert.equal(suelto.de, null);
+});
+
+test('en el teléfono la firma va en el texto, no en el título', () => {
+  /*
+   * El título es lo poco que se alcanza a leer en una pantalla bloqueada.
+   * Gastarlo en un nombre puede dejar fuera justamente lo que había que decir.
+   */
+  empujones.length = 0;
+  mensajes.enviar(jefa, {
+    titulo: 'Se suspende el ensayo', cuerpo: 'Por la lluvia.',
+    destino: 'personas', valor: [ana.id], urgente: true,
+  });
+  assert.equal(empujones.length, 1);
+  assert.equal(empujones[0].aviso.titulo, 'Se suspende el ensayo');
+  assert.equal(empujones[0].aviso.cuerpo, `${jefa.nombre}: Por la lluvia.`);
+});
+
+test('la migración se la pone a los avisos que ya estaban repartidos', () => {
+  const { elAvisoDiceDeQuienViene } = require('../../server/migraciones');
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'De antes de la firma', cuerpo: 'x', destino: 'personas', valor: [ana.id, beto.id],
+  });
+  db.prepare('UPDATE notificaciones SET de = NULL WHERE clave = ?').run(`mensaje:${salida.id}`);
+  db.prepare('DELETE FROM migraciones WHERE nombre = ?').run('los avisos de un mensaje dicen de quién vienen');
+
+  elAvisoDiceDeQuienViene();
+  const firmados = db.prepare('SELECT de FROM notificaciones WHERE clave = ?').all(`mensaje:${salida.id}`);
+  assert.equal(firmados.length, 2);
+  assert.ok(firmados.every((f) => f.de === jefa.nombre), 'el nombre se recupera: el aviso dice de qué mensaje es');
+});
+
 // ------------------------------------------ retirar un mensaje ya mandado
 
 /*
@@ -732,6 +799,13 @@ test('«volver a mandar» copia el texto y NO el destino', () => {
   assert.ok(!/msgDestino|msgPersonas|msgIglesia|msgPerfil/.test(trozo),
     'dejar puesto «a toda la iglesia» es justo el clic que uno no quiere dar sin pensarlo');
   assert.match(trozo, /Revise a quién va antes de mandarlo/);
+});
+
+test('la campanita muestra de quién viene, cuando viene de alguien', () => {
+  const trozo = app.slice(app.indexOf('function abrirElPanelDeAvisos('),
+    app.indexOf('function abrirElPanelDeAvisos(') + 2200);
+  assert.match(trozo, /a\.de \? `<div class="cam-de">de \$\{esc\(a\.de\)\}<\/div>` : ''/,
+    'y solo cuando viene de alguien: los avisos del sistema no se firman');
 });
 
 test('en las preferencias, lo que no se puede apagar sale dicho y no como casilla', () => {

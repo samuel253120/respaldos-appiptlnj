@@ -1271,6 +1271,8 @@ table.planilla-mes tfoot .pie.no td  { color: #b91c1c; }
 .cam-lista li.sin-leer { border-left: 3px solid var(--marca-azul); padding-left: 11px; background: #fbfdff; }
 .cam-lista li.leido { opacity: 0.72; }
 .cam-t { font-weight: 600; font-size: 13.5px; }
+/* De parte de quién viene el aviso: solo lo llevan los escritos a mano */
+.cam-de { font-size: 12px; color: var(--marca-azul); margin-top: 2px; font-weight: 600; }
 .cam-c { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 .cam-f { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
 .cam-vacio { padding: 26px 16px; text-align: center; color: var(--muted); font-size: 13px; }

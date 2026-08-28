@@ -4550,6 +4550,7 @@ async function abrirElPanelDeAvisos() {
       ${d.ultimos.map((a) => `
         <li class="${a.leida ? 'leido' : 'sin-leer'}" data-id="${a.id}" data-enlace="${esc(a.enlace || '')}">
           <div class="cam-t">${esc(a.titulo)}</div>
+          ${a.de ? `<div class="cam-de">de ${esc(a.de)}</div>` : ''}
           ${a.cuerpo ? `<div class="cam-c">${esc(a.cuerpo)}</div>` : ''}
           <div class="cam-f">${esc(cuandoFue(a.created_at))}</div>
         </li>`).join('')}

@@ -130,6 +130,7 @@ db.exec(`
     clave TEXT,
     titulo TEXT NOT NULL,
     cuerpo TEXT,
+    de TEXT,
     enlace TEXT,
     iglesia_id INTEGER,
     leida INTEGER NOT NULL DEFAULT 0,
@@ -140,6 +141,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS ix_notificaciones_usuario ON notificaciones (usuario_id, leida, id DESC);
   CREATE INDEX IF NOT EXISTS ix_notificaciones_clave ON notificaciones (usuario_id, clave);
 `);
+
+/*
+ * Esta tabla es de las hechas a mano, así que las columnas nuevas hay que
+ * agregarlas acá: en una base que ya venía andando, «CREATE TABLE IF NOT
+ * EXISTS» no la toca y la columna no aparecería nunca.
+ */
+for (const [columna, tipo] of [['de', 'TEXT']]) {
+  const tiene = db.prepare('PRAGMA table_info(notificaciones)').all().some((c) => c.name === columna);
+  if (!tiene) db.exec(`ALTER TABLE notificaciones ADD COLUMN ${columna} ${tipo}`);
+}
 
 /**
  * Qué avisos quiere recibir esta persona y por dónde.
@@ -182,12 +193,18 @@ function quiere(usuario, tipo, canal) {
 /**
  * Crea un aviso para una persona, si no lo tenía ya.
  *
+ * `de` dice de parte de quién viene. Los avisos que escribe el sistema mirando
+ * los datos no lo llevan —no vienen de nadie: los hace el sistema—, pero un
+ * mensaje escrito a mano sí, y sin eso se lee como si lo dijera «el sistema».
+ * El sistema no cambia la hora de una reunión: la cambia una persona a la que
+ * uno le puede preguntar.
+ *
  * Devuelve la fila creada, o null si no había que crear nada —porque esa
  * persona no quiere ese tipo de aviso, o porque ya tiene uno igual sin leer—.
  * Quien llama no necesita preguntar nada de eso: manda el aviso y acá se
  * decide.
  */
-function crear({ usuario_id, tipo, clave, titulo, cuerpo, enlace, iglesia_id }) {
+function crear({ usuario_id, tipo, clave, titulo, cuerpo, de, enlace, iglesia_id }) {
   // Con los permisos y el perfil, no solo el rol: `quiere()` consulta la llave
   // del tipo de aviso, y sin estas dos columnas decidiría por el rol a secas.
   const usuario = db
@@ -208,10 +225,10 @@ function crear({ usuario_id, tipo, clave, titulo, cuerpo, enlace, iglesia_id }) 
 
   const r = db
     .prepare(
-      `INSERT INTO notificaciones (usuario_id, tipo, clave, titulo, cuerpo, enlace, iglesia_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO notificaciones (usuario_id, tipo, clave, titulo, cuerpo, de, enlace, iglesia_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(usuario_id, tipo, clave || null, titulo, cuerpo || null, enlace || null, iglesia_id || null);
+    .run(usuario_id, tipo, clave || null, titulo, cuerpo || null, de || null, enlace || null, iglesia_id || null);
   return db.prepare('SELECT * FROM notificaciones WHERE id = ?').get(r.lastInsertRowid);
 }
 
@@ -222,7 +239,7 @@ function paraLaCampanita(usuarioId, cuantos = 20) {
     .get(usuarioId).c;
   const ultimos = db
     .prepare(
-      `SELECT id, tipo, titulo, cuerpo, enlace, leida, created_at
+      `SELECT id, tipo, titulo, cuerpo, de, enlace, leida, created_at
          FROM notificaciones WHERE usuario_id = ? ORDER BY id DESC LIMIT ?`
     )
     .all(usuarioId, cuantos);
@@ -314,8 +331,8 @@ function limpiarLosViejos(dias = 90) {
  * guardando una solicitud no tiene por qué esperar eso. Si falla, el aviso ya
  * está en la campanita igual.
  */
-function avisar({ usuario_id, tipo, clave, titulo, cuerpo, enlace, iglesia_id, urgente }) {
-  const fila = crear({ usuario_id, tipo, clave, titulo, cuerpo, enlace, iglesia_id });
+function avisar({ usuario_id, tipo, clave, titulo, cuerpo, de, enlace, iglesia_id, urgente }) {
+  const fila = crear({ usuario_id, tipo, clave, titulo, cuerpo, de, enlace, iglesia_id });
   if (!fila) return null;
 
   const def = TIPOS[tipo];
@@ -335,8 +352,14 @@ function avisar({ usuario_id, tipo, clave, titulo, cuerpo, enlace, iglesia_id, u
   if (!usuario || !quiere(usuario, tipo, 'navegador')) return fila;
 
   const navegador = require('./navegador');
+  /*
+   * En el teléfono, de quién viene va al principio del texto. En el título no:
+   * el título es lo poco que se alcanza a leer en una pantalla bloqueada, y
+   * gastarlo en un nombre puede dejar fuera justamente lo que había que decir.
+   */
+  const loQueSeLee = de ? `${de}: ${cuerpo || ''}`.trim() : cuerpo;
   navegador
-    .empujar(usuario_id, { titulo, cuerpo, enlace, etiqueta: clave || tipo })
+    .empujar(usuario_id, { titulo, cuerpo: loQueSeLee, enlace, etiqueta: clave || tipo })
     .then(() => db.prepare('UPDATE notificaciones SET empujada = 1 WHERE id = ?').run(fila.id))
     .catch((e) => console.error(`⚠️  No se pudo empujar el aviso ${fila.id}: ${e.message}`));
 

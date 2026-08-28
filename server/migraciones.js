@@ -2550,6 +2550,40 @@ function elConteoDeLeidosSeGuarda() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Les pone la firma a los avisos de mensajes que ya estaban en las campanitas.
+ *
+ * Un mensaje escrito a mano viaja con el nombre de quien lo mandó; sin eso se
+ * lee como si lo dijera «el sistema», y el sistema no cambia la hora de una
+ * reunión: la cambia una persona a la que uno le puede preguntar. Los que ya
+ * estaban repartidos no lo llevaban, y el nombre se puede recuperar: cada aviso
+ * dice de qué mensaje es, y el mensaje dice quién lo mandó.
+ */
+function elAvisoDiceDeQuienViene() {
+  const NOMBRE = 'los avisos de un mensaje dicen de quién vienen';
+  if (yaAplicada(NOMBRE)) return;
+
+  // Que las tablas y las columnas existan no depende del orden de carga
+  require('./avisos/avisos');
+  require('./avisos/mensajes');
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('notificaciones') || !hayTabla('mensajes_enviados')) return marcarAplicada(NOMBRE);
+
+  const info = db
+    .prepare(
+      `UPDATE notificaciones
+          SET de = (SELECT u.nombre
+                      FROM mensajes_enviados m LEFT JOIN usuarios u ON u.id = m.enviado_por
+                     WHERE 'mensaje:' || m.id = notificaciones.clave)
+        WHERE tipo = 'mensaje' AND de IS NULL AND clave LIKE 'mensaje:%'`
+    )
+    .run();
+
+  if (info.changes) console.log(`✍️  ${info.changes} aviso(s) de mensajes quedaron diciendo de quién vienen.`);
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2604,6 +2638,7 @@ function ejecutarMigraciones() {
     ['marcas de asistencia con su fecha de toma', marcasDeAsistenciaConSuFechaDeToma],
     ['los que ya no están salen de sus cuerpos', losQueYaNoEstanSalenDeSusCuerpos],
     ['el conteo de leídos se guarda en el mensaje', elConteoDeLeidosSeGuarda],
+    ['los avisos de un mensaje dicen de quién vienen', elAvisoDiceDeQuienViene],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -2854,6 +2889,7 @@ module.exports = {
   ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
   cadaIglesiaConSuCodigo, solicitudesNumeradasPorIglesia,
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, elConteoDeLeidosSeGuarda,
+  elAvisoDiceDeQuienViene,
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
   hojasDePresentacionYMatrimonio, certificadosApaisados,
