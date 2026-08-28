@@ -294,6 +294,26 @@ module.exports = {
       },
     },
     {
+      /**
+       * Quién responde por este menor, venga de donde venga.
+       *
+       * La ficha, la impresión y quien pregunte tienen que ver UNA respuesta,
+       * no dos campos que a veces están y a veces no. Cuesta poco: la ficha
+       * que no tiene adulto elegido —que son casi todas, porque los menores
+       * son unos pocos— se responde sin mirar la base.
+       */
+      name: 'responsable', label: 'Adulto responsable', type: 'texto',
+      calc: (r, { db }) => {
+        if (!r.responsable_id) return r.responsable_nombre || '';
+        const quien = db
+          .prepare('SELECT nombres, apellidos, rut, telefono FROM miembros WHERE id = ?')
+          .get(r.responsable_id);
+        if (!quien) return r.responsable_nombre || '';
+        const datos = [quien.rut, quien.telefono].filter(Boolean).join(' · ');
+        return `${quien.nombres} ${quien.apellidos}`.trim() + (datos ? ` (${datos})` : '');
+      },
+    },
+    {
       name: 'edad', label: 'Edad', type: 'texto',
       // La edad no es una columna, pero la fecha de nacimiento sí: ordenar por
       // edad es ordenar por ella al revés. Sin esto, pedir el listado por edad
@@ -337,11 +357,33 @@ module.exports = {
       options: ['Femenino', 'Masculino'],
     },
 
-    // ------- Adulto responsable (solo para menores de 18) -------
+    /*
+     * ------- Adulto responsable (solo para menores de 18) -------
+     *
+     * El adulto responsable se ELIGE de la membresía cuando está registrado, y
+     * se escribe a mano solo cuando no lo está.
+     *
+     * Antes solo se escribía. Una madre con tres hijos quedaba tecleada tres
+     * veces, con su RUT tecleado tres veces, y si cambiaba de teléfono había
+     * que corregirlo en cuatro fichas. No se podía pedir «el grupo familiar de
+     * los González» para una visita, ni saber de un niño quién lo viene a
+     * buscar sin abrir su ficha y leerla.
+     *
+     * Elegida la ficha, el nombre, el RUT y el teléfono se BORRAN de acá: no
+     * se guardan dos veces. Se leen de la ficha de esa persona, que es donde
+     * se mantienen al día. El parentesco se queda, porque no es un dato de
+     * ella sino del vínculo.
+     */
+    {
+      name: 'responsable_id', label: 'Adulto responsable (registrado)', type: 'ref', ref: 'miembros',
+      seccion: 'Adulto responsable (menor de edad)', showIf: { field: 'fecha_nacimiento', menorDe: 18 },
+      help: 'Quién responde por este miembro mientras sea menor de 18 años. '
+        + 'Si está en la membresía, elíjalo acá: sus datos se leen de su ficha y no hay que escribirlos.',
+    },
     {
       name: 'responsable_nombre', label: 'Nombre y apellido del adulto responsable', type: 'text',
-      seccion: 'Adulto responsable (menor de edad)', showIf: { field: 'fecha_nacimiento', menorDe: 18 },
-      help: 'Quién responde por este miembro mientras sea menor de 18 años.',
+      showIf: { field: 'fecha_nacimiento', menorDe: 18 },
+      help: 'Solo si NO está en la membresía. Al elegirlo arriba, esto se borra solo.',
     },
     {
       name: 'responsable_rut', label: 'RUT del adulto responsable', type: 'rut',
@@ -500,6 +542,39 @@ module.exports = {
         });
       }
       res.json({ cuerpos: [...suyos.values()].sort((a, b) => a.nombre.localeCompare(b.nombre)) });
+    });
+
+    /**
+     * De qué menores responde esta persona.
+     *
+     * Es la vuelta del vínculo: la ficha del niño dice quién responde por él,
+     * y la de la madre tiene que decir por quiénes responde ella. Sin esto el
+     * vínculo se ve desde un solo lado y no sirve para lo que se quería —«el
+     * grupo familiar de los González», «a quién le aviso si pasa algo en la
+     * actividad de los chicos»—.
+     *
+     * Se pregunta al abrir cualquier ficha, así que se midió: 0,05 ms con 600
+     * fichas y 0,87 ms con 10.000. SQLite prefiere recorrer la tabla antes que
+     * usar el índice, y a esos números da igual: no hay nada que optimizar acá.
+     */
+    router.get('/miembros/:id(\\d+)/a-cargo', requirePerm('miembros', 'view'), (req, res) => {
+      // La ficha tiene que ser de las suyas, como en cualquier otra consulta
+      if (!require('../alcance').registroSuyo(req, res, 'miembros', req.params.id, 'Esa ficha')) return;
+      const menores = db
+        .prepare(
+          `SELECT id, nombres, apellidos, fecha_nacimiento, responsable_parentesco, estado
+             FROM miembros WHERE responsable_id = ? ORDER BY fecha_nacimiento DESC, apellidos, nombres`
+        )
+        .all(Number(req.params.id));
+      res.json({
+        menores: menores.map((m) => ({
+          ...m,
+          edad: edadEnAnios(m.fecha_nacimiento),
+          // Se dice cuando ya cumplió 18: el vínculo se queda escrito —es
+          // parte de su historia— pero deja de ser una responsabilidad vigente
+          ya_es_mayor: edadEnAnios(m.fecha_nacimiento) >= 18,
+        })),
+      });
     });
 
     /** Cómo está el acceso al sistema de este miembro. */
@@ -697,6 +772,42 @@ module.exports = {
         }
       }
 
+      /**
+       * El adulto responsable, cuando se elige de la membresía.
+       *
+       * Tres cosas que no pueden pasar y una que sí: nadie responde por sí
+       * mismo; la ficha elegida tiene que existir; y tiene que ser de la misma
+       * iglesia, porque a quien no se alcanza no se le puede ni mirar el
+       * teléfono el día que hay que llamarlo.
+       *
+       * Que el adulto sea mayor de edad NO se exige: un hermano de diecisiete
+       * que trae a la menor a las actividades es la persona a la que hay que
+       * llamar, y negarse a anotarlo no la protege de nada. Se anota y listo.
+       */
+      const responsable = data.responsable_id !== undefined
+        ? data.responsable_id
+        : existing ? existing.responsable_id : null;
+      if (responsable) {
+        if (id && Number(responsable) === Number(id)) {
+          return 'Un miembro no puede figurar como su propio adulto responsable.';
+        }
+        const quien = db.prepare('SELECT id, nombres, apellidos, iglesia_id FROM miembros WHERE id = ?').get(responsable);
+        if (!quien) return 'La persona indicada como adulto responsable no está en Miembros.';
+        const suIglesia = data.iglesia_id !== undefined ? data.iglesia_id : existing ? existing.iglesia_id : null;
+        if (suIglesia && quien.iglesia_id && Number(quien.iglesia_id) !== Number(suIglesia)) {
+          return `${quien.nombres} ${quien.apellidos} está registrado(a) en otra iglesia. `
+            + 'El adulto responsable tiene que ser de la misma.';
+        }
+        /*
+         * Y sus datos NO se copian: se borran de acá. Guardarlos dos veces es
+         * garantizar que un día digan cosas distintas —el teléfono cambia en
+         * una ficha y no en la otra— y ahí ya no se sabe cuál es el bueno.
+         */
+        data.responsable_nombre = null;
+        data.responsable_rut = null;
+        data.responsable_telefono = null;
+      }
+
       // A quien el ministerio le impone un trato —Guía de Obra por su cargo,
       // Pastor o Pastora por el suyo o por su cónyuge— no se le puede fijar a
       // mano el de Hermano, Hermana u Oficial.
@@ -785,6 +896,23 @@ module.exports = {
 
     beforeDelete(fila, { db }) {
       db.prepare('UPDATE miembros SET conyuge_id = NULL WHERE conyuge_id = ?').run(fila.id);
+
+      /*
+       * Los menores a su cargo no se quedan apuntando a una ficha que ya no
+       * está, pero tampoco se quedan sin adulto responsable: su nombre y su
+       * RUT vuelven a escribirse a mano, que es de donde salieron. Soltar el
+       * vínculo a secas dejaría a un menor sin nadie anotado, y eso es
+       * justamente lo que la iglesia tiene que poder responder.
+       */
+      const nombre = `${fila.nombres || ''} ${fila.apellidos || ''}`.trim();
+      db.prepare(
+        `UPDATE miembros
+            SET responsable_id = NULL,
+                responsable_nombre = COALESCE(NULLIF(TRIM(COALESCE(responsable_nombre,'')), ''), ?),
+                responsable_rut = COALESCE(responsable_rut, ?),
+                responsable_telefono = COALESCE(responsable_telefono, ?)
+          WHERE responsable_id = ?`
+      ).run(nombre || null, fila.rut || null, fila.telefono || null, fila.id);
       return null;
     },
   },

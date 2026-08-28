@@ -144,6 +144,21 @@ test('correrla dos veces no duplica nada', () => {
 // ------------------------------------------ que no se mezcle con Miembros --
 
 test('No Miembros y Miembros son dos tablas distintas', () => {
-  const enMiembros = db.prepare("SELECT COUNT(*) c FROM miembros WHERE nombres LIKE 'Juana%' OR nombres LIKE 'Rosa%'").get().c;
+  /*
+   * Acotado a las iglesias DE ESTA PRUEBA a propósito.
+   *
+   * Estaba escrito contra toda la tabla —«que no haya ningún miembro llamado
+   * Juana o Rosa»— y los archivos del motor comparten una sola base. Bastaba
+   * que otra prueba llamara Rosa a alguien suyo para que esta fallara sin
+   * tener nada que ver, y pasó dos veces. Lo que se quiere comprobar es que
+   * la migración de las ayudas no metió gente en la membresía, y eso se mira
+   * en el escenario que ella misma armó.
+   */
+  const enMiembros = db
+    .prepare(
+      `SELECT COUNT(*) c FROM miembros
+        WHERE iglesia_id IN (?, ?) AND (nombres LIKE 'Juana%' OR nombres LIKE 'Rosa%')`
+    )
+    .get(iglesia, otraIglesia).c;
   assert.equal(enMiembros, 0, 'nadie del registro de no miembros entró a la membresía');
 });

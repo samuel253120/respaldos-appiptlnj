@@ -79,13 +79,17 @@ function resumen(usuario) {
   // Los menores sin adulto responsable van aparte: no es un dato que falte por
   // completar la ficha, es una obligación de la propia iglesia.
   let menoresSinResponsable = 0;
+  // Se cuenta al que no tiene NINGUNO de los dos: ni la ficha elegida ni el
+  // nombre escrito. Mirando solo el nombre, a todo menor con su adulto
+  // elegido de la membresía se le contaba como si no tuviera a nadie.
   if (campos.has('fecha_nacimiento') && campos.has('responsable_nombre')) {
     menoresSinResponsable = db
       .prepare(
         `SELECT COUNT(*) AS c FROM miembros ${whereSql} ${whereSql ? 'AND' : 'WHERE'}
            fecha_nacimiento IS NOT NULL AND fecha_nacimiento <> ''
            AND CAST((julianday('now') - julianday(fecha_nacimiento)) / 365.25 AS INTEGER) < 18
-           AND (responsable_nombre IS NULL OR TRIM(responsable_nombre) = '')`
+           AND (responsable_nombre IS NULL OR TRIM(responsable_nombre) = '')
+           AND (responsable_id IS NULL OR responsable_id = '')`
       )
       .get(...params).c;
   }

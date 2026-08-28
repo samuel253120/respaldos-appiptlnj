@@ -1918,7 +1918,7 @@ async function renderPendientes(zona) {
         <div class="aviso-fuerte">
           ⚠️ Hay <b>${fmtNumero(p.menoresSinResponsable)}</b> menor(es) de edad sin adulto responsable en su ficha.
           Eso no es un dato que falte: es una obligación de la iglesia.
-          <a href="#/m/miembros?sin=responsable_nombre">Ver quiénes son</a>
+          <a href="#/m/miembros?sin=responsable_nombre,responsable_id">Ver quiénes son</a>
         </div>` : ''}
       <ul class="mini-list">${p.faltas.map(linea).join('')}</ul>
     </div>`;
@@ -2960,6 +2960,7 @@ async function viewFicha(name, id, pestana) {
     if (name === 'cuerpos') alPie(renderCumplimientoCuerpo, Number(id));
     if (name === 'credenciales') alPie(renderEmisionCredencial, Number(id));
     if (name === 'pastores') alPie(renderFichaMiembroPastor, Number(id), row);
+    if (name === 'miembros') alPie(renderMenoresACargo, Number(id));
     if (name === 'miembros') alPie(renderAccesoMiembro, Number(id));
     if (name === 'no_miembros') alPie(renderInscribirNoMiembro, Number(id), row);
   };
@@ -4670,6 +4671,46 @@ function porQueSalio(c) {
   return partes.length ? partes.join(' · ') : 'Retirado';
 }
 
+/**
+ * De qué menores responde esta persona, en su propia ficha.
+ *
+ * Es la vuelta del vínculo. La ficha del niño dice quién responde por él; sin
+ * esto, la de la madre no decía nada, y el vínculo servía para la mitad de lo
+ * que tenía que servir.
+ *
+ * No se pinta nada cuando no hay nadie a cargo, que es el caso de casi todas
+ * las fichas: una caja vacía que dice «no tiene menores a cargo» es ruido en
+ * todas las fichas de la iglesia para servirle a unas pocas.
+ */
+async function renderMenoresACargo(miembroId, contenedor) {
+  let d;
+  try {
+    d = await api('GET', `/miembros/${miembroId}/a-cargo`);
+  } catch (e) {
+    return;
+  }
+  if (!d.menores || !d.menores.length) return;
+
+  const caja = document.createElement('div');
+  caja.className = 'card';
+  caja.style.marginTop = '18px';
+  caja.innerHTML = `
+    <div class="toolbar"><b>👨‍👩‍👧 Menores a su cargo</b></div>
+    <ul class="mini-list">${d.menores.map((m) => `
+      <li data-id="${m.id}">
+        <span>${esc(nombreCorto(m))}${
+          m.responsable_parentesco ? ` <span class="mut">· ${esc(m.responsable_parentesco)}</span>` : ''}</span>
+        <span class="mut">${m.ya_es_mayor
+          ? 'ya es mayor de edad'
+          : esc(m.edad != null ? `${m.edad} año${m.edad === 1 ? '' : 's'}` : '')}</span>
+      </li>`).join('')}</ul>`;
+  contenedor.appendChild(caja);
+  caja.querySelectorAll('.mini-list li').forEach((li) => {
+    li.style.cursor = 'pointer';
+    li.addEventListener('click', () => (location.hash = `#/m/miembros/ficha/${li.dataset.id}`));
+  });
+}
+
 async function renderCuerposDelMiembro(miembroId, contenedor) {
   if (!MOD['cuerpos']) return;
   let d;
@@ -5242,7 +5283,10 @@ function avisosDelMiembro(row) {
     avisos.push(`<div class="aviso importante"><b>⚠️ Nota importante</b><span>${esc(row.nota_importante)}</span></div>`);
   }
   const anios = aniosDeFecha(row.fecha_nacimiento);
-  if (anios != null && anios < 18 && !row.responsable_nombre) {
+  // Sin NINGUNO de los dos: ni el adulto elegido de la membresía ni el nombre
+  // escrito. Mirando solo el nombre, a todo menor con su adulto elegido se le
+  // seguía avisando de que le faltaba.
+  if (anios != null && anios < 18 && !row.responsable_nombre && !row.responsable_id) {
     avisos.push(
       `<div class="aviso"><b>👶 Menor de edad</b><span>Tiene ${anios} año${anios === 1 ? '' : 's'} y todavía no
        está registrado su adulto responsable. Complételo más abajo, en «Adulto responsable».</span></div>`

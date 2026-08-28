@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.136.0", fecha: "2026-08-28", titulo: "El adulto responsable de un menor se elige de la membresía: sus datos se leen de su ficha y no se teclean una vez por hijo" },
   { version: "1.135.0", fecha: "2026-08-28", titulo: "Al listado de personas se le puede preguntar por edad y por cuerpo, y ordenarlo por edad" },
   { version: "1.134.0", fecha: "2026-08-28", titulo: "Buscar «María González» encuentra a María González: el buscador va por palabras y sin tildes, en todo el sistema" },
   { version: "1.133.0", fecha: "2026-08-28", titulo: "Al crear a alguien que ya está registrado, el sistema lo dice antes de guardar: se pregunta, no se bloquea" },
