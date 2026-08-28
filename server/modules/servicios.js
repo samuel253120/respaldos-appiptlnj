@@ -5,6 +5,11 @@
  * empezó y terminó, quién coordinó, quién leyó el salmo y cuál, quién
  * predicó y sobre qué pasaje, cuánta gente asistió y cuánto se ofrendó.
  *
+ * Repetido: registrar dos veces el mismo servicio mete su ofrenda dos veces en
+ * la tesorería de la iglesia, así que antes de guardar se pregunta si ya hay
+ * uno del mismo tipo, el mismo día y en la misma iglesia. Se pregunta y no se
+ * bloquea: el de la mañana y el de la tarde son dos servicios.
+ *
  * Horario: un servicio puede cruzar la medianoche —una vigilia empieza a las
  * diez de la noche y termina de madrugada—, y por eso una hora de término
  * anterior a la de inicio se entiende como del día siguiente y no como un
@@ -28,6 +33,7 @@
  */
 const { LIBROS, cita } = require('../biblia');
 const { sincronizarOfrenda } = require('../ofrenda-tesoreria');
+const { fechaLarga } = require('../formato');
 
 /** Los servicios que celebra la iglesia. */
 const TIPOS_DE_SERVICIO = [
@@ -105,6 +111,61 @@ function duracionEnPalabras(minutos) {
  * diez horas y pasa sin que nadie tenga que confirmar nada.
  */
 const HORAS_QUE_YA_SON_MUCHAS = 12;
+
+/*
+ * El mismo servicio registrado dos veces mete su ofrenda dos veces.
+ *
+ * Cada servicio deja tres movimientos en Tesorería, así que dos registros del
+ * mismo culto son dos ingresos de la misma ofrenda en la cuenta de la iglesia.
+ * Medido en la revisión del módulo: dos servicios idénticos —misma fecha,
+ * mismo tipo, misma iglesia— se guardaban los dos sin decir nada, y el día
+ * quedaba con seis movimientos y dos ingresos de $100.000.
+ *
+ * No se bloquea, se pregunta: dos servicios del mismo tipo el mismo día
+ * existen —el de la mañana y el de la tarde—, y es lo que el sistema ya hace
+ * con las fichas de personas que se llaman igual.
+ */
+function elQueYaEstabaEseDia(db, { fecha, tipo, iglesia_id: iglesiaId }, id) {
+  /*
+   * Sin fecha, sin tipo o sin iglesia no encuentra nada, y no hace falta
+   * revisarlo antes: en SQL una comparación con NULL no calza con ninguna fila.
+   * Se probó quitando el resguardo que había acá y no cambió nada, así que era
+   * código muerto.
+   */
+  return db
+    .prepare(
+      `SELECT s.id, s.hora_inicio, s.ofrenda_total, i.nombre AS iglesia
+         FROM servicios s
+         LEFT JOIN iglesias i ON i.id = s.iglesia_id
+        WHERE s.fecha = ? AND s.tipo = ? AND s.iglesia_id = ? AND s.id IS NOT ?
+        ORDER BY s.id LIMIT 1`
+    )
+    .get(String(fecha).slice(0, 10), tipo, iglesiaId, id || 0);
+}
+
+/** El aviso de servicio repetido, o null si no hay ninguno ese día. */
+function avisoDeServicioRepetido(db, datos, id) {
+  const otro = elQueYaEstabaEseDia(db, datos, id);
+  if (!otro) return null;
+
+  // Con qué se distingue de este: la hora en que empezó y lo que se ofrendó
+  const senas = [
+    hhmm(otro.hora_inicio) ? `empezó a las ${hhmm(otro.hora_inicio)}` : null,
+    Number(otro.ofrenda_total) > 0
+      ? `ofrenda $${Number(otro.ofrenda_total).toLocaleString('es-CL')}`
+      : null,
+  ].filter(Boolean).join(', ');
+
+  return {
+    error:
+      `Ya hay un ${datos.tipo} registrado el ${fechaLarga(datos.fecha)}`
+      + `${otro.iglesia ? ` en ${otro.iglesia}` : ''}${senas ? ` (${senas})` : ''}. `
+      + 'Si es el mismo, abra ese y corríjalo en vez de registrarlo de nuevo: la ofrenda de cada '
+      + 'servicio entra a la tesorería de la iglesia, y registrada dos veces entra dos veces. Si de '
+      + 'verdad fueron dos servicios distintos, confirme.',
+    confirmar: 'servicio_ya_registrado_ese_dia',
+  };
+}
 
 module.exports = {
   name: 'servicios',
@@ -267,7 +328,7 @@ module.exports = {
   ],
 
   hooks: {
-    beforeSave(data, { existing, confirmado }) {
+    beforeSave(data, { existing, confirmado, db, id }) {
       const dato = (nombre) => (data[nombre] !== undefined ? data[nombre] : existing ? existing[nombre] : null);
 
       /*
@@ -282,6 +343,19 @@ module.exports = {
       if (suPorcentaje === null || suPorcentaje === undefined || suPorcentaje === '') {
         data.ofrenda_porcentaje = require('../ajustes').numero('ofrenda_porcentaje_fondo', 0, 100);
       }
+      /*
+       * Lo primero que se pregunta es si este servicio ya está registrado: es
+       * lo que cuesta plata. La confirmación es una sola para todo el guardado
+       * —así funciona el mecanismo—, así que la pregunta que se muestra tiene
+       * que ser la que más importa.
+       */
+      const repetido = avisoDeServicioRepetido(
+        db,
+        { fecha: dato('fecha'), tipo: dato('tipo'), iglesia_id: dato('iglesia_id') },
+        id
+      );
+      if (repetido && !confirmado) return repetido;
+
       /*
        * Acá se rechazaba todo servicio cuya hora de término fuera anterior a
        * la de inicio, comparando las dos como si fueran del mismo día. Con eso

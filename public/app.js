@@ -5724,6 +5724,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y corregirla',
       seguir: 'Duró eso, guardar',
     },
+    servicio_ya_registrado_ese_dia: {
+      titulo: '🕊️ Puede que este servicio ya esté registrado',
+      volver: 'Volver y abrir el que está',
+      seguir: 'Es otro servicio, guardar',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',
