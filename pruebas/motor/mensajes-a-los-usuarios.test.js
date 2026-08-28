@@ -407,6 +407,117 @@ test('a más de quinientos de una vez no se manda: se pide acotar', () => {
   assert.equal(db.prepare('SELECT COUNT(*) c FROM notificaciones WHERE tipo = ? AND titulo = ?').get('mensaje', 'A todos').c, 0);
 });
 
+// ------------------------------ el conteo de leídos, que no se puede borrar solo
+
+/*
+ * Los avisos leídos se borran solos a los noventa días. El conteo de leídos
+ * salía de contarlos, así que la constancia se deshacía sola: «40 de 40 leídos»
+ * pasaba a decir «0 de 40», sin avisar y sin quedar a medias. Es peor que perder
+ * el dato, porque afirma lo contrario. Ahora el número se guarda al leerlo.
+ */
+const comoVa = (id, quien = jefa) => {
+  const suyo = mensajes.loQueSeHaMandado(quien, 200).find((m) => m.id === id);
+  return `${suyo.leidos} de ${suyo.cuantos}`;
+};
+
+test('el conteo de leídos sobrevive al borrado de los avisos', () => {
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'El aviso de diciembre', cuerpo: 'Para contarlo en marzo',
+    destino: 'personas', valor: [ana.id, beto.id],
+  });
+  for (const quien of [ana, beto]) {
+    const suyo = db.prepare('SELECT id FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+      .get(quien.id, `mensaje:${salida.id}`);
+    avisos.marcarLeida(quien.id, suyo.id);
+  }
+  assert.equal(comoVa(salida.id), '2 de 2');
+
+  // pasan los noventa días
+  db.prepare("UPDATE notificaciones SET leida_en = date('now','localtime','-120 days') WHERE clave = ?")
+    .run(`mensaje:${salida.id}`);
+  const borrados = avisos.limpiarLosViejos(90);
+  assert.ok(borrados >= 2, 'la limpieza tenía que llevarse esos avisos');
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM notificaciones WHERE clave = ?').get(`mensaje:${salida.id}`).c, 0);
+
+  assert.equal(comoVa(salida.id), '2 de 2',
+    'quien revise en marzo qué pasó con el aviso de diciembre no puede leer que no lo abrió nadie');
+});
+
+test('volver a marcar el mismo aviso no cuenta dos veces', () => {
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'Para marcarlo dos veces', cuerpo: 'Uno', destino: 'personas', valor: [ana.id],
+  });
+  const suyo = db.prepare('SELECT id FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+    .get(ana.id, `mensaje:${salida.id}`);
+  assert.equal(avisos.marcarLeida(ana.id, suyo.id), 1);
+  assert.equal(avisos.marcarLeida(ana.id, suyo.id), 0, 'ya estaba leído');
+  assert.equal(comoVa(salida.id), '1 de 1');
+});
+
+test('«marcar todos como leídos» cuenta cada mensaje una vez', () => {
+  const uno = mensajes.enviar(jefa, { titulo: 'De a montón 1', cuerpo: 'x', destino: 'personas', valor: [beto.id] });
+  const dos = mensajes.enviar(jefa, { titulo: 'De a montón 2', cuerpo: 'x', destino: 'personas', valor: [beto.id] });
+  avisos.crear({ usuario_id: beto.id, tipo: 'cumpleanos_hoy', clave: 'cumple:9', titulo: 'Alguien cumple' });
+
+  assert.ok(avisos.marcarTodasLeidas(beto.id) >= 3);
+  assert.equal(comoVa(uno.id), '1 de 1');
+  assert.equal(comoVa(dos.id), '1 de 1');
+  assert.equal(avisos.marcarTodasLeidas(beto.id), 0, 'ya no le queda nada sin leer');
+  assert.equal(comoVa(uno.id), '1 de 1', 'y pasarlo de nuevo no vuelve a sumar');
+
+  /*
+   * Y el caso de verdad, que es el que pasa todas las semanas: ya marcó todo,
+   * después le llega otro, y vuelve a apretar «marcar todos». Los viejos no
+   * pueden volver a contarse por ir en la misma pasada que el nuevo.
+   */
+  const tres = mensajes.enviar(jefa, { titulo: 'De a montón 3', cuerpo: 'x', destino: 'personas', valor: [beto.id] });
+  assert.equal(avisos.marcarTodasLeidas(beto.id), 1, 'solo el nuevo estaba sin leer');
+  assert.equal(comoVa(tres.id), '1 de 1');
+  assert.equal(comoVa(uno.id), '1 de 1', 'el de la semana pasada sigue en uno');
+  assert.equal(comoVa(dos.id), '1 de 1');
+});
+
+test('leer un aviso que no es un mensaje no toca ningún conteo', () => {
+  const salida = mensajes.enviar(jefa, { titulo: 'Testigo', cuerpo: 'x', destino: 'personas', valor: [ana.id] });
+  const antes = comoVa(salida.id);
+  const otro = avisos.crear({ usuario_id: ana.id, tipo: 'credencial_por_vencer', clave: 'credencial_vence:777', titulo: 'Vence' });
+  avisos.marcarLeida(ana.id, otro.id);
+  assert.equal(comoVa(salida.id), antes);
+});
+
+test('una clave que no es de un mensaje, o de uno que no existe, no anota nada', () => {
+  assert.equal(mensajes.anotarLectura(['cumple:3', 'respaldo', '', null]), 0);
+  assert.equal(mensajes.anotarLectura(['mensaje:999999']), 0, 'un mensaje que no existe no crea nada');
+  assert.equal(mensajes.anotarLectura('mensaje:no-es-un-numero'), 0);
+});
+
+test('la migración rescata lo que todavía se puede saber', () => {
+  /*
+   * En las bases que ya venían andando el número no estaba guardado. Se llena
+   * una vez con los avisos que aún no se han borrado; lo que la limpieza ya se
+   * llevó no vuelve, porque no hay de dónde sacarlo.
+   */
+  const { elConteoDeLeidosSeGuarda } = require('../../server/migraciones');
+  const salida = mensajes.enviar(jefa, {
+    titulo: 'De antes de que se guardara', cuerpo: 'x', destino: 'personas', valor: [ana.id, beto.id],
+  });
+  const suyo = db.prepare('SELECT id FROM notificaciones WHERE usuario_id = ? AND clave = ?')
+    .get(ana.id, `mensaje:${salida.id}`);
+  avisos.marcarLeida(ana.id, suyo.id);
+
+  // como si esa columna no se hubiera llevado nunca
+  db.prepare('UPDATE mensajes_enviados SET leidos = 0 WHERE id = ?').run(salida.id);
+  db.prepare('DELETE FROM migraciones WHERE nombre = ?').run('el conteo de leídos se guarda en el mensaje');
+  assert.equal(comoVa(salida.id), '0 de 2');
+
+  elConteoDeLeidosSeGuarda();
+  assert.equal(comoVa(salida.id), '1 de 2', 'lo que quedaba en las campanitas se rescata');
+
+  // y correrla de nuevo no vuelve a sumar
+  elConteoDeLeidosSeGuarda();
+  assert.equal(comoVa(salida.id), '1 de 2');
+});
+
 // ------------------------------------ de quién es cada mensaje del historial
 
 /*

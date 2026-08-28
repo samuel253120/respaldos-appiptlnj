@@ -2509,6 +2509,47 @@ function losQueYaNoEstanSalenDeSusCuerpos() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Rescata el conteo de leídos de los mensajes que ya estaban mandados.
+ *
+ * Hasta ahora ese número no se guardaba: se contaba mirando los avisos que
+ * seguían en la campanita de cada persona. Y los avisos leídos se borran solos
+ * a los noventa días, así que la constancia se deshacía sola —«40 de 40 leídos»
+ * pasaba a decir «0 de 40»— sin avisar de nada.
+ *
+ * Ahora el número vive en el mensaje. Esta migración lo llena una vez con lo
+ * que todavía se puede saber: los avisos que aún no se han borrado. Lo que el
+ * borrado ya se llevó no vuelve —no hay de dónde sacarlo—, y por eso esto corre
+ * cuanto antes: cada día que pasa es un día de avisos que se limpian.
+ */
+function elConteoDeLeidosSeGuarda() {
+  const NOMBRE = 'el conteo de leídos se guarda en el mensaje';
+  if (yaAplicada(NOMBRE)) return;
+
+  // Que la tabla y la columna existan no depende del orden en que se carguen
+  // los módulos: se pide el que las crea
+  require('./avisos/mensajes');
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('mensajes_enviados') || !hayTabla('notificaciones')) return marcarAplicada(NOMBRE);
+
+  const info = db
+    .prepare(
+      `UPDATE mensajes_enviados
+          SET leidos = (SELECT COUNT(*) FROM notificaciones
+                         WHERE notificaciones.clave = 'mensaje:' || mensajes_enviados.id
+                           AND notificaciones.leida = 1)
+        WHERE leidos = 0`
+    )
+    .run();
+
+  const conLecturas = db.prepare('SELECT COUNT(*) c FROM mensajes_enviados WHERE leidos > 0').get().c;
+  if (info.changes) {
+    console.log(`📖 Conteo de leídos rescatado en ${info.changes} mensaje(s); ${conLecturas} tiene(n) lecturas anotadas.`);
+  }
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2562,6 +2603,7 @@ function ejecutarMigraciones() {
     ['texto con formato saneado de nuevo', textoConFormatoSaneadoDeNuevo],
     ['marcas de asistencia con su fecha de toma', marcasDeAsistenciaConSuFechaDeToma],
     ['los que ya no están salen de sus cuerpos', losQueYaNoEstanSalenDeSusCuerpos],
+    ['el conteo de leídos se guarda en el mensaje', elConteoDeLeidosSeGuarda],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -2811,7 +2853,7 @@ function solicitudesConSeguimiento() {
 module.exports = {
   ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
   cadaIglesiaConSuCodigo, solicitudesNumeradasPorIglesia,
-  devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo,
+  devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, elConteoDeLeidosSeGuarda,
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
   hojasDePresentacionYMatrimonio, certificadosApaisados,

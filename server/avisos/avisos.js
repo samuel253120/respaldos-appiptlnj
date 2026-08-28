@@ -229,16 +229,64 @@ function paraLaCampanita(usuarioId, cuantos = 20) {
   return { sinLeer, ultimos };
 }
 
+/**
+ * Lo que hay que anotar en otra parte cuando un aviso se lee.
+ *
+ * Un aviso leído se borra solo a los noventa días, así que lo que haya que
+ * saber DESPUÉS sobre esa lectura hay que anotarlo ahora. Hoy lo necesita una
+ * sola cosa: los mensajes escritos a mano, que le dicen a quien los mandó
+ * cuántos los abrieron; ese número salía de contar avisos y por eso se
+ * volvía cero solo. Va acá, en las dos únicas puertas por donde un aviso pasa a
+ * leído, y no en las rutas, para que valga desde donde sea que se marque.
+ *
+ * Si falla, el aviso queda leído igual: es lo que la persona pidió, y una
+ * cuenta que no se pudo llevar no puede deshacerlo.
+ */
+function anotarQueSeLeyo(claves) {
+  const utiles = claves.filter(Boolean);
+  if (!utiles.length) return;
+  try {
+    require('./mensajes').anotarLectura(utiles);
+  } catch (e) {
+    console.error(`⚠️  No se pudo anotar la lectura de un aviso: ${e.message}`);
+  }
+}
+
 function marcarLeida(usuarioId, id) {
-  return db
+  /*
+   * Primero qué era, después marcarlo: una vez marcado ya no se distingue de
+   * uno que estaba leído desde antes, y la lectura se contaría dos veces.
+   *
+   * El «leida = 0» de esta consulta es lo único que hace falta para eso: si ya
+   * estaba leído no devuelve nada y no se anota. Comprobar ADEMÁS que el UPDATE
+   * cambió una fila sería cuidarse de que alguien lo marcara entremedio, y
+   * entremedio no corre nada: la base es síncrona y el servidor tiene un solo
+   * hilo. Esa comprobación de más se escribió, se rompió a propósito para ver
+   * qué prueba caía, y no cayó ninguna: era código muerto.
+   */
+  const suyo = db
+    .prepare('SELECT clave FROM notificaciones WHERE id = ? AND usuario_id = ? AND leida = 0')
+    .get(id, usuarioId);
+  const cambios = db
     .prepare("UPDATE notificaciones SET leida = 1, leida_en = datetime('now','localtime') WHERE id = ? AND usuario_id = ? AND leida = 0")
     .run(id, usuarioId).changes;
+  if (suyo) anotarQueSeLeyo([suyo.clave]);
+  return cambios;
 }
 
 function marcarTodasLeidas(usuarioId) {
-  return db
+  const suyas = db
+    .prepare('SELECT clave FROM notificaciones WHERE usuario_id = ? AND leida = 0 AND clave IS NOT NULL')
+    .all(usuarioId)
+    .map((f) => f.clave);
+  const cambios = db
     .prepare("UPDATE notificaciones SET leida = 1, leida_en = datetime('now','localtime') WHERE usuario_id = ? AND leida = 0")
     .run(usuarioId).changes;
+  // Lo que decide qué se anota es el «leida = 0» de la consulta de arriba, igual
+  // que en `marcarLeida`: sin nada sin leer no trae ninguna clave y no se anota
+  // nada. Preguntar además por `cambios` no cubre ningún caso.
+  anotarQueSeLeyo(suyas);
+  return cambios;
 }
 
 /**

@@ -54,6 +54,7 @@ db.exec(`
     destino_id INTEGER,
     destino_dice TEXT,
     cuantos INTEGER NOT NULL DEFAULT 0,
+    leidos INTEGER NOT NULL DEFAULT 0,
     enviado_por INTEGER,
     iglesia_id INTEGER,
     created_at TEXT DEFAULT (datetime('now','localtime'))
@@ -61,6 +62,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS ix_mensajes_enviados_fecha ON mensajes_enviados (id DESC);
   CREATE INDEX IF NOT EXISTS ix_mensajes_enviados_quien ON mensajes_enviados (enviado_por);
 `);
+
+/*
+ * Esta tabla es de las hechas a mano —no la arma el motor a partir de un módulo
+ * declarado— así que las columnas nuevas hay que agregarlas acá: en una base que
+ * ya venía andando, «CREATE TABLE IF NOT EXISTS» no toca nada y la columna no
+ * aparecería nunca.
+ */
+for (const [columna, tipo] of [['leidos', 'INTEGER NOT NULL DEFAULT 0']]) {
+  const tiene = db.prepare('PRAGMA table_info(mensajes_enviados)').all().some((c) => c.name === columna);
+  if (!tiene) db.exec(`ALTER TABLE mensajes_enviados ADD COLUMN ${columna} ${tipo}`);
+}
 
 /**
  * Las maneras de elegir a quién.
@@ -307,12 +319,49 @@ function enviar(quienManda, { titulo, cuerpo, urgente, enlace, destino, valor })
 }
 
 /**
+ * Alguien abrió su aviso: queda anotado en el mensaje.
+ *
+ * ── POR QUÉ SE GUARDA Y NO SE CUENTA ──
+ *
+ * El conteo salía de mirar los avisos que seguían en la campanita de cada
+ * persona. Y los avisos leídos se borran solos: el vigía lo hace todos los días
+ * con el plazo de Configuración, noventa días de fábrica. Así que la constancia
+ * se deshacía sola, y no quedaba a medias ni decía «ya no se puede saber»:
+ * «40 de 40 leídos» pasaba a decir «0 de 40».
+ *
+ * Es peor que perder el dato, porque afirma lo contrario. Quien revisara en
+ * marzo qué pasó con el aviso de diciembre iba a leer que no lo abrió nadie.
+ *
+ * Por eso el número se guarda en el momento de leerlo, como ya se guardaba a
+ * cuántos llegó, y sobrevive al borrado de los avisos.
+ *
+ * Lo llama `avisos.marcarLeida` y `avisos.marcarTodasLeidas`, que son las dos
+ * únicas puertas por donde un aviso pasa a leído. Solo suma cuando el aviso
+ * cambió de verdad de no leído a leído: volver a marcar el mismo no cuenta dos
+ * veces.
+ */
+function anotarLectura(claves) {
+  const mios = (Array.isArray(claves) ? claves : [claves])
+    .map((c) => /^mensaje:(\d+)$/.exec(String(c || '')))
+    .filter(Boolean)
+    .map((coincide) => Number(coincide[1]));
+  if (!mios.length) return 0;
+
+  const subir = db.prepare('UPDATE mensajes_enviados SET leidos = leidos + 1 WHERE id = ?');
+  let anotadas = 0;
+  for (const id of mios) anotadas += subir.run(id).changes;
+  return anotadas;
+}
+
+/**
  * Lo que se ha mandado, con cuántos lo leyeron.
  *
  * El conteo de leídos es la contraparte de que la campanita no se pueda
  * apagar: si el aviso llega sí o sí, quien lo mandó tiene derecho a saber
  * cuántos lo abrieron. No dice QUIÉNES: eso sería vigilar a la gente por dentro
- * del sistema, y para saber si alguien se enteró está preguntarle.
+ * del sistema, y para saber si alguien se enteró está preguntarle. El número
+ * viene guardado —ver `anotarLectura`, acá arriba—, no de contar avisos que se
+ * borran solos a los noventa días.
  *
  * ── DE QUIÉN ES CADA MENSAJE ──
  *
@@ -355,9 +404,6 @@ function loQueSeHaMandado(quienManda, cuantos = 30) {
     )
     .all(...params);
 
-  const leidos = db.prepare(
-    "SELECT COUNT(*) c FROM notificaciones WHERE clave = ? AND leida = 1"
-  );
   return filas.map((m) => ({
     id: m.id,
     titulo: m.titulo,
@@ -366,7 +412,7 @@ function loQueSeHaMandado(quienManda, cuantos = 30) {
     enlace: m.enlace,
     destino_dice: m.destino_dice,
     cuantos: m.cuantos,
-    leidos: leidos.get(`mensaje:${m.id}`).c,
+    leidos: m.leidos,
     quien: m.quien,
     created_at: m.created_at,
   }));
@@ -375,4 +421,5 @@ function loQueSeHaMandado(quienManda, cuantos = 30) {
 module.exports = {
   DESTINOS, LARGO, TOPE_DE_UN_ENVIO,
   aQuienPuedeEscribir, aQuienesAlcanza, enviar, loQueSeHaMandado, loQueFalta, enlaceLimpio,
+  anotarLectura,
 };
