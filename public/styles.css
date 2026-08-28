@@ -1850,6 +1850,26 @@ table.grid.cuotas td.debe.se-puede:hover::after { content: "✓"; color: var(--a
 .saldos-cuentas li:hover .sc-n { color: var(--marca-azul); }
 .saldos-cuentas .sc-n { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .saldos-cuentas b { font-variant-numeric: tabular-nums; }
+/**
+ * Las cuentas en cero, plegadas dentro del listado.
+ *
+ * De cuarenta y una cuentas, cuatro tenían plata; las otras treinta y siete
+ * decían «$ 0» una tras otra y empujaban el libro a los 1.950 px. Se pliegan
+ * aparte —no se esconden: siguen a un clic y se dice cuántas son— con el mismo
+ * <details> de siempre, que se abre solo y funciona con el teclado.
+ */
+.saldos-en-cero { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+.saldos-en-cero > summary {
+  font-size: 12.5px; cursor: pointer; list-style: none; padding: 4px 0;
+  /* Alcanza para el dedo, como el resto de lo que se toca (ver la 1.140.0) */
+  min-height: 28px; display: flex; align-items: center;
+}
+.saldos-en-cero > summary::-webkit-details-marker { display: none; }
+.saldos-en-cero > summary::before {
+  content: "▸"; display: inline-block; width: 1em; color: var(--muted); font-weight: 400;
+}
+.saldos-en-cero[open] > summary::before { content: "▾"; }
+.saldos-en-cero > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .saldo-negativo { color: var(--danger); }
 /* Los últimos movimientos de un cuerpo, al pie de su tesorería.
    Nunca tuvo estilo propio y salía como una lista con viñetas, con el texto

@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.169.0", fecha: "2026-08-28", titulo: "El libro empieza arriba: el saldo de cada cuenta muestra las que tienen algo y pliega las que están en cero, de 1.950 px a 770" },
   { version: "1.168.0", fecha: "2026-08-28", titulo: "Las cifras caben enteras en su tarjeta —y si no, la letra baja en vez de cortarse— y el dinero se guarda al peso, sin centavos" },
   { version: "1.167.0", fecha: "2026-08-28", titulo: "Un movimiento se encuentra por su monto —con puntos o sin ellos—, el método está en la barra de filtros y el listado se puede acotar a un rango de montos" },
   { version: "1.166.0", fecha: "2026-08-28", titulo: "El respaldo de un egreso se ve, se busca y se pregunta: una columna en el listado, un filtro de «egresos sin respaldo» y un aviso desde el monto que decida la iglesia" },

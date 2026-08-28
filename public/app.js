@@ -2688,6 +2688,34 @@ async function viewList(name, filtrosIniciales) {
     try {
       const r = await api('GET', '/tesoreria/resumen?' + params.toString());
       const cuentas = (r.porCuenta || []);
+      /*
+       * Las que tienen algo que mostrar, y las demás detrás de un botón.
+       *
+       * El listado traía TODAS las cuentas, abierto de entrada en el computador.
+       * Con doce cuerpos —cada uno con su tesorería y su cuenta de cuotas— son
+       * cuarenta y una filas antes de ver un solo movimiento: medido, la primera
+       * fila del libro empezaba a los 1.950 px en una pantalla de 950. Y de esas
+       * cuarenta y una, CUATRO tenían plata; las otras treinta y siete decían
+       * «$ 0» una tras otra.
+       *
+       * Una cuenta en cero y sin nada agendado no dice nada que no diga el
+       * silencio, así que se pliegan aparte. No se esconden: siguen a un clic, y
+       * se dice cuántas son.
+       */
+      const tieneAlgo = (c) => Number(c.saldo) !== 0 || Number(c.agendado) !== 0;
+      const conAlgo = cuentas.filter(tieneAlgo);
+      const enCero = cuentas.filter((c) => !tieneAlgo(c));
+
+      const filaDeCuenta = (c) => `
+        <li data-ir="#/m/cuentas_tesoreria/edit/${c.id}">
+          <span class="sc-n">${esc(c.nombre)}
+            <span class="badge ${c.tipo === 'General' ? 'blue' : ''}">${esc(c.ambito)}</span>
+            ${Number(c.agendado) ? `
+              <span class="badge agendado" title="Ya anotado con fecha de más adelante: todavía no está en la caja">
+                agendado ${fmtMoney(c.agendado)}</span>` : ''}
+          </span>
+          <b class="${Number(c.saldo) < 0 ? 'saldo-negativo' : ''}">${fmtMoney(c.saldo)}</b>
+        </li>`;
       el.innerHTML = `
         <div class="fin green"><div class="lbl">Ingresos (período filtrado)</div><div class="num">${fmtMoney(r.ingresos)}</div></div>
         <div class="fin red"><div class="lbl">Egresos</div><div class="num">${fmtMoney(r.egresos)}</div></div>
@@ -2705,20 +2733,20 @@ async function viewList(name, filtrosIniciales) {
         ${cuentas.length ? `
           <details class="saldos-cuentas" ${enPantallaChica() ? '' : 'open'}>
             <summary class="sc-tit">Saldo de cada cuenta
-              <span class="mut">(${fmtNumero(cuentas.length)} ${cuentas.length === 1 ? 'cuenta' : 'cuentas'} · lo que hay hoy, no depende del período filtrado)</span>
+              <span class="mut">(${enCero.length
+                ? `${fmtNumero(conAlgo.length)} de ${fmtNumero(cuentas.length)} cuentas`
+                : `${fmtNumero(cuentas.length)} ${cuentas.length === 1 ? 'cuenta' : 'cuentas'}`}
+                · lo que hay hoy, no depende del período filtrado)</span>
             </summary>
-            <ul>
-              ${cuentas.map((c) => `
-                <li data-ir="#/m/cuentas_tesoreria/edit/${c.id}">
-                  <span class="sc-n">${esc(c.nombre)}
-                    <span class="badge ${c.tipo === 'General' ? 'blue' : ''}">${esc(c.ambito)}</span>
-                    ${Number(c.agendado) ? `
-                      <span class="badge agendado" title="Ya anotado con fecha de más adelante: todavía no está en la caja">
-                        agendado ${fmtMoney(c.agendado)}</span>` : ''}
-                  </span>
-                  <b class="${Number(c.saldo) < 0 ? 'saldo-negativo' : ''}">${fmtMoney(c.saldo)}</b>
-                </li>`).join('')}
-            </ul>
+            ${conAlgo.length
+              ? `<ul>${conAlgo.map(filaDeCuenta).join('')}</ul>`
+              : '<p class="mut" style="padding:4px 16px 10px;margin:0">Todas las cuentas están en cero.</p>'}
+            ${enCero.length ? `
+              <details class="saldos-en-cero">
+                <summary class="mut">Ver las ${fmtNumero(enCero.length)}
+                  ${enCero.length === 1 ? 'cuenta que está' : 'cuentas que están'} en cero</summary>
+                <ul>${enCero.map(filaDeCuenta).join('')}</ul>
+              </details>` : ''}
           </details>` : ''}`;
     } catch (e) {
       el.innerHTML = '';
