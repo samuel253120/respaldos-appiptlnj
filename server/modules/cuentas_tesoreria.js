@@ -19,14 +19,23 @@
  */
 
 /** Ingresos, egresos y saldo de una cuenta. */
+/**
+ * Lo que ya entró y salió de una cuenta.
+ *
+ * Solo lo que ya ocurrió: un saldo es lo que hay hoy, no lo que va a haber. Un
+ * servicio agendado deja su ofrenda anotada con la fecha del servicio, y esa
+ * plata todavía no está en la caja (el porqué, y lo que se midió, están en
+ * server/saldos.js). Lo anotado más adelante se pregunta aparte.
+ */
 function movimientosDe(cuentaId, db) {
+  const { YA_OCURRIO } = require('../saldos');
   const fila = db
     .prepare(
       `SELECT
          COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE 0 END), 0) AS ingresos,
          COALESCE(SUM(CASE WHEN tipo = 'Egreso'  THEN monto ELSE 0 END), 0) AS egresos,
          COUNT(*) AS movimientos
-       FROM tesoreria WHERE cuenta_id = ?`
+       FROM tesoreria WHERE cuenta_id = ? AND ${YA_OCURRIO}`
     )
     .get(cuentaId);
   return fila || { ingresos: 0, egresos: 0, movimientos: 0 };
@@ -210,6 +219,8 @@ module.exports = {
         return res.status(403).json({ error: 'Esa cuenta está fuera de lo que tiene asignado' });
       }
       const m = movimientosDe(cuenta.id, db);
+      // Lo que ya está anotado para más adelante, que no es saldo todavía
+      const agendado = require('../saldos').loAgendadoDe(cuenta.id, db);
       const ultimos = db
         .prepare(`SELECT id, fecha, tipo, categoria, concepto, monto FROM tesoreria
                   WHERE cuenta_id = ? ORDER BY fecha DESC, id DESC LIMIT 10`)
@@ -222,6 +233,9 @@ module.exports = {
         egresos: m.egresos,
         movimientos: m.movimientos,
         saldo: (Number(cuenta.saldo_inicial) || 0) + m.ingresos - m.egresos,
+        agendado: Number(agendado.neto) || 0,
+        movimientos_agendados: Number(agendado.movimientos) || 0,
+        agendado_desde: agendado.primera || null,
         ultimos,
       });
     });

@@ -2564,13 +2564,16 @@ async function viewList(name, filtrosIniciales) {
         ${cuentas.length ? `
           <details class="saldos-cuentas" ${enPantallaChica() ? '' : 'open'}>
             <summary class="sc-tit">Saldo de cada cuenta
-              <span class="mut">(${fmtNumero(cuentas.length)} ${cuentas.length === 1 ? 'cuenta' : 'cuentas'} · no depende del período filtrado)</span>
+              <span class="mut">(${fmtNumero(cuentas.length)} ${cuentas.length === 1 ? 'cuenta' : 'cuentas'} · lo que hay hoy, no depende del período filtrado)</span>
             </summary>
             <ul>
               ${cuentas.map((c) => `
                 <li data-ir="#/m/cuentas_tesoreria/edit/${c.id}">
                   <span class="sc-n">${esc(c.nombre)}
                     <span class="badge ${c.tipo === 'General' ? 'blue' : ''}">${esc(c.ambito)}</span>
+                    ${Number(c.agendado) ? `
+                      <span class="badge agendado" title="Ya anotado con fecha de más adelante: todavía no está en la caja">
+                        agendado ${fmtMoney(c.agendado)}</span>` : ''}
                   </span>
                   <b class="${Number(c.saldo) < 0 ? 'saldo-negativo' : ''}">${fmtMoney(c.saldo)}</b>
                 </li>`).join('')}
@@ -11263,7 +11266,9 @@ function mostrarSaldoOrigen() {
     marca.textContent = 'Consultando el saldo…';
     try {
       const e = await api('GET', `/cuentas_tesoreria/${select.value}/estado`);
-      marca.innerHTML = `Saldo disponible: <b class="${e.saldo < 0 ? 'saldo-negativo' : ''}">${fmtMoney(e.saldo)}</b>`;
+      marca.innerHTML = `Saldo disponible hoy: <b class="${e.saldo < 0 ? 'saldo-negativo' : ''}">${fmtMoney(e.saldo)}</b>`
+        + (Number(e.agendado)
+          ? ` <span class="mut">(y ${fmtMoney(e.agendado)} agendado para más adelante)</span>` : '');
     } catch (err) {
       marca.textContent = '';
     }
@@ -12729,7 +12734,21 @@ async function renderEstadoCuenta(cuentaId, contenedor) {
           <div class="fin green"><div class="lbl">Ingresos</div><div class="num">${fmtMoney(e.ingresos)}</div></div>
           <div class="fin red"><div class="lbl">Egresos</div><div class="num">${fmtMoney(e.egresos)}</div></div>
           <div class="fin blue"><div class="lbl">Saldo actual</div><div class="num ${e.saldo < 0 ? 'saldo-negativo' : ''}">${fmtMoney(e.saldo)}</div></div>
+          <!-- Lo ya anotado con fecha de más adelante: todavía no está en la caja,
+               así que no suma al saldo, pero tampoco puede quedar invisible. Solo
+               se muestra cuando lo hay (ver server/saldos.js). -->
+          ${Number(e.agendado) ? `
+            <div class="fin slate">
+              <div class="lbl">Agendado${e.agendado_desde ? ` · desde el ${fechaCorta(e.agendado_desde)}` : ''}</div>
+              <div class="num">${fmtMoney(e.agendado)}</div>
+            </div>` : ''}
         </div>
+        ${Number(e.agendado) ? `
+          <p class="mut" style="padding:0 18px 4px;margin:0">
+            El saldo es lo que hay hoy. Además hay ${fmtNumero(e.movimientos_agendados)}
+            ${e.movimientos_agendados === 1 ? 'movimiento anotado' : 'movimientos anotados'}
+            con fecha de más adelante, que entrarán al saldo el día que les corresponda.
+          </p>` : ''}
         ${e.ultimos.length ? `<ul class="mini-list mov-list">
           ${e.ultimos.map((m) => `
             <li data-ir="#/m/tesoreria/edit/${m.id}">

@@ -159,4 +159,4 @@ function revisarCoherencia(def, datos, existing) {
   return null;
 }
 
-module.exports = { revisar, revisarCoherencia, normalizar, hoy, PISO, TOPE_FUTURO_ANIOS };
+module.exports = { revisar, revisarCoherencia, normalizar, comoSeLee, hoy, PISO, TOPE_FUTURO_ANIOS };

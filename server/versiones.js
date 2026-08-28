@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.162.0", fecha: "2026-08-28", titulo: "El saldo de una cuenta es lo que hay hoy: la ofrenda de un servicio agendado deja de sumar antes de tiempo, y lo anotado más adelante se dice como «agendado»" },
   { version: "1.161.0", fecha: "2026-08-28", titulo: "El resumen de Tesorería deja de contar como ingreso la plata que solo cambió de bolsillo: los traslados internos se dicen aparte, en «Movido entre cuentas»" },
   { version: "1.160.0", fecha: "2026-08-28", titulo: "El registro de un servicio se llena en menos: seis secciones en vez de nueve, y en el teléfono baja de 2.836 a 2.466 px" },
   { version: "1.159.0", fecha: "2026-08-28", titulo: "La ofrenda entra a Tesorería como llegó: lo que se recibió en efectivo y lo que llegó al banco, cada uno con su método" },

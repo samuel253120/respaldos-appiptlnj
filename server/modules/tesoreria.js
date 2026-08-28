@@ -118,8 +118,9 @@ module.exports = {
       if (!confirmado) {
         const tipo = data.tipo !== undefined ? data.tipo : existing ? existing.tipo : null;
         const monto = data.monto !== undefined ? data.monto : existing ? existing.monto : 0;
+        const fecha = data.fecha !== undefined ? data.fecha : existing ? existing.fecha : null;
         const aviso = require('../saldos').avisoSiQuedaEnRojo(cuentaId, {
-          tipo, monto, excluirMovimiento: existing ? existing.id : null,
+          tipo, monto, fecha, excluirMovimiento: existing ? existing.id : null,
         });
         if (aviso) return aviso;
       }
@@ -175,14 +176,21 @@ module.exports = {
       const entreCuentas = require('../entre-cuentas');
       const cuentas = entreCuentas.totalesDe(db, whereSql, params);
       const porCategoria = entreCuentas.porCategoriaDe(db, whereSql, params);
-      // Saldo por cuenta, para ver de un vistazo cómo está repartido el dinero
       const suyasResumen = require('../alcance').iglesiasDe(req.user);
+      /*
+       * Saldo por cuenta, para ver de un vistazo cómo está repartido el dinero.
+       * El saldo cuenta solo lo que ya ocurrió, y lo anotado más adelante va en
+       * su propia columna: no es plata que esté en la caja (ver server/saldos.js).
+       * El corte va en los CASE y no en el JOIN porque hacen falta las dos cifras.
+       */
+      const YA = "t.fecha <= date('now','localtime')";
       const porCuenta = db
         .prepare(
           `SELECT c.id, c.nombre, c.ambito, c.tipo,
                   COALESCE(c.saldo_inicial, 0)
-                    + COALESCE(SUM(CASE WHEN t.tipo = 'Ingreso' THEN t.monto ELSE 0 END), 0)
-                    - COALESCE(SUM(CASE WHEN t.tipo = 'Egreso'  THEN t.monto ELSE 0 END), 0) AS saldo
+                    + COALESCE(SUM(CASE WHEN ${YA} AND t.tipo = 'Ingreso' THEN t.monto ELSE 0 END), 0)
+                    - COALESCE(SUM(CASE WHEN ${YA} AND t.tipo = 'Egreso'  THEN t.monto ELSE 0 END), 0) AS saldo,
+                  COALESCE(SUM(CASE WHEN NOT (${YA}) THEN (CASE WHEN t.tipo = 'Ingreso' THEN t.monto ELSE -t.monto END) ELSE 0 END), 0) AS agendado
              FROM cuentas_tesoreria c
              LEFT JOIN tesoreria t ON t.cuenta_id = c.id
             ${suyasResumen.length ? `WHERE c.iglesia_id IN (${suyasResumen.map(() => '?').join(',')})` : ''}

@@ -374,6 +374,9 @@ table.grid th.col-mini { font-size: 15px; }
 .badge.red { background: #fee2e2; color: #991b1b; }
 .badge.yellow { background: #fef3c7; color: #92400e; }
 .badge.blue { background: #dbeafe; color: #1e40af; }
+/* Plata ya anotada con fecha de más adelante: no está en la caja todavía, así
+   que se dice en un tono que no se confunda con un saldo (ver server/saldos.js) */
+.badge.agendado { background: #ede9fe; color: #5b21b6; font-weight: 500; }
 /* El valor esperado de una lista: se lee, no se destaca */
 .valor-normal { color: var(--muted); }
 

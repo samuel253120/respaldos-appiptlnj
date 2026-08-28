@@ -104,6 +104,7 @@ module.exports = {
       if (!confirmado) {
         const aviso = require('../saldos').avisoSiQuedaEnRojo(origenId, {
           tipo: 'Egreso', monto,
+          fecha: data.fecha !== undefined ? data.fecha : existing ? existing.fecha : null,
           excluirTraspaso: existing ? existing.id : null,
           queEs: 'Este traspaso',
         });
