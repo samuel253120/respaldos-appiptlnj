@@ -6967,6 +6967,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y buscarla',
       seguir: 'Es otra persona, crear la ficha',
     },
+    rut_de_un_miembro: {
+      titulo: '🪪 Ese RUT ya está inscrito como miembro',
+      volver: 'Volver y revisar el RUT',
+      seguir: 'Guardar la ficha igual',
+    },
     tipo_miembro_no_calza_con_la_edad: {
       titulo: '🎂 El tipo de miembro no calza con su edad',
       volver: 'Volver y corregirlo',
@@ -7011,6 +7016,22 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
 
   // Las pantallas hechas a mano tienen su propia caja de errores; la de los
   // formularios del motor es «formError», que es la de siempre
+  /*
+   * Y adónde ir, cuando la pregunta sabe dónde está lo que hay que mirar.
+   *
+   * «Abra la que ya existe» sin decir dónde obliga a salir, buscarla a mano y
+   * volver a llenar el formulario; en la práctica nadie lo hace y se aprieta
+   * «seguir», que es el único botón que hace algo. Con esto hay un botón que
+   * lleva.
+   *
+   * Solo se acepta una dirección de este mismo sistema —las que empiezan por
+   * «#/»—: la manda el servidor, pero un destino que se pone en un enlace se
+   * revisa igual, porque el día que uno se arme con algo que escribió una
+   * persona ya sería tarde para acordarse.
+   */
+  const ir = err.datos && err.datos.ir;
+  const destino = ir && typeof ir.a === 'string' && ir.a.startsWith('#/') ? ir : null;
+
   const errEl = document.getElementById(dondeVa);
   errEl.innerHTML = `
     <div class="aviso confirmar">
@@ -7018,6 +7039,7 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       <span>${esc(err.message)}</span>
       <div class="acciones">
         <button type="button" class="btn secondary" id="confVolver">${esc(como.volver)}</button>
+        ${destino ? `<button type="button" class="btn secondary" id="confIr">${esc(destino.texto || 'Abrirla')}</button>` : ''}
         <button type="button" class="btn" id="confSeguir">${esc(como.seguir)}</button>
       </div>
     </div>`;
@@ -7025,6 +7047,8 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
   document.getElementById('confVolver').addEventListener('click', () => {
     errEl.textContent = '';
   });
+  const alDestino = document.getElementById('confIr');
+  if (alDestino) alDestino.addEventListener('click', () => { location.hash = destino.a; });
   document.getElementById('confSeguir').addEventListener('click', () => {
     errEl.textContent = '';
     seguir();

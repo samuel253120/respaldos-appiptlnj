@@ -156,6 +156,54 @@ function lasQueSeLlamanIgual(db, ficha, id) {
 }
 
 /**
+ * ¿Y ese RUT no será de alguien que ya está inscrito?
+ *
+ * El RUT es opcional acá, y cuando se escribe se valida y no se repite
+ * DENTRO de este registro. El otro registro no se miraba. Medido: una
+ * ficha de no miembro con el RUT de un miembro inscrito se aceptaba (201)
+ * y ese RUT quedaba existiendo en los dos registros a la vez, sin que
+ * nadie lo supiera. El sistema sí se daba cuenta —«Ya hay un miembro
+ * inscrito con ese RUT»— pero recién al apretar «Inscribir como miembro»,
+ * que puede ser meses después.
+ *
+ * Un RUT es único por definición, así que casi siempre es la misma
+ * persona; pero también puede ser un dígito mal tecleado en cualquiera de
+ * las dos fichas, y bloquear dejaría a alguien sin poder registrar la
+ * entrega que tiene en la mano. Se pregunta, y se ofrece abrir la ficha de
+ * miembro, que es lo que hay que hacer cuando es la misma.
+ *
+ * NO SE NOMBRA A QUIEN NO SE ALCANZA A VER. Si el miembro es de una
+ * iglesia que esta persona no administra, se dice que ese RUT ya está
+ * inscrito y nada más: el aviso no puede ser la puerta por la que se
+ * averigüe quién es quién en otra congregación.
+ */
+function avisoDeRutYaInscrito(data, { existing, db, usuario }) {
+  const rut = data.rut !== undefined ? data.rut : existing && existing.rut;
+  if (!rut) return null;
+  const ya = db.prepare('SELECT id, nombres, apellidos, iglesia_id FROM miembros WHERE rut = ?').get(rut);
+  if (!ya) return null;
+
+  const suyas = require('../alcance').iglesiasDe(usuario);
+  const loAlcanza = !suyas.length || suyas.includes(Number(ya.iglesia_id));
+  if (!loAlcanza) {
+    return {
+      error: 'Ese RUT ya está inscrito como miembro, en una iglesia que usted no administra. '
+        + 'Si es la misma persona, esta ficha va a quedar repetida en los dos registros: '
+        + 'confírmelo con la oficina antes de seguir.',
+      confirmar: 'rut_de_un_miembro',
+    };
+  }
+  const nombre = `${ya.nombres || ''} ${ya.apellidos || ''}`.trim();
+  return {
+    error: `Ese RUT es de ${nombre}, que ya está inscrito como miembro. Si es la misma persona, `
+      + 'lo que se le entregue va en su ficha de miembro: esta quedaría repetida y su historial '
+      + 'partido en dos. Si el RUT quedó mal escrito en alguna de las dos, corríjalo.',
+    confirmar: 'rut_de_un_miembro',
+    ir: { texto: '👤 Abrir su ficha de miembro', a: `#/m/miembros/ficha/${ya.id}` },
+  };
+}
+
+/**
  * El aviso, o null si no hay ninguna que se llame igual.
  *
  * Se dice CUÁNTAS ENTREGAS tiene anotadas la que ya existe, porque es el
@@ -191,6 +239,14 @@ function avisoDeFichaRepetida(db, ficha, id) {
       + 'entregado queda en una sola ficha y se puede ver junto. Si de verdad son dos personas '
       + 'distintas, confirme.',
     confirmar: 'miembro_con_el_mismo_nombre',
+    /*
+     * Y se ofrece abrirla. «Abra la que ya existe» sin decir dónde obliga a
+     * salir, buscarla a mano y volver a llenar el formulario: en la práctica
+     * nadie lo hace y se aprieta «seguir», que es el único botón que hace
+     * algo. Con varias iguales se lleva a la primera, que es por donde hay
+     * que empezar a mirar.
+     */
+    ir: { texto: '👤 Abrir la que ya existe', a: `#/m/no_miembros/ficha/${iguales[0].id}` },
   };
 }
 
@@ -303,8 +359,10 @@ module.exports = {
      * revisarlo siempre trancaría a quien viene a anotarle el teléfono que por
      * fin dio, que es la mitad de lo que se hace en este registro.
      */
-    beforeSave(data, { id, existing, db, confirmado }) {
+    beforeSave(data, { id, existing, db, confirmado, user }) {
       if (confirmado) return null;
+      const porElRut = avisoDeRutYaInscrito(data, { existing, db, usuario: user });
+      if (porElRut) return porElRut;
       const antesDeGuardar = existing || {};
       const cambiaElNombre = ['nombres', 'apellidos', 'iglesia_id']
         .some((campo) => data[campo] !== undefined

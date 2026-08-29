@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.176.0", fecha: "2026-08-29", titulo: "El RUT de alguien ya inscrito se avisa al guardar la ficha y no meses después, y la pregunta lleva a mirarla" },
   { version: "1.175.0", fecha: "2026-08-29", titulo: "La misma señora anotada dos veces se pregunta, y se dice cuántas entregas tiene la ficha que ya existe" },
   { version: "1.174.0", fecha: "2026-08-29", titulo: "Ya se puede contestar a cuántas personas distintas se ha ayudado: el informe de ayudas y las dos cifras del mes en el panel" },
   { version: "1.173.0", fecha: "2026-08-29", titulo: "Inscribirse ya no le borra la historia: su ficha de miembro muestra también lo que se le entregó antes" },

@@ -1381,10 +1381,17 @@ function buildRouter() {
              * con `confirmar` es una pregunta —el dato puede entrar, pero
              * alguien tiene que decir que sí—. La pantalla convierte lo
              * segundo en dos botones en vez de en un aviso rojo.
+             *
+             * Y puede traer un tercero: `ir`, adónde llevar a quien contesta.
+             * «Abra la que ya existe» sin decir dónde está obliga a salir,
+             * buscarla a mano y volver, que es justo lo que nadie hace: la
+             * pregunta se contesta «seguir» porque es el único botón que hace
+             * algo. Con `ir` hay un botón que lleva.
              */
             if (err) {
               const problema = new ErrorDeDatos(typeof err === 'string' ? err : err.error);
               if (err && err.confirmar) problema.confirmar = err.confirmar;
+              if (err && err.ir) problema.ir = err.ir;
               throw problema;
             }
           }
@@ -1424,7 +1431,11 @@ function buildRouter() {
         return res.status(isNew ? 201 : 200).json(expandRow(def, row, req.user));
       } catch (e) {
         if (e instanceof ErrorDeDatos) {
-          return res.status(400).json(e.confirmar ? { error: e.message, confirmar: e.confirmar } : { error: e.message });
+          return res.status(400).json(
+            e.confirmar
+              ? { error: e.message, confirmar: e.confirmar, ...(e.ir ? { ir: e.ir } : {}) }
+              : { error: e.message }
+          );
         }
         return averiaInterna(res, `guardar en ${def.label}`, e);
       }

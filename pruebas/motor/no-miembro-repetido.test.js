@@ -42,10 +42,13 @@ const ficha = (datos) => db
   .run(datos.nombres, datos.apellidos || null, datos.rut || null, datos.fecha_nacimiento || null,
     datos.iglesia_id || iglesia, datos.miembro_id || null).lastInsertRowid;
 
+/** Quien guarda. Sin iglesias asignadas ve todo, que es el administrador. */
+const ADMIN = { id: 1, rol: 'admin', iglesias: [], cuerpos: [] };
+
 /** El hook de verdad, llamado como lo llama el motor. */
 const alGuardar = (data, opciones = {}) =>
   noMiembros.hooks.beforeSave(data, { db, id: opciones.id || null, existing: opciones.existing || null,
-    confirmado: !!opciones.confirmado });
+    confirmado: !!opciones.confirmado, user: opciones.user || ADMIN });
 
 /* ------------------------------------------------- cuándo SÍ se pregunta */
 
@@ -173,11 +176,87 @@ test('una ficha no se pregunta a sí misma', () => {
     'agregarle el segundo nombre a la propia ficha no puede chocar con ella misma');
 });
 
+/* ------------------------------------- el RUT de alguien ya inscrito ----- */
+
+const RUT_TOMADO = '15286234-2';
+const laInscrita = db
+  .prepare("INSERT INTO miembros (nombres, apellidos, rut, iglesia_id, estado) VALUES ('Luisa','Vera Inscrita',?,?,'Activo')")
+  .run(RUT_TOMADO, iglesia).lastInsertRowid;
+
+test('una ficha con el RUT de un miembro inscrito se pregunta, y se dice de quién es', () => {
+  const r = alGuardar({ nombres: 'Otra', apellidos: 'Cualquiera', rut: RUT_TOMADO, iglesia_id: iglesia });
+  assert.ok(r, 'antes se aceptaba y ese RUT quedaba en los dos registros a la vez');
+  assert.equal(r.confirmar, 'rut_de_un_miembro');
+  assert.match(r.error, /Ese RUT es de Luisa Vera Inscrita, que ya está inscrito como miembro/);
+  assert.deepEqual(r.ir, { texto: '👤 Abrir su ficha de miembro', a: `#/m/miembros/ficha/${laInscrita}` },
+    'y se ofrece ir a mirarla: decir «revísela» sin decir dónde no lo hace nadie');
+});
+
+test('el aviso llega al guardar y no meses después, al inscribirla', () => {
+  // El sistema SÍ se daba cuenta: «Ya hay un miembro inscrito con ese RUT»,
+  // pero recién al apretar «Inscribir como miembro». Esa comprobación sigue
+  // estando —es la última red— y ahora ya no es la primera.
+  const modulo = fs.readFileSync(path.join(__dirname, '../../server/modules/no_miembros.js'), 'utf8');
+  assert.match(modulo, /Ya hay un miembro inscrito con ese RUT/, 'la red de la inscripción no se quita');
+  assert.ok(alGuardar({ nombres: 'X', rut: RUT_TOMADO, iglesia_id: iglesia }), 'y ahora se avisa antes');
+});
+
+test('a quien no alcanza esa iglesia no se le dice de quién es el RUT', () => {
+  const deOtraIglesia = { id: 9, rol: 'secretario', iglesias: [vecina], cuerpos: [] };
+  const r = alGuardar({ nombres: 'Otra', rut: RUT_TOMADO, iglesia_id: vecina }, { user: deOtraIglesia });
+  assert.ok(r, 'igual se avisa: el RUT está tomado');
+  assert.doesNotMatch(r.error, /Luisa/, 'pero el aviso no puede ser la puerta para averiguar quién es quién');
+  assert.doesNotMatch(r.error, /Vera Inscrita/);
+  assert.equal(r.ir, undefined, 'ni se le ofrece abrir una ficha que no puede ver');
+});
+
+test('sin RUT no hay nada que mirar, y con uno libre tampoco', () => {
+  assert.equal(alGuardar({ nombres: 'Sin rut', apellidos: 'Ninguno', iglesia_id: iglesia }), null);
+  assert.equal(alGuardar({ nombres: 'Con rut', apellidos: 'Libre', rut: '11111111-1', iglesia_id: iglesia }), null);
+});
+
+test('quien confirma manda, también con el RUT', () => {
+  assert.equal(
+    alGuardar({ nombres: 'Otra', apellidos: 'Cualquiera', rut: RUT_TOMADO, iglesia_id: iglesia }, { confirmado: true }),
+    null, 'un dígito mal tecleado en cualquiera de las dos fichas también existe');
+});
+
+test('el RUT se mira antes que el nombre repetido: es la señal más fuerte', () => {
+  // Una ficha que además se llama igual que otra. Se contesta por el RUT,
+  // que es lo único que identifica a una persona sin lugar a dudas.
+  ficha({ nombres: 'Doble', apellidos: 'Aviso' });
+  const r = alGuardar({ nombres: 'Doble', apellidos: 'Aviso', rut: RUT_TOMADO, iglesia_id: iglesia });
+  assert.equal(r.confirmar, 'rut_de_un_miembro');
+});
+
+/* --------------------------- la pregunta sabe adónde llevar ------------- */
+
+test('la pregunta del nombre repetido ofrece abrir la que ya existe', () => {
+  const r = alGuardar({ nombres: 'Ana', apellidos: 'Torres', iglesia_id: iglesia });
+  assert.match(r.ir.a, /^#\/m\/no_miembros\/ficha\/\d+$/);
+  assert.equal(r.ir.texto, '👤 Abrir la que ya existe');
+});
+
+test('el motor deja pasar el destino hasta la pantalla', () => {
+  const crud = fs.readFileSync(path.join(__dirname, '../../server/crud.js'), 'utf8');
+  assert.match(crud, /if \(err && err\.ir\) problema\.ir = err\.ir;/);
+  assert.match(crud, /\.\.\.\(e\.ir \? \{ ir: e\.ir \} : \{\}\)/, 'y viaja en la respuesta');
+});
+
+test('la pantalla pone el botón, y solo hacia adentro del sistema', () => {
+  assert.match(app, /const destino = ir && typeof ir\.a === 'string' && ir\.a\.startsWith\('#\/'\) \? ir : null;/,
+    'un destino que se pone en un enlace se revisa igual aunque hoy lo mande el servidor');
+  assert.match(app, /\$\{destino \? `<button type="button" class="btn secondary" id="confIr">/);
+  assert.match(app, /if \(alDestino\) alDestino\.addEventListener\('click', \(\) => \{ location\.hash = destino\.a; \}\);/);
+});
+
 /* ------------------------------------------------------------ la pantalla */
 
 test('la pantalla ya sabe cómo preguntarlo', () => {
   assert.match(app, /miembro_con_el_mismo_nombre: \{\s*\n\s*titulo: '🧍 Puede que esta persona ya esté registrada'/,
     'se reusa la llave de Miembros: es la misma pregunta y tiene que verse igual');
+  assert.match(app, /rut_de_un_miembro: \{\s*\n\s*titulo: '🪪 Ese RUT ya está inscrito como miembro'/,
+    'y la del RUT tiene la suya: no es la misma pregunta');
 });
 
 test('la regla de comparar textos es la del sistema, no una copia', () => {
