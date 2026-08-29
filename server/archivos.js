@@ -236,6 +236,23 @@ function loUsaAlguien(archivo, salvo) {
   return false;
 }
 
+/**
+ * ¿Está de verdad en la carpeta de subidas?
+ *
+ * Se pregunta al guardar una ficha: un campo de archivo obligatorio se cumplía
+ * con cualquier texto, así que se podía guardar un documento que prometía un
+ * carnet y no tenía ninguno detrás. Se mira por el nombre a secas, igual que
+ * al servirlo, para que las dos preguntas contesten sobre el mismo archivo.
+ */
+function existe(archivo) {
+  if (!archivo) return false;
+  try {
+    return fs.statSync(path.join(UPLOADS_DIR, path.basename(String(archivo)))).isFile();
+  } catch (e) {
+    return false;
+  }
+}
+
 /** Borra un archivo del disco y lo olvida. Devuelve si se fue. */
 function borrarDelDisco(archivo) {
   recordados.delete(archivo);
@@ -307,4 +324,6 @@ module.exports = {
   // Para que la subida deje dicho quién fue: mientras el archivo no tenga
   // ficha, es lo único que decide quién puede abrirlo.
   recordarQuienSubio, quienLoSubio,
+  // Para que no se guarde una ficha que promete un archivo que no está
+  existe,
 };

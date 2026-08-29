@@ -1332,6 +1332,36 @@ function buildRouter() {
           return String(antes == null ? '' : antes) !== String(val == null ? '' : val);
         };
 
+        /*
+         * Y que el archivo que se adjunta esté de verdad en el disco.
+         *
+         * Un campo de archivo obligatorio se cumplía con cualquier texto: la
+         * comprobación miraba que viniera algo, no que ese algo existiera.
+         * Medido: se guarda un documento de un miembro con el nombre de un
+         * archivo inventado y contesta 201; queda en su carpeta, con su tipo y
+         * su fecha, prometiendo un carnet que no está, y su botón «Ver» da 404.
+         *
+         * Por la pantalla no se llega —el archivo sube al elegirlo y el campo
+         * queda con el nombre que devolvió el servidor—, pero cualquier cosa
+         * que hable con la API sí, y el resultado es el peor de los dos
+         * posibles: una carpeta que dice tener el papel.
+         *
+         * Se revisa con la misma regla que las fechas: solo lo que este
+         * guardado ESTÁ CAMBIANDO. Una ficha vieja que ya apunta a un archivo
+         * perdido se sigue pudiendo guardar para corregirle el nombre; lo que
+         * se frena es adjuntar hoy algo que no está.
+         */
+        for (const f of def.fields) {
+          if (f.type !== 'file' || !cambia(f.name)) continue;
+          const val = data[f.name];
+          if (val === null || val === '') continue;
+          if (!archivos.existe(val)) {
+            return res.status(400).json({
+              error: `El archivo de "${f.label}" no está en el servidor. Vuelva a elegirlo y guarde de nuevo.`,
+            });
+          }
+        }
+
         for (const f of def.fields) {
           if (f.type !== 'date' || !cambia(f.name)) continue;
           const val = data[f.name];
