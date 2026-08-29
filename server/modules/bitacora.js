@@ -17,6 +17,22 @@ module.exports = {
   order: 22,
   display: '{tipo} — {descripcion}',
   dateField: 'fecha',
+  /*
+   * El historial de una persona se ve donde se ve la persona.
+   *
+   * Cada anotación guarda a qué iglesia pertenece, y hasta la 1.180.0 era esa
+   * columna la que decidía quién podía leerla. Pero esa columna dice DÓNDE
+   * PASÓ la cosa, no de quién es hoy la ficha. Medido sobre una miembro creada
+   * en la Iglesia Central y pasada a la Norte: juntó 4 anotaciones y quedó con
+   * 6; la secretaria de su nueva iglesia abría su ficha sin problema y su
+   * pestaña de Historial le mostraba 2 de 6. Entre las que no veía estaba el
+   * reconocimiento por veinte años de servicio en el coro.
+   *
+   * La persona se mudaba y su historia no se mudaba con ella. Ahora la
+   * bitácora se alcanza como su miembro, y la columna de iglesia se queda
+   * como lo que siempre fue: el dato de dónde ocurrió, con el que se filtra.
+   */
+  alcance: { comoSuPadre: { modulo: 'miembros', campo: 'miembro_id' } },
   searchFields: ['descripcion', 'tipo'],
   listFields: ['fecha', 'miembro_id', 'tipo', 'descripcion', 'origen'],
   defaultSort: { field: 'fecha', dir: 'desc' },

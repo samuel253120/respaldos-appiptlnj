@@ -151,7 +151,41 @@ function condiciones(def, usuario, params) {
   const partes = [];
   const iglesias = iglesiasDe(usuario);
   const cuerpos = cuerposDe(usuario);
+  const suAlcance = def.alcance || {};
   const tieneCampo = (nombre) => def.fields.some((f) => f.name === nombre);
+
+  /*
+   * ---- «Lo mío se ve exactamente donde se ve mi ficha» ----
+   *
+   * Lo que cuelga de otra cosa —el historial de una persona, el seguimiento de
+   * un trámite, sus documentos— no tiene alcance propio: se ve si se ve
+   * aquello de lo que cuelga. Por eso contesta acá y entero, antes que nada.
+   *
+   * Estaba escrito, pero solo se preguntaba en la parte de los cuerpos, así
+   * que la parte de las iglesias seguía acotando por la columna propia del
+   * registro. Y esa columna dice DÓNDE PASÓ la cosa, no de quién es hoy la
+   * ficha. Medido sobre una miembro creada en la Iglesia Central y pasada a la
+   * Norte: juntó 4 anotaciones y quedó con 6; la secretaria de su nueva
+   * iglesia abría su ficha (200) y su pestaña de Historial le mostraba 2 de 6.
+   * Entre las cuatro que no veía estaba el reconocimiento por veinte años de
+   * servicio en el coro, que es justo para lo que un historial existe.
+   *
+   * La persona se mudaba y su historia no se mudaba con ella: la veía entera
+   * quien ya no trabajaba con ella, y partida quien sí.
+   *
+   * La columna de iglesia se queda igual y sigue diciendo dónde pasó cada
+   * cosa —eso es información buena, y con ella se filtra—, pero deja de ser la
+   * que decide quién puede leerla.
+   */
+  if (suAlcance.comoSuPadre) {
+    const { modulo, campo } = suAlcance.comoSuPadre;
+    const padre = require('./registry').getModule(modulo);
+    const suyas = padre ? condiciones(padre, usuario, params) : null;
+    if (suyas) partes.push(`"${campo}" IN (SELECT id FROM "${modulo}" WHERE ${suyas})`);
+    partes.push(require('./tesorerias').condicion(def, usuario));
+    const soloSuyas = partes.filter(Boolean);
+    return soloSuyas.length ? soloSuyas.join(' AND ') : null;
+  }
 
   // ---- Por iglesia ----
   if (iglesias.length) {
@@ -165,21 +199,8 @@ function condiciones(def, usuario, params) {
   }
 
   // ---- Por cuerpo ----
-  const suAlcance = def.alcance || {};
   if (cuerpos.length) {
-    if (suAlcance.comoSuPadre) {
-      /*
-       * «Lo mío se ve exactamente donde se ve mi solicitud.»
-       *
-       * Lo que cuelga de un trámite —las personas que involucra, sus
-       * documentos, su seguimiento— no tiene alcance propio: se ve si se ve
-       * aquello de lo que cuelga, y no si se ve la persona que aparece dentro.
-       */
-      const { modulo, campo } = suAlcance.comoSuPadre;
-      const padre = require('./registry').getModule(modulo);
-      const suyas = padre ? condiciones(padre, usuario, params) : null;
-      if (suyas) partes.push(`"${campo}" IN (SELECT id FROM "${modulo}" WHERE ${suyas})`);
-    } else if (def.name === 'cuerpos') {
+    if (def.name === 'cuerpos') {
       partes.push(enLista('id', cuerpos, params));
     } else if (def.name === 'asistencias') {
       // Los cuerpos convocados se guardan como lista
@@ -226,6 +247,18 @@ function alcanza(def, fila, usuario) {
   const iglesias = iglesiasDe(usuario);
   const cuerpos = cuerposDe(usuario);
 
+  // Lo que se ve donde se ve su ficha, igual que en el listado: si acá dijera
+  // otra cosa, se vería en la lista algo que después no se deja abrir
+  const suyoEs = def.alcance || {};
+  if (suyoEs.comoSuPadre) {
+    const { modulo, campo } = suyoEs.comoSuPadre;
+    const padre = require('./registry').getModule(modulo);
+    if (!padre || !fila[campo]) return false;
+    const suya = db.prepare(`SELECT * FROM "${modulo}" WHERE id = ?`).get(fila[campo]);
+    if (!suya || !alcanza(padre, suya, usuario)) return false;
+    return require('./tesorerias').alcanza(def, fila, usuario);
+  }
+
   if (iglesias.length) {
     if (def.name === 'usuarios') {
       // Mismo criterio que el listado, o se vería en la lista una ficha que
@@ -260,13 +293,6 @@ function alcanza(def, fila, usuario) {
   if (cuerpos.length) {
     // La misma regla que el listado, fila por fila: si acá dijera otra cosa,
     // se vería en la lista algo que después no se deja abrir, o al revés
-    if (suAlcance.comoSuPadre) {
-      const { modulo, campo } = suAlcance.comoSuPadre;
-      const padre = require('./registry').getModule(modulo);
-      if (!padre || !fila[campo]) return false;
-      const suya = db.prepare(`SELECT * FROM "${modulo}" WHERE id = ?`).get(fila[campo]);
-      return !!suya && alcanza(padre, suya, usuario);
-    }
     if (def.name === 'cuerpos') return cuerpos.includes(Number(fila.id));
     if (def.name === 'asistencias') return lista(fila.cuerpos).some((c) => cuerpos.includes(c));
     if (fila.cuerpo_id !== undefined && def.fields.some((f) => f.name === 'cuerpo_id')) {
