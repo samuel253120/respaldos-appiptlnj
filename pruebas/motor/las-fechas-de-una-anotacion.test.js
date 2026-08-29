@@ -17,6 +17,11 @@
  * el bautismo, el ingreso a la iglesia, los dos matrimonios, el traslado y el
  * fallecimiento: justo las que alguien va a leer en voz alta.
  *
+ * (Anotarle el bautismo POR PRIMERA VEZ ya no pasa por esta línea: desde BM-09
+ * tiene su propia anotación, con su tipo y en su fecha. Acá sigue apareciendo el
+ * bautismo cuando la fecha se CORRIGE, que sí es un cambio de datos, y el resto
+ * se comprueba con las otras siete fechas de la ficha.)
+ *
  * Lo que cuida este archivo:
  *   · que una fecha salga como se lee acá
  *   · que lo que NO sea una fecha se deje como está, en vez de traducirlo a
@@ -69,8 +74,8 @@ function alCambiar(despues, antes) {
 /* ------------------------------- una fecha se lee como acá se lee */
 
 test('una fecha sale como se escribe acá, no como la guarda la base', () => {
-  assert.equal(alCambiar({ fecha_bautismo: '2005-11-06' }, { fecha_bautismo: null }),
-    'Fecha de bautismo: (vacío) → 06-11-2005');
+  assert.equal(alCambiar({ fecha_conversion: '2005-11-06' }, { fecha_conversion: null }),
+    'Fecha de conversión: (vacío) → 06-11-2005');
 });
 
 test('las dos, la de antes y la de después', () => {
@@ -110,8 +115,8 @@ test('un texto cualquiera en una columna vieja se deja como está', () => {
 });
 
 test('una fecha con hora se queda con su parte de fecha', () => {
-  assert.equal(alCambiar({ fecha_bautismo: '1999-01-01T00:00:00' }, { fecha_bautismo: null }),
-    'Fecha de bautismo: (vacío) → 01-01-1999');
+  assert.equal(alCambiar({ fecha_conversion: '1999-01-01T00:00:00' }, { fecha_conversion: null }),
+    'Fecha de conversión: (vacío) → 01-01-1999');
 });
 
 test('vacía sigue diciendo «(vacío)»', () => {

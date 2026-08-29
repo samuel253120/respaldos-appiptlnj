@@ -450,6 +450,14 @@ module.exports = {
           (anterior ? `. La anterior (#${anterior.id}) quedó reemplazada.` : '.'),
       });
 
+      // Y en la bitácora de su ficha de miembro, cuando la tiene enlazada: que
+      // le emitan su credencial es un hecho de su vida, no solo de la oficina
+      bitacora.anotarCredencial({
+        pastorId: quedo.pastor_id, usuario: req.user, fecha: quedo.fecha_emision,
+        texto: `Se le emitió la credencial N.º ${serieDe.conDigito(quedo.serie, quedo.serie_dv)}`
+          + (anterior ? ', que reemplaza a la anterior.' : '.'),
+      });
+
       /**
        * Y el reemplazo se anota TAMBIÉN en la credencial que quedó atrás
        * (punto 15.7).
@@ -508,6 +516,10 @@ module.exports = {
       bitacora.anotarCambio({
         def: module.exports, accion: 'Revocación', fila: quedo, usuario: req.user,
         detalle: `Se revocó la credencial N.º ${serieDe.conDigito(quedo.serie, quedo.serie_dv)}. Motivo: ${motivo}`,
+      });
+      bitacora.anotarCredencial({
+        pastorId: quedo.pastor_id, usuario: req.user,
+        texto: `Se le revocó la credencial N.º ${serieDe.conDigito(quedo.serie, quedo.serie_dv)}. Motivo: ${motivo}`,
       });
       res.json({ ok: true, credencial: quedo });
     });

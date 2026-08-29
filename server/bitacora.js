@@ -19,6 +19,9 @@
 const { db } = require('./db');
 const ajustes = require('./ajustes');
 
+/** La parte de fecha de un valor, o null si no es una fecha. */
+const normalizarFecha = (valor) => require('./fechas').normalizar(valor);
+
 /** Nombre de presentación de un miembro. */
 function nombreMiembro(id) {
   const m = db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(id);
@@ -335,7 +338,38 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
       anotar({ miembroId: despues.id, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
         descripcion: 'Alta del miembro en el sistema.' });
     } else {
-      const lista = cambios(def, antes, datos);
+      let lista = cambios(def, antes, datos);
+
+      /*
+       * ---------------- El bautismo es un hecho de su vida ----------------
+       *
+       * «Bautismo» estaba entre los quince tipos que ofrece el desplegable y
+       * NADIE lo escribía: anotarle el bautismo a una ficha dejaba «Cambio de
+       * datos · Fecha de bautismo: (vacío) → 06-11-2005», perdido entre los
+       * teléfonos y las direcciones, y fechado el día del tecleo. En una
+       * bitácora de iglesia eso es de lo poco que tiene que poder mostrarse
+       * aparte, y el sistema lo conoce: la ficha tiene su campo.
+       *
+       * Sale con su tipo, con su fecha —la del bautismo, no la de hoy— y en su
+       * propia anotación, y se saca de la línea de cambios para que el mismo
+       * hecho no quede dicho dos veces.
+       *
+       * Solo cuando se anota por PRIMERA vez. Corregir una fecha de bautismo
+       * mal escrita no es un bautismo: eso sí es un cambio de datos, y ahí se
+       * queda.
+       */
+      const seBautizo = datos.fecha_bautismo !== undefined
+        && !normalizarFecha(antes.fecha_bautismo)
+        && normalizarFecha(despues.fecha_bautismo);
+      if (seBautizo) {
+        anotar({
+          miembroId: despues.id, tipo: 'Bautismo', iglesiaId: iglesia, usuario: user,
+          fecha: seBautizo,
+          descripcion: 'Queda anotado su bautismo.',
+        });
+        lista = lista.filter((c) => !c.startsWith('Fecha de bautismo:'));
+      }
+
       if (lista.length) {
         const cambioEstado = lista.find((c) => c.startsWith('Estado:'));
         anotar({
@@ -547,8 +581,47 @@ function registrarEliminado(def, fila, user, arrastre) {
   anotarCambio({ def, accion: 'Eliminación', fila, usuario: user, detalle });
 }
 
+/**
+ * La credencial de un pastor, anotada en su bitácora de miembro.
+ *
+ * «Credencial» era el otro tipo que se ofrecía y nadie escribía, y además
+ * prometía algo que el módulo no daba: las credenciales se emiten a los
+ * PASTORES, y lo que hacen queda en el Registro de Cambios. Pero un pastor
+ * puede tener enlazada su ficha de miembro —la columna existe y se usa—, y
+ * cuando la tiene, que le emitan o le revoquen su credencial es un hecho de su
+ * vida en la organización, no solo un movimiento de oficina.
+ *
+ * Se anotan esos dos y no los cuatro actos de la credencial. Reemplazarla ya
+ * lo cuenta la emisión de la nueva, y haberla mandado a la impresora es un acto
+ * de oficina que no dice nada de la persona: los dos siguen quedando donde
+ * corresponde, en el Registro de Cambios.
+ *
+ * Sin ficha de miembro enlazada no se anota nada, que es lo mismo que hace el
+ * resto del sistema con quien no está en la membresía.
+ */
+function anotarCredencial({ pastorId, texto, fecha, usuario }) {
+  const pastor = pastorId
+    ? db.prepare('SELECT miembro_id, iglesia_id FROM pastores WHERE id = ?').get(pastorId)
+    : null;
+  /*
+   * La única guardia que decide algo: sin fila no hay `miembro_id` que leer.
+   *
+   * Preguntar además si viene el `pastorId`, o si la ficha trae enlazado un
+   * miembro, no cambiaba nada —se comprobó rompiéndolas y no cayó ninguna
+   * prueba—: `anotar` no escribe cuando no se le dice de quién es la
+   * anotación, que es la misma regla que el resto del sistema aplica a quien
+   * no está en la membresía. Dos condiciones que parecen cuidar algo y no
+   * cuidan nada son peor que no tenerlas.
+   */
+  if (!pastor) return;
+  anotar({
+    miembroId: pastor.miembro_id, tipo: 'Credencial', iglesiaId: pastor.iglesia_id,
+    usuario, fecha, descripcion: texto,
+  });
+}
+
 module.exports = {
-  anotar, anotarIglesia, anotarPastor, registrarGuardado, registrarEliminado,
+  anotar, anotarIglesia, anotarPastor, anotarCredencial, registrarGuardado, registrarEliminado,
   // Para los actos que no son «guardar una ficha» y aun así tienen que quedar
   // anotados: emitir una credencial, revocarla, volver a imprimirla.
   anotarCambio,
