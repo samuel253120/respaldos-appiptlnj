@@ -204,6 +204,45 @@ function avisoDeRutYaInscrito(data, { existing, db, usuario }) {
 }
 
 /**
+ * CUÁNTO SE LE HA ENTREGADO A CADA FICHA, para el listado.
+ *
+ * El listado mostraba nombre, apellido, RUT, teléfono, si se acerca y la
+ * iglesia. Medido sobre 60 fichas: 73 de las 125 celdas con título estaban en
+ * blanco —el 58 %—, y el RUT lo estaba en las 60, porque quien llega al
+ * mostrador casi nunca anda con el carnet. Se miraba todos los días una grilla
+ * con la mitad de los casilleros vacíos, y lo único que este registro existe
+ * para saber —cuántas veces se le ha entregado algo a esta persona— no estaba
+ * en ninguna columna.
+ *
+ * UNA SOLA CONSULTA PARA TODO EL LISTADO. Un cálculo por fila serían veinticinco
+ * consultas por página; acá se agrupan las entregas una vez y se guardan en el
+ * `recuerdo`, que dura lo que dura la respuesta (ver server/crud.js). Es el
+ * mismo camino que usa la agenda de asistencia para no recorrer un cuerpo por
+ * cada actividad.
+ */
+function loEntregadoAcadaFicha(db, recuerdo) {
+  const donde = 'no_miembros:entregas';
+  if (recuerdo && recuerdo.has(donde)) return recuerdo.get(donde);
+  const mapa = new Map();
+  try {
+    const filas = db
+      .prepare(
+        `SELECT no_miembro_id AS id, COUNT(*) AS veces, MAX(fecha) AS ultima
+           FROM ayudas_sociales
+          WHERE no_miembro_id IS NOT NULL AND estado = 'Entregada'
+          GROUP BY no_miembro_id`
+      )
+      .all();
+    for (const f of filas) mapa.set(f.id, f);
+  } catch (e) {
+    // Sin el módulo de ayudas el listado sale igual, con la columna en cero:
+    // una pantalla no se cae porque falte algo que solo la acompaña.
+  }
+  if (recuerdo) recuerdo.set(donde, mapa);
+  return mapa;
+}
+
+/**
  * El aviso, o null si no hay ninguna que se llame igual.
  *
  * Se dice CUÁNTAS ENTREGAS tiene anotadas la que ya existe, porque es el
@@ -263,7 +302,18 @@ module.exports = {
   order: 21, // justo debajo de Miembros, que es el 20
   display: '{nombres} {apellidos}',
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono', 'email', 'direccion'],
-  listFields: ['nombres', 'apellidos', 'rut', 'telefono', 'asistencia', 'iglesia_id'],
+  /*
+   * Lo que se mira todos los días.
+   *
+   * Sale el RUT: en este registro está en blanco SIEMPRE —60 de 60 fichas de
+   * prueba— porque quien llega al mostrador no anda con el carnet, y el módulo
+   * lo dice en su encabezado. Sigue en la ficha y se sigue buscando por él.
+   *
+   * Entran las dos columnas por las que este registro existe: cuántas veces se
+   * le ha entregado algo y cuándo fue la última. La primera nunca va en blanco
+   * —un cero es un dato, no un hueco— y es lo que se pregunta en el mostrador.
+   */
+  listFields: ['nombres', 'apellidos', 'telefono', 'entregas', 'ultima_ayuda', 'asistencia', 'iglesia_id'],
   /**
    * Los de un grupo, preguntado desde acá. Igual que en Miembros, pero por el
    * otro enlace de la ficha de integrante: esta gente no está en la membresía.
@@ -278,9 +328,42 @@ module.exports = {
         params: [Number(valor) || 0],
       }),
     },
+    /*
+     * Quién ya se inscribió y quién no.
+     *
+     * Una ficha que se inscribió no se borra —de ella cuelgan las entregas de
+     * cuando esa persona todavía no era miembro— pero su ficha viva es la
+     * otra, y en el listado se veía igual que las demás. La ficha misma lo
+     * avisa arriba desde la 1.173.0; acá va lo que ese aviso no puede dar:
+     * separar las que siguen siendo de este registro de las que ya no.
+     *
+     * Va de filtro y no de columna, a propósito: este listado se acaba de
+     * limpiar de columnas que están casi siempre en blanco, y una que solo
+     * dice algo en un puñado de fichas sería otra de esas.
+     */
+    {
+      nombre: 'ya_inscrita', label: 'Se inscribió', tipo: 'select',
+      opciones: ['Todavía no', 'Ya se inscribió'],
+      donde: (valor) => ({
+        sql: valor === 'Ya se inscribió' ? 'miembro_id IS NOT NULL' : 'miembro_id IS NULL',
+        params: [],
+      }),
+    },
   ],
   filterFields: ['asistencia', 'iglesia_id'],
   defaultSort: { field: 'apellidos', dir: 'asc' },
+  /*
+   * La ficha se imprime.
+   *
+   * Quien va a entregar la caja de mercadería sale con una hoja: el nombre, la
+   * dirección, el teléfono y qué se le llevó. Esa hoja se estaba escribiendo a
+   * mano copiando de la pantalla, porque la ficha de un miembro tenía su botón
+   * de imprimir y esta no. El sistema ya sabe sacar fichas con el formato
+   * formal de la organización —lo hace en Miembros, en Pastores y en Cuerpos—:
+   * lo único que faltaba era encender la llave y que la hoja llevara además
+   * las entregas, que es lo que la hace servir para ir a la casa.
+   */
+  printable: true,
 
   /**
    * El `miembro_id` de esta ficha NO dice de quién es: dice en qué ficha de
@@ -297,6 +380,24 @@ module.exports = {
       calc: (r) => {
         const a = edadEnAnios(r.fecha_nacimiento);
         return a == null ? '' : `${a} año${a === 1 ? '' : 's'}`;
+      },
+    },
+    {
+      name: 'entregas', label: 'Entregas', type: 'texto', ancho: 'mini', enElPapel: false,
+      calc: (r, { db, recuerdo }) => {
+        const suyo = loEntregadoAcadaFicha(db, recuerdo).get(r.id);
+        // Cero y no vacío: que a esta señora no se le haya entregado nada es
+        // un dato, y de los que más se miran.
+        return String(suyo ? suyo.veces : 0);
+      },
+    },
+    {
+      name: 'ultima_ayuda', label: 'Última entrega', type: 'texto', enElPapel: false,
+      calc: (r, { db, recuerdo }) => {
+        const suyo = loEntregadoAcadaFicha(db, recuerdo).get(r.id);
+        // Escrita como se lee y no como la guarda la base: la columna de al
+        // lado dice «3» y esta tiene que decir «20-07-2026», no «2026-07-20».
+        return suyo && suyo.ultima ? require('../fechas').comoSeLee(suyo.ultima) : '';
       },
     },
   ],

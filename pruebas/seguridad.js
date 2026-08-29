@@ -953,10 +953,26 @@ async function entrar(rut = RUT, clave = CLAVE) {
         headers: { Authorization: `Bearer ${suya.token}` },
       }).then((r) => r.json());
 
-      // Un miembro con teléfono, para probar el dato reservado
+      /*
+       * Un miembro con teléfono, para probar el dato reservado.
+       *
+       * EL NOMBRE Y EL TELÉFONO NO PUEDEN SALIR DEL MISMO RELOJ. Salían los
+       * dos de `Date.now()` —el nombre era «Buscable<ahora>» y el teléfono
+       * «+5698<últimos siete de ahora>»—, así que los nueve dígitos que se
+       * buscan aparecían DENTRO del nombre cada vez que a esa hora le tocaban
+       * un 9 y un 8 en el lugar justo. Cuando pasaba, la comprobación se caía
+       * durante horas seguidas acusando una filtración que no existía: la
+       * ficha salía por su NOMBRE, que esa cuenta sí puede ver.
+       *
+       * Una prueba de seguridad que grita en falso es peor que no tenerla:
+       * enseña a mirar para otro lado el día que grita de verdad. El teléfono
+       * sale ahora de dígitos al azar, y más abajo se comprueba que lo buscado
+       * no esté en el nombre, para que esto no pueda volver en silencio.
+       */
       const c2 = String(14500000 + (Date.now() % 400000));
       const rutBuscado = `${c2}-${require('../server/rut').digitoVerificador(c2)}`;
-      const numero = `+5698${String(Date.now()).slice(-7)}`;
+      const alAzar = String(require('crypto').randomInt(1000000, 9999999));
+      const numero = `+5698${alAzar}`;
       const marca = `Buscable${Date.now()}`;
       const ficha = await api('POST', '/api/miembros', {
         iglesia_id: iglesiaParaSalud && iglesiaParaSalud.id, rut: rutBuscado,
@@ -967,12 +983,18 @@ async function entrar(rut = RUT, clave = CLAVE) {
       revisar('encuentra por lo que sí puede ver', (porNombre.total || 0) >= 1,
         `no la encontró buscando «${marca}»`);
 
-      const porTelefono = await busca(numero.replace(/\D/g, '').slice(-9));
+      const suNumero = numero.replace(/\D/g, '').slice(-9);
+      revisar('lo que se busca no está en lo que la cuenta sí puede ver',
+        !`${marca} De Prueba ${rutBuscado}`.includes(suNumero),
+        'el teléfono no puede aparecer dentro del nombre ni del RUT: si no, encontrarla '
+        + 'no probaría nada sobre el dato reservado');
+
+      const porTelefono = await busca(suNumero);
       revisar('pero no da con ella por un teléfono que no alcanza',
         (porTelefono.total || 0) === 0, `devolvió ${porTelefono.total} resultado(s)`);
 
       revisar('y el teléfono no viaja escondido en la respuesta',
-        !JSON.stringify(porNombre).includes(numero.replace(/\D/g, '').slice(-9)));
+        !JSON.stringify(porNombre).includes(suNumero));
 
       const conTesoreria = await busca('Diezmo');
       revisar('no le aparece un módulo que no puede ver',

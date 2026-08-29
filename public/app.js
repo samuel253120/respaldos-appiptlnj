@@ -9207,13 +9207,28 @@ async function viewPrint(name, id) {
     deLaSolicitud = { seguimiento, personas, documentos };
   }
 
+  /*
+   * La ficha de una persona se imprime CON lo que se le ha entregado.
+   *
+   * Es lo que hace que la hoja sirva para ir a la casa: sin eso es la ficha a
+   * secas y no dice a qué se va. Lo que no se pueda traer —sin permiso sobre
+   * Ayudas Sociales, o sin señal— no impide imprimir: sale la parte que sí
+   * está, como en la solicitud.
+   */
+  let susAyudas = null;
+  if (COMO_RECIBE_AYUDA[name] && MOD['ayudas_sociales']) {
+    susAyudas = await api(
+      'GET', `/ayudas_sociales/de-persona?tipo=${encodeURIComponent(COMO_RECIBE_AYUDA[name])}&id=${id}`
+    ).catch(() => null);
+  }
+
   let sheet;
   if (name === 'solicitudes') sheet = printSolicitud(m, row, deLaSolicitud);
   else if (name === 'certificados') sheet = printCertificado(row, formatoCert, { conPagina: true });
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
   else if (name === 'tesoreria') sheet = printMovimiento(m, row);
-  else sheet = printGenerico(m, row);
+  else sheet = printGenerico(m, row, susAyudas);
 
   content().innerHTML = `
     <div class="print-actions no-print">
@@ -10621,7 +10636,28 @@ function printMovimiento(m, row) {
     </div>`;
 }
 
-function printGenerico(m, row) {
+function printGenerico(m, row, susAyudas) {
+  /*
+   * Lo que se le ha entregado, debajo de sus datos.
+   *
+   * Va con el detalle y no con un total: la hoja se lleva a la casa y quien la
+   * lleva tiene que poder decir «la última vez le llevamos medicamentos, en
+   * marzo». Un «3 entregas» a secas no sirve para eso.
+   */
+  const entregas = susAyudas && susAyudas.registradas ? `
+    <h2 class="print-h2">Lo que se le ha entregado</h2>
+    <div class="sub">${esc(resumenDeAyudas(susAyudas) || '')}</div>
+    <table class="entregas">
+      <tr><td class="k">Fecha</td><td class="k">Tipo de ayuda</td><td class="k">Qué se entregó</td><td class="k">Estado</td></tr>
+      ${susAyudas.ayudas.map((a) => `
+        <tr>
+          <td>${esc(a.fecha ? fechaLarga(a.fecha) : '')}</td>
+          <td>${esc(a.tipo_ayuda || '')}</td>
+          <td>${esc(a.descripcion || '')}</td>
+          <td>${esc(a.estado || '')}</td>
+        </tr>`).join('')}
+    </table>` : '';
+
   return `
     <div class="print-sheet print-generic">
       ${membreteDelDocumento()}
@@ -10629,7 +10665,14 @@ function printGenerico(m, row) {
       <div class="sub">Registro N.º ${row.id}</div>
       <table>
         ${m.fields
-          .filter((f) => f.type !== 'password')
+          /*
+           * Un campo puede pedir quedarse fuera del papel con
+           * `enElPapel: false`. Hace falta para lo que la hoja ya cuenta mejor
+           * más abajo: «Entregas 3» arriba y «Lo que se le ha entregado · 3
+           * entregas» debajo es el mismo dato dicho dos veces, y en una hoja
+           * que alguien firma eso hace dudar de cuál de las dos manda.
+           */
+          .filter((f) => f.type !== 'password' && f.enElPapel !== false)
           .map((f) => {
             let v = row[f.name];
             if (f.computed && v && typeof v === 'object') v = v.texto; // p. ej. estado de cumplimiento
@@ -10646,6 +10689,7 @@ function printGenerico(m, row) {
           })
           .join('')}
       </table>
+      ${entregas}
       <div class="doc-pie">${pieDelDocumento()}</div>
     </div>`;
 }

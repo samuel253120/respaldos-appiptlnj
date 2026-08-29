@@ -235,11 +235,15 @@ app.get('/api/meta', authRequired, (req, res) => {
             calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
             computed: false,
           })).map(sinLoQueNoDiceNada),
-        ...(m.computed || []).map(({ name, label, type, help, ordenarPor }) => sinLoQueNoDiceNada({
+        ...(m.computed || []).map(({ name, label, type, help, ordenarPor, ancho, enElPapel }) => sinLoQueNoDiceNada({
           name, label, type, help: help || null, computed: true, readonly: true,
+          ancho: ancho || null,
           // Un calculado no se puede ordenar… salvo que diga por qué columna
           // se ordena en su lugar. La edad lo hace: por la fecha de nacimiento.
           ordenable: !!ordenarPor,
+          // Y puede pedir quedarse fuera de la hoja impresa, para lo que esa
+          // hoja ya cuenta mejor más abajo con su detalle.
+          enElPapel: enElPapel === undefined ? null : !!enElPapel,
         })),
       ],
       perms: {

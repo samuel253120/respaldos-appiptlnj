@@ -31,8 +31,13 @@
  * abajo y ya: el resto sigue funcionando igual.
  */
 
-/** Propiedades donde el «no» es una decisión y no una ausencia. */
-const EL_NO_DICE_ALGO = new Set(['buscador']);
+/**
+ * Propiedades donde el «no» es una decisión y no una ausencia.
+ *
+ * `enElPapel: false` es el otro caso: significa «este campo NO va en la hoja
+ * impresa», que es distinto de no venir —que significa «va, como todos»—.
+ */
+const EL_NO_DICE_ALGO = new Set(['buscador', 'enElPapel']);
 
 /** Un campo tal como sale al navegador: sin lo que no aporta. */
 function sinLoQueNoDiceNada(campo) {

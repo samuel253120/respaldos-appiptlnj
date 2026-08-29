@@ -1161,6 +1161,12 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
 .print-generic table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .print-generic td { border: 1px solid var(--border); padding: 8px 12px; }
 .print-generic td.k { background: #f8fafc; font-weight: 600; width: 220px; }
+/* Lo que se le ha entregado, al pie de la ficha impresa. Es una tabla de
+   columnas y no de pares dato/valor, así que su encabezado no toma el ancho
+   fijo de la etiqueta de un campo: con 220 px la primera columna se comía la
+   hoja y las otras tres quedaban apretadas contra el borde. */
+.print-generic h2.print-h2 { font-size: 15px; margin: 26px 0 4px; }
+.print-generic table.entregas td.k { width: auto; }
 
 /* Los mismos recursos de la hoja del acta, para las hojas genéricas que los
    usan: el registro de servicio y la solicitud con su tramitación. Estaban
