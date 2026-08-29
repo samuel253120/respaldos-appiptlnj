@@ -26,10 +26,45 @@ function nombreMiembro(id) {
 }
 
 /**
+ * ------------------- La fecha que lleva cada anotación -------------------
+ *
+ * Un historial contesta «cuándo pasó esto», y hasta la 1.179.0 contestaba
+ * «cuándo lo tecleó alguien». Medido sobre una miembro a la que se le hizo la
+ * vida entera por la API: sus trece anotaciones automáticas llevaban UNA sola
+ * fecha, la del día en que se hicieron, mientras sus fichas decían otra cosa.
+ *
+ *   la solicitud está fechada el .....  02-03-2026  → se anotaba el 29-08-2026
+ *   la ayuda está fechada el .........  10-03-2026  → se anotaba el 29-08-2026
+ *   el certificado se emitió el ......  15-03-2026  → se anotaba el 29-08-2026
+ *   ingresó al cuerpo el .............  15-01-2026  → se anotaba el 29-08-2026
+ *
+ * Y no era un detalle de archivo: la pantalla ordena el historial por fecha, así
+ * que la única anotación con una fecha escrita por una persona —la visita del 20
+ * de marzo— quedaba al FINAL de la lista, debajo del ingreso al cuerpo de enero.
+ * El historial de esa señora decía que primero salió del cuerpo y después la
+ * visitaron, y que todo pasó el mismo día.
+ *
+ * La regla, que es la que sigue el resto del sistema:
+ *
+ *   · Lo que ocurrió y tiene fecha propia se anota EN SU FECHA. La solicitud,
+ *     la ayuda, el certificado, el documento, el ingreso al cuerpo, el retiro,
+ *     el cargo que se asume: cada uno la lleva escrita en su propia ficha.
+ *
+ *   · Lo que ocurrió HOY se anota hoy. Un cambio de datos, un cambio de estado,
+ *     una aprobación: el hecho es que alguien lo hizo, y lo hizo hoy.
+ *
+ * Lo que se anote sin fecha —o con algo que no sea una fecha— cae en hoy, que
+ * es lo que hacía siempre: la regla agrega precisión donde la hay y no cambia
+ * nada donde no la había.
+ */
+
+/**
  * Escribe un registro automático en un historial cualquiera: se le indica en
  * qué tabla, con qué columna apunta a su dueño y de quién se trata.
+ *
+ * `fecha` es la del hecho. Si no viene, o no es una fecha, se usa la de hoy.
  */
-function anotarEn(tabla, columna, id, { tipo, descripcion, iglesiaId, usuario }) {
+function anotarEn(tabla, columna, id, { tipo, descripcion, iglesiaId, usuario, fecha }) {
   if (!id || !ajustes.activo('bitacora_automatica')) return;
   try {
     const tiene = new Set(db.prepare(`PRAGMA table_info("${tabla}")`).all().map((c) => c.name));
@@ -44,19 +79,24 @@ function anotarEn(tabla, columna, id, { tipo, descripcion, iglesiaId, usuario })
     opcional('registrado_por', usuario ? usuario.nombre : 'Sistema');
     opcional('created_by', usuario ? usuario.id : null);
 
+    // La fecha del hecho si la hay, y si no la de hoy. Se comprueba con la
+    // misma función con que el motor valida cualquier fecha del sistema: lo
+    // que no sea una fecha de verdad no entra en una columna de fecha.
+    const cuando = require('./fechas').normalizar(fecha);
     const columnas = ['fecha', ...pares.map(([c]) => c)].map((c) => `"${c}"`).join(', ');
-    const marcas = ["date('now','localtime')", ...pares.map(() => '?')].join(', ');
-    db.prepare(`INSERT INTO "${tabla}" (${columnas}) VALUES (${marcas})`).run(...pares.map(([, v]) => v));
+    const marcas = [cuando ? '?' : "date('now','localtime')", ...pares.map(() => '?')].join(', ');
+    const valores = [...(cuando ? [cuando] : []), ...pares.map(([, v]) => v)];
+    db.prepare(`INSERT INTO "${tabla}" (${columnas}) VALUES (${marcas})`).run(...valores);
   } catch (e) {
     console.error(`No se pudo anotar en ${tabla}:`, e.message);
   }
 }
 
 /** Escribe un registro automático en la bitácora de un miembro. */
-function anotar({ miembroId, tipo, descripcion, iglesiaId, usuario }) {
+function anotar({ miembroId, tipo, descripcion, iglesiaId, usuario, fecha }) {
   if (!miembroId) return;
   if (!nombreMiembro(miembroId)) return; // el miembro ya no existe
-  anotarEn('bitacora', 'miembro_id', miembroId, { tipo, descripcion, iglesiaId, usuario });
+  anotarEn('bitacora', 'miembro_id', miembroId, { tipo, descripcion, iglesiaId, usuario, fecha });
 }
 
 /** Escribe un registro automático en el historial de una iglesia. */
@@ -334,14 +374,14 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
   // 4. Documentos adjuntos a una iglesia o a un pastor
   if (def.name === 'documentos_iglesias' && isNew && despues.iglesia_id) {
     anotarIglesia(despues.iglesia_id, {
-      tipo: 'Documento', usuario: user,
+      tipo: 'Documento', usuario: user, fecha: despues.fecha,
       descripcion: `Se adjuntó "${despues.nombre || despues.tipo || 'un documento'}" (${despues.tipo || ''}).`,
     });
     return;
   }
   if (def.name === 'documentos_pastores' && isNew && despues.pastor_id) {
     anotarPastor(despues.pastor_id, {
-      tipo: 'Documento', usuario: user,
+      tipo: 'Documento', usuario: user, fecha: despues.fecha,
       descripcion: `Se adjuntó "${despues.nombre || despues.tipo || 'un documento'}" (${despues.tipo || ''}).`,
     });
     return;
@@ -371,8 +411,12 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
      */
     if (!quien) return;
     const estado = despues.estado;
+    // Cada uno de estos tres hechos lleva su fecha escrita en la propia ficha
+    // del integrante, y es la que corresponde: alguien puede anotar en octubre
+    // que la señora entró en enero, y el historial tiene que decir enero.
     if (isNew) {
       anotar({ miembroId: quien, tipo: 'Ingreso a cuerpo', iglesiaId: iglesia, usuario: user,
+        fecha: despues.fecha_ingreso,
         descripcion: estado === 'En prueba'
           ? `Ingresa a "${nombre}" en período de prueba.`
           : `Ingresa a "${nombre}".` });
@@ -380,12 +424,26 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
     }
     if (antes.estado === estado) return;    // solo interesa el cambio de estado
     if (estado === 'Activo') {
+      /*
+       * Sin fecha propia, a propósito, y se comprobó por qué.
+       *
+       * «Pasó a integrante oficial el» existe en la ficha, pero es de solo
+       * lectura: la pone la evaluación, y la evaluación mueve al integrante con
+       * un UPDATE directo que no pasa por el motor —así que por ese camino no
+       * se llega hasta acá y no queda ninguna anotación—. Acá solo se llega
+       * cuando alguien le cambia el estado a mano, y entonces ese campo viene
+       * vacío. Usarlo habría sido una línea muerta, y en el único caso en que
+       * traería algo —a quien se reactiva después de un retiro— traería la
+       * fecha vieja de su ascenso, que no es lo que está pasando hoy.
+       */
       anotar({ miembroId: quien, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
         descripcion: `Queda como integrante oficial de "${nombre}".` });
     } else if (estado === 'Retirado') {
       anotar({ miembroId: quien, tipo: 'Salida de cuerpo', iglesiaId: iglesia, usuario: user,
+        fecha: despues.fecha_retiro,
         descripcion: `Sale de "${nombre}"${despues.motivo_retiro ? ` (${despues.motivo_retiro})` : ''}.` });
     } else if (estado === 'En prueba') {
+      // Volver a período de prueba no tiene fecha propia en la ficha: pasa hoy
       anotar({ miembroId: quien, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
         descripcion: `Vuelve a período de prueba en "${nombre}".` });
     }
@@ -410,6 +468,7 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
       if (nuevo && nuevo !== previo) {
         anotar({
           miembroId: nuevo, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
+          fecha: despues.fecha_inicio,   // se asume el cargo cuando empieza el período
           descripcion: `Asume como ${cargo} de "${nombreCuerpo}" — período ${despues.periodo || ''}.`.trim(),
         });
       }
@@ -418,20 +477,25 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
   }
 
   // 7. Módulos que apuntan a un miembro
+  // Cada uno dice además CUÁNDO ocurrió lo suyo, que no es cuándo se tecleó:
+  // una ayuda del 10 de marzo anotada en agosto es del 10 de marzo.
   const relacionados = {
-    solicitudes: (r) => ({ tipo: 'Solicitud', texto: `Solicitud "${r.asunto || r.tipo}" (${r.estado || 'Pendiente'}).` }),
-    ayudas_sociales: (r) => ({ tipo: 'Ayuda social', texto: `Ayuda social: ${r.tipo_ayuda || ''} — ${r.estado || ''}.` }),
-    certificados: (r) => ({ tipo: 'Certificado', texto: `Certificado de ${r.tipo || ''} N.º ${r.numero || ''}.` }),
-    documentos_miembros: (r) => ({ tipo: 'Documento', texto: `Se adjuntó "${r.nombre || r.tipo || 'un documento'}" (${r.tipo || ''}).` }),
+    solicitudes: (r) => ({ tipo: 'Solicitud', cuando: r.fecha, texto: `Solicitud "${r.asunto || r.tipo}" (${r.estado || 'Pendiente'}).` }),
+    ayudas_sociales: (r) => ({ tipo: 'Ayuda social', cuando: r.fecha, texto: `Ayuda social: ${r.tipo_ayuda || ''} — ${r.estado || ''}.` }),
+    certificados: (r) => ({ tipo: 'Certificado', cuando: r.fecha_emision, texto: `Certificado de ${r.tipo || ''} N.º ${r.numero || ''}.` }),
+    documentos_miembros: (r) => ({ tipo: 'Documento', cuando: r.fecha, texto: `Se adjuntó "${r.nombre || r.tipo || 'un documento'}" (${r.tipo || ''}).` }),
   };
   const traductor = relacionados[def.name];
   if (traductor && despues.miembro_id) {
     // Solo al crear, o cuando cambia el estado de una solicitud o ayuda
     const cambioEstado = !isNew && antes && antes.estado !== despues.estado;
     if (isNew || cambioEstado) {
-      const { tipo, texto } = traductor(despues);
+      const { tipo, texto, cuando } = traductor(despues);
       anotar({
         miembroId: despues.miembro_id, tipo, iglesiaId: iglesia, usuario: user,
+        // Al crear, la fecha del hecho. Al cambiar de estado, hoy: lo que se
+        // anota entonces es que alguien la aprobó o la cerró, y eso pasa hoy.
+        fecha: isNew ? cuando : null,
         descripcion: (isNew ? '' : 'Actualización — ') + texto,
       });
     }
