@@ -52,6 +52,14 @@
  * práctica se perdía—. Esta ficha NO se borra: queda apuntando a la nueva,
  * porque las ayudas que se le entregaron cuando no era miembro cuelgan de
  * ella y siguen siendo ciertas.
+ *
+ * Y ese enlace se sigue de vuelta. Guardarlo no bastaba: nadie lo leía, así
+ * que desde su ficha de miembro se veían CERO ayudas y las de antes quedaban
+ * colgando de una ficha que ya nadie abre. Ahora su ficha de miembro las
+ * muestra todas —las de antes marcadas como tales, porque son la misma
+ * persona en otra etapa y no lo mismo—, esta ficha avisa arriba que la
+ * persona ya se inscribió y con qué ficha seguir, y una ayuda nueva anotada
+ * desde acá se le carga a la ficha que vive.
  */
 
 /** Años cumplidos a la fecha de hoy, o nada si la fecha no sirve. */

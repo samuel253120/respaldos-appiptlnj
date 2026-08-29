@@ -158,23 +158,49 @@ module.exports = {
      */
     router.get('/ayudas_sociales/de-persona', requirePerm('ayudas_sociales', 'view'), (req, res) => {
       const alcance = require('../alcance');
-      const campo = req.query.tipo === 'Miembro' ? 'miembro_id' : 'no_miembro_id';
+      const esMiembro = req.query.tipo === 'Miembro';
       const quien = Number(req.query.id) || 0;
       if (!quien) return res.status(400).json({ error: 'Indique de quién son las ayudas.' });
 
+      /*
+       * DE QUIÉN SON ESTAS AYUDAS, incluida la que era antes de inscribirse.
+       *
+       * A una persona se le puede haber entregado algo cuando todavía no
+       * pertenecía a la iglesia. Al inscribirse, su ficha de No Miembro no se
+       * borra —de ella cuelgan esas entregas— y queda apuntando a la nueva con
+       * `miembro_id`. Ese enlace existía y no lo seguía nadie: desde su ficha
+       * de miembro se veían CERO ayudas, y las de antes quedaban colgando de
+       * una ficha que ya nadie abre. Es la misma señora; su historia no empieza
+       * el día que se inscribió.
+       *
+       * Se sigue hacia atrás, y solo desde el lado del miembro: pedir las de un
+       * no miembro trae las suyas y nada más, porque esa ficha es la que las
+       * recibió.
+       *
+       * La subconsulta lleva apellido —`nm.`— a propósito: el alcance escribe
+       * los nombres de columna sin él (ver server/alcance.js), y sin el
+       * apellido `miembro_id` diría dos cosas distintas según dónde se lea.
+       */
+      const deQuien = esMiembro
+        ? '(miembro_id = ? OR no_miembro_id IN (SELECT nm.id FROM no_miembros nm WHERE nm.miembro_id = ?))'
+        : 'no_miembro_id = ?';
+      const suyoEs = esMiembro ? [quien, quien] : [quien];
+
       const donde = (params) => {
         const suyas = alcance.condiciones(module.exports, req.user, params);
-        return `WHERE "${campo}" = ?${suyas ? ` AND (${suyas})` : ''}`;
+        return `WHERE ${deQuien}${suyas ? ` AND (${suyas})` : ''}`;
       };
 
       const pl = [];
       const lista = db
         .prepare(
-          `SELECT id, fecha, tipo_ayuda, descripcion, valor_estimado, estado, iglesia_id, solicitud_id
+          `SELECT id, fecha, tipo_ayuda, descripcion, valor_estimado, estado, iglesia_id, solicitud_id,
+                  CASE WHEN no_miembro_id IS NOT NULL AND ${esMiembro ? '1' : '0'} = 1
+                       THEN 1 ELSE 0 END AS antes
              FROM ayudas_sociales ${donde(pl)}
             ORDER BY fecha DESC, id DESC LIMIT 200`
         )
-        .all(quien, ...pl);
+        .all(...suyoEs, ...pl);
 
       const pr = [];
       const r = db
@@ -183,10 +209,12 @@ module.exports = {
                   SUM(CASE WHEN estado = 'Entregada' THEN 1 ELSE 0 END) AS entregas,
                   SUM(CASE WHEN estado = 'Entregada' THEN COALESCE(valor_estimado, 0) ELSE 0 END) AS entregado,
                   MAX(CASE WHEN estado = 'Entregada' THEN fecha END) AS ultima,
-                  SUM(CASE WHEN estado IN ('Solicitada', 'Aprobada') THEN 1 ELSE 0 END) AS en_camino
+                  SUM(CASE WHEN estado IN ('Solicitada', 'Aprobada') THEN 1 ELSE 0 END) AS en_camino,
+                  SUM(CASE WHEN no_miembro_id IS NOT NULL AND ${esMiembro ? '1' : '0'} = 1
+                           THEN 1 ELSE 0 END) AS antes
              FROM ayudas_sociales ${donde(pr)}`
         )
-        .get(quien, ...pr);
+        .get(...suyoEs, ...pr);
 
       res.json({
         ayudas: lista,
@@ -195,6 +223,7 @@ module.exports = {
         entregado: r.entregado || 0,
         ultima: r.ultima || null,
         en_camino: r.en_camino || 0,
+        antes_de_inscribirse: r.antes || 0,
       });
     });
   },

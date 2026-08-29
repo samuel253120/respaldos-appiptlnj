@@ -3757,6 +3757,25 @@ async function viewFicha(name, id, pestana) {
    * buscarlo. Se pide aparte y llega después —la ficha no se queda esperando
    * por esto—, y si no llega, la ficha se ve igual que siempre.
    */
+  /*
+   * «Esta persona ya se inscribió», donde se ve antes de hacer nada.
+   *
+   * La ficha lo decía —al pie de la pestaña de Datos, después de todos sus
+   * campos—, así que había que llegar hasta abajo para enterarse. Quien abre
+   * esta ficha a registrarle algo no llega hasta abajo: se lo registra a una
+   * ficha que ya nadie mira, y esa entrega desaparece de la vista de la
+   * persona. Va arriba, junto al nombre, con el enlace a la ficha que sí vive.
+   */
+  if (name === 'no_miembros' && row.miembro_id && MOD['miembros']) {
+    const caja = document.getElementById('fcInsignias');
+    if (caja) {
+      caja.insertAdjacentHTML('beforeend',
+        `<a class="badge blue" href="#/m/miembros/ficha/${row.miembro_id}"
+            title="Su ficha viva es la del registro oficial">📇 Ya se inscribió · ver su ficha de miembro</a>`);
+      caja.hidden = false;
+    }
+  }
+
   if (COMO_RECIBE_AYUDA[name] && MOD['ayudas_sociales']) {
     // Se guarda ESTA caja, no se busca de nuevo al volver: si en el intertanto
     // se abrió la ficha de otra persona, la respuesta que llega tarde es de la
@@ -3952,7 +3971,8 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
    * inscribirse.
    */
   if (COMO_RECIBE_AYUDA[name] && MOD['ayudas_sociales']) {
-    sumar('ayudas', 'Ayudas', '🤝', (c) => renderAyudasDeLaPersona(COMO_RECIBE_AYUDA[name], id, c));
+    sumar('ayudas', 'Ayudas', '🤝', (c) =>
+      renderAyudasDeLaPersona(COMO_RECIBE_AYUDA[name], id, c, name === 'no_miembros' ? row.miembro_id : null));
   }
   if (name === 'pastores' && MOD['credenciales']) sumar('credenciales', 'Credenciales', '🪪', (c) => renderCredencialesDelPastor(id, c));
   if (name === 'solicitudes') {
@@ -5943,7 +5963,7 @@ function resumenDeAyudas(d) {
  * más de las que caben, la tabla mostraría menos y el total seguiría diciendo
  * la verdad. Por eso también se avisa cuando la tabla se quedó corta.
  */
-async function renderAyudasDeLaPersona(tipo, personaId, contenedor) {
+async function renderAyudasDeLaPersona(tipo, personaId, contenedor, yaEsMiembro) {
   if (!MOD['ayudas_sociales']) return;
   let d;
   try {
@@ -5954,7 +5974,12 @@ async function renderAyudasDeLaPersona(tipo, personaId, contenedor) {
   }
 
   const faltan = d.registradas - d.ayudas.length;
-  const campo = tipo === 'Miembro' ? 'miembro_id' : 'no_miembro_id';
+  // Una ayuda nueva se le anota a la ficha que vive. Si esta persona ya se
+  // inscribió, esa es la de Miembros: anotarla acá la dejaría colgando de una
+  // ficha que ya nadie abre, que es justo lo que se está arreglando.
+  const aQuien = yaEsMiembro ? 'Miembro' : tipo;
+  const aCual = yaEsMiembro || personaId;
+  const campo = aQuien === 'Miembro' ? 'miembro_id' : 'no_miembro_id';
   const puedeCrear = MOD['ayudas_sociales'].perms.create;
 
   contenedor.innerHTML = `
@@ -5964,7 +5989,7 @@ async function renderAyudasDeLaPersona(tipo, personaId, contenedor) {
         <span class="mut">${esc(resumenDeAyudas(d) || 'nada registrado')}</span>
         <span class="spacer"></span>
         ${puedeCrear
-          ? `<a class="btn sm" href="#/m/ayudas_sociales/new?beneficiario_tipo=${encodeURIComponent(tipo)}&${campo}=${personaId}">➕ Registrar una ayuda</a>`
+          ? `<a class="btn sm" href="#/m/ayudas_sociales/new?beneficiario_tipo=${encodeURIComponent(aQuien)}&${campo}=${aCual}">➕ Registrar una ayuda</a>`
           : ''}
       </div>
       ${d.registradas ? `
@@ -5977,7 +6002,8 @@ async function renderAyudasDeLaPersona(tipo, personaId, contenedor) {
             <tbody>
               ${d.ayudas.map((a) => `
                 <tr data-ir="#/m/ayudas_sociales/edit/${a.id}" tabindex="0">
-                  <td data-label="Fecha">${esc(a.fecha ? fechaCorta(a.fecha) : '')}</td>
+                  <td data-label="Fecha">${esc(a.fecha ? fechaCorta(a.fecha) : '')}${
+                    a.antes ? ' <span class="badge">antes de inscribirse</span>' : ''}</td>
                   <td data-label="Tipo de ayuda"><b>${esc(a.tipo_ayuda || '')}</b></td>
                   <td data-label="Qué se entregó">${esc(a.descripcion || '')}</td>
                   <td data-label="Valor estimado" class="num">${a.valor_estimado ? esc(fmtMoney(a.valor_estimado)) : ''}</td>
@@ -5988,6 +6014,11 @@ async function renderAyudasDeLaPersona(tipo, personaId, contenedor) {
         </div>
         ${faltan > 0
           ? `<div class="card-body mut" style="font-size:13px">Se muestran las ${fmtNumero(d.ayudas.length)} más recientes; hay ${fmtNumero(faltan)} más atrás.</div>`
+          : ''}
+        ${d.antes_de_inscribirse
+          ? `<div class="card-body mut" style="font-size:13px">De esas, ${fmtNumero(d.antes_de_inscribirse)} se le
+               ${d.antes_de_inscribirse === 1 ? 'entregó' : 'entregaron'} cuando todavía no estaba inscrita, y
+               ${d.antes_de_inscribirse === 1 ? 'cuelga' : 'cuelgan'} de su ficha de No Miembro.</div>`
           : ''}
         ${d.entregado
           ? `<div class="card-body" style="font-size:13px">Suma estimada de lo entregado: <b>${esc(fmtMoney(d.entregado))}</b></div>`

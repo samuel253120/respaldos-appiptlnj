@@ -75,6 +75,18 @@ entregar({ no_miembro_id: otraSenora }, '2026-04-04', 'Entregada', 9000);
 entregar({ miembro_id: unMiembro }, '2026-02-02', 'Entregada', 30000);
 entregar({ miembro_id: unMiembro }, '2026-06-06', 'Solicitada', 5000);
 
+// Y la que se inscribió: dos entregas de cuando no lo estaba, una de después.
+// Su ficha de No Miembro no se borra y queda apuntando a la de miembro.
+const yaInscrita = db
+  .prepare("INSERT INTO miembros (nombres, apellidos, iglesia_id, estado) VALUES ('Rosa', 'Vera Inscrita', ?, 'Activo')")
+  .run(iglesia).lastInsertRowid;
+const suFichaVieja = db
+  .prepare("INSERT INTO no_miembros (nombres, apellidos, iglesia_id, miembro_id) VALUES ('Rosa', 'Vera Inscrita', ?, ?)")
+  .run(iglesia, yaInscrita).lastInsertRowid;
+entregar({ no_miembro_id: suFichaVieja }, '2025-11-03', 'Entregada', 22000);
+entregar({ no_miembro_id: suFichaVieja }, '2025-12-20', 'Entregada', 14000);
+entregar({ miembro_id: yaInscrita }, '2026-06-15', 'Entregada', 40000);
+
 const YO = { id: 1, rol: 'admin', iglesias: [iglesia], cuerpos: [] };
 const LA_DE_AL_LADO = { id: 2, rol: 'secretario', iglesias: [vecina], cuerpos: [] };
 
@@ -154,6 +166,46 @@ test('los dos registros no se cruzan aunque compartan el número', () => {
 test('sin decir de quién, no se contesta', () => {
   const { codigo } = suHistorial({ tipo: 'No miembro' });
   assert.equal(codigo, 400);
+});
+
+/* ------------------------- la que se inscribió: una sola historia ----- */
+
+test('su ficha de miembro muestra también lo que se le entregó antes de inscribirse', () => {
+  const { d } = suHistorial({ tipo: 'Miembro', id: yaInscrita });
+  assert.equal(d.registradas, 3, 'dos de cuando no estaba inscrita y una de después');
+  assert.equal(d.entregas, 3);
+  assert.equal(d.entregado, 22000 + 14000 + 40000);
+  assert.equal(d.antes_de_inscribirse, 2, 'y se dice cuántas son de antes, que no es lo mismo');
+});
+
+test('las de antes vienen marcadas, para no confundir las dos etapas', () => {
+  const { d } = suHistorial({ tipo: 'Miembro', id: yaInscrita });
+  const marcadas = d.ayudas.filter((a) => a.antes).map((a) => a.fecha).sort();
+  assert.deepEqual(marcadas, ['2025-11-03', '2025-12-20']);
+  assert.equal(d.ayudas.find((a) => a.fecha === '2026-06-15').antes, 0,
+    'la de después de inscribirse no lleva la marca');
+});
+
+test('su ficha vieja sigue mostrando las suyas, y solo las suyas', () => {
+  const { d } = suHistorial({ tipo: 'No miembro', id: suFichaVieja });
+  assert.equal(d.registradas, 2, 'de esa ficha cuelgan las dos de antes');
+  assert.equal(d.antes_de_inscribirse, 0,
+    'mirando la ficha vieja no hay «antes»: es la ficha que las recibió');
+});
+
+test('el enlace se sigue hacia atrás y no hacia adelante', () => {
+  // La ficha de no miembro apunta a la de miembro. Si la ruta siguiera ese
+  // enlace también desde el lado del no miembro, la ficha vieja mostraría la
+  // ayuda de 2026 que se le entregó cuando ya era miembro: sería contarle a
+  // una ficha algo que nunca recibió.
+  const { d } = suHistorial({ tipo: 'No miembro', id: suFichaVieja });
+  assert.equal(d.ayudas.some((a) => a.fecha === '2026-06-15'), false);
+});
+
+test('una persona que nunca fue no miembro no ve ayudas de nadie', () => {
+  const { d } = suHistorial({ tipo: 'Miembro', id: unMiembro });
+  assert.equal(d.registradas, 2, 'las suyas y nada más');
+  assert.equal(d.antes_de_inscribirse, 0);
 });
 
 /* --------------------------------------------------------- el alcance */
@@ -245,8 +297,44 @@ test('desde una fila se llega a la ayuda, y el botón viene con la persona puest
   // que no existe y la pantalla se queda en el listado sin decir nada.
   assert.match(panel, /data-ir="#\/m\/ayudas_sociales\/edit\/\$\{a\.id\}"/,
     'la fila tiene que llevar a esa ayuda');
-  assert.match(panel, /#\/m\/ayudas_sociales\/new\?beneficiario_tipo=\$\{encodeURIComponent\(tipo\)\}&\$\{campo\}=\$\{personaId\}/,
+  assert.match(panel, /#\/m\/ayudas_sociales\/new\?beneficiario_tipo=\$\{encodeURIComponent\(aQuien\)\}&\$\{campo\}=\$\{aCual\}/,
     'registrar una ayuda desde su ficha tiene que llegar con la persona ya elegida');
+});
+
+test('la ficha vieja avisa arriba que esa persona ya se inscribió', () => {
+  /*
+   * Se mira SOLO este bloque y no todo el archivo: el pie de la pestaña de
+   * Datos ya tenía su propio enlace a la ficha de miembro, así que buscar el
+   * enlace en app.js entero daba por buena esta insignia aunque no llevara a
+   * ninguna parte. La prueba celebraba el enlace de al lado.
+   */
+  const bloque = app.match(
+    /if \(name === 'no_miembros' && row\.miembro_id && MOD\['miembros'\]\) \{[\s\S]*?\n  \}/
+  );
+  assert.ok(bloque, 'quien abre esta ficha a registrarle algo tiene que enterarse antes de hacerlo');
+  assert.match(bloque[0], /Ya se inscribió · ver su ficha de miembro/);
+  assert.match(bloque[0], /<a class="badge blue" href="#\/m\/miembros\/ficha\/\$\{row\.miembro_id\}"/,
+    'y tiene que ser un enlace de verdad a la ficha que sí vive');
+  assert.match(bloque[0], /caja\.hidden = false;/, 'la caja de insignias puede venir escondida');
+});
+
+test('en una ficha ya inscrita, la ayuda nueva se le anota a la ficha que vive', () => {
+  const panel = app.match(/async function renderAyudasDeLaPersona[\s\S]*?\n\}/)[0];
+  assert.match(panel, /const aQuien = yaEsMiembro \? 'Miembro' : tipo;/);
+  assert.match(panel, /const aCual = yaEsMiembro \|\| personaId;/,
+    'anotarla en la ficha vieja la dejaría colgando de una que ya nadie abre');
+  assert.match(app, /renderAyudasDeLaPersona\(COMO_RECIBE_AYUDA\[name\], id, c, name === 'no_miembros' \? row\.miembro_id : null\)/);
+});
+
+test('las filas de antes de inscribirse se ven distintas, y se dicen en palabras', () => {
+  const panel = app.match(/async function renderAyudasDeLaPersona[\s\S]*?\n\}/)[0];
+  assert.match(panel, /a\.antes \? ' <span class="badge">antes de inscribirse<\/span>' : ''/);
+  // La CONDICIÓN, no la mención: dejar el texto dentro de una rama muerta lo
+  // deja escrito en el archivo y apagado en la pantalla, y una prueba que solo
+  // busca el nombre de la variable da eso por bueno.
+  assert.match(panel, /\$\{d\.antes_de_inscribirse\n\s*\? `<div class="card-body mut"/,
+    'el párrafo tiene que salir cuando y solo cuando haya alguna de antes');
+  assert.match(panel, /cuando todavía no estaba inscrita/);
 });
 
 test('la pestaña usa la cuenta del servidor y no suma las filas de la tabla', () => {
