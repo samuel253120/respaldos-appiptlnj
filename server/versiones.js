@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.174.0", fecha: "2026-08-29", titulo: "Ya se puede contestar a cuántas personas distintas se ha ayudado: el informe de ayudas y las dos cifras del mes en el panel" },
   { version: "1.173.0", fecha: "2026-08-29", titulo: "Inscribirse ya no le borra la historia: su ficha de miembro muestra también lo que se le entregó antes" },
   { version: "1.172.0", fecha: "2026-08-29", titulo: "La ficha de la persona dice lo que se le ha entregado: el registro existía por las ayudas y no las nombraba" },
   { version: "1.171.0", fecha: "2026-08-28", titulo: "El mismo traspaso anotado dos veces también se pregunta: era el agujero que quedaba un módulo más allá del libro" },

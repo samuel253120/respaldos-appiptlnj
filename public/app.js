@@ -912,6 +912,11 @@ function route() {
     if (sl) marcarActivo(sl);
     return viewInformeServicios(precarga);
   }
+  if (parts[0] === 'ayudas_sociales' && parts[1] === 'informe' && MOD['ayudas_sociales']) {
+    const sl = document.querySelector('.side-link[data-mod="ayudas_sociales"]');
+    if (sl) marcarActivo(sl);
+    return viewInformeAyudas(precarga);
+  }
   if (parts[0] === 'tesoreria' && parts[1] === 'balance' && MOD['tesoreria']) {
     const sl = document.querySelector('.side-link[data-mod="tesoreria"]');
     if (sl) marcarActivo(sl);
@@ -1862,6 +1867,20 @@ async function viewDashboard() {
       d.counts.solicitudes_vencidas ? `${fmtNumero(d.counts.solicitudes_vencidas)} pasada(s) de plazo` : '',
       '#/solicitudes/bandeja'],
     ['certificados', '📜', 'Certificados', d.counts.certificados],
+    /*
+     * Lo entregado este mes, y a cuánta gente.
+     *
+     * El panel no decía una palabra de las ayudas, que es lo único del sistema
+     * que entrega plata y mercadería a gente de fuera. La cifra que va arriba
+     * es PERSONAS y no entregas: es la que se pregunta desde afuera, y la que
+     * no se podía contestar en ninguna parte. Las entregas van debajo, porque
+     * sin ellas «6 personas» no dice si fueron seis cajas o dieciocho.
+     */
+    ['ayudas_sociales', '🤝', 'Personas ayudadas este mes', d.counts.ayudas_personas_mes || 0,
+      '', '#/ayudas_sociales/informe',
+      d.counts.ayudas_mes
+        ? `${fmtNumero(d.counts.ayudas_mes)} entrega(s) · ${fmtMoney(d.counts.ayudas_entregado_mes)}`
+        : ''],
   ].filter(([name]) => MOD[name]);
 
   let finHtml = '';
@@ -1943,10 +1962,11 @@ async function viewDashboard() {
     </div>
     ${avisoCredenciales}
     <div class="stats">
-      ${statDefs.map(([name, ic, lbl, num, alerta, adonde]) => `
+      ${statDefs.map(([name, ic, lbl, num, alerta, adonde, nota]) => `
         <div class="stat${alerta ? ' urge' : ''}" data-ir="${esc(adonde || `#/m/${name}`)}">
           <div class="num">${esc(fmtNumero(num))}</div><div class="lbl">${lbl}</div><div class="ic">${ic}</div>
           ${alerta ? `<div class="alerta">⏰ ${esc(alerta)}</div>` : ''}
+          ${nota ? `<div class="apunte">${esc(nota)}</div>` : ''}
         </div>`).join('')}
     </div>
     ${finHtml}
@@ -2103,6 +2123,7 @@ async function viewList(name, filtrosIniciales) {
       <div class="actions">
         ${name === 'servicios' ? '<button class="btn secondary" id="btnInformeServicios">📊 Informe</button>' : ''}
         ${name === 'tesoreria' ? '<button class="btn secondary" id="btnBalance">📊 Balance</button>' : ''}
+        ${name === 'ayudas_sociales' ? '<button class="btn secondary" id="btnInformeAyudas">📊 Informe</button>' : ''}
         ${m.perms.create ? `<button class="btn secondary" id="btnImportar">⬆️ Importar</button>` : ''}
         ${m.perms.create ? `<button class="btn" id="btnNew">➕ ${nuevoDe(m)} ${esc(m.labelSingular.toLowerCase())}</button>` : ''}
       </div>
@@ -2130,6 +2151,21 @@ async function viewList(name, filtrosIniciales) {
       if (st.filters && st.filters.iglesia_id) suyos.set('iglesia_id', st.filters.iglesia_id);
       const cola = suyos.toString();
       location.hash = `#/servicios/informe${cola ? '?' + cola : ''}`;
+    });
+  }
+
+  // El informe de ayudas, con el período y los filtros que ya están puestos
+  const alInformeAyudas = document.getElementById('btnInformeAyudas');
+  if (alInformeAyudas) {
+    alInformeAyudas.addEventListener('click', () => {
+      const suyos = new URLSearchParams();
+      if (st.desde) suyos.set('desde', st.desde);
+      if (st.hasta) suyos.set('hasta', st.hasta);
+      for (const campo of ['iglesia_id', 'tipo_ayuda', 'beneficiario_tipo', 'estado']) {
+        if (st.filters && st.filters[campo]) suyos.set(campo, st.filters[campo]);
+      }
+      const cola = suyos.toString();
+      location.hash = `#/ayudas_sociales/informe${cola ? '?' + cola : ''}`;
     });
   }
 
@@ -3153,6 +3189,207 @@ function mesLargo(mes) {
   const [anio, m] = String(mes || '').split('-');
   const n = Number(m);
   return n >= 1 && n <= 12 ? `${MESES[n - 1]} de ${anio}` : String(mes || '');
+}
+
+/**
+ * EL INFORME DE AYUDAS: a cuántas personas distintas se ha ayudado.
+ *
+ * Es la pregunta que llega desde afuera —la directiva, una fundación, la
+ * cuenta anual— y la que el registro de No Miembros dijo venir a contestar.
+ * Se podía contar cuántas ENTREGAS hubo, porque el listado las trae todas; no
+ * cuántas PERSONAS, que no es lo mismo cuando a una se le entregó tres veces.
+ *
+ * Dos cosas que la pantalla dice con todas sus letras porque, calladas,
+ * confunden:
+ *
+ *   · las personas de cada fila NO suman el total, porque la misma señora que
+ *     recibió mercadería y medicamentos es una persona en cada fila y una sola
+ *     en el total;
+ *   · y las ayudas de antes del registro, que llevan el nombre escrito a mano
+ *     y no apuntan a ninguna ficha, no se cuentan entre las personas: dos
+ *     veces el mismo nombre puede ser el mismo señor o dos distintos, y no hay
+ *     cómo saberlo.
+ */
+async function viewInformeAyudas(precarga) {
+  const m = MOD['ayudas_sociales'];
+  if (!m) return (location.hash = '#/');
+  const st = {
+    desde: (precarga && precarga.desde) || '',
+    hasta: (precarga && precarga.hasta) || '',
+    tipo_ayuda: (precarga && precarga.tipo_ayuda) || '',
+    iglesia_id: (precarga && precarga.iglesia_id) || '',
+  };
+  const tipos = (m.fields.find((f) => f.name === 'tipo_ayuda') || {}).options || [];
+
+  content().innerHTML = `
+    <div class="page-head no-print">
+      <h2>📊 Informe de Ayudas Sociales</h2>
+      <div class="actions">
+        <button class="btn secondary" id="ayVolver">← Volver al listado</button>
+        <button class="btn secondary" data-imprimir>🖨️ PDF</button>
+      </div>
+    </div>
+    <div class="card no-print">
+      <div class="toolbar">
+        <select id="ayTipo" aria-label="Tipo de ayuda">
+          <option value="">Todos los tipos de ayuda</option>
+          ${tipos.map((t) => `<option value="${esc(t)}" ${st.tipo_ayuda === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+        </select>
+        <select id="ayIglesia" aria-label="Iglesia"><option value="">Todas las iglesias</option></select>
+        <label class="range">Desde <input type="date" id="ayDesde" value="${esc(st.desde)}" /></label>
+        <label class="range">Hasta <input type="date" id="ayHasta" value="${esc(st.hasta)}" /></label>
+        <button class="btn secondary" id="ayAnio">Este año</button>
+      </div>
+    </div>
+    <div id="infAyudas"><p style="padding:18px">Calculando…</p></div>`;
+
+  document.getElementById('ayVolver').addEventListener('click', () => (location.hash = '#/m/ayudas_sociales'));
+  const iglesias = await getOptions('iglesias').catch(() => []);
+  const selIglesia = document.getElementById('ayIglesia');
+  selIglesia.innerHTML = '<option value="">Todas las iglesias</option>'
+    + (iglesias || []).map((i) => `<option value="${i.id}" ${String(st.iglesia_id) === String(i.id) ? 'selected' : ''}>${esc(i.label)}</option>`).join('');
+
+  const cambia = (id, campo) =>
+    document.getElementById(id).addEventListener('change', (e) => {
+      st[campo] = e.target.value;
+      cargar();
+    });
+  cambia('ayTipo', 'tipo_ayuda');
+  cambia('ayIglesia', 'iglesia_id');
+  cambia('ayDesde', 'desde');
+  cambia('ayHasta', 'hasta');
+  document.getElementById('ayAnio').addEventListener('click', () => {
+    const anio = new Date().getFullYear();
+    st.desde = `${anio}-01-01`;
+    st.hasta = `${anio}-12-31`;
+    document.getElementById('ayDesde').value = st.desde;
+    document.getElementById('ayHasta').value = st.hasta;
+    cargar();
+  });
+
+  async function cargar() {
+    const caja = document.getElementById('infAyudas');
+    caja.innerHTML = '<p style="padding:18px">Calculando…</p>';
+    const params = new URLSearchParams();
+    if (st.desde) params.set('desde', st.desde);
+    if (st.hasta) params.set('hasta', st.hasta);
+    if (st.tipo_ayuda) params.set('f_tipo_ayuda', st.tipo_ayuda);
+    if (st.iglesia_id) params.set('f_iglesia_id', st.iglesia_id);
+
+    let d;
+    try {
+      d = await api('GET', '/ayudas_sociales/informe?' + params.toString());
+    } catch (e) {
+      caja.innerHTML = `<p style="padding:18px;color:var(--danger)">${esc(e.message)}</p>`;
+      return;
+    }
+    const r = d.resumen;
+    const soloDe = st.tipo_ayuda ? `solo «${st.tipo_ayuda}», ` : '';
+    const periodo = d.desde || d.hasta
+      ? `${soloDe}del ${d.desde ? fechaLarga(d.desde) : 'principio'} al ${d.hasta ? fechaLarga(d.hasta) : 'día de hoy'}`
+      : `${soloDe}de todo lo registrado`;
+
+    /*
+     * La aclaración se escribe entera para cada tabla y no se arma pegando el
+     * nombre de la columna: salían frases como «de dos tipo de ayuda
+     * distintas» y «de dos mes distintas». Una nota mal escrita al pie de una
+     * cifra hace dudar de la cifra.
+     */
+    const tabla = (titulo, filas, columna, comoSeLlama, vacio, aclara) => `
+      <div class="card" style="margin-bottom:18px">
+        <h3>${esc(titulo)}</h3>
+        ${filas.length ? `
+        <div style="overflow-x:auto">
+        <table class="grid informe grid-lista">
+          <thead><tr>
+            <th>${esc(columna)}</th><th>Entregas</th><th>Personas</th><th>Valor estimado</th>
+          </tr></thead>
+          <tbody>
+            ${filas.map((f) => `
+              <tr>
+                <td class="col-primera col-titular" data-label="${esc(columna)}">${esc(comoSeLlama(f))}</td>
+                <td class="num" data-label="Entregas">${esc(fmtNumero(f.entregas))}</td>
+                <td class="num" data-label="Personas">${esc(fmtNumero(f.personas))}</td>
+                <td class="num" data-label="Valor estimado">${fmtMoney(f.entregado)}</td>
+              </tr>`).join('')}
+          </tbody>
+          <tfoot><tr class="tot">
+            <td class="col-primera col-titular" data-label="${esc(columna)}"><b>Total</b></td>
+            <td class="num" data-label="Entregas"><b>${esc(fmtNumero(r.entregas))}</b></td>
+            <td class="num" data-label="Personas"><b>${esc(fmtNumero(r.personas))}</b></td>
+            <td class="num" data-label="Valor estimado"><b>${fmtMoney(r.entregado)}</b></td>
+          </tr></tfoot>
+        </table></div>
+        <p class="mut" style="padding:0 14px 12px;font-size:12.5px">Las personas de cada fila no suman
+          el total: ${esc(aclara)}</p>` : `<div class="empty-state" style="padding:22px">${esc(vacio)}</div>`}
+      </div>`;
+
+    // Lo que el informe no puede contestar, dicho donde se lee la cifra
+    const aclaraciones = [
+      r.sin_ficha
+        ? `${fmtNumero(r.sin_ficha)} ayuda(s) de este período llevan el nombre del beneficiario escrito
+           a mano, de antes de que existiera el registro de personas: cuentan en las entregas y en la
+           plata, pero no entre las personas, porque no hay cómo saber si dos nombres iguales son la
+           misma.`
+        : '',
+      r.en_camino ? `${fmtNumero(r.en_camino)} ayuda(s) están solicitadas o aprobadas y todavía no entregadas.` : '',
+      r.rechazadas ? `${fmtNumero(r.rechazadas)} fueron rechazadas.` : '',
+    ].filter(Boolean);
+
+    caja.innerHTML = `
+      <div class="informe-hoja">
+        <div class="print-only">${membreteDelDocumento()}</div>
+        <h3 class="informe-tit">
+          Informe de ayudas sociales <span class="mut">${esc(periodo)}</span>
+        </h3>
+        <div class="resumen-cifras">
+          <div class="fin blue"><div class="lbl">Personas distintas</div><div class="num">${esc(fmtNumero(r.personas))}</div></div>
+          <div class="fin slate"><div class="lbl">Recibieron más de una vez</div><div class="num">${esc(fmtNumero(r.repitieron))}</div></div>
+          <div class="fin blue"><div class="lbl">Entregas</div><div class="num">${esc(fmtNumero(r.entregas))}</div></div>
+          <div class="fin green"><div class="lbl">Valor estimado entregado</div><div class="num">${fmtMoney(r.entregado)}</div></div>
+        </div>
+        ${aclaraciones.length
+          ? `<div class="resumen-nota">${aclaraciones.map((a) => `<p>${esc(a.replace(/\s+/g, ' '))}</p>`).join('')}</div>`
+          : ''}
+        ${tabla('Por tipo de ayuda', d.porTipo, 'Tipo de ayuda', (f) => f.clave || '(sin tipo)',
+          'Sin entregas en este período.',
+          'a quien recibió dos tipos de ayuda distintos se le cuenta en los dos y una sola vez abajo.')}
+        ${d.porIglesia.length > 1
+          ? tabla('Por iglesia', d.porIglesia, 'Iglesia', (f) => f.nombre, 'Sin entregas en este período.',
+            'a quien recibió en dos iglesias distintas se le cuenta en las dos y una sola vez abajo.')
+          : ''}
+        ${tabla('Mes a mes', d.porMes, 'Mes', (f) => mesLargo(f.clave), 'Sin entregas en este período.',
+          'a quien recibió en dos meses distintos se le cuenta en los dos y una sola vez abajo.')}
+        <div class="card">
+          <h3>A quiénes se les entregó más de una vez</h3>
+          ${d.masAyudadas.length ? `
+          <div style="overflow-x:auto">
+          <table class="grid informe grid-lista">
+            <thead><tr>
+              <th>Persona</th><th>Registro</th><th>Entregas</th><th>Valor estimado</th><th>Última</th>
+            </tr></thead>
+            <tbody>
+              ${d.masAyudadas.map((f) => `
+                <tr data-ir="#/m/${f.tipo === 'Miembro' ? 'miembros' : 'no_miembros'}/ficha/${f.id}" tabindex="0">
+                  <td class="col-primera col-titular" data-label="Persona">${esc(f.nombre)}</td>
+                  <td data-label="Registro">${esc(f.tipo)}</td>
+                  <td class="num" data-label="Entregas">${esc(fmtNumero(f.veces))}</td>
+                  <td class="num" data-label="Valor estimado">${fmtMoney(f.entregado)}</td>
+                  <td data-label="Última">${esc(f.ultima ? fechaCorta(f.ultima) : '')}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table></div>`
+            : '<div class="empty-state" style="padding:22px">A nadie se le entregó más de una vez en este período.</div>'}
+        </div>
+      </div>`;
+    caja.querySelectorAll('tr[data-ir]').forEach((tr) => {
+      tr.addEventListener('click', () => (location.hash = tr.dataset.ir));
+      tr.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') location.hash = tr.dataset.ir;
+      });
+    });
+  }
+  cargar();
 }
 
 async function viewInformeServicios(precarga) {

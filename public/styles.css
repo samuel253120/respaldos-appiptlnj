@@ -965,6 +965,13 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
   line-height: 1.3; margin-top: 2px;
 }
 .stat.urge { border-left: 3px solid var(--danger); }
+/* Un apunte que acompaña la cifra sin ser una alarma: cuántas entregas hay
+   detrás de las personas ayudadas. En rojo y con reloj —como el aviso de
+   plazo— se leería como que algo anda mal, y no anda mal nada. */
+.stat .apunte {
+  grid-column: 1 / -1; font-size: 11.5px; color: var(--muted);
+  line-height: 1.3; margin-top: 2px;
+}
 
 /* El dinero: el color dice qué es, sin pintar el bloque entero. Un tablero no
    necesita cuatro cuadrados de color para decir cuatro cifras. */

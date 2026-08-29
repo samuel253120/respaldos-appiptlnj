@@ -107,12 +107,21 @@ test('a cada beneficiario de antes se le da su ficha, una por persona', () => {
   // una sin nombre
   meter.run('2026-05-10', iglesia, '', null, 'Otro', 1000);
 
-  const antes = db.prepare('SELECT COUNT(*) c FROM no_miembros').get().c;
+  /*
+   * Se cuentan las fichas DE ESTAS DOS IGLESIAS y no las de toda la tabla: los
+   * archivos de prueba comparten una sola base y corren a la vez, así que
+   * cualquier otro que siembre una ayuda con el beneficiario escrito a mano le
+   * hacía fallar esta cuenta sin tener nada que ver con la migración.
+   */
+  const cuantasAca = () => db
+    .prepare('SELECT COUNT(*) c FROM no_miembros WHERE iglesia_id IN (?, ?)')
+    .get(iglesia, otraIglesia).c;
+  const antes = cuantasAca();
   require('../../server/migraciones').ayudasConFichaDelBeneficiario();
 
   const fichas = db.prepare("SELECT * FROM no_miembros WHERE nombres LIKE 'Juana%'").all();
   assert.equal(fichas.length, 2, 'una por persona y por iglesia, no una por ayuda');
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM no_miembros').get().c, antes + 2);
+  assert.equal(cuantasAca(), antes + 2);
 
   const suya = fichas.find((f) => f.iglesia_id === iglesia);
   const susAyudas = db.prepare('SELECT COUNT(*) c, SUM(valor_estimado) t FROM ayudas_sociales WHERE no_miembro_id = ?').get(suya.id);
@@ -134,11 +143,18 @@ test('la que no traía nombre se queda como estaba, sin inventarle una ficha', (
 });
 
 test('correrla dos veces no duplica nada', () => {
-  const fichas = db.prepare('SELECT COUNT(*) c FROM no_miembros').get().c;
-  const enlaces = db.prepare('SELECT COUNT(*) c FROM ayudas_sociales WHERE no_miembro_id IS NOT NULL').get().c;
+  const fichas = db.prepare('SELECT COUNT(*) c FROM no_miembros WHERE iglesia_id IN (?, ?)')
+    .get(iglesia, otraIglesia).c;
+  const cuantosEnlaces = () => db
+    .prepare('SELECT COUNT(*) c FROM ayudas_sociales WHERE no_miembro_id IS NOT NULL AND iglesia_id IN (?, ?)')
+    .get(iglesia, otraIglesia).c;
+  const enlaces = cuantosEnlaces();
   require('../../server/migraciones').ayudasConFichaDelBeneficiario();
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM no_miembros').get().c, fichas);
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM ayudas_sociales WHERE no_miembro_id IS NOT NULL').get().c, enlaces);
+  assert.equal(
+    db.prepare('SELECT COUNT(*) c FROM no_miembros WHERE iglesia_id IN (?, ?)').get(iglesia, otraIglesia).c,
+    fichas
+  );
+  assert.equal(cuantosEnlaces(), enlaces);
 });
 
 // ------------------------------------------ que no se mezcle con Miembros --

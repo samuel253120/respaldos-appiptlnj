@@ -456,6 +456,26 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     certificados: scoped('certificados'),
   };
 
+  /*
+   * LO ENTREGADO ESTE MES, y a cuánta gente.
+   *
+   * El panel contaba iglesias, miembros, cuerpos, pastores, solicitudes y
+   * certificados —y ni una palabra de las ayudas, que es lo único del sistema
+   * que entrega plata y mercadería a gente de fuera—. Van las dos cifras que
+   * de verdad se preguntan: cuánto salió y a cuántas PERSONAS distintas, que
+   * no es lo mismo que cuántas entregas (ver server/a-quien-se-ayudo.js).
+   *
+   * Solo para quien puede ver el módulo: una cifra en el panel que la persona
+   * no puede abrir en ninguna parte es una cifra que no puede comprobar.
+   */
+  if (can(req.user, 'ayudas_sociales', 'view')) {
+    const { sql, params } = filtro('ayudas_sociales');
+    const suyas = require('./a-quien-se-ayudo').delMes(db, sql, params);
+    counts.ayudas_mes = suyas.entregas;
+    counts.ayudas_personas_mes = suyas.personas;
+    counts.ayudas_entregado_mes = suyas.entregado;
+  }
+
   let finanzas = null;
   if (can(req.user, 'tesoreria', 'view')) {
     const mes = new Date().toISOString().slice(0, 7); // YYYY-MM

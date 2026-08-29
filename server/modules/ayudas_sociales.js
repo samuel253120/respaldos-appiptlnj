@@ -123,7 +123,75 @@ module.exports = {
     },
   },
 
-  extraRoutes(router, { db, requirePerm }) {
+  extraRoutes(router, { db, requirePerm, scopeClause }) {
+    /*
+     * Qué ayudas se están mirando: el alcance de quien pregunta más los
+     * filtros y el período de la pantalla. Lo arma una sola vez para que el
+     * informe no pueda decir un total distinto del que muestra el listado del
+     * que salió.
+     *
+     * Sin alias en la tabla: las condiciones que emite server/alcance.js traen
+     * los nombres de columna a secas, y la regla de a quién se ayudó también
+     * (ver server/a-quien-se-ayudo.js).
+     */
+    const loQueSeEstaMirando = (req) => {
+      const params = [];
+      const where = [];
+      const scope = scopeClause(req.user, params);
+      if (scope) where.push(scope);
+      const filtro = (q, columna) => {
+        if (!req.query[q]) return;
+        where.push(`${columna} = ?`);
+        params.push(req.query[q]);
+      };
+      filtro('f_iglesia_id', 'iglesia_id');
+      filtro('f_tipo_ayuda', 'tipo_ayuda');
+      filtro('f_beneficiario_tipo', 'beneficiario_tipo');
+      filtro('f_estado', 'estado');
+      if (req.query.desde) {
+        where.push('fecha >= ?');
+        params.push(req.query.desde);
+      }
+      if (req.query.hasta) {
+        where.push('fecha <= ?');
+        params.push(req.query.hasta);
+      }
+      return { whereSql: where.length ? 'WHERE ' + where.join(' AND ') : '', params };
+    };
+
+    /*
+     * EL INFORME DE AYUDAS: a cuántas personas distintas se ha ayudado.
+     *
+     * Es la pregunta que llega desde afuera —la directiva, una fundación, la
+     * cuenta anual— y la que el módulo de No Miembros dijo venir a contestar.
+     * Se podía contar cuántas ENTREGAS hubo, porque el listado las trae todas;
+     * no cuántas PERSONAS, que no es lo mismo cuando a una se le entregó tres
+     * veces. Atención y ayuda era el único grupo del menú que entrega plata y
+     * mercadería sin una sola pantalla que las sume: Tesorería tiene su
+     * balance y Asistencia su informe.
+     *
+     * Cómo se cuenta una persona —y por qué no es lo mismo que contar
+     * enlaces— está en server/a-quien-se-ayudo.js.
+     */
+    router.get('/ayudas_sociales/informe', requirePerm('ayudas_sociales', 'view'), (req, res) => {
+      const { whereSql, params } = loQueSeEstaMirando(req);
+      const aQuien = require('../a-quien-se-ayudo');
+      const iglesias = new Map(
+        db.prepare('SELECT id, nombre FROM iglesias').all().map((i) => [String(i.id), i.nombre])
+      );
+      res.json({
+        desde: req.query.desde || null,
+        hasta: req.query.hasta || null,
+        resumen: aQuien.cifrasDe(db, whereSql, params),
+        porTipo: aQuien.abiertoPor(db, 'tipo_ayuda', whereSql, params),
+        porIglesia: aQuien
+          .abiertoPor(db, 'iglesia_id', whereSql, params)
+          .map((f) => ({ ...f, nombre: iglesias.get(String(f.clave)) || '(sin iglesia)' })),
+        porMes: aQuien.abiertoPor(db, "substr(fecha, 1, 7)", whereSql, params, 'clave'),
+        masAyudadas: aQuien.masAyudadas(db, whereSql, params),
+      });
+    });
+
     /**
      * LO QUE SE LE HA ENTREGADO A UNA PERSONA, para verlo en su ficha.
      *
