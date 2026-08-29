@@ -3116,6 +3116,16 @@ ul.mini-list li.retirado .msg-t { text-decoration: line-through; }
   .fld label.con-casilla input[type="checkbox"] { width: 18px; height: 18px; }
 }
 
+/* El documento que respalda una anotación, a la vista y a un clic: sin esto
+   había que abrir cada una para saber cuáles estaban respaldadas */
+.historial .hadj { margin-top: 5px; }
+.historial .hadj a {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; min-height: 30px;   /* el mínimo del sistema para lo que se toca con el dedo */
+  color: var(--accent); text-decoration: none; word-break: break-all;
+}
+.historial .hadj a:hover { text-decoration: underline; }
+
 /* Una anotación del sistema que alguien corrigió a mano: lo que decía queda
    a un clic, plegado, para que no le quite el sitio a lo que la ficha dice hoy */
 .historial .corregida { margin-top: 4px; }

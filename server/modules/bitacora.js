@@ -80,7 +80,16 @@ module.exports = {
    * No agrega huecos: se midió y está llena en el 100% de las filas, porque el
    * módulo la escribe en cada anotación, sea del equipo o del sistema.
    */
-  listFields: ['fecha', 'miembro_id', 'tipo', 'descripcion', 'origen', 'registrado_por'],
+  /*
+   * Y el clip, para mirar por encima cuáles están respaldadas.
+   *
+   * El listado no decía cuáles anotaciones traen un documento, así que la
+   * única forma de saberlo era abrirlas una por una. La columna se dibuja
+   * angosta —el motor le pone su ancho mínimo a un campo de archivo— y
+   * desaparece sola cuando ninguna fila trae nada, que es como se comporta
+   * cualquier otra columna de archivo del sistema.
+   */
+  listFields: ['fecha', 'miembro_id', 'tipo', 'descripcion', 'origen', 'registrado_por', 'adjunto'],
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
     { name: 'miembro_id', label: 'Miembro', type: 'ref', ref: 'miembros', required: true },

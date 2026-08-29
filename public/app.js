@@ -10718,7 +10718,9 @@ function printGenerico(m, row, susAyudas, suHistorial) {
           ${filas.map((h) => `
             <tr>
               <td class="nowrap">${esc(h.fecha ? fechaCorta(h.fecha) : '')}</td>
-              <td><b>${esc(h.tipo || '')}.</b> ${esc(h.descripcion || '')}${h.texto_original
+              <td><b>${esc(h.tipo || '')}.</b> ${esc(h.descripcion || '')}${h.adjunto
+                ? ` <i>— con documento adjunto: ${esc(nombreArchivo(h.adjunto))}</i>`
+                : ''}${h.texto_original
                 ? ` <i>— corregida a mano${h.corregido_por ? ' por ' + esc(h.corregido_por) : ''}; el sistema había anotado: «${esc(h.texto_original)}»</i>`
                 : ''}</td>
               <td class="nowrap">${esc(h.registrado_por || '')}</td>
@@ -14386,6 +14388,7 @@ async function renderHistorial(panel, id, contenedor, estado) {
                   <div class="hm">${quien}${editado ? ' · ✏️ editado' : ''}${corregida
                     ? ` · ✏️ corregida a mano${r.corregido_por ? ' por ' + esc(r.corregido_por) : ''}${r.updated_at ? ' el ' + fechaCorta(String(r.updated_at).slice(0, 10)) : ''}`
                     : ''}</div>
+                  ${r.adjunto ? `<div class="hadj"><a href="/uploads/${esc(r.adjunto)}" target="_blank">📎 ${esc(nombreArchivo(r.adjunto))}</a></div>` : ''}
                   ${corregida ? `<details class="corregida">
                     <summary>Ver lo que había anotado el sistema</summary>
                     <div class="antes">${esc(r.texto_original)}</div>
@@ -14476,6 +14479,22 @@ async function renderHistorial(panel, id, contenedor, estado) {
  */
 function abrirAnotacion(panel, id, alGuardar, registro) {
   const tipos = (MOD[panel.modulo].fields.find((f) => f.name === 'tipo').options || []).map((o) => (typeof o === 'object' ? o.value : o));
+  /*
+   * El documento se adjunta donde se anota.
+   *
+   * Quien anota una disciplina, un acuerdo o un permiso tiene el papel en la
+   * mano o la foto en el teléfono, y ese es el momento en que lo va a
+   * adjuntar. La ventana ofrecía Fecha, Tipo y Descripción, y para el
+   * documento mandaba a otra parte: guardar, volver a buscar la anotación,
+   * abrirla en su ficha completa y guardar otra vez. Cuatro pasos y dos
+   * guardados para lo que iba en uno, y el resultado previsible es que el
+   * documento no se adjunta.
+   *
+   * El campo sale del propio módulo, no de una lista escrita acá: los tres
+   * historiales que lo tienen lo muestran, y el de una solicitud —que no lo
+   * tiene— no muestra nada, en vez de prometer un adjunto que no existe.
+   */
+  const campoAdjunto = MOD[panel.modulo].fields.find((f) => f.name === 'adjunto' && f.type === 'file');
   const editando = !!registro;
   const valor = (campo, porDefecto) => (editando && registro[campo] != null ? registro[campo] : porDefecto);
   const fondo = document.createElement('div');
@@ -14497,7 +14516,17 @@ function abrirAnotacion(panel, id, alGuardar, registro) {
           <select id="anTipo">${tipos.map((t) => `<option value="${esc(t)}" ${t === valor('tipo', 'Anotación') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
         </div>
         <div class="fld" style="margin-top:12px"><label>Descripción</label><textarea id="anDesc" placeholder="Qué se quiere dejar registrado…">${esc(valor('descripcion', ''))}</textarea></div>
-        ${editando ? `<div class="modal-nota">Para adjuntar un documento a este registro, ábralo en <a href="#/m/${panel.modulo}/edit/${registro.id}">su ficha completa</a>.</div>` : ''}
+        ${campoAdjunto ? `
+          <div class="fld" style="margin-top:12px"><label>${esc(campoAdjunto.label)}</label>
+            <div class="filefld" id="ff_anAdjunto">
+              <input type="hidden" name="anAdjunto" value="${esc(valor('adjunto', ''))}" />
+              <input type="file" id="file_anAdjunto" class="oculto-de-verdad" ${campoAdjunto.accept ? `accept="${esc(campoAdjunto.accept)}"` : ''} />
+              <label class="btn secondary sm" for="file_anAdjunto">📎 Elegir archivo</label>
+              <span class="fname" id="fname_anAdjunto">${valor('adjunto', '')
+                ? `<a href="/uploads/${esc(valor('adjunto', ''))}" target="_blank">📎 ${esc(nombreArchivo(valor('adjunto', '')))}</a>`
+                : '<span class="sin-archivo">Ningún archivo elegido</span>'}</span>
+            </div>
+          </div>` : ''}
         <div class="form-error" id="anError" style="padding:0"></div>
       </div>
       <div class="modal-foot">
@@ -14506,6 +14535,9 @@ function abrirAnotacion(panel, id, alGuardar, registro) {
       </div>
     </div>`;
   document.body.appendChild(fondo);
+  // El archivo se sube apenas se elige y deja su nombre en el campo oculto,
+  // igual que en el formulario de una ficha: es la misma función.
+  if (campoAdjunto) initFileField({ name: 'anAdjunto' });
   const cerrar = () => fondo.remove();
   fondo.querySelector('.cerrar').addEventListener('click', cerrar);
   fondo.querySelector('#anCancelar').addEventListener('click', cerrar);
@@ -14523,6 +14555,7 @@ function abrirAnotacion(panel, id, alGuardar, registro) {
       tipo: fondo.querySelector('#anTipo').value,
       descripcion,
     };
+    if (campoAdjunto) datos.adjunto = fondo.querySelector('#ff_anAdjunto input[type=hidden]').value;
     try {
       if (editando) await api('PUT', `/${panel.modulo}/${registro.id}`, datos);
       else await api('POST', `/${panel.modulo}`, datos);
