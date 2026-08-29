@@ -205,6 +205,28 @@ function legible(campo, valor) {
     const n = Number(valor);
     return Number.isFinite(n) ? n.toLocaleString('es-CL') : String(valor);
   }
+  /*
+   * Una fecha, como se lee acá y no como la guarda la base.
+   *
+   * Era lo único que se le escapaba a esta función: la plata salía con su
+   * signo y sus miles, un enlace con el nombre de aquello a lo que apunta, una
+   * lista con todos sus nombres, un sí o un no en vez de un uno o un cero… y
+   * las fechas salían tal cual, «2005-11-06». Medido sobre la base de prueba:
+   * 87 de 205 líneas del Registro de Cambios llevaban una fecha así escrita.
+   *
+   * Y no son las líneas que menos importan. Los ocho campos de fecha de una
+   * ficha de miembro son el nacimiento, la conversión, el bautismo, el ingreso
+   * a la iglesia, los dos matrimonios, el traslado y el fallecimiento: justo
+   * las que alguien va a leer en voz alta.
+   *
+   * Lo que no sea una fecha de verdad se deja como está: en una columna vieja
+   * puede haber cualquier cosa, y traducirla a medias sería inventar.
+   */
+  if (campo.type === 'date') {
+    const { normalizar, comoSeLee } = require('./fechas');
+    const fecha = normalizar(valor);
+    return fecha ? comoSeLee(fecha) : String(valor);
+  }
   if (campo.type === 'ref' && campo.ref) {
     try {
       const { getModule, displayOf } = require('./registry');
