@@ -34,7 +34,19 @@ module.exports = {
    */
   alcance: { comoSuPadre: { modulo: 'miembros', campo: 'miembro_id' } },
   searchFields: ['descripcion', 'tipo'],
-  listFields: ['fecha', 'miembro_id', 'tipo', 'descripcion', 'origen'],
+  /*
+   * «Registrado por» va en el listado, junto a «Origen».
+   *
+   * Las dos columnas contestan cosas distintas y hacen falta las dos: «Origen»
+   * dice si la línea la escribió el equipo o el sistema, y «Registrado por»
+   * dice quién. Sin la segunda, el listado del módulo —que es donde se mira
+   * quién ha estado moviendo las fichas— contestaba «Automático» y ahí
+   * terminaba, teniendo el nombre guardado en la misma fila.
+   *
+   * No agrega huecos: se midió y está llena en el 100% de las filas, porque el
+   * módulo la escribe en cada anotación, sea del equipo o del sistema.
+   */
+  listFields: ['fecha', 'miembro_id', 'tipo', 'descripcion', 'origen', 'registrado_por'],
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
     { name: 'miembro_id', label: 'Miembro', type: 'ref', ref: 'miembros', required: true },

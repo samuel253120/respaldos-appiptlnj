@@ -14249,7 +14249,24 @@ async function renderHistorial(panel, id, contenedor) {
                */
               const corregida = !!r.texto_original;
               const editado = !corregida && r.created_at && r.updated_at && r.created_at !== r.updated_at;
-              const quien = r.origen === 'Automático' ? '⚙️ automático' : '✍️ ' + esc(r.registrado_por || '');
+              /*
+               * «Automático» dice CÓMO se escribió la línea, no quién la
+               * provocó. Detrás de cada anotación automática hay una persona
+               * que guardó una ficha: quien cambió el estado a Inactivo, quien
+               * la sacó del cuerpo, quien aprobó la solicitud. El sistema
+               * guarda su nombre en la misma fila y la pantalla lo tapaba con
+               * un engranaje —mientras que en una nota escrita a mano sí lo
+               * mostraba—, así que se veía quién escribió una nota y no quién
+               * movió una ficha.
+               *
+               * «Sistema» es el nombre que se anota cuando no hubo nadie
+               * —un aviso del día, una tarea sola—, y ahí no se repite: decir
+               * «automático · por Sistema» es decir dos veces lo mismo.
+               */
+              const loHizo = r.registrado_por && r.registrado_por !== 'Sistema' ? esc(r.registrado_por) : '';
+              const quien = r.origen === 'Automático'
+                ? `⚙️ automático${loHizo ? ' · por ' + loHizo : ''}`
+                : '✍️ ' + esc(r.registrado_por || '');
               return `
               <li class="${r.origen === 'Automático' ? 'auto' : 'manual'}">
                 <div class="hf">${fechaCorta(r.fecha)}</div>

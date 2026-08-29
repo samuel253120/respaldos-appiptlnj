@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.183.0", fecha: "2026-08-29", titulo: "El historial dice quién provocó cada anotación automática: el nombre estaba guardado y la pantalla lo tapaba" },
   { version: "1.182.0", fecha: "2026-08-29", titulo: "Corregir a mano lo que anotó el sistema deja constancia: se guarda lo que decía y quién lo corrigió, y se puede leer ahí mismo" },
   { version: "1.181.0", fecha: "2026-08-29", titulo: "El historial de una persona se ve donde se ve la persona: al cambiar de iglesia, su bitácora se va con ella" },
   { version: "1.180.0", fecha: "2026-08-29", titulo: "La bitácora de un miembro anota cuándo pasó la cosa y no cuándo la tecleó alguien, así que su historial se lee en orden" },
