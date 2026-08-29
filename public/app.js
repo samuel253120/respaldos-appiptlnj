@@ -3735,7 +3735,7 @@ async function viewFicha(name, id, pestana) {
       <div class="fc-datos">
         <h3>${esc(conTrato)}</h3>
         ${subtitulo.filter(Boolean).length ? `<div class="fc-sub">${esc(subtitulo.filter(Boolean).join(' · '))}</div>` : ''}
-        ${insignias.length ? `<div class="fc-badges">${insignias.join('')}</div>` : ''}
+        <div class="fc-badges" id="fcInsignias"${insignias.length ? '' : ' hidden'}>${insignias.join('')}</div>
         ${acciones ? `<div class="fc-acciones">${acciones}</div>` : ''}
       </div>
     </div>
@@ -3748,6 +3748,29 @@ async function viewFicha(name, id, pestana) {
   if (be) be.addEventListener('click', () => (location.hash = `#/m/${name}/edit/${id}`));
   const bp = document.getElementById('btnPrint');
   if (bp) bp.addEventListener('click', () => (location.hash = `#/print/${name}/${id}`));
+
+  /*
+   * Cuántas veces se le ha entregado algo, arriba y sin abrir nada.
+   *
+   * Va en la cabecera y no solo en su pestaña porque es lo que hay que saber
+   * ANTES de decidir: quien abre la ficha en el mostrador no va a ir a
+   * buscarlo. Se pide aparte y llega después —la ficha no se queda esperando
+   * por esto—, y si no llega, la ficha se ve igual que siempre.
+   */
+  if (COMO_RECIBE_AYUDA[name] && MOD['ayudas_sociales']) {
+    // Se guarda ESTA caja, no se busca de nuevo al volver: si en el intertanto
+    // se abrió la ficha de otra persona, la respuesta que llega tarde es de la
+    // anterior y escribiría su cuenta en la cabecera equivocada.
+    const suCaja = document.getElementById('fcInsignias');
+    api('GET', `/ayudas_sociales/de-persona?tipo=${encodeURIComponent(COMO_RECIBE_AYUDA[name])}&id=${id}`)
+      .then((d) => {
+        const dice = resumenDeAyudas(d);
+        if (!dice || !suCaja || !suCaja.isConnected) return;
+        suCaja.insertAdjacentHTML('beforeend', `<span class="badge">🤝 ${esc(dice)}</span>`);
+        suCaja.hidden = false;
+      })
+      .catch(() => {});
+  }
 
   // Lo que no se puede pasar por alto de esta persona, antes de sus datos
   if (name === 'miembros') avisosDelMiembro(row);
@@ -3918,6 +3941,18 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
   }
   if (name === 'no_miembros' && MOD['solicitudes']) {
     sumar('solicitudes', 'Solicitudes', '📨', (c) => renderSolicitudesDeLaPersona('No miembro', id, c));
+  }
+  /*
+   * Lo que se le ha entregado, en su ficha.
+   *
+   * El registro de No Miembros existe por las ayudas sociales, y su ficha no
+   * decía ni una palabra de ellas: tenía pestaña para lo que la persona pidió
+   * y para si vino, pero no para lo que se le entregó. Va en los dos
+   * registros porque la misma persona puede recibir antes y después de
+   * inscribirse.
+   */
+  if (COMO_RECIBE_AYUDA[name] && MOD['ayudas_sociales']) {
+    sumar('ayudas', 'Ayudas', '🤝', (c) => renderAyudasDeLaPersona(COMO_RECIBE_AYUDA[name], id, c));
   }
   if (name === 'pastores' && MOD['credenciales']) sumar('credenciales', 'Credenciales', '🪪', (c) => renderCredencialesDelPastor(id, c));
   if (name === 'solicitudes') {
@@ -5872,6 +5907,93 @@ async function renderSolicitudesDeLaPersona(tipo, personaId, contenedor) {
         </div>
         ${filas(d.involucrada, true)}
       </div>` : ''}`;
+}
+
+/**
+ * De qué registro sale esta persona cuando recibe una ayuda. La ayuda guarda
+ * un enlace u otro según el caso, nunca los dos (ver server/modules/ayudas_sociales.js).
+ */
+const COMO_RECIBE_AYUDA = { miembros: 'Miembro', no_miembros: 'No miembro' };
+
+/** «3 entregas · la última el 20-07-2026», en una línea. */
+function resumenDeAyudas(d) {
+  if (!d || !d.registradas) return '';
+  const partes = [];
+  if (d.entregas) {
+    partes.push(`${fmtNumero(d.entregas)} entrega${d.entregas === 1 ? '' : 's'}`);
+    if (d.ultima) partes.push(`la última el ${fechaCorta(d.ultima)}`);
+  }
+  if (d.en_camino) partes.push(`${fmtNumero(d.en_camino)} en trámite`);
+  // Todas rechazadas: no hubo entregas ni queda nada en camino, pero la
+  // persona sí pasó por acá y decir «nada» sería falso.
+  if (!partes.length) partes.push(`${fmtNumero(d.registradas)} ayuda(s) registrada(s)`);
+  return partes.join(' · ');
+}
+
+/**
+ * LO QUE SE LE HA ENTREGADO, EN SU PROPIA FICHA.
+ *
+ * Es la pregunta del mostrador: «¿a esta señora ya se le entregó algo?». El
+ * dato estaba guardado desde siempre —cada ayuda apunta a su ficha— pero solo
+ * se llegaba a él por el listado de Ayudas Sociales, que se ordena por fecha y
+ * no por persona: había que salir de la ficha, buscarla por nombre y volver.
+ *
+ * La cuenta que se muestra arriba es la que manda el servidor sobre TODAS sus
+ * ayudas, no una suma de las filas de la tabla: si alguna vez alguien tuviera
+ * más de las que caben, la tabla mostraría menos y el total seguiría diciendo
+ * la verdad. Por eso también se avisa cuando la tabla se quedó corta.
+ */
+async function renderAyudasDeLaPersona(tipo, personaId, contenedor) {
+  if (!MOD['ayudas_sociales']) return;
+  let d;
+  try {
+    d = await api('GET', `/ayudas_sociales/de-persona?tipo=${encodeURIComponent(tipo)}&id=${personaId}`);
+  } catch (e) {
+    contenedor.innerHTML = `<div class="card"><div class="card-body" style="color:var(--danger)">${esc(e.message)}</div></div>`;
+    return;
+  }
+
+  const faltan = d.registradas - d.ayudas.length;
+  const campo = tipo === 'Miembro' ? 'miembro_id' : 'no_miembro_id';
+  const puedeCrear = MOD['ayudas_sociales'].perms.create;
+
+  contenedor.innerHTML = `
+    <div class="card bandeja-tabla" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🤝 Lo que se le ha entregado</b>
+        <span class="mut">${esc(resumenDeAyudas(d) || 'nada registrado')}</span>
+        <span class="spacer"></span>
+        ${puedeCrear
+          ? `<a class="btn sm" href="#/m/ayudas_sociales/new?beneficiario_tipo=${encodeURIComponent(tipo)}&${campo}=${personaId}">➕ Registrar una ayuda</a>`
+          : ''}
+      </div>
+      ${d.registradas ? `
+        <div class="table-scroll">
+          <table class="grid grid-lista">
+            <thead><tr>
+              <th>Fecha</th><th>Tipo de ayuda</th><th>Qué se entregó</th>
+              <th class="num">Valor estimado</th><th>Estado</th>
+            </tr></thead>
+            <tbody>
+              ${d.ayudas.map((a) => `
+                <tr data-ir="#/m/ayudas_sociales/edit/${a.id}" tabindex="0">
+                  <td data-label="Fecha">${esc(a.fecha ? fechaCorta(a.fecha) : '')}</td>
+                  <td data-label="Tipo de ayuda"><b>${esc(a.tipo_ayuda || '')}</b></td>
+                  <td data-label="Qué se entregó">${esc(a.descripcion || '')}</td>
+                  <td data-label="Valor estimado" class="num">${a.valor_estimado ? esc(fmtMoney(a.valor_estimado)) : ''}</td>
+                  <td data-label="Estado"><span class="badge ${badgeClass(a.estado)}">${esc(a.estado || '')}</span></td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        ${faltan > 0
+          ? `<div class="card-body mut" style="font-size:13px">Se muestran las ${fmtNumero(d.ayudas.length)} más recientes; hay ${fmtNumero(faltan)} más atrás.</div>`
+          : ''}
+        ${d.entregado
+          ? `<div class="card-body" style="font-size:13px">Suma estimada de lo entregado: <b>${esc(fmtMoney(d.entregado))}</b></div>`
+          : ''}`
+        : `<div class="card-body mut" style="font-size:13px">No se le ha registrado ninguna ayuda.</div>`}
+    </div>`;
 }
 
 /**

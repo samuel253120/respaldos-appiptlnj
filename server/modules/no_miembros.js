@@ -8,6 +8,15 @@
  * señora se le entregó tres veces, ni de encontrar su teléfono el día que hay
  * que avisarle algo. Cada ayuda era un nombre suelto.
  *
+ * Y HACER LA FICHA NO ALCANZÓ PARA CONTESTARLO. El enlace quedó puesto —cada
+ * ayuda apunta a su ficha— pero no había camino de vuelta: la ficha de la
+ * persona con tres entregas no decía la palabra «ayuda» ni una vez, y para
+ * averiguarlo había que salir de ella, entrar a Ayudas Sociales, filtrar por
+ * su nombre y volver. En el mostrador eso no se hace. Ahora su ficha lo dice
+ * arriba —«3 entregas · la última el 12-03-2026»— y lo abre en su pestaña de
+ * Ayudas, sin salir de donde uno la está mirando (ver la ruta
+ * `/ayudas_sociales/de-persona`).
+ *
  * Es un registro aparte del de Miembros, a propósito. No son miembros y no
  * tienen que aparecer en los listados de la membresía, ni en los informes de
  * asistencia, ni en las estadísticas de la congregación, ni contarse entre los

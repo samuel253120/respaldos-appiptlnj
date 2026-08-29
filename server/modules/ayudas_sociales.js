@@ -122,4 +122,80 @@ module.exports = {
       return null;
     },
   },
+
+  extraRoutes(router, { db, requirePerm }) {
+    /**
+     * LO QUE SE LE HA ENTREGADO A UNA PERSONA, para verlo en su ficha.
+     *
+     * El módulo de No Miembros existe, con todas sus letras, «por las ayudas
+     * sociales»: para saber a cuántas personas distintas se ha ayudado y para
+     * ver que a la misma señora se le entregó tres veces. El dato estaba bien
+     * guardado —cada ayuda apunta a su ficha— pero no había camino de vuelta:
+     * la ficha de una persona a la que se le entregó tres veces no decía nada
+     * de eso, y para averiguarlo había que salir de ella, entrar acá, filtrar
+     * por su nombre y volver. En el mostrador eso no se hace, y se termina
+     * entregando dos veces o no entregando nunca.
+     *
+     * Sirve para los dos registros, porque la misma persona puede recibir
+     * antes y después de inscribirse.
+     *
+     * DOS CUENTAS, A PROPÓSITO, y por eso van juntas en una sola respuesta:
+     *
+     *   · EL RESUMEN se calcula en la base sobre TODAS sus ayudas. Es lo que
+     *     dice la insignia de la cabecera y no puede depender de cuántas
+     *     quepan en la pantalla.
+     *   · LA LISTA trae las 200 más recientes. Si hubiera más, el resumen lo
+     *     delata —la cuenta no cuadra con las filas— y por eso viaja también
+     *     cuántas hay en total.
+     *
+     * Y «entregas» no es «ayudas»: una solicitada, aprobada o rechazada
+     * todavía no es plata ni mercadería que salió. La insignia cuenta las
+     * entregadas, que es lo que se pregunta en el mostrador.
+     *
+     * Pasa por el alcance como cualquier listado: quien no ve una ayuda
+     * tampoco la ve desde acá. Sin JOIN y sin alias, porque el alcance escribe
+     * los nombres de columna sin apellido (ver server/alcance.js).
+     */
+    router.get('/ayudas_sociales/de-persona', requirePerm('ayudas_sociales', 'view'), (req, res) => {
+      const alcance = require('../alcance');
+      const campo = req.query.tipo === 'Miembro' ? 'miembro_id' : 'no_miembro_id';
+      const quien = Number(req.query.id) || 0;
+      if (!quien) return res.status(400).json({ error: 'Indique de quién son las ayudas.' });
+
+      const donde = (params) => {
+        const suyas = alcance.condiciones(module.exports, req.user, params);
+        return `WHERE "${campo}" = ?${suyas ? ` AND (${suyas})` : ''}`;
+      };
+
+      const pl = [];
+      const lista = db
+        .prepare(
+          `SELECT id, fecha, tipo_ayuda, descripcion, valor_estimado, estado, iglesia_id, solicitud_id
+             FROM ayudas_sociales ${donde(pl)}
+            ORDER BY fecha DESC, id DESC LIMIT 200`
+        )
+        .all(quien, ...pl);
+
+      const pr = [];
+      const r = db
+        .prepare(
+          `SELECT COUNT(*) AS registradas,
+                  SUM(CASE WHEN estado = 'Entregada' THEN 1 ELSE 0 END) AS entregas,
+                  SUM(CASE WHEN estado = 'Entregada' THEN COALESCE(valor_estimado, 0) ELSE 0 END) AS entregado,
+                  MAX(CASE WHEN estado = 'Entregada' THEN fecha END) AS ultima,
+                  SUM(CASE WHEN estado IN ('Solicitada', 'Aprobada') THEN 1 ELSE 0 END) AS en_camino
+             FROM ayudas_sociales ${donde(pr)}`
+        )
+        .get(quien, ...pr);
+
+      res.json({
+        ayudas: lista,
+        registradas: r.registradas || 0,
+        entregas: r.entregas || 0,
+        entregado: r.entregado || 0,
+        ultima: r.ultima || null,
+        en_camino: r.en_camino || 0,
+      });
+    });
+  },
 };
