@@ -102,8 +102,19 @@ test('una ficha sin anotaciones no deja una tabla vacía', () => {
 /* ------------------------------- dónde va, y cómo se corta en papel */
 
 test('va al final, debajo de los datos y de lo entregado', () => {
-  assert.match(laHoja, /\$\{entregas\}\s*\n\s*\$\{historial\}\s*\n\s*<div class="doc-pie">/,
+  /*
+   * Esta prueba exigía que `${historial}` viniera pegado a `${entregas}`, y en
+   * la 1.196.0 se metió entre los dos la lista de la carpeta. Lo que decía la
+   * prueba y lo que quería decir no eran lo mismo: lo que importa es que el
+   * historial sea LO ÚLTIMO —es lo que más ocupa y lo que se lee al final—, no
+   * quién viene justo antes. Se afloja lo que no importaba y se aprieta lo que
+   * sí: nada se dibuja entre el historial y el pie de la hoja.
+   */
+  assert.match(laHoja, /\$\{historial\}\s*\n\s*<div class="doc-pie">/,
     'es lo último que se lee y lo que más ocupa');
+  const cuerpo = laHoja.slice(laHoja.indexOf('${membreteDelDocumento()}'));
+  assert.ok(cuerpo.indexOf('${entregas}') < cuerpo.indexOf('${historial}'),
+    'y lo entregado sigue yendo por encima');
 });
 
 test('reusa la tabla que ya sabe cortarse entre páginas', () => {

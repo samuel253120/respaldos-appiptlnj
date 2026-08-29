@@ -98,6 +98,38 @@ print(round(d[0].get_width() * 25.4 / 72), round(d[0].get_height() * 25.4 / 72),
   return { ancho: Number(salida[0]), alto: Number(salida[1]), hojas: Number(salida[2]) };
 }
 
+/**
+ * Cuánto del alto de la página ocupa el texto, de 0 a 1.
+ *
+ * La hoja del certificado se estira al alto del papel y baja las firmas al pie.
+ * Si esa cadena de alturas se corta, el diseño no revienta ni gana una página:
+ * se apelotona a media hoja y las firmas suben. Medido sobre el mismo
+ * certificado: con la cadena puesta el texto va del 9 % al 81 % del alto; sin
+ * ella, del 46 % al 80 %, y abajo quedan diez centímetros en blanco. El PDF
+ * seguía midiendo lo mismo y saliendo en una hoja, así que ni el tamaño ni el
+ * número de hojas lo delataban. Por eso se mide también dónde cae el texto.
+ */
+function cuantoDelAltoOcupaElTexto(archivo) {
+  const salida = execFileSync('python3', ['-c', `
+import pypdfium2 as p
+d = p.PdfDocument(${JSON.stringify(archivo)})
+pg = d[0]; tp = pg.get_textpage()
+cajas = [tp.get_charbox(i) for i in range(tp.count_chars())]
+alto = pg.get_height()
+print(round((max(c[3] for c in cajas) - min(c[1] for c in cajas)) / alto, 3) if cajas else 0)
+`]).toString().trim();
+  return Number(salida);
+}
+
+/** Todo el texto del PDF, para saber si algo se quedó fuera del papel. */
+function loQueDiceElPdf(archivo) {
+  return execFileSync('python3', ['-c', `
+import pypdfium2 as p
+d = p.PdfDocument(${JSON.stringify(archivo)})
+print(chr(10).join(x.get_textpage().get_text_range() for x in d))
+`]).toString();
+}
+
 (async () => {
   console.log('\n📄 El papel de los certificados\n');
   TOKEN = (await api('POST', '/auth/login', { usuario: RUT, password: CLAVE })).token;
@@ -211,6 +243,12 @@ print(round(d[0].get_width() * 25.4 / 72), round(d[0].get_height() * 25.4 / 72),
           hoja.hojas === 1,
           hoja.hojas > 1 ? `salieron ${hoja.hojas} hojas: la de más va en blanco y se gasta igual` : ''
         );
+        const ocupa = cuantoDelAltoOcupaElTexto(archivo);
+        revisar(
+          `${papel} ${quedo.toLowerCase()}: el certificado usa la hoja entera`,
+          ocupa >= 0.6,
+          `el texto ocupa el ${Math.round(ocupa * 100)} % del alto: se apelotonó en vez de bajar las firmas al pie`
+        );
       }
     }
     // Se deja el formato como estaba: esta suite no cambia lo que la iglesia eligió
@@ -221,6 +259,54 @@ print(round(d[0].get_width() * 25.4 / 72), round(d[0].get_height() * 25.4 / 72),
       tamano_hoja: original.tamanoOriginal || 'Carta',
       orientacion: original.orientacionOriginal || (tipo === 'Membresía' ? 'Vertical' : 'Horizontal'),
     });
+  }
+
+  /* ------------------------------------------------------------------
+   * LA CONTRACARA: que la hoja de una página no le pase a las demás.
+   *
+   * Lo que hace que un certificado quepa en una hoja es una regla que aprieta
+   * la página al alto del papel y recorta lo que sobre. Escrita sin acotar,
+   * esa regla valía para TODO lo que el sistema imprime —y como está al final
+   * de la hoja de estilos, le ganaba a las demás—. La ficha de una persona con
+   * su historial y su carpeta es larga por naturaleza: se imprimía la primera
+   * página y el resto se perdía sin que la hoja dijera nada.
+   *
+   * Se revisa con una ficha llena a propósito, porque una corta cabría en una
+   * página y esta comprobación no diría nada.
+   * ------------------------------------------------------------------ */
+  console.log('\n── La ficha larga de una persona');
+  let deLaFicha = null;
+  try {
+    const marca = String(Date.now()).slice(-6);
+    const suya = await api('POST', '/miembros', {
+      nombres: 'Prueba de Papel', apellidos: `Ficha Larga ${marca}`,
+      iglesia_id: iglesia.id, estado: 'Activo',
+    });
+    deLaFicha = suya.id;
+    for (let i = 1; i <= 40; i += 1) {
+      await api('POST', '/bitacora', {
+        miembro_id: suya.id, tipo: 'Anotación', fecha: '2020-04-12',
+        descripcion: `Anotación N.º ${i} de la ficha larga, puesta para ver hasta dónde llega el papel.`,
+      });
+    }
+    await ir(`#/print/miembros/${suya.id}`);
+    await pagina.waitForSelector('.print-generic', { timeout: 25000 });
+    await pagina.waitForTimeout(400);
+    const enPantalla = await pagina.evaluate(
+      () => document.querySelectorAll('.print-generic table.tramite tbody tr').length
+    );
+    const archivo = path.join(carpeta, 'ficha-larga.pdf');
+    fs.writeFileSync(archivo, await pagina.pdf({ format: 'Letter', printBackground: true }));
+    const hoja = medirElPdf(archivo);
+    const texto = loQueDiceElPdf(archivo);
+    const enElPapel = (texto.match(/Anotación N\.º \d+ de la ficha larga/g) || []).length;
+
+    revisar('una ficha larga se reparte en varias hojas', hoja.hojas > 1,
+      `salió en ${hoja.hojas} hoja(s) para ${enPantalla} línea(s) en pantalla`);
+    revisar('y no se pierde ninguna línea en el camino', enElPapel === 40,
+      `en el papel salieron ${enElPapel} de 40`);
+  } finally {
+    if (deLaFicha) await api('DELETE', `/miembros/${deLaFicha}`).catch(() => {});
   }
 
   revisar('la pantalla de impresión no revienta en ningún tamaño', reventones.length === 0,
@@ -238,7 +324,7 @@ print(round(d[0].get_width() * 25.4 / 72), round(d[0].get_height() * 25.4 / 72),
     process.exit(1);
   }
   console.log(`   ${bien} comprobaciones pasaron\n`);
-  console.log('✅ Cada certificado sale en el papel que se eligió, y en una sola hoja.');
+  console.log('✅ Cada certificado sale en el papel que se eligió y en una sola hoja, y la ficha larga\n   se reparte en las que haga falta sin perder nada.');
 })().catch((e) => {
   console.error('💥', e.message);
   process.exit(1);

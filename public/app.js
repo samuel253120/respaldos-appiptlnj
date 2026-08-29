@@ -874,6 +874,18 @@ function route() {
     && (parts[0] === 'print' || (parts[0] === 'm' && parts[2] === 'ficha'));
   if (!seDibujaLaCredencial) soltarEstiloDeCredencial();
 
+  /*
+   * Y lo mismo con la hoja del certificado, que es de UNA página por
+   * definición: se aprieta al alto del papel y lo que sobre se recorta. Esa
+   * regla estaba escrita para todo lo que el sistema imprime —al final de la
+   * hoja de estilos, donde le gana a las demás—, así que recortaba también la
+   * ficha larga de una persona: de 60 anotaciones se imprimían 7 y la hoja no
+   * decía nada. Acá se enciende solo donde corresponde.
+   */
+  document.documentElement.classList.toggle(
+    'hoja-de-una-pagina', parts[0] === 'print' && parts[1] === 'certificados'
+  );
+
   // Valores para precargar un formulario nuevo: #/m/modulo/new?campo=valor
   const precarga = {};
   if (consulta) new URLSearchParams(consulta).forEach((v, k) => (precarga[k] = v));
@@ -6181,6 +6193,27 @@ async function renderSolicitudesDeLaPersona(tipo, personaId, contenedor) {
 const HISTORIAL_EN_LA_HOJA = ['miembros'];
 const HISTORIAL_EN_EL_PAPEL = 200;
 
+/**
+ * Y qué fichas llevan la lista de su carpeta, con el mismo tope.
+ *
+ * La hoja llevaba los datos y el historial, y del historial se podía sacar la
+ * idea de que también llevaba los papeles: hay líneas que dicen «Se adjuntó
+ * "…"». No es lo mismo, y medido sobre una carpeta de tres papeles la hoja se
+ * equivocaba en las dos direcciones: nombraba una carta de traslado que ya se
+ * había quitado de la carpeta —porque la línea del historial queda— y no
+ * nombraba un certificado de bautismo que sí estaba —porque entró por
+ * importación y nunca dejó línea—. El historial cuenta lo que se fue
+ * adjuntando; la carpeta es lo que hay hoy, y es lo que se necesita en papel
+ * cuando se entrega una congregación, se prepara un traslado o alguien
+ * pregunta qué le falta por presentar.
+ *
+ * La hoja de una iglesia y la de un pastor tienen el mismo hueco y el mismo
+ * arreglo a un nombre de distancia; se dejan para cuando les toque, igual que
+ * se hizo con el historial en la 1.185.0.
+ */
+const DOCUMENTOS_EN_LA_HOJA = ['miembros'];
+const DOCUMENTOS_EN_EL_PAPEL = 200;
+
 const COMO_RECIBE_AYUDA = { miembros: 'Miembro', no_miembros: 'No miembro' };
 
 /** «3 entregas · la última el 20-07-2026», en una línea. */
@@ -9267,13 +9300,27 @@ async function viewPrint(name, id) {
     ).catch(() => null);
   }
 
+  /*
+   * Y su carpeta. Se pide aparte del historial porque son dos cosas distintas:
+   * una dice qué hay hoy y la otra qué fue pasando. Si no se puede traer —sin
+   * permiso sobre los documentos— la hoja se imprime igual sin esta parte, que
+   * es la regla de las ayudas y del historial.
+   */
+  let susDocumentos = null;
+  const panelDocs = DOCUMENTOS_EN_LA_HOJA.includes(name) ? PANEL_DOCUMENTOS[name] : null;
+  if (panelDocs && MOD[panelDocs.modulo]) {
+    susDocumentos = await api(
+      'GET', `/${panelDocs.modulo}?f_${panelDocs.campo}=${id}&limit=${DOCUMENTOS_EN_EL_PAPEL}&sort=fecha&dir=desc`
+    ).catch(() => null);
+  }
+
   let sheet;
   if (name === 'solicitudes') sheet = printSolicitud(m, row, deLaSolicitud);
   else if (name === 'certificados') sheet = printCertificado(row, formatoCert, { conPagina: true });
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
   else if (name === 'tesoreria') sheet = printMovimiento(m, row);
-  else sheet = printGenerico(m, row, susAyudas, suHistorial);
+  else sheet = printGenerico(m, row, susAyudas, suHistorial, susDocumentos);
 
   content().innerHTML = `
     <div class="print-actions no-print">
@@ -10681,7 +10728,7 @@ function printMovimiento(m, row) {
     </div>`;
 }
 
-function printGenerico(m, row, susAyudas, suHistorial) {
+function printGenerico(m, row, susAyudas, suHistorial, susDocumentos) {
   /*
    * Lo que se le ha entregado, debajo de sus datos.
    *
@@ -10702,6 +10749,45 @@ function printGenerico(m, row, susAyudas, suHistorial) {
           <td>${esc(a.estado || '')}</td>
         </tr>`).join('')}
     </table>` : '';
+
+  /*
+   * Lo que hay en su carpeta, antes del historial.
+   *
+   * Va antes porque es una lista corta y de hecho —cuatro líneas que se leen de
+   * una mirada— y el historial es largo y se lee al final. Y va con el número
+   * de papeles dicho arriba, porque la pregunta que trae a alguien a esta hoja
+   * suele ser «¿qué le falta?».
+   *
+   * El subtítulo dice en una línea qué es esta lista y qué NO es, porque la
+   * confusión con el historial es fácil y cara: quien lea «Se adjuntó "su
+   * carnet"» quince líneas más abajo puede creer que el carnet está, y puede no
+   * estar. Un papel sin archivo se marca: los hay, de los que entraron por
+   * importación o de los que se cargaron antes de que el sistema exigiera el
+   * archivo (1.193.0), y en una hoja que se firma no da lo mismo un documento
+   * que está en el sistema que uno que solo está anotado.
+   */
+  const papeles = (susDocumentos && susDocumentos.rows) || [];
+  const cuantosPapeles = susDocumentos ? susDocumentos.total : 0;
+  const carpeta = susDocumentos ? `
+    <h2 class="print-h2">Documentos en carpeta</h2>
+    <div class="sub">${papeles.length < cuantosPapeles
+      ? `Se imprimen los ${papeles.length} más recientes, de ${cuantosPapeles}. El resto está en su ficha.`
+      : cuantosPapeles
+        ? `${cuantosPapeles} documento(s). Es lo que hay hoy en el sistema; el historial de más abajo cuenta lo que se fue adjuntando, que no es lo mismo.`
+        : 'Sin documentos en carpeta.'}</div>
+    ${papeles.length ? `
+      <table class="grid tramite">
+        <thead><tr><th>Fecha</th><th>Tipo de documento</th><th>Nombre</th><th>Observaciones</th></tr></thead>
+        <tbody>
+          ${papeles.map((d) => `
+            <tr>
+              <td class="nowrap">${esc(d.fecha ? fechaCorta(d.fecha) : '')}</td>
+              <td>${esc(d.tipo || '')}</td>
+              <td>${esc(d.nombre || '')}${d.archivo ? '' : ' <i>— anotado, sin archivo en el sistema</i>'}</td>
+              <td>${esc(d.observaciones || '')}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : ''}` : '';
 
   /*
    * Y su historial, debajo de todo: es lo último que se lee y lo que más ocupa.
@@ -10770,6 +10856,7 @@ function printGenerico(m, row, susAyudas, suHistorial) {
           .join('')}
       </table>
       ${entregas}
+      ${carpeta}
       ${historial}
       <div class="doc-pie">${pieDelDocumento()}</div>
     </div>`;

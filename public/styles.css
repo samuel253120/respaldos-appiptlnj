@@ -3054,7 +3054,23 @@ table.libro tbody tr:nth-child(even) td { background: #fafbfe; }
    * (El tamaño del papel se le declara a la impresora desde la propia pantalla
    * de impresión, con las medidas del formato: ver printCertificado.)
    */
-  html, body, .content { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  /*
+   * Estas tres cajas se aprietan SOLO cuando lo que se está imprimiendo es un
+   * certificado, y por eso la regla cuelga de una marca en la raíz.
+   *
+   * Sin la marca, la regla valía para todo lo que el sistema imprime, y como
+   * está escrita al final del archivo le ganaba a las demás: `overflow: hidden`
+   * con alto de una página recorta lo que no quepa en la primera hoja. Medido
+   * sobre la ficha de una miembro con 60 anotaciones y ningún documento: se
+   * imprimían 7 de 60, en una sola página, y la hoja no decía nada. Lo mismo le
+   * pasaba a la tramitación de una solicitud y a cualquier ficha larga. Se
+   * arrastraba desde que la hoja del certificado se ajustó (1.130.0) y no lo
+   * agarró ninguna prueba porque las de papel miraban certificados, que son de
+   * una página por definición.
+   */
+  html.hoja-de-una-pagina,
+  html.hoja-de-una-pagina body,
+  html.hoja-de-una-pagina .content { margin: 0; padding: 0; height: 100%; overflow: hidden; }
   .cert-sheet {
     width: 100%; height: 100%;
     max-width: none; min-height: 0; margin: 0;
