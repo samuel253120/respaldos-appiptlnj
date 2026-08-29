@@ -14219,9 +14219,25 @@ async function renderPersonasSolicitud(id, contenedor) {
 }
 
 /** Historial de una ficha (de un miembro, de una iglesia, de un pastor). */
-async function renderHistorial(panel, id, contenedor) {
+/**
+ * Cuántas anotaciones trae la pestaña de una vez.
+ *
+ * Antes traía 200 y ahí terminaba: una ficha con 211 decía «211 registro(s)»
+ * en su encabezado, mostraba 200 y las once más antiguas no se veían ni había
+ * nada que lo dijera. Y las 200 medían 17.109 px, o sea diecinueve pantallas
+ * de desplazamiento en las que había que ir leyendo a ojo hasta topar con lo
+ * que se buscaba, porque la pestaña no tenía ni buscador ni filtro.
+ *
+ * Ahora trae de a cincuenta —cuatro pantallas— y, cuando hay más, lo dice y
+ * ofrece traerlas. Con catorce anotaciones, que es el caso corriente, no
+ * cambia nada: se ven las catorce, como siempre.
+ */
+const HISTORIAL_DE_A = 50;
+
+async function renderHistorial(panel, id, contenedor, estado) {
   const modHist = MOD[panel.modulo];
   if (!modHist) return;
+  const st = estado || { q: '', tipo: '', cuantas: HISTORIAL_DE_A };
   try {
     // Casi todos los historiales se leen por fecha; el de una solicitud, por
     // orden de anotación: en un mismo día pasan varias cosas y lo que importa
@@ -14229,13 +14245,38 @@ async function renderHistorial(panel, id, contenedor) {
     const orden = panel.ordenPor || 'fecha';
     /** ¿Esta anotación la dejó el sistema y no se puede corregir? */
     const intocable = (r) => !!panel.automaticasFijas && r.origen === 'Automático';
-    const datos = await api('GET', `/${panel.modulo}?f_${panel.campo}=${id}&limit=200&sort=${orden}&dir=desc`);
+    const acota = `${st.q ? `&q=${encodeURIComponent(st.q)}` : ''}${st.tipo ? `&f_tipo=${encodeURIComponent(st.tipo)}` : ''}`;
+    const datos = await api(
+      'GET', `/${panel.modulo}?f_${panel.campo}=${id}&limit=${st.cuantas}&sort=${orden}&dir=desc${acota}`
+    );
+    /*
+     * Cuántas tiene en total, sin acotar. La primera pintada viene sin filtros
+     * puestos, así que ese total es este mismo; después se arrastra, para poder
+     * decir «12 de 211» sin volver a preguntarlo en cada tecla.
+     */
+    const acotado = !!(st.q || st.tipo);
+    if (!acotado) st.deTodas = datos.total;
+    const deTodas = st.deTodas === undefined ? datos.total : st.deTodas;
+    const tipos = (modHist.fields.find((f) => f.name === 'tipo') || {}).options || [];
+    const rehacer = (cambios) => renderHistorial(panel, id, contenedor, { ...st, ...cambios });
+
     contenedor.innerHTML = `
       <div class="card" style="margin-top:18px">
         <div class="toolbar">
           <b>${esc(panel.titulo)}</b>
-          <span style="color:var(--muted);font-size:13px">${datos.total} registro(s)</span>
+          <span style="color:var(--muted);font-size:13px">${acotado
+            ? `${datos.total} de ${deTodas}`
+            : `${datos.total} registro(s)`}</span>
           <span class="spacer"></span>
+          <input type="search" id="histBuscar" placeholder="Buscar en el historial…"
+                 value="${esc(st.q)}" aria-label="Buscar en el historial" />
+          <select id="histTipo" aria-label="Filtrar por tipo de registro">
+            <option value="">— Todos los tipos —</option>
+            ${tipos.map((o) => {
+              const v = typeof o === 'object' ? o.value : o;
+              return `<option value="${esc(v)}" ${String(v) === String(st.tipo) ? 'selected' : ''}>${esc(v)}</option>`;
+            }).join('')}
+          </select>
           ${modHist.perms.create ? `<button class="btn sm" id="btnAnotar">➕ Agregar anotación</button>` : ''}
         </div>
         <div id="histLista">
@@ -14288,13 +14329,46 @@ async function renderHistorial(panel, id, contenedor) {
                 </div>
               </li>`;
             }).join('')}
-          </ul>` : '<div class="empty-state" style="padding:26px">Sin registros en el historial todavía.</div>'}
+          </ul>` : `<div class="empty-state" style="padding:26px">${acotado
+            ? 'Ninguna anotación coincide con lo que buscó.'
+            : 'Sin registros en el historial todavía.'}</div>`}
         </div>
+        ${datos.rows.length < datos.total ? `
+          <div class="hist-mas">
+            <span>Mostrando ${datos.rows.length} de ${datos.total}.</span>
+            <button class="btn sm secondary" id="histMas">Ver ${Math.min(HISTORIAL_DE_A, datos.total - datos.rows.length)} más</button>
+          </div>` : ''}
       </div>`;
 
-    const recargar = () => renderHistorial(panel, id, contenedor);
+    // Al buscar o filtrar se vuelve al primer tramo: pedir «las 150 primeras»
+    // de una búsqueda recién escrita no tiene sentido
+    const recargar = () => renderHistorial(panel, id, contenedor, { ...st, deTodas: undefined });
     const btn = document.getElementById('btnAnotar');
     if (btn) btn.addEventListener('click', () => abrirAnotacion(panel, id, recargar));
+
+    const mas = document.getElementById('histMas');
+    if (mas) mas.addEventListener('click', () => rehacer({ cuantas: st.cuantas + HISTORIAL_DE_A }));
+
+    const porTipo = document.getElementById('histTipo');
+    if (porTipo) porTipo.addEventListener('change', () => rehacer({ tipo: porTipo.value, cuantas: HISTORIAL_DE_A }));
+
+    /*
+     * Se espera a que deje de teclear, como el buscador del listado: buscar en
+     * cada tecla sería una consulta por letra, y acá cada una mira además el
+     * texto de todas sus anotaciones.
+     */
+    const caja = document.getElementById('histBuscar');
+    if (caja) {
+      if (st.foco) {
+        caja.focus();
+        caja.setSelectionRange(caja.value.length, caja.value.length);
+      }
+      let espera;
+      caja.addEventListener('input', () => {
+        clearTimeout(espera);
+        espera = setTimeout(() => rehacer({ q: caja.value.trim(), cuantas: HISTORIAL_DE_A, foco: true }), 280);
+      });
+    }
 
     // Editar un registro del historial
     contenedor.querySelectorAll('[data-editar]').forEach((b) => {

@@ -3135,3 +3135,11 @@ ul.mini-list li.retirado .msg-t { text-decoration: line-through; }
   padding: 6px 0 6px 10px; margin-top: 4px;
   color: var(--muted);
 }
+
+/* El pie de la pestaña de historial: dice cuántas se están viendo de cuántas
+   y ofrece traer las que faltan, en vez de cortar en silencio */
+.hist-mas {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 12px 14px; border-top: 1px solid var(--border);
+  font-size: 13px; color: var(--muted); flex-wrap: wrap;
+}
