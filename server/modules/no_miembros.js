@@ -375,6 +375,20 @@ module.exports = {
     },
 
     /**
+     * Corregirle el nombre a la ficha se lo corrige a sus ayudas.
+     *
+     * El nombre que muestra cada ayuda es una copia que se sacó de acá el día
+     * que se guardó. Sin esto, corregir «Soto» por «Sotto» dejaba las tres
+     * entregas de esa señora diciendo el apellido malo, y desde ahí no se
+     * podía arreglar: el campo es de solo lectura. El porqué de reescribir la
+     * copia —y no mostrar el nombre vivo— está en
+     * server/nombre-del-beneficiario.js.
+     */
+    afterSave(fila, { db }) {
+      require('../nombre-del-beneficiario').ponerAlDiaElNombre(db, 'no_miembros', fila.id);
+    },
+
+    /**
      * Una ficha que ya se inscribió no se borra: es de donde cuelgan las
      * ayudas que se le entregaron cuando todavía no era miembro.
      */

@@ -117,7 +117,10 @@ module.exports = {
       const ficha = db.prepare(`SELECT nombres, apellidos FROM "${deDonde.tabla}" WHERE id = ?`).get(id);
       if (!ficha) return `${deDonde.que} de esta ayuda ya no está en el sistema.`;
 
-      data.beneficiario = `${ficha.nombres || ''} ${ficha.apellidos || ''}`.trim();
+      // La misma fórmula con que después se pone al día cuando la ficha se
+      // corrige (ver server/nombre-del-beneficiario.js): escritas por separado,
+      // un día difieren por un espacio y las ayudas quedan «cambiando» solas.
+      data.beneficiario = require('../nombre-del-beneficiario').comoSeLlama(ficha);
       data[deDonde.otro] = null;
       return null;
     },

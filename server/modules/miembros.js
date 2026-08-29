@@ -1028,6 +1028,13 @@ module.exports = {
        */
       require('../ya-no-esta').alGuardarUnMiembro(db, fila, user);
 
+      /*
+       * Y corregirle el nombre se lo corrige a sus ayudas: el que cada una
+       * muestra es una copia que se sacó de esta ficha el día que se guardó
+       * (ver server/nombre-del-beneficiario.js).
+       */
+      require('../nombre-del-beneficiario').ponerAlDiaElNombre(db, 'miembros', fila.id);
+
       /**
        * Los miembros líderes componen la directiva de su iglesia.
        *
