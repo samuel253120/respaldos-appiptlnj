@@ -17,6 +17,34 @@ module.exports = {
   order: 23,
   display: '{nombre}',
   dateField: 'fecha',
+  /*
+   * La carpeta de una persona se ve donde se ve la persona.
+   *
+   * Cada documento guarda a qué iglesia pertenece, y era esa columna la que
+   * decidía quién podía abrirlo. Pero esa columna se rellena con la del miembro
+   * EL DÍA EN QUE SE SUBE el papel, y no se vuelve a mirar: dice dónde se
+   * subió, no de quién es hoy la ficha.
+   *
+   * Medido sobre una miembro con tres documentos, trasladada de la Central a la
+   * Norte, con dos secretarias de verdad acotadas cada una a la suya:
+   *
+   *                                    su ficha   su carpeta   abrir el archivo
+   *   la secretaria de la que YA NO       403       3 de 3           200
+   *   la secretaria de la que SÍ          200       0 de 3           403
+   *
+   * Léase la primera fila entera: el sistema le cierra la ficha de la persona
+   * —correcto— y en la misma respiración le entrega su carnet de identidad. Y
+   * la segunda es el reverso: quien de verdad trabaja con ella no ve ni uno de
+   * sus papeles. Con documentos de identidad de por medio, esto no es una
+   * incomodidad.
+   *
+   * Ahora la carpeta se alcanza como su miembro, y la columna de iglesia se
+   * queda como lo que siempre fue: el dato de dónde se subió, con el que se
+   * filtra. Vale para las dos puertas, porque las dos preguntan por acá: la
+   * consulta del listado (`condiciones`) y la que decide si se entrega el
+   * archivo (`alcanza`, desde server/archivos.js).
+   */
+  alcance: { comoSuPadre: { modulo: 'miembros', campo: 'miembro_id' } },
   searchFields: ['nombre', 'observaciones'],
   listFields: ['miembro_id', 'tipo', 'nombre', 'fecha', 'archivo'],
   defaultSort: { field: 'fecha', dir: 'desc' },
