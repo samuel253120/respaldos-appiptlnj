@@ -123,6 +123,23 @@ function palabrasDe(texto) {
 const PARECE_RUT = /^[0-9.\-]{7,12}[0-9kK]$/;
 
 /**
+ * Lo que separa un número escrito por una persona.
+ *
+ * Empezó siendo el punto y el guion del RUT. Un teléfono se escribe con lo
+ * mismo y con más: «+56 9 1111 2222» lleva espacios y un signo más, y a veces
+ * paréntesis. Medido antes de esto sobre un teléfono guardado así: buscarlo
+ * tal cual daba 1, «+56911112222» daba CERO y los ocho dígitos del número
+ * daban CERO también, que es justo como lo copia quien lo tiene en el celular.
+ *
+ * No hacía falta una regla nueva para el teléfono: hacía falta que la que ya
+ * existía supiera qué separa un número de verdad.
+ */
+const SEPARADORES = ['.', '-', ' ', '+', '(', ')'];
+
+/** El mismo texto sin nada de lo que lo separa. */
+const deCorrido = (texto) => SEPARADORES.reduce((t, ch) => t.split(ch).join(''), String(texto || ''));
+
+/**
  * Un número escrito con separadores, que es como se escriben en Chile.
  *
  * Mismo problema que el RUT, y por eso mismo se resuelve igual. Un gasto se
@@ -132,24 +149,52 @@ const PARECE_RUT = /^[0-9.\-]{7,12}[0-9kK]$/;
  * que hay en la columna.
  *
  * La regla no vive en Tesorería sino acá, con la del RUT, porque es la misma:
- * si lo tecleado es solo dígitos y separadores, se compara también de corrido.
- * El RUT ya entraba por la suya —lleva un dígito verificador que puede ser una
- * k— y sigue entrando; esto agrega los números a secas.
+ * si lo tecleado, sacándole los separadores, son solo dígitos, se compara
+ * también de corrido. El RUT ya entraba por la suya —lleva un dígito
+ * verificador que puede ser una k— y sigue entrando; esto agrega los números a
+ * secas: montos y teléfonos.
  */
-const PARECE_NUMERO = /^[0-9][0-9.\-]*[0-9]$/;
+const PARECE_NUMERO = /^[0-9]+$/;
 
-/** ¿Se compara además de corrido, sin puntos ni guiones? */
+/**
+ * ¿Se compara además de corrido, sin nada de lo que separa un número?
+ *
+ * Se pregunta sobre lo tecleado YA LIMPIO y no sobre lo tecleado tal cual. La
+ * diferencia se vio probándolo a mano: «(56) 9 8877-6655» es como viene un
+ * teléfono en una tarjeta, y el trozo «(56)» empieza por un paréntesis, así
+ * que mirándolo crudo no parecía un número y la búsqueda entera se caía a
+ * comparar el texto letra por letra —donde ese paréntesis tampoco está—. Los
+ * demás formatos sí andaban. Limpiar primero y preguntar después no necesita
+ * enumerar por dónde puede empezar un número: si lo que queda son dígitos, es
+ * un número.
+ *
+ * Se piden dos dígitos porque uno solo nunca se escribió con separadores, y
+ * compararlo de corrido solo agregaría trabajo y falsos calces.
+ */
 const seComparaDeCorrido = (palabra) => {
   const limpia = palabra.trim();
-  return PARECE_RUT.test(limpia) || PARECE_NUMERO.test(limpia);
+  if (PARECE_RUT.test(limpia)) return true;
+  const sinNada = deCorrido(limpia);
+  return sinNada.length >= 2 && PARECE_NUMERO.test(sinNada);
 };
 
-/** El mismo texto sin lo que separa un RUT: puntos y guiones. */
-const deCorrido = (texto) => String(texto || '').split('.').join('').split('-').join('');
-
-/** La columna pegada, además sin puntos ni guiones, como trozo de SQL. */
+/**
+ * Lo buscable, además sin separadores, como trozo de SQL.
+ *
+ * Se limpia CAMPO POR CAMPO y después se pegan con un espacio, en vez de
+ * limpiar el texto ya pegado. Si se limpiara al final, el espacio que separa
+ * dos campos también se iría y los valores quedarían corridos uno contra otro:
+ * un RUT «12345678» seguido de un teléfono «9000» daría «123456789000», y
+ * buscar «789000» encontraría una ficha donde ese número no está. Con dos
+ * separadores era improbable; con los espacios adentro dejaba de serlo.
+ */
 function textoDeCorrido(campos, extras) {
-  return `replace(replace(${textoBuscable(campos, extras)},'.',''),'-','')`;
+  const sinSeparadores = (expr) => SEPARADORES.reduce((dentro, ch) => `replace(${dentro},'${ch}','')`, expr);
+  const pegados = (campos || []).map((c) => sinSeparadores(`coalesce("${c}",'')`))
+    .concat((extras || []).map((e) => sinSeparadores(`coalesce(${e},'')`)))
+    .join(" || ' ' || ");
+  const expr = LETRAS.reduce((dentro, [de, a]) => `replace(${dentro},'${de}','${a}')`, `(${pegados})`);
+  return `lower(${expr})`;
 }
 
 /**
@@ -180,6 +225,6 @@ function condicion(texto, campos, extras) {
 }
 
 module.exports = {
-  condicion, comoSeCompara, palabrasDe, textoBuscable, deCorrido,
-  PALABRAS_QUE_SE_MIRAN, LETRAS, PARECE_RUT, PARECE_NUMERO, seComparaDeCorrido,
+  condicion, comoSeCompara, palabrasDe, textoBuscable, textoDeCorrido, deCorrido,
+  PALABRAS_QUE_SE_MIRAN, LETRAS, PARECE_RUT, PARECE_NUMERO, seComparaDeCorrido, SEPARADORES,
 };

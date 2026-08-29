@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.179.0", fecha: "2026-08-29", titulo: "Un teléfono se encuentra escrito como sea —de corrido, con espacios o entre paréntesis— y a nadie se le conoce desde antes de que naciera" },
   { version: "1.178.0", fecha: "2026-08-29", titulo: "El listado de No Miembros dice lo que se le ha entregado a cada persona, y la ficha se imprime con ese detalle" },
   { version: "1.177.0", fecha: "2026-08-29", titulo: "Corregirle el nombre a una ficha se lo corrige a sus ayudas, y así se la puede encontrar por el nombre bueno" },
   { version: "1.176.0", fecha: "2026-08-29", titulo: "El RUT de alguien ya inscrito se avisa al guardar la ficha y no meses después, y la pregunta lleva a mirarla" },

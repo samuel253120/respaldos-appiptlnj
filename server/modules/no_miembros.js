@@ -433,7 +433,19 @@ module.exports = {
     },
     { name: 'asistencia', label: 'Se acerca a la iglesia', type: 'select', options: CERCANIA,
       help: 'Para distinguir a quien solo vino a pedir de quien ya se está acercando.' },
-    { name: 'conocido_desde', label: 'Se le conoce desde', type: 'date' },
+    /*
+     * Y no antes de que naciera.
+     *
+     * Cada fecha se revisaba sola y bien —2030 se rechaza porque no ha
+     * llegado, 1890 porque no se anotan fechas tan antiguas— pero no se
+     * comparaban entre sí: medido, una ficha nacida el 15-06-2010 y conocida
+     * desde el 01-03-2005 se guardaba sin decir nada, y quedaba diciendo que a
+     * esa señora se la conoce desde hace veintiún años y tiene dieciséis. Es
+     * el error de tecleo de siempre —el año equivocado— y no cuesta nada
+     * atajarlo: el mecanismo ya estaba y a este campo no se le había pedido.
+     */
+    { name: 'conocido_desde', label: 'Se le conoce desde', type: 'date',
+      noAntesDe: 'fecha_nacimiento' },
 
     { name: 'notas', label: 'Notas', type: 'textarea', seccion: 'Notas' },
 
