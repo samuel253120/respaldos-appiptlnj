@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.197.0", fecha: "2026-08-29", titulo: "Subir a la carpeta de alguien un papel que ya está pregunta antes de guardarlo, con la fecha del que ya estaba, y deja seguir a quien confirma" },
   { version: "1.196.0", fecha: "2026-08-29", titulo: "La hoja impresa de un miembro lleva la lista de los documentos que tiene en carpeta, y las hojas largas dejan de cortarse en la primera página" },
   { version: "1.195.0", fecha: "2026-08-29", titulo: "La pestaña de documentos de una ficha trae los papeles de a veinticuatro, dice cuántos hay en total y ofrece los que faltan, con buscador y filtro por tipo resueltos en el servidor" },
   { version: "1.194.0", fecha: "2026-08-29", titulo: "Los papeles de una persona se encuentran por su nombre y por el tipo entero, que son las dos columnas que la propia pantalla muestra" },

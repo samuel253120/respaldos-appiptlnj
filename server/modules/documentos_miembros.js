@@ -8,6 +8,88 @@
  *
  * Se ven y se agregan desde la propia ficha del miembro, al pie.
  */
+/* =====================================================================
+ * EL MISMO PAPEL, GUARDADO DOS VECES
+ *
+ * Pasa solo: dos personas escanean el mismo carnet, o alguien vuelve a subirlo
+ * porque no encontró el primero. Medido antes de esto, sobre una carpeta
+ * vacía: el mismo tipo, el mismo nombre y la misma fecha, tres veces seguidas,
+ * y las tres veces 201. La carpeta quedaba con tres carnets iguales —uno de
+ * ellos escrito «CARNET DE IDENTIDAD » con mayúsculas y un espacio de más, que
+ * a la vista es el mismo— y nadie decía nada.
+ *
+ * Una carpeta con el mismo papel repetido no pierde datos, pero deja de
+ * contestar la pregunta para la que existe: cuál es el carnet bueno, cuál es
+ * la carta de traslado que vale. Y crece: lo que se repite una vez se repite
+ * siempre.
+ *
+ * ── Qué hace que dos sean «el mismo» ──
+ *
+ * El mismo dueño, el mismo TIPO y el mismo NOMBRE, comparados sin tildes, sin
+ * mayúsculas y sin espacios de más, porque quien sube dos veces el mismo papel
+ * no lo escribe dos veces igual.
+ *
+ * La FECHA no entra en la comparación, aunque parezca lo natural. Los dos casos
+ * que se quieren atrapar —dos personas escaneando el mismo carnet, o alguien
+ * volviendo a subirlo— son casi siempre en días distintos y con la fecha del
+ * documento tecleada distinto o en blanco; exigir que coincida dejaría pasar
+ * justo lo que se busca. Y al revés, un papel de verdad nuevo del mismo tipo
+ * —un carnet renovado— casi siempre se guarda con otro nombre. Cuando no, se
+ * pregunta y quien sabe contesta: por eso el aviso dice la fecha del que ya
+ * está, que es con lo que se distingue uno del otro.
+ *
+ * ── Y no bloquea: pregunta ──
+ *
+ * Es el mismo mecanismo de Tesorería, de Traspasos y de las fichas repetidas de
+ * Miembros: se devuelve un objeto con `confirmar` y el motor lo convierte en
+ * dos botones. Dos papeles iguales de verdad existen, y el sistema no está para
+ * discutírselo a quien tiene la carpeta en la mano.
+ *
+ * Las carpetas de iglesias, de pastores y de solicitudes tienen el mismo hueco
+ * y el mismo arreglo a un nombre de distancia; se dejan para cuando les toque.
+ * ===================================================================== */
+const { comoSeCompara, seguiIgual } = require('../repetido');
+const { comoSeLee } = require('../fechas');
+
+/**
+ * El papel que ya estaba en esa carpeta, o undefined si no hay ninguno.
+ *
+ * El `id IS NOT ?` es por si acaso, y hoy no se alcanza: para llegar hasta acá
+ * el guardado tiene que haber cambiado el dueño, el tipo o el nombre, y en ese
+ * caso el registro que se está corrigiendo ya no calza consigo mismo. Se deja
+ * escrito igual —es la forma que usan las otras preguntas del sistema— porque
+ * es lo que sostiene la regla si algún día cambian los campos que hacen «el
+ * mismo»: sin él, un documento se avisaría a sí mismo como repetido. Romperlo
+ * no pone roja ninguna prueba, y queda dicho acá para que nadie lo lea como
+ * código vivo que alguien olvidó probar.
+ */
+function elQueYaEstaba(db, { miembro_id: miembroId, tipo, nombre }, id) {
+  if (!miembroId || !tipo || !String(nombre || '').trim()) return undefined;
+  return db
+    .prepare('SELECT id, tipo, nombre, fecha, archivo, created_at FROM documentos_miembros'
+      + ' WHERE miembro_id = ? AND id IS NOT ?')
+    .all(miembroId, id || 0)
+    .find((otro) => comoSeCompara(otro.tipo) === comoSeCompara(tipo)
+      && comoSeCompara(otro.nombre) === comoSeCompara(nombre));
+}
+
+/** El aviso, con lo que hace falta para contestarlo sin salir de la pantalla. */
+function avisoDeDocumentoRepetido(otro) {
+  const senas = [
+    otro.fecha ? `del ${comoSeLee(String(otro.fecha).slice(0, 10))}` : 'sin fecha',
+    otro.created_at ? `guardado el ${comoSeLee(String(otro.created_at).slice(0, 10))}` : null,
+    otro.archivo ? null : 'anotado sin archivo',
+  ].filter(Boolean).join(', ');
+
+  return {
+    error:
+      `Ya hay un "${otro.nombre}" (${otro.tipo}) en la carpeta de esta persona (${senas}). `
+      + 'Si es este mismo, ábralo en vez de subirlo de nuevo: con dos copias del mismo papel, '
+      + 'después nadie sabe cuál es el que vale. Si de verdad son dos, confirme.',
+    confirmar: 'documento_ya_en_la_carpeta',
+  };
+}
+
 module.exports = {
   name: 'documentos_miembros',
   label: 'Documentos de Miembros',
@@ -112,7 +194,7 @@ module.exports = {
     { name: 'observaciones', label: 'Observaciones', type: 'textarea' },
   ],
   hooks: {
-    beforeSave(data, { isNew, existing, db }) {
+    beforeSave(data, { isNew, id, existing, db, confirmado }) {
       // La iglesia se hereda del miembro
       const miembroId = data.miembro_id !== undefined ? data.miembro_id : existing ? existing.miembro_id : null;
       if (miembroId && !data.iglesia_id) {
@@ -120,6 +202,28 @@ module.exports = {
         if (miembro && miembro.iglesia_id) data.iglesia_id = miembro.iglesia_id;
       }
       if (isNew && !data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
+
+      /*
+       * ¿No será el mismo papel que ya está en la carpeta? Ver arriba, en
+       * `elQueYaEstaba`, qué hace que dos sean el mismo y por qué pregunta en
+       * vez de bloquear.
+       *
+       * Al CORREGIR uno guardado solo se pregunta si este guardado cambia algo
+       * de lo que lo hace «el mismo». Si no, el repetido ya estaba antes de
+       * abrir la ficha y alguien ya dijo que eran dos: volver a preguntarlo
+       * cada vez que se le arregla una observación es ruido, y el ruido enseña
+       * a confirmar sin leer.
+       */
+      if (!confirmado) {
+        const tipo = data.tipo !== undefined ? data.tipo : existing ? existing.tipo : null;
+        const nombre = data.nombre !== undefined ? data.nombre : existing ? existing.nombre : null;
+        const sinCambios = seguiIgual(existing, { miembro_id: miembroId, tipo, nombre }, [
+          ['miembro_id', 'igual'], ['tipo', 'texto'], ['nombre', 'texto'],
+        ]);
+        const otro = sinCambios ? null
+          : elQueYaEstaba(db, { miembro_id: miembroId, tipo, nombre }, id);
+        if (otro) return avisoDeDocumentoRepetido(otro);
+      }
       return null;
     },
   },
