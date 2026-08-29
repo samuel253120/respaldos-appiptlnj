@@ -77,6 +77,123 @@ function edadEnAnios(fechaNacimiento) {
 /** Cuánto se acerca esta persona a la iglesia, si es que se acerca. */
 const CERCANIA = ['No asiste', 'Asiste ocasionalmente', 'Asiste con frecuencia'];
 
+/* ===========================================================================
+ * LA MISMA SEÑORA, ANOTADA DOS VECES
+ *
+ * Medido: se creó «Ana Torres» tres veces seguidas en la misma iglesia y el
+ * sistema contestó 201, 201 y 201 sin preguntar nada. En Miembros la segunda
+ * vez pregunta. Y acá hace más falta que allá, porque acá NINGUNA de las 60
+ * fichas de prueba tiene RUT: sin RUT, lo único que puede evitar el repetido
+ * es que el sistema pregunte.
+ *
+ * Cada ficha repetida se lleva un pedazo del historial —dos entregas cuelgan
+ * de una y la tercera de otra—, y la cuenta de «a cuántas personas distintas
+ * se ha ayudado» empieza a ser mentira sin que nadie se entere.
+ *
+ * ── CUÁNDO SE PREGUNTA, Y POR QUÉ NO SIEMPRE ──
+ *
+ * Con apellido, se compara como en Miembros: primer nombre más apellidos.
+ *
+ * Sin apellido —que acá es lo normal: 12 de 60 fichas de prueba no lo tienen—
+ * se compara el nombre COMPLETO, y solo contra las que tampoco lo tienen.
+ * «María» pregunta por «María», y no por «María Elena», que es otra señora.
+ *
+ * Lo que NO se pregunta es el caso mezclado: una ficha «María» a secas y una
+ * «María González». Podrían ser la misma que la segunda vez sí dio su
+ * apellido, pero también dos cualesquiera, y en un registro del barrio los
+ * nombres de pila se repiten: preguntar ahí dispararía el aviso en casi cada
+ * ficha nueva y la gente aprendería a apretar «seguir» sin leer, que es peor
+ * que no preguntar. Queda dicho acá para que se sepa que es una decisión y no
+ * un olvido.
+ *
+ * Y no bloquea: pregunta. Dos vecinas que se llaman igual existen.
+ * =========================================================================== */
+
+const { comoSeCompara } = require('../repetido');
+
+/** Con qué dato se distingue a una persona de otra que se llama igual. */
+function comoSeDistingue(ficha) {
+  if (ficha.rut) return `RUT ${ficha.rut}`;
+  if (ficha.fecha_nacimiento) {
+    const [a, m, d] = String(ficha.fecha_nacimiento).slice(0, 10).split('-');
+    return `nacida el ${d}-${m}-${a}`;
+  }
+  return 'sin RUT ni fecha de nacimiento';
+}
+
+/**
+ * Las fichas de esta misma iglesia que se llaman igual que la que se guarda.
+ *
+ * Se traen las de la iglesia y se comparan acá y no en la consulta, por lo
+ * mismo que en Miembros: el LOWER de SQLite no sabe de tildes, y las tildes
+ * son justamente lo que hay que pasar por alto.
+ */
+function lasQueSeLlamanIgual(db, ficha, id) {
+  if (!ficha.iglesia_id) return [];
+  const nombres = comoSeCompara(ficha.nombres);
+  const apellidos = comoSeCompara(ficha.apellidos);
+  if (!nombres) return [];
+
+  const iguales = (otra) => {
+    const suyoNombres = comoSeCompara(otra.nombres);
+    const suyoApellidos = comoSeCompara(otra.apellidos);
+    if (apellidos && suyoApellidos) {
+      return suyoNombres.split(' ')[0] === nombres.split(' ')[0] && suyoApellidos === apellidos;
+    }
+    if (!apellidos && !suyoApellidos) return suyoNombres === nombres;
+    return false; // el caso mezclado: ver el comentario de arriba
+  };
+
+  return db
+    .prepare(
+      `SELECT id, nombres, apellidos, rut, fecha_nacimiento, miembro_id
+         FROM no_miembros WHERE iglesia_id = ? AND id IS NOT ?`
+    )
+    .all(ficha.iglesia_id, id || 0)
+    .filter((otra) => iguales(otra)
+      // dos RUT distintos son dos personas distintas: no hay nada que preguntar
+      && !(otra.rut && ficha.rut && otra.rut !== ficha.rut));
+}
+
+/**
+ * El aviso, o null si no hay ninguna que se llame igual.
+ *
+ * Se dice CUÁNTAS ENTREGAS tiene anotadas la que ya existe, porque es el
+ * argumento de verdad para abrir esa en vez de crear otra: crear una nueva no
+ * pierde el historial, lo parte en dos, y eso desde el formulario no se ve.
+ */
+function avisoDeFichaRepetida(db, ficha, id) {
+  const iguales = lasQueSeLlamanIgual(db, ficha, id);
+  if (!iguales.length) return null;
+
+  const susAyudas = (otra) => db
+    .prepare("SELECT COUNT(*) c FROM ayudas_sociales WHERE no_miembro_id = ? AND estado = 'Entregada'")
+    .get(otra.id).c;
+
+  const senas = (otra) => {
+    const partes = [comoSeDistingue(otra)];
+    const entregas = susAyudas(otra);
+    if (entregas) partes.push(`${entregas} entrega${entregas === 1 ? '' : 's'} anotada${entregas === 1 ? '' : 's'}`);
+    if (otra.miembro_id) partes.push('ya inscrita como miembro');
+    return partes.join(', ');
+  };
+
+  const listadas = iguales.slice(0, 3).map((o) => `${o.nombres} ${o.apellidos || ''}`.trim() + ` (${senas(o)})`).join('; ');
+  const yMas = iguales.length > 3 ? `, y ${iguales.length - 3} más` : '';
+
+  return {
+    error:
+      (iguales.length === 1
+        ? `Ya hay una ficha de ${`${iguales[0].nombres} ${iguales[0].apellidos || ''}`.trim()} en esta iglesia `
+          + `(${senas(iguales[0])}). `
+        : `Ya hay ${iguales.length} fichas con ese mismo nombre en esta iglesia: ${listadas}${yMas}. `)
+      + 'Si es la misma persona, abra la que ya existe en vez de crear otra: así todo lo que se le ha '
+      + 'entregado queda en una sola ficha y se puede ver junto. Si de verdad son dos personas '
+      + 'distintas, confirme.',
+    confirmar: 'miembro_con_el_mismo_nombre',
+  };
+}
+
 module.exports = {
   name: 'no_miembros',
   label: 'No Miembros',
@@ -178,6 +295,27 @@ module.exports = {
   ],
 
   hooks: {
+    /**
+     * ¿No será la misma señora que ya está anotada? Ver arriba, en
+     * `avisoDeFichaRepetida`, cuándo se pregunta y por qué no siempre.
+     *
+     * Al editar solo se mira si ESTE guardado cambia el nombre o la iglesia:
+     * revisarlo siempre trancaría a quien viene a anotarle el teléfono que por
+     * fin dio, que es la mitad de lo que se hace en este registro.
+     */
+    beforeSave(data, { id, existing, db, confirmado }) {
+      if (confirmado) return null;
+      const antesDeGuardar = existing || {};
+      const cambiaElNombre = ['nombres', 'apellidos', 'iglesia_id']
+        .some((campo) => data[campo] !== undefined
+          && comoSeCompara(data[campo]) !== comoSeCompara(antesDeGuardar[campo]));
+      if (!id || cambiaElNombre) {
+        const repetida = avisoDeFichaRepetida(db, { ...antesDeGuardar, ...data }, id);
+        if (repetida) return repetida;
+      }
+      return null;
+    },
+
     /**
      * Una ficha que ya se inscribió no se borra: es de donde cuelgan las
      * ayudas que se le entregaron cuando todavía no era miembro.

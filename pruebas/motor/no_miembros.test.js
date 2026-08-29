@@ -119,7 +119,9 @@ test('a cada beneficiario de antes se le da su ficha, una por persona', () => {
   const antes = cuantasAca();
   require('../../server/migraciones').ayudasConFichaDelBeneficiario();
 
-  const fichas = db.prepare("SELECT * FROM no_miembros WHERE nombres LIKE 'Juana%'").all();
+  const fichas = db
+    .prepare("SELECT * FROM no_miembros WHERE nombres LIKE 'Juana%' AND iglesia_id IN (?, ?)")
+    .all(iglesia, otraIglesia);
   assert.equal(fichas.length, 2, 'una por persona y por iglesia, no una por ayuda');
   assert.equal(cuantasAca(), antes + 2);
 
@@ -137,7 +139,11 @@ test('la que ya apuntaba a un miembro queda marcada como Miembro', () => {
 });
 
 test('la que no traía nombre se queda como estaba, sin inventarle una ficha', () => {
-  const fila = db.prepare("SELECT * FROM ayudas_sociales WHERE beneficiario = ''").get();
+  // También acotada a esta iglesia: la base es compartida y otro archivo puede
+  // tener su propia ayuda sin nombre, que no es la que esta prueba sembró.
+  const fila = db
+    .prepare("SELECT * FROM ayudas_sociales WHERE beneficiario = '' AND iglesia_id = ?")
+    .get(iglesia);
   assert.equal(fila.beneficiario_tipo, null);
   assert.equal(fila.no_miembro_id, null);
 });
