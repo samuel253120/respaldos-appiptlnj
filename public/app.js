@@ -6170,6 +6170,17 @@ async function renderSolicitudesDeLaPersona(tipo, personaId, contenedor) {
  * De qué registro sale esta persona cuando recibe una ayuda. La ayuda guarda
  * un enlace u otro según el caso, nunca los dos (ver server/modules/ayudas_sociales.js).
  */
+/**
+ * Qué fichas llevan su historial en la hoja impresa, y cuántas anotaciones.
+ *
+ * El tope es el mismo que usa la hoja de una solicitud para su tramitación. Una
+ * ficha corriente tiene catorce anotaciones y sale entera; una de veinte años
+ * llega al tope, y entonces la hoja lo DICE en vez de cortar en silencio, que
+ * es la misma regla que sigue la pestaña en pantalla.
+ */
+const HISTORIAL_EN_LA_HOJA = ['miembros'];
+const HISTORIAL_EN_EL_PAPEL = 200;
+
 const COMO_RECIBE_AYUDA = { miembros: 'Miembro', no_miembros: 'No miembro' };
 
 /** «3 entregas · la última el 20-07-2026», en una línea. */
@@ -9222,13 +9233,37 @@ async function viewPrint(name, id) {
     ).catch(() => null);
   }
 
+  /*
+   * La ficha de un miembro se imprime CON su historial.
+   *
+   * No se imprime una anotación suelta —una línea en una hoja con membrete no
+   * es nada—: lo que hace falta en papel es la historia de la persona, y las
+   * tres veces que se necesita son las mismas de siempre. Cuando se entrega una
+   * congregación y hay que dejar dicho quién es cada quien. Cuando se resuelve
+   * un caso de disciplina o de reconocimiento y hay que llevarlo a la reunión.
+   * Y cuando alguien pide su constancia. Hasta la 1.185.0 eso se copiaba a mano
+   * de la pantalla, porque el historial no salía en ninguna hoja del sistema.
+   *
+   * La de una iglesia y la de un pastor tienen el mismo hueco y el mismo
+   * arreglo a un nombre de distancia; se dejan para cuando les toque.
+   */
+  let suHistorial = null;
+  const panelHist = HISTORIAL_EN_LA_HOJA.includes(name) ? PANEL_HISTORIAL[name] : null;
+  if (panelHist && MOD[panelHist.modulo]) {
+    // Sin permiso sobre la bitácora la hoja se imprime igual, sin esta parte,
+    // como pasa con las ayudas: lo que no se pueda traer no impide imprimir.
+    suHistorial = await api(
+      'GET', `/${panelHist.modulo}?f_${panelHist.campo}=${id}&limit=${HISTORIAL_EN_EL_PAPEL}&sort=fecha&dir=desc`
+    ).catch(() => null);
+  }
+
   let sheet;
   if (name === 'solicitudes') sheet = printSolicitud(m, row, deLaSolicitud);
   else if (name === 'certificados') sheet = printCertificado(row, formatoCert, { conPagina: true });
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
   else if (name === 'tesoreria') sheet = printMovimiento(m, row);
-  else sheet = printGenerico(m, row, susAyudas);
+  else sheet = printGenerico(m, row, susAyudas, suHistorial);
 
   content().innerHTML = `
     <div class="print-actions no-print">
@@ -10636,7 +10671,7 @@ function printMovimiento(m, row) {
     </div>`;
 }
 
-function printGenerico(m, row, susAyudas) {
+function printGenerico(m, row, susAyudas, suHistorial) {
   /*
    * Lo que se le ha entregado, debajo de sus datos.
    *
@@ -10657,6 +10692,39 @@ function printGenerico(m, row, susAyudas) {
           <td>${esc(a.estado || '')}</td>
         </tr>`).join('')}
     </table>` : '';
+
+  /*
+   * Y su historial, debajo de todo: es lo último que se lee y lo que más ocupa.
+   *
+   * Cada línea dice quién la dejó, sea una nota del equipo o algo que el sistema
+   * anotó al ocurrir —detrás de una automática también hay una persona—. Y una
+   * anotación del sistema que alguien corrigió a mano lo dice en la propia hoja,
+   * con lo que decía antes: en una constancia que alguien firma, un texto
+   * reescrito que se presenta como registro del sistema no puede pasar callado.
+   */
+  const filas = (suHistorial && suHistorial.rows) || [];
+  const cuantas = suHistorial ? suHistorial.total : 0;
+  const historial = suHistorial ? `
+    <h2 class="print-h2">Historial</h2>
+    <div class="sub">${filas.length < cuantas
+      ? `Se imprimen las ${filas.length} anotaciones más recientes, de ${cuantas}. El resto está en su ficha.`
+      : cuantas
+        ? `${cuantas} anotación(es), desde el ${esc(fechaCorta(filas[filas.length - 1].fecha))}`
+        : 'Sin anotaciones todavía.'}</div>
+    ${filas.length ? `
+      <table class="grid tramite">
+        <thead><tr><th>Fecha</th><th>Qué pasó</th><th>Registrado por</th></tr></thead>
+        <tbody>
+          ${filas.map((h) => `
+            <tr>
+              <td class="nowrap">${esc(h.fecha ? fechaCorta(h.fecha) : '')}</td>
+              <td><b>${esc(h.tipo || '')}.</b> ${esc(h.descripcion || '')}${h.texto_original
+                ? ` <i>— corregida a mano${h.corregido_por ? ' por ' + esc(h.corregido_por) : ''}; el sistema había anotado: «${esc(h.texto_original)}»</i>`
+                : ''}</td>
+              <td class="nowrap">${esc(h.registrado_por || '')}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : ''}` : '';
 
   return `
     <div class="print-sheet print-generic">
@@ -10690,6 +10758,7 @@ function printGenerico(m, row, susAyudas) {
           .join('')}
       </table>
       ${entregas}
+      ${historial}
       <div class="doc-pie">${pieDelDocumento()}</div>
     </div>`;
 }

@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.186.0", fecha: "2026-08-29", titulo: "La hoja impresa del miembro sale con su historial, y una anotación corregida a mano lo dice en el papel" },
   { version: "1.185.0", fecha: "2026-08-29", titulo: "La pestaña del historial tiene buscador y filtro, y cuando no cabe todo lo dice en vez de cortar en silencio" },
   { version: "1.184.0", fecha: "2026-08-29", titulo: "La bitácora se encuentra por el nombre de la persona, que es el que la propia pantalla muestra en su columna" },
   { version: "1.183.0", fecha: "2026-08-29", titulo: "El historial dice quién provocó cada anotación automática: el nombre estaba guardado y la pantalla lo tapaba" },
