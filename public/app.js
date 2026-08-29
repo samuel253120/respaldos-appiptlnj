@@ -14021,19 +14021,72 @@ const PANEL_HISTORIAL = {
   },
 };
 
-/** Documentos adjuntos a una ficha (de un miembro, de una iglesia, de un pastor). */
-async function renderDocumentos(panel, id, contenedor) {
+/*
+ * Cuántos papeles trae la pestaña de una vez.
+ *
+ * Menos que el historial —que trae 50— porque cada uno ocupa mucho más: una
+ * fila con su miniatura mide 99 px, contra los 40 y tantos de una línea de
+ * historial. Con 24 la pestaña cabe en menos de tres pantallas y el resto se
+ * pide cuando hace falta.
+ */
+const DOCUMENTOS_DE_A = 24;
+
+/**
+ * Documentos adjuntos a una ficha (de un miembro, de una iglesia, de un pastor).
+ *
+ * Con tres papeles esta pestaña estaba bien resuelta. El problema aparece con
+ * los años, que es lo que una carpeta acumula. Medido sobre una ficha con 118:
+ * el encabezado decía «118 documento(s)», la pestaña mostraba 100, los otros 18
+ * no se veían y nada lo decía, y el conjunto medía 7.959 px —8,8 pantallas— sin
+ * buscador ni filtro.
+ *
+ * Es el mismo hueco que tenía la pestaña del historial y se arregló igual
+ * (1.185.0): se trae un tramo, se dice cuántos hay, se ofrecen los que faltan, y
+ * el buscador y el filtro los resuelve el SERVIDOR —en el navegador solo
+ * alcanzarían el tramo cargado, y buscar un papel de hace quince años no lo
+ * encontraría nunca—.
+ *
+ * El tramo es de 24 y no de 50 como el del historial. No es por el alto: la fila
+ * de un documento mide 79 px y la línea del historial 85 px, casi lo mismo. Es
+ * por lo que cada fila trae: la del documento descarga el escaneo entero para
+ * mostrarlo en miniatura, y la del historial no descarga nada. Medido sobre una
+ * carpeta de escaneos de 180 KB cada uno, el tramo de 24 pesa 4,2 MB; uno de 50
+ * pesaría cerca de 8,8 MB antes de mostrar el primer papel, y eso lo paga la
+ * secretaria con el teléfono en la mano.
+ */
+async function renderDocumentos(panel, id, contenedor, estado) {
   const modDocs = MOD[panel.modulo];
   if (!modDocs) return;
+  const st = { q: '', tipo: '', cuantas: DOCUMENTOS_DE_A, deTodas: undefined, foco: false, ...(estado || {}) };
   const esImagen = (a) => /\.(jpe?g|png|webp|gif)$/i.test(a || '');
+  const tipos = (modDocs.fields.find((f) => f.name === 'tipo') || {}).options || [];
   try {
-    const datos = await api('GET', `/${panel.modulo}?f_${panel.campo}=${id}&limit=100&sort=fecha&dir=desc`);
+    const datos = await api('GET', `/${panel.modulo}?f_${panel.campo}=${id}&limit=${st.cuantas}`
+      + `&sort=fecha&dir=desc${st.q ? `&q=${encodeURIComponent(st.q)}` : ''}`
+      + `${st.tipo ? `&f_tipo=${encodeURIComponent(st.tipo)}` : ''}`);
+    // El total sin acotar se arrastra, para no volver a preguntarlo en cada tecla
+    const acotado = !!(st.q || st.tipo);
+    if (!acotado) st.deTodas = datos.total;
+    const deTodas = st.deTodas === undefined ? datos.total : st.deTodas;
+    const rehacer = (cambios) => renderDocumentos(panel, id, contenedor, { ...st, ...cambios });
+
     contenedor.innerHTML = `
       <div class="card" style="margin-top:18px">
         <div class="toolbar">
           <b>${esc(panel.titulo)}</b>
-          <span style="color:var(--muted);font-size:13px">${datos.total} documento(s)</span>
+          <span style="color:var(--muted);font-size:13px">${acotado
+            ? `${datos.total} de ${deTodas}`
+            : `${datos.total} documento(s)`}</span>
           <span class="spacer"></span>
+          <input type="search" id="docBuscar" placeholder="Buscar en los documentos…"
+                 value="${esc(st.q)}" aria-label="Buscar en los documentos" />
+          <select id="docTipo" aria-label="Filtrar por tipo de documento">
+            <option value="">— Todos los tipos —</option>
+            ${tipos.map((o) => {
+              const v = typeof o === 'object' ? o.value : o;
+              return `<option value="${esc(v)}" ${String(v) === String(st.tipo) ? 'selected' : ''}>${esc(v)}</option>`;
+            }).join('')}
+          </select>
           ${modDocs.perms.create ? `<button class="btn sm" id="btnDocNuevo">➕ Agregar documento</button>` : ''}
         </div>
         ${datos.rows.length ? `<ul class="documentos">
@@ -14051,11 +14104,40 @@ async function renderDocumentos(panel, id, contenedor) {
                 ${d.archivo ? `<a class="btn sm secondary" href="/uploads/${esc(d.archivo)}" target="_blank">Ver</a>` : ''}
               </div>
             </li>`).join('')}
-        </ul>` : '<div class="empty-state" style="padding:26px">Todavía no se ha adjuntado ningún documento.</div>'}
+        </ul>` : `<div class="empty-state" style="padding:26px">${acotado
+          ? 'Ningún documento coincide con lo que buscó.'
+          : 'Todavía no se ha adjuntado ningún documento.'}</div>`}
+        ${datos.rows.length < datos.total ? `
+          <div class="hist-mas">
+            <span>Mostrando ${datos.rows.length} de ${datos.total}.</span>
+            <button class="btn sm secondary" id="docMas">Ver ${Math.min(DOCUMENTOS_DE_A, datos.total - datos.rows.length)} más</button>
+          </div>` : ''}
       </div>`;
 
     const btn = document.getElementById('btnDocNuevo');
     if (btn) btn.addEventListener('click', () => (location.hash = `#/m/${panel.modulo}/new?${panel.campo}=${id}`));
+
+    const mas = document.getElementById('docMas');
+    if (mas) mas.addEventListener('click', () => rehacer({ cuantas: st.cuantas + DOCUMENTOS_DE_A }));
+
+    // Al buscar o filtrar se vuelve al primer tramo: pedir «los 100 primeros»
+    // de una búsqueda recién escrita no tiene sentido
+    const porTipo = document.getElementById('docTipo');
+    if (porTipo) porTipo.addEventListener('change', () => rehacer({ tipo: porTipo.value, cuantas: DOCUMENTOS_DE_A }));
+
+    const caja = document.getElementById('docBuscar');
+    if (caja) {
+      if (st.foco) {
+        caja.focus();
+        caja.setSelectionRange(caja.value.length, caja.value.length);
+      }
+      let espera;
+      caja.addEventListener('input', () => {
+        clearTimeout(espera);
+        espera = setTimeout(() => rehacer({ q: caja.value.trim(), cuantas: DOCUMENTOS_DE_A, foco: true }), 280);
+      });
+    }
+
     contenedor.querySelectorAll('ul.documentos li').forEach((li) => {
       li.addEventListener('click', (ev) => {
         if (ev.target.closest('a')) return; // "Ver" abre el archivo
