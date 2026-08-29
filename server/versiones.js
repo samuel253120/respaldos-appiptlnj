@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.192.0", fecha: "2026-08-29", titulo: "Un archivo recién subido, mientras no se guarda la ficha que lo enlaza, solo lo ve quien lo subió" },
   { version: "1.191.0", fecha: "2026-08-29", titulo: "La carpeta de documentos de una persona se ve donde se ve la persona: al cambiar de iglesia, sus papeles se van con ella" },
   { version: "1.190.0", fecha: "2026-08-29", titulo: "Lo que decide la evaluación del período de prueba queda escrito en el historial de la persona, y un archivo chico ya no pesa cero" },
   { version: "1.189.0", fecha: "2026-08-29", titulo: "El documento se adjunta en la misma ventana en que se anota, y la pestaña, el listado y la hoja impresa dicen cuáles anotaciones lo llevan" },

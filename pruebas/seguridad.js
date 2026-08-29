@@ -104,8 +104,23 @@ async function entrar(rut = RUT, clave = CLAVE) {
     });
     revisar('y con la galleta también, que es como las pide el navegador', galleta.status === 200, `respondió ${galleta.status}`);
 
+    /*
+     * Se acepta 404 o 403, y las dos son un «no».
+     *
+     * Hasta la 1.191.0 contestaba 404: el nombre se recortaba a su última
+     * parte, no había ningún archivo así, y el disco decía que no existe.
+     * Ahora contesta 403 antes de tocar el disco, porque un archivo que no
+     * pertenece a ninguna ficha solo lo ve quien lo subió, y a este no lo
+     * subió nadie. Es un «no» más temprano, y además deja de decir qué
+     * nombres existen y cuáles no.
+     */
     const escapar = await fetch(`${URL}/uploads/..%2f..%2fpackage.json`, { headers: { Authorization: cabecera } });
-    revisar('no se puede salir de la carpeta de archivos', escapar.status === 404, `respondió ${escapar.status}`);
+    revisar('no se puede salir de la carpeta de archivos',
+      escapar.status === 404 || escapar.status === 403, `respondió ${escapar.status}`);
+
+    const inventado = await fetch(`${URL}/uploads/no-existe-jamas-esto.txt`, { headers: { Authorization: cabecera } });
+    revisar('y un nombre inventado tampoco entrega nada',
+      inventado.status === 404 || inventado.status === 403, `respondió ${inventado.status}`);
 
     // Una foto se entrega como foto, dicho por el sistema y no adivinado por
     // el navegador: así, aunque algún día entrara un archivo que no

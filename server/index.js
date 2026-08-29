@@ -681,6 +681,10 @@ app.post('/api/upload', authRequired, (req, res) => {
       return res.status(400).json({ error: veredicto.motivo });
     }
 
+    // Queda dicho quién lo subió: hasta que se guarde el formulario que lo
+    // enlaza, el archivo no pertenece a ninguna ficha y es lo único que
+    // decide quién puede abrirlo (ver server/archivos.js)
+    archivos.recordarQuienSubio(req.file.filename, req.user && req.user.id);
     res.json({ filename: req.file.filename, original: req.file.originalname, url: `/uploads/${req.file.filename}` });
   });
 });

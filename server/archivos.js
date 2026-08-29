@@ -17,10 +17,19 @@
  * módulos, que están indexadas justo para esto. Se recuerda lo encontrado,
  * porque un listado con veinticinco fotos pregunta veinticinco veces.
  *
- * Un archivo que no pertenece a ninguna ficha —el que se acaba de subir y
- * todavía no se guarda el formulario— se le muestra a cualquiera que tenga
- * sesión: en ese momento no hay ficha que consultar, y sin eso no se podría
- * ver la foto que uno mismo acaba de elegir.
+ * Un archivo que todavía no pertenece a ninguna ficha —el que se acaba de
+ * subir y aún no se guarda el formulario— se le muestra SOLO A QUIEN LO SUBIÓ.
+ * Antes se le mostraba a cualquiera con sesión, y el motivo era razonable: en
+ * ese momento no hay ficha que consultar, y sin eso no se podría ver la foto
+ * que uno mismo acaba de elegir. Pero lo que se sube no es siempre una foto de
+ * perfil. Medido: se elige el carnet de identidad de una miembro, se cierra el
+ * formulario sin guardar, y la secretaria de otra iglesia se lo baja con un
+ * 200 y su contenido. Y se queda ahí hasta que pasa la barrida, que da siete
+ * días de gracia.
+ *
+ * Se arregla por donde estaba el hueco y no por donde duele: se recuerda quién
+ * subió cada archivo, y mientras no tenga ficha solo lo ve esa persona. Con
+ * eso, los siete días de la barrida dejan de importar.
  */
 const fs = require('fs');
 const path = require('path');
@@ -44,6 +53,48 @@ function columnasDeArchivo() {
 // subido pasa a tener dueño en cuanto se guarda su formulario.
 const recordados = new Map(); // archivo → { modulo, id }
 const TOPE = 5000;
+
+/**
+ * Quién subió cada archivo, mientras todavía no es de ninguna ficha.
+ *
+ * Va en la base y no en memoria a propósito: entre que alguien elige un
+ * archivo y guarda el formulario puede reiniciarse el servidor, y si se
+ * olvidara quién lo subió, esa persona dejaría de ver lo que acaba de elegir.
+ */
+db.exec(`CREATE TABLE IF NOT EXISTS archivos_subidos (
+  archivo TEXT PRIMARY KEY,
+  usuario_id INTEGER,
+  cuando TEXT DEFAULT (datetime('now','localtime'))
+)`);
+
+/** Deja dicho quién acaba de subir este archivo. */
+function recordarQuienSubio(archivo, usuarioId) {
+  if (!archivo || !usuarioId) return;
+  try {
+    db.prepare('INSERT OR REPLACE INTO archivos_subidos (archivo, usuario_id) VALUES (?, ?)')
+      .run(archivo, Number(usuarioId));
+  } catch (e) {
+    // Que no se pueda anotar no puede impedir subir el archivo: lo que pasa
+    // entonces es que nadie lo ve hasta guardarlo, que es el lado seguro.
+  }
+}
+
+/** Quién lo subió, o null si no consta. */
+function quienLoSubio(archivo) {
+  try {
+    const fila = db.prepare('SELECT usuario_id FROM archivos_subidos WHERE archivo = ?').get(archivo);
+    return fila ? fila.usuario_id : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Se olvida quién lo subió: ya tiene ficha, o ya no está. */
+function olvidarQuienSubio(archivo) {
+  try {
+    db.prepare('DELETE FROM archivos_subidos WHERE archivo = ?').run(archivo);
+  } catch (e) { /* si no se puede, la barrida volverá a pasar */ }
+}
 
 /** La ficha a la que pertenece un archivo, o null si todavía no es de nadie. */
 function duenoDe(archivo) {
@@ -77,11 +128,31 @@ function duenoDe(archivo) {
  */
 function puedeVer(archivo, usuario) {
   const dueno = duenoDe(archivo);
-  if (!dueno) return { ok: true }; // recién subido, todavía sin ficha
-  if (!alcance.alcanza(dueno.def, dueno.fila, usuario)) {
-    return { ok: false, motivo: 'Ese archivo pertenece a un registro que está fuera de lo que tiene asignado' };
+  if (dueno) {
+    if (!alcance.alcanza(dueno.def, dueno.fila, usuario)) {
+      return { ok: false, motivo: 'Ese archivo pertenece a un registro que está fuera de lo que tiene asignado' };
+    }
+    return { ok: true };
   }
-  return { ok: true };
+
+  /*
+   * Sin ficha detrás. Dos casos, y solo dos.
+   *
+   * El logo, el sello y la firma de la institución no pertenecen a ninguna
+   * ficha —viven en la configuración— y no son de nadie en particular: salen
+   * en las credenciales, en las actas y en los documentos que imprime medio
+   * sistema. Se siguen entregando a quien tenga sesión, como siempre.
+   */
+  if (esDeLaInstitucion(archivo)) return { ok: true };
+
+  // Lo demás sin ficha es un archivo recién subido cuyo formulario todavía no
+  // se guarda. Lo ve quien lo subió, y nadie más.
+  const quien = quienLoSubio(archivo);
+  if (quien && usuario && Number(quien) === Number(usuario.id)) return { ok: true };
+  return {
+    ok: false,
+    motivo: 'Ese archivo todavía no pertenece a ninguna ficha: hasta que se guarde, solo lo ve quien lo subió',
+  };
 }
 
 /**
@@ -128,6 +199,23 @@ function loUsaLaConfiguracion(archivo) {
   }
 }
 
+/**
+ * La misma pregunta, pero para decidir si se ENTREGA el archivo.
+ *
+ * Es la de arriba con el modo de fallo dado vuelta, y por eso va aparte. Ante
+ * la duda, aquella contesta «sí, está en uso» para no borrar nada por error;
+ * si se reusara acá, un problema al consultar la base abriría el archivo a
+ * todo el mundo, que es exactamente lo contrario de lo prudente. Acá, ante la
+ * duda, no se entrega.
+ */
+function esDeLaInstitucion(archivo) {
+  try {
+    return !!db.prepare('SELECT 1 FROM configuracion WHERE valor = ? LIMIT 1').get(archivo);
+  } catch (e) {
+    return false;
+  }
+}
+
 /** ¿Algún registro, de cualquier módulo, está usando este archivo? */
 function loUsaAlguien(archivo, salvo) {
   if (loUsaLaConfiguracion(archivo)) return true;
@@ -151,6 +239,7 @@ function loUsaAlguien(archivo, salvo) {
 /** Borra un archivo del disco y lo olvida. Devuelve si se fue. */
 function borrarDelDisco(archivo) {
   recordados.delete(archivo);
+  olvidarQuienSubio(archivo);
   try {
     fs.unlinkSync(path.join(UPLOADS_DIR, archivo));
     return true;
@@ -201,7 +290,11 @@ function limpiarHuerfanos({ diasDeGracia = DIAS_DE_GRACIA(), deVerdad = true } =
       continue;
     }
     if (!datos.isFile() || datos.mtimeMs > limite) continue;
-    if (loUsaAlguien(archivo, null)) continue;
+    if (loUsaAlguien(archivo, null)) {
+      // Ya tiene ficha: quién lo subió deja de importar y la anotación sobra
+      olvidarQuienSubio(archivo);
+      continue;
+    }
     huerfanos++;
     espacio += datos.size;
     if (deVerdad && borrarDelDisco(archivo)) borrados++;
@@ -209,4 +302,9 @@ function limpiarHuerfanos({ diasDeGracia = DIAS_DE_GRACIA(), deVerdad = true } =
   return { revisados: nombres.length, huerfanos, borrados, espacio };
 }
 
-module.exports = { puedeVer, duenoDe, borrarLosDe, limpiarHuerfanos, DIAS_DE_GRACIA };
+module.exports = {
+  puedeVer, duenoDe, borrarLosDe, limpiarHuerfanos, DIAS_DE_GRACIA,
+  // Para que la subida deje dicho quién fue: mientras el archivo no tenga
+  // ficha, es lo único que decide quién puede abrirlo.
+  recordarQuienSubio, quienLoSubio,
+};
