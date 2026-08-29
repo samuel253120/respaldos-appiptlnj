@@ -14241,14 +14241,28 @@ async function renderHistorial(panel, id, contenedor) {
         <div id="histLista">
           ${datos.rows.length ? `<ul class="historial">
             ${datos.rows.map((r) => {
-              const editado = r.created_at && r.updated_at && r.created_at !== r.updated_at;
+              /*
+               * Una anotación del sistema que alguien corrigió a mano seguía
+               * diciendo «⚙️ automático» y nada más, con un texto que no era el
+               * que el sistema escribió y sin dónde ir a leer el que sí. Ahora
+               * lo dice y lo muestra: es la constancia de lo que pasó.
+               */
+              const corregida = !!r.texto_original;
+              const editado = !corregida && r.created_at && r.updated_at && r.created_at !== r.updated_at;
+              const quien = r.origen === 'Automático' ? '⚙️ automático' : '✍️ ' + esc(r.registrado_por || '');
               return `
               <li class="${r.origen === 'Automático' ? 'auto' : 'manual'}">
                 <div class="hf">${fechaCorta(r.fecha)}</div>
                 <div class="hc">
                   <span class="badge ${badgeClass(r.tipo)}">${esc(r.tipo)}</span>
                   <div class="hd">${esc(r.descripcion)}</div>
-                  <div class="hm">${r.origen === 'Automático' ? '⚙️ automático' : '✍️ ' + esc(r.registrado_por || '')}${editado ? ' · ✏️ editado' : ''}</div>
+                  <div class="hm">${quien}${editado ? ' · ✏️ editado' : ''}${corregida
+                    ? ` · ✏️ corregida a mano${r.corregido_por ? ' por ' + esc(r.corregido_por) : ''}${r.updated_at ? ' el ' + fechaCorta(String(r.updated_at).slice(0, 10)) : ''}`
+                    : ''}</div>
+                  ${corregida ? `<details class="corregida">
+                    <summary>Ver lo que había anotado el sistema</summary>
+                    <div class="antes">${esc(r.texto_original)}</div>
+                  </details>` : ''}
                 </div>
                 <div class="ha">
                   ${intocable(r) ? '<span class="ico mut" title="Lo anotó el sistema: es la constancia de lo que pasó">🔒</span>' : `
@@ -14311,7 +14325,12 @@ function abrirAnotacion(panel, id, alGuardar, registro) {
       <div class="modal-head"><h3>${editando ? '✏️ Editar registro del historial' : '➕ Nueva anotación'}</h3><button class="cerrar" aria-label="Cerrar">&times;</button></div>
       <div class="modal-body">
         ${editando && registro.origen === 'Automático'
-          ? '<div class="aviso-auto">⚙️ Este registro lo generó el sistema al ocurrir el hecho. Se puede corregir su texto, y quedará marcado como editado.</div>'
+          ? `<div class="aviso-auto">⚙️ Este registro lo generó el sistema al ocurrir el hecho. Se puede corregir su
+               texto: lo que decía queda guardado y a la vista, con el nombre de quien lo corrigió.
+               ${registro.texto_original
+                 ? `<div class="antes" style="margin-top:8px"><b>Ya se corrigió antes.</b> El sistema había anotado:
+                      «${esc(registro.texto_original)}»</div>`
+                 : ''}</div>`
           : ''}
         <div class="fld"><label>Fecha</label><input type="date" id="anFecha" value="${esc(fechaISO(valor('fecha', new Date().toISOString().slice(0, 10))))}" /></div>
         <div class="fld" style="margin-top:12px"><label>Tipo</label>

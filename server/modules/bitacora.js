@@ -55,15 +55,18 @@ module.exports = {
       help: 'Los registros automáticos los genera el sistema al ocurrir el hecho.',
     },
     { name: 'registrado_por', label: 'Registrado por', type: 'text', readonly: true },
+    ...require('../lo-que-decia-el-sistema').CAMPOS,
     { name: 'adjunto', label: 'Documento adjunto', type: 'file' },
   ],
   hooks: {
-    beforeSave(data, { user, isNew }) {
+    beforeSave(data, { user, isNew, existing }) {
       if (isNew) {
         data.origen = data.origen || 'Manual';
         data.registrado_por = user.nombre;
         if (!data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
       }
+      // Corregir a mano lo que anotó el sistema deja constancia de lo que decía
+      require('../lo-que-decia-el-sistema').guardarLoQueDecia(data, { existing, user });
       return null;
     },
   },

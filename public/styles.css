@@ -3115,3 +3115,23 @@ ul.mini-list li.retirado .msg-t { text-decoration: line-through; }
 @media (min-width: 701px) {
   .fld label.con-casilla input[type="checkbox"] { width: 18px; height: 18px; }
 }
+
+/* Una anotación del sistema que alguien corrigió a mano: lo que decía queda
+   a un clic, plegado, para que no le quite el sitio a lo que la ficha dice hoy */
+.historial .corregida { margin-top: 4px; }
+.historial .corregida > summary {
+  cursor: pointer; font-size: 12px; color: var(--muted);
+  list-style: none; display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 0; min-height: 24px;
+}
+.historial .corregida > summary::-webkit-details-marker { display: none; }
+.historial .corregida > summary::before { content: '▸'; font-size: 10px; }
+.historial .corregida[open] > summary::before { content: '▾'; }
+.historial .corregida > summary:hover { color: var(--text); }
+.historial .antes,
+.aviso-auto .antes {
+  font-size: 13px; line-height: 1.5;
+  border-left: 3px solid var(--border);
+  padding: 6px 0 6px 10px; margin-top: 4px;
+  color: var(--muted);
+}
