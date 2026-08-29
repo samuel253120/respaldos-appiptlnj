@@ -197,15 +197,33 @@ test('un menor con su adulto ELEGIDO ya no cuenta como sin responsable', () => {
    * nombre escrito: a todo menor con su adulto elegido de la membresía se le
    * seguía contando como si no tuviera a nadie.
    */
-  const antes = pendientes.resumen({ rol: 'admin' }).menoresSinResponsable;
+  /*
+   * Acotado a la iglesia de este archivo, no al total del sistema: estas
+   * pruebas comparten la base y corren en paralelo, así que contar todos los
+   * menores sin responsable y esperar exactamente uno más se cae en cuanto
+   * otro archivo crea un menor en esa misma rendija. Y es además como lo mira
+   * una secretaria de verdad.
+   */
+  // El alcance se acota con la LISTA de iglesias del usuario; con `iglesia_id`
+  // solo, o con la lista escrita como texto, no acota nada y se cuenta todo.
+  const suya = { rol: 'secretario', iglesia_id: iglesia, iglesias: [iglesia] };
+  const antes = pendientes.resumen(suya).menoresSinResponsable;
   const madre = alguien(41, { nombres: 'Casimira Fam', apellidos: 'Antipán Colipán' });
   alguien(9, { responsable_id: madre });
-  assert.equal(pendientes.resumen({ rol: 'admin' }).menoresSinResponsable, antes,
+  assert.equal(pendientes.resumen(suya).menoresSinResponsable, antes,
     'el menor tiene a quién llamar: no le falta nada');
 
   alguien(9);
-  assert.equal(pendientes.resumen({ rol: 'admin' }).menoresSinResponsable, antes + 1,
-    'y a este sí le falta, así que se sigue contando');
+  const acotado = pendientes.resumen(suya).menoresSinResponsable;
+  assert.equal(acotado, antes + 1, 'y a este sí le falta, así que se sigue contando');
+  // Y que el acotado esté acotando de verdad: si no, se cuenta todo el sistema
+  // y la prueba vuelve a depender de lo que hagan los otros archivos. Se
+  // comprueba con el total de fichas, no con los menores: puede que en las
+  // demás iglesias no haya ninguno, y entonces las dos cifras coincidirían sin
+  // que eso pruebe nada.
+  const suyas = pendientes.resumen(suya).total;
+  const todas = pendientes.resumen({ rol: 'admin' }).total;
+  assert.ok(todas > suyas, `el alcance no está acotando: acotado ${suyas}, de todas ${todas}`);
 });
 
 test('la pantalla mira los dos caminos, no solo el nombre escrito', () => {

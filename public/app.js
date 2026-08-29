@@ -8133,7 +8133,17 @@ function nombreArchivo(guardado) {
 /** Tamaño legible: 1.2 MB, 340 KB… */
 function tamanoLegible(bytes) {
   if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1).replace('.', ',') + ' MB';
-  return Math.round(bytes / 1024) + ' KB';
+  /*
+   * Lo que no llega a un kilo se dice en bytes.
+   *
+   * Redondeado a kilos, un acuerdo de dos líneas o una firma escaneada chica
+   * salían como «0 KB», que se lee como que no se subió nada —y justo se acaba
+   * de subir—. Se ve en el campo de archivo de cualquier ficha, en la ventana
+   * de anotación y en el panel de espacio, que dice cuánto pesa en promedio
+   * cada archivo subido.
+   */
+  if (bytes >= 1024) return Math.round(bytes / 1024) + ' KB';
+  return `${Math.round(bytes)} ${Math.round(bytes) === 1 ? 'byte' : 'bytes'}`;
 }
 
 /**

@@ -118,15 +118,18 @@ test('el retiro se anota en la fecha de retiro', () => {
   assert.equal(retiro.tipo, 'Salida de cuerpo');
 });
 
-test('pasar a integrante oficial es de hoy, y eso está comprobado', () => {
+test('pasar a integrante oficial A MANO es de hoy, y eso está comprobado', () => {
   /*
    * «Pasó a integrante oficial el» es de solo lectura: la pone la evaluación.
    * Y la evaluación mueve al integrante con un UPDATE directo que no pasa por
-   * el motor, así que por ese camino no se escribe ninguna anotación —medido
-   * contra el servidor: aprobar la evaluación deja la ficha en Activo con su
-   * fecha, y la bitácora de la persona sigue con las mismas dos de antes—.
-   * Acá solo se llega por el cambio de estado a mano, donde ese campo viene
-   * vacío. Por eso la anotación no lo mira: sería una línea muerta.
+   * el motor, así que por acá no se llega por ese camino: la evaluación anota
+   * por su cuenta, con la fecha en que se decidió, y eso lo cuida
+   * «lo-que-decide-la-evaluacion».
+   *
+   * Acá se llega solo por el cambio de estado a mano, y entonces ese campo
+   * viene vacío: lo que está pasando es que alguien la marcó Activa hoy.
+   * Mirarlo sería una línea muerta, y en el único caso en que traería algo —a
+   * quien se reactiva tras un retiro— traería la fecha vieja de su ascenso.
    */
   const [fila] = alGuardar('integrantes_cuerpo', {
     id: 905, miembro_id: miembro, cuerpo_id: cuerpo, iglesia_id: iglesia,

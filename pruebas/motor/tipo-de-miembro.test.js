@@ -142,15 +142,37 @@ test('ni pregunta cuando el tipo está en blanco', () => {
 // --------------------------- el panel lo pone a la vista -------------------
 
 test('el panel cuenta las fichas que no tienen tipo, para poder llenarlas', () => {
-  const antes = pendientes.resumen({ rol: 'admin' });
+  /*
+   * Se cuenta acotado a la iglesia de este archivo, no el total del sistema.
+   *
+   * Estas pruebas comparten la base y corren en paralelo: contar «todas las
+   * fichas sin tipo», agregar una y esperar exactamente una más falla en
+   * cuanto otro archivo crea un miembro en esa misma rendija. Pasó: al
+   * agregarse las pruebas de la evaluación —que crean doce— esto empezó a
+   * caerse una de cada tres corridas. La cifra se mira por el alcance de un
+   * usuario de esta iglesia, que es además como la mira una secretaria de
+   * verdad.
+   */
+  // El alcance se acota con la LISTA de iglesias del usuario; con `iglesia_id`
+  // solo, o con la lista escrita como texto, no acota nada y se cuenta todo.
+  const suya = { rol: 'secretario', iglesia_id: iglesia, iglesias: [iglesia] };
+  const antes = pendientes.resumen(suya);
   const linea = antes.faltas.find((f) => f.campo === 'tipo_miembro');
   assert.ok(linea, 'sin esto, 603 fichas en blanco no se ven en ninguna parte');
   assert.match(linea.para, /directiva/, 'cada línea dice para qué sirve el dato');
 
   const cuantas = linea.cuantos;
   alguien(35, null);
-  assert.equal(pendientes.resumen({ rol: 'admin' }).faltas.find((f) => f.campo === 'tipo_miembro').cuantos,
+  assert.equal(pendientes.resumen(suya).faltas.find((f) => f.campo === 'tipo_miembro').cuantos,
     cuantas + 1);
+
+  // Y que el acotado esté de verdad acotando: el administrador ve MUCHAS más.
+  // Sin esta comprobación, un usuario mal armado devuelve el total del sistema
+  // y la prueba vuelve a depender de lo que hagan los otros archivos —pasó, con
+  // la lista de iglesias escrita como texto en vez de como lista—.
+  const suyas = pendientes.resumen(suya).total;
+  const todas = pendientes.resumen({ rol: 'admin' }).total;
+  assert.ok(todas > suyas, `el alcance no está acotando: acotado ${suyas}, de todas ${todas}`);
 });
 
 // ------------------- el que cumple 18 y nadie vuelve a mirar ---------------

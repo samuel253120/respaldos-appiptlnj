@@ -317,6 +317,65 @@ function cambios(def, antes, despues) {
  * Se llama desde el motor CRUD después de guardar un registro de cualquier
  * módulo. Traduce el hecho a una anotación en la bitácora del miembro.
  */
+/**
+ * Lo que se le anota a alguien cuando su ficha de integrante cambia de estado.
+ *
+ * Hay DOS caminos que llevan al mismo hecho: cambiarle el estado a mano en su
+ * ficha, y aprobar o rechazar su evaluación de período de prueba. Los dos
+ * tienen que dejar escrito lo mismo, así que el texto se arma en un solo sitio
+ * y no en cada camino, donde podrían separarse sin que nadie lo note.
+ */
+function loQueLePasaAlIntegrante(estado, nombreCuerpo, { motivo, hasta } = {}) {
+  if (estado === 'Activo') {
+    return { tipo: 'Anotación', descripcion: `Queda como integrante oficial de "${nombreCuerpo}".` };
+  }
+  if (estado === 'Retirado') {
+    return {
+      tipo: 'Salida de cuerpo',
+      descripcion: `Sale de "${nombreCuerpo}"${motivo ? ` (${motivo})` : ''}.`,
+    };
+  }
+  if (estado === 'En prueba') {
+    // La evaluación que extiende la prueba sabe hasta cuándo; el cambio a mano no.
+    const { comoSeLee } = require('./fechas');
+    return {
+      tipo: 'Anotación',
+      descripcion: hasta
+        ? `Se le extiende el período de prueba en "${nombreCuerpo}" hasta el ${comoSeLee(hasta)}.`
+        : `Vuelve a período de prueba en "${nombreCuerpo}".`,
+    };
+  }
+  return null;
+}
+
+/**
+ * El paso que decidió una evaluación de período de prueba.
+ *
+ * La evaluación mueve la ficha del integrante con un UPDATE directo —tiene que
+ * hacerlo, porque escribe campos de solo lectura—, y por ese camino el motor no
+ * se entera: medido contra el servidor, aprobar la evaluación de una miembro
+ * dejaba su ficha en Activo con su fecha y su bitácora con las mismas dos
+ * anotaciones de antes. La decisión más importante que se toma sobre alguien en
+ * un cuerpo era la única que no quedaba escrita en su historial.
+ *
+ * Se anota con la FECHA DE LA EVALUACIÓN, que es el día en que se decidió y la
+ * misma que queda en la ficha.
+ */
+function anotarPasoDeIntegrante(integranteId, { estado, fecha, usuario, hasta }) {
+  const ficha = integranteId
+    ? db.prepare('SELECT * FROM integrantes_cuerpo WHERE id = ?').get(integranteId)
+    : null;
+  if (!ficha) return;
+  const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(ficha.cuerpo_id);
+  const que = loQueLePasaAlIntegrante(estado, cuerpo ? cuerpo.nombre : 'un cuerpo',
+    { motivo: ficha.motivo_retiro, hasta });
+  if (!que) return;
+  // A quien no está inscrito en la membresía no se le anota nada: en los grupos
+  // sirve gente de fuera del registro, y esa gente no tiene bitácora. De eso ya
+  // se encarga `anotar`, que se niega sin miembro.
+  anotar({ miembroId: ficha.miembro_id, iglesiaId: ficha.iglesia_id, usuario, fecha, ...que });
+}
+
 function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
   const iglesia = despues.iglesia_id || null;
 
@@ -479,30 +538,20 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
       return;
     }
     if (antes.estado === estado) return;    // solo interesa el cambio de estado
-    if (estado === 'Activo') {
-      /*
-       * Sin fecha propia, a propósito, y se comprobó por qué.
-       *
-       * «Pasó a integrante oficial el» existe en la ficha, pero es de solo
-       * lectura: la pone la evaluación, y la evaluación mueve al integrante con
-       * un UPDATE directo que no pasa por el motor —así que por ese camino no
-       * se llega hasta acá y no queda ninguna anotación—. Acá solo se llega
-       * cuando alguien le cambia el estado a mano, y entonces ese campo viene
-       * vacío. Usarlo habría sido una línea muerta, y en el único caso en que
-       * traería algo —a quien se reactiva después de un retiro— traería la
-       * fecha vieja de su ascenso, que no es lo que está pasando hoy.
-       */
-      anotar({ miembroId: quien, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
-        descripcion: `Queda como integrante oficial de "${nombre}".` });
-    } else if (estado === 'Retirado') {
-      anotar({ miembroId: quien, tipo: 'Salida de cuerpo', iglesiaId: iglesia, usuario: user,
-        fecha: despues.fecha_retiro,
-        descripcion: `Sale de "${nombre}"${despues.motivo_retiro ? ` (${despues.motivo_retiro})` : ''}.` });
-    } else if (estado === 'En prueba') {
-      // Volver a período de prueba no tiene fecha propia en la ficha: pasa hoy
-      anotar({ miembroId: quien, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
-        descripcion: `Vuelve a período de prueba en "${nombre}".` });
-    }
+    const que = loQueLePasaAlIntegrante(estado, nombre, { motivo: despues.motivo_retiro });
+    if (!que) return;
+    /*
+     * De estos tres, solo el retiro trae su fecha escrita en la ficha.
+     *
+     * «Pasó a integrante oficial el» existe, pero es de solo lectura: la pone
+     * la evaluación, y por ese camino no se pasa por acá —se pasa por
+     * `anotarPasoDeIntegrante`, que sí la usa—. Acá se llega cuando alguien le
+     * cambia el estado a mano, y entonces ese campo viene vacío: lo que está
+     * pasando es que alguien la marcó Activa hoy. Volver a período de prueba a
+     * mano tampoco tiene fecha propia, y pasa hoy igual.
+     */
+    anotar({ miembroId: quien, iglesiaId: iglesia, usuario: user,
+      fecha: estado === 'Retirado' ? despues.fecha_retiro : null, ...que });
     return;
   }
 
@@ -625,4 +674,7 @@ module.exports = {
   // Para los actos que no son «guardar una ficha» y aun así tienen que quedar
   // anotados: emitir una credencial, revocarla, volver a imprimirla.
   anotarCambio,
+  // El paso que decide una evaluación de período de prueba, que mueve la ficha
+  // del integrante con un UPDATE directo y no pasa por el motor.
+  anotarPasoDeIntegrante,
 };

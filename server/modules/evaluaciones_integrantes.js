@@ -84,10 +84,27 @@ module.exports = {
     /**
      * La evaluación mueve la ficha del integrante: aprobado pasa a oficial,
      * no aprobado sigue en prueba con un plazo nuevo, y retirado sale.
+     *
+     * Y lo deja escrito en la bitácora de la persona. Hay que anotarlo desde
+     * acá: la ficha se mueve con un UPDATE directo —tiene que ser directo,
+     * porque escribe campos de solo lectura—, y por ese camino el motor no se
+     * entera. Medido antes: aprobar la evaluación dejaba la ficha en Activo con
+     * su fecha y la bitácora de la persona sin una sola línea, siendo la
+     * decisión más importante que se toma sobre alguien en un cuerpo.
+     *
+     * Se anota cuando la evaluación es nueva o cuando cambia su resultado, que
+     * es cuando ocurre el hecho. Corregirle el informe o el nombre de quien
+     * evaluó no vuelve a anotarlo: no pasó nada nuevo.
      */
-    afterSave(fila, { db }) {
+    afterSave(fila, { db, user, isNew, existing }) {
       const ficha = db.prepare('SELECT * FROM integrantes_cuerpo WHERE id = ?').get(fila.integrante_id);
       if (!ficha) return;
+      const bitacora = require('../bitacora');
+      const esUnHechoNuevo = isNew || !existing || existing.resultado !== fila.resultado;
+      const anotar = (estado, hasta) => {
+        if (!esUnHechoNuevo) return;
+        bitacora.anotarPasoDeIntegrante(ficha.id, { estado, hasta, fecha: fila.fecha, usuario: user });
+      };
 
       if (fila.resultado === 'Aprobado') {
         db.prepare(
@@ -96,6 +113,7 @@ module.exports = {
                   updated_at = datetime('now','localtime')
             WHERE id = ?`
         ).run(fila.fecha, ficha.id);
+        anotar('Activo');
         return;
       }
 
@@ -107,6 +125,8 @@ module.exports = {
                   updated_at = datetime('now','localtime')
             WHERE id = ?`
         ).run(fila.fecha, ficha.id);
+        // Después del UPDATE, para que el motivo que se anota sea el que quedó
+        anotar('Retirado');
         return;
       }
 
@@ -123,6 +143,7 @@ module.exports = {
                 updated_at = datetime('now','localtime')
           WHERE id = ?`
       ).run(nuevoPlazo, ficha.id);
+      anotar('En prueba', nuevoPlazo);
     },
   },
 };
