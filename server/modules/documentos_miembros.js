@@ -45,7 +45,43 @@ module.exports = {
    * archivo (`alcanza`, desde server/archivos.js).
    */
   alcance: { comoSuPadre: { modulo: 'miembros', campo: 'miembro_id' } },
-  searchFields: ['nombre', 'observaciones'],
+  /*
+   * También por el tipo, que es la columna de al lado.
+   *
+   * El listado muestra «Tipo de documento» y el buscador no lo miraba: escribir
+   * «Carnet» encontraba 4 —porque esa palabra está en el nombre que alguien le
+   * puso al documento— y escribir «Carnet de identidad», que es el tipo tal
+   * como se lee en su propia columna, encontraba 0. Hay un filtro por tipo en
+   * la barra, pero quien teclea el tipo en el buscador —que es lo natural—
+   * recibía un cero.
+   */
+  searchFields: ['nombre', 'observaciones', 'tipo'],
+  /*
+   * Y por el nombre de la persona, que no es una columna de acá.
+   *
+   * El listado muestra «Rosa Elena Del Traslado» en su columna «Miembro»
+   * —resuelta de la otra tabla al leer—, así que ninguna fila contiene ese
+   * texto y buscarlo daba CERO. Medido: «Rosa Elena» → 0, sus apellidos → 0, el
+   * nombre completo → 0, mientras que «Carnet» —que sí está en el nombre del
+   * documento— daba 4.
+   *
+   * Cero resultados no se lee como «busque de otra forma»: se lee como «esta
+   * persona no tiene papeles en carpeta», que es lo contrario de lo que pasa. Y
+   * la pantalla acababa de mostrar ese nombre.
+   *
+   * Se arma en la propia consulta, igual que en la bitácora de miembros
+   * (1.184.0). Va el nombre COMPLETO y no el que se muestra: la etiqueta usa
+   * solo el primer nombre, y con el completo sirven las dos formas, porque lo
+   * tecleado se parte en palabras y todas tienen que estar.
+   *
+   * El RUT no entra, a propósito: es un campo reservado de la ficha de miembro
+   * y quien no lo alcanza tampoco puede dar con alguien buscándolo. El nombre
+   * no lo es, y además es lo que esta misma pantalla ya muestra.
+   */
+  buscaTambien: [
+    "(SELECT coalesce(m.nombres,'') || ' ' || coalesce(m.apellidos,'')"
+    + ' FROM miembros m WHERE m.id = documentos_miembros.miembro_id)',
+  ],
   listFields: ['miembro_id', 'tipo', 'nombre', 'fecha', 'archivo'],
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [

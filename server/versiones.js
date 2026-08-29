@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.194.0", fecha: "2026-08-29", titulo: "Los papeles de una persona se encuentran por su nombre y por el tipo entero, que son las dos columnas que la propia pantalla muestra" },
   { version: "1.193.0", fecha: "2026-08-29", titulo: "No se guarda una ficha que promete un archivo que no está: el campo de archivo comprueba que el papel exista de verdad" },
   { version: "1.192.0", fecha: "2026-08-29", titulo: "Un archivo recién subido, mientras no se guarda la ficha que lo enlaza, solo lo ve quien lo subió" },
   { version: "1.191.0", fecha: "2026-08-29", titulo: "La carpeta de documentos de una persona se ve donde se ve la persona: al cambiar de iglesia, sus papeles se van con ella" },
