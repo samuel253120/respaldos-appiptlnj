@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.217.0", fecha: "2026-08-30", titulo: "La cuenta que se vuelve a abrir deja de tener fecha de cierre: quedaba «Activa» con la fecha puesta y desde la pantalla no había forma de borrarla, porque ese campo solo se ve con la cuenta cerrada. A las que ya quedaron así se les quita al arrancar" },
   { version: "1.216.0", fecha: "2026-08-30", titulo: "El estado «Cerrada» congela también el saldo inicial: una cuenta cerrada rechazaba un ingreso de $ 1 y aceptaba subirle el punto de partida a $ 9.000.000. Ahora se frena, con la salida escrita: reabrirla, corregirlo y cerrarla de nuevo" },
   { version: "1.215.0", fecha: "2026-08-30", titulo: "Cerrar una cuenta con plata dentro pregunta antes, dice cuánta es y explica que desde ahí no va a poder salir —y cuál es la salida—; y la cuenta que se cierra deja anotado el día en que se cerró, que antes podía quedar en blanco" },
   { version: "1.214.0", fecha: "2026-08-30", titulo: "Una cuenta cerrada deja de recibir plata por las dos puertas que le faltaban: la ofrenda de un servicio y la cuota de un integrante entraban igual, sin decir nada. Ahora el servicio pregunta antes de guardarse y la cuota se frena, cada uno en su pantalla" },

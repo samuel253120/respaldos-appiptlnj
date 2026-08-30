@@ -309,6 +309,21 @@ module.exports = {
       if (quedaCerrada && !estabaCerrada && !data.fecha_cierre) {
         data.fecha_cierre = new Date().toISOString().slice(0, 10);
       }
+      /*
+       * Y la que se vuelve a abrir deja de tener fecha de cierre.
+       *
+       * Medido: se cerraba con fecha 30-08-2026, se reabría, y quedaba «Activa /
+       * 2026-08-30». Peor todavía, el campo solo aparece en la ficha cuando el
+       * estado es «Cerrada» —que es lo correcto para escribirlo—, así que desde
+       * la pantalla NO HABÍA FORMA DE BORRARLO: para verlo había que volver a
+       * cerrar la cuenta. El dato seguía ahí, salía en la planilla que se baja y
+       * contradecía al estado que tiene al lado.
+       *
+       * Es lo mismo que hace una solicitud al salir de un estado cerrado con su
+       * fecha de respuesta (ver server/modules/solicitudes.js), y queda anotado
+       * en el Registro de Cambios como cualquier otra corrección.
+       */
+      if (!quedaCerrada && estabaCerrada) data.fecha_cierre = null;
 
       // Sobre una cuenta que sigue cerrada, el punto de partida no se mueve:
       // es la misma regla que rechaza un movimiento de $ 1

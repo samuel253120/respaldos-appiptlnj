@@ -2720,6 +2720,37 @@ function losTrasladosQuedanMarcados() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Le quita la fecha de cierre a las cuentas que están abiertas.
+ *
+ * El campo se llenaba al cerrar y no se limpiaba al volver a abrir, así que
+ * quedaban cuentas diciendo «Activa» con una fecha de cierre puesta. Y como el
+ * campo solo se muestra cuando el estado es «Cerrada», desde la pantalla no
+ * había forma de borrarlo: para verlo había que cerrar la cuenta de nuevo. Las
+ * que ya quedaron así no se arreglan solas, porque nadie puede llegar a ellas.
+ *
+ * Desde la 1.217.0 el guardado la limpia; esto es para lo que ya estaba escrito.
+ */
+function cuentasAbiertasSinFechaDeCierre() {
+  const NOMBRE = 'las cuentas abiertas no llevan fecha de cierre';
+  if (yaAplicada(NOMBRE)) return;
+
+  const hayTabla = (t) =>
+    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('cuentas_tesoreria')) return marcarAplicada(NOMBRE);
+  const columnas = db.prepare('PRAGMA table_info(cuentas_tesoreria)').all().map((c) => c.name);
+  if (!columnas.includes('fecha_cierre') || !columnas.includes('estado')) return marcarAplicada(NOMBRE);
+
+  const limpiadas = db
+    .prepare("UPDATE cuentas_tesoreria SET fecha_cierre = NULL WHERE estado <> 'Cerrada' AND fecha_cierre IS NOT NULL")
+    .run().changes;
+
+  if (limpiadas) {
+    console.log(`🏦 ${limpiadas} cuenta(s) abiertas tenían puesta una fecha de cierre de cuando estuvieron cerradas: se les quitó.`);
+  }
+  marcarAplicada(NOMBRE);
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2778,6 +2809,7 @@ function ejecutarMigraciones() {
     ['a quiénes fue cada mensaje queda anotado', losDestinatariosQuedanAnotados],
     ['el porcentaje del aporte queda con su servicio', elPorcentajeDelAporteQuedaConSuServicio],
     ['los traslados entre cuentas quedan marcados', losTrasladosQuedanMarcados],
+    ['las cuentas abiertas no llevan fecha de cierre', cuentasAbiertasSinFechaDeCierre],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -3029,7 +3061,7 @@ module.exports = {
   cadaIglesiaConSuCodigo, solicitudesNumeradasPorIglesia,
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, elConteoDeLeidosSeGuarda,
   elAvisoDiceDeQuienViene, losDestinatariosQuedanAnotados, elPorcentajeDelAporteQuedaConSuServicio,
-  losTrasladosQuedanMarcados,
+  losTrasladosQuedanMarcados, cuentasAbiertasSinFechaDeCierre,
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
   hojasDePresentacionYMatrimonio, certificadosApaisados,
