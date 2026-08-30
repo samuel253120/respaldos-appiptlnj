@@ -155,6 +155,80 @@ function avisoSiSeCierraConPlata(db, { data, existing, confirmado }) {
   };
 }
 
+/**
+ * El aviso de que el responsable de la cuenta es de otra iglesia, o null.
+ *
+ * El responsable de una cuenta es LA PERSONA A LA QUE SE LE PREGUNTA POR ESA
+ * PLATA. El campo apunta a la ficha de un miembro y no miraba de qué iglesia
+ * era: medido, una cuenta de la Iglesia Central quedó a nombre de un miembro de
+ * la Norte, al crearla y al editarla, con un 200 y sin decir nada.
+ *
+ * No es que el sistema se rompa: es que un error de tecleo —dos personas con
+ * apellidos parecidos, que es lo que pasa de verdad— se convierte en un dato
+ * que después nadie vuelve a revisar, y el día que haya que preguntar por esa
+ * cuenta se va a preguntar a quien no corresponde. Peor todavía: esa persona
+ * probablemente no alcance la cuenta que dice tener a cargo, así que ni
+ * enterarse puede.
+ *
+ * SE PREGUNTA, NO SE BLOQUEA, y por una razón concreta: hay casos legítimos.
+ * Un tesorero de la corporación a cargo de una cuenta de proyecto de una
+ * iglesia local es exactamente eso, y negárselo sería peor que el problema. Es
+ * lo mismo que se hace con el saldo inicial y con el cierre de una cuenta con
+ * plata dentro.
+ *
+ * Tres cosas quedan deliberadamente fuera:
+ *
+ *   · el responsable ESCRITO A MANO, sin ficha —«Doña Rosa, la de la
+ *     esquina»—, que el campo admite a propósito y que no tiene iglesia con
+ *     que comparar;
+ *   · la cuenta de la CORPORACIÓN, que no es de ninguna iglesia, así que
+ *     cualquier miembro le es igual de propio;
+ *   · el miembro sin iglesia escrita, que no contradice nada.
+ *
+ * Y se pregunta solo cuando ESTE guardado cambia el par —el responsable o la
+ * iglesia de la cuenta—. Volver a preguntarlo cada vez que alguien le corrige
+ * la descripción a una cuenta cuyo responsable ya se aceptó no es cuidar el
+ * dato: es enseñar a apretar «Está bien» sin leer.
+ */
+function avisoSiElResponsableEsDeOtraIglesia(db, { data, existing, confirmado }) {
+  if (confirmado) return null;
+
+  const antes = existing || {};
+  const quien = data.responsable_id !== undefined ? data.responsable_id : antes.responsable_id;
+  const iglesia = data.iglesia_id !== undefined ? data.iglesia_id : antes.iglesia_id;
+  // Sin ficha enlazada no hay iglesia que comparar; sin iglesia, la cuenta es
+  // de la corporación y no es de ninguna
+  if (!quien || !iglesia) return null;
+
+  // La cuenta nueva no necesita su propia condición: sin ficha anterior no hay
+  // responsable anterior, así que la comparación de abajo ya da distinto. Un
+  // `!existing` delante solo repetía lo que esa línea dice.
+  const cambia = String(antes.responsable_id || '') !== String(quien)
+    || String(antes.iglesia_id || '') !== String(iglesia);
+  if (!cambia) return null;
+
+  const persona = db
+    .prepare('SELECT id, nombres, apellidos, iglesia_id FROM miembros WHERE id = ?')
+    .get(quien);
+  if (!persona || !persona.iglesia_id) return null;
+  if (Number(persona.iglesia_id) === Number(iglesia)) return null;
+
+  const nombreDe = (id) => {
+    const i = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(id);
+    return i ? i.nombre : `iglesia n.º ${id}`;
+  };
+
+  return {
+    error:
+      `${persona.nombres} ${persona.apellidos} está registrado(a) en ${nombreDe(persona.iglesia_id)}, `
+      + `y esta cuenta es de ${nombreDe(iglesia)}. El responsable es la persona a la que se le `
+      + 'pregunta por esta plata, y siendo de otra congregación lo más probable es que ni siquiera '
+      + 'alcance a ver la cuenta que figura a su nombre. Si es el caso —un tesorero de la '
+      + 'corporación a cargo de una cuenta de proyecto, por ejemplo—, confirme.',
+    confirmar: 'responsable_de_otra_iglesia',
+  };
+}
+
 module.exports = {
   name: 'cuentas_tesoreria',
   label: 'Cuentas de Tesorería',
@@ -375,6 +449,18 @@ module.exports = {
        */
       const aviso = avisoSiSeMueveElPuntoDePartida(db, { data, existing, confirmado });
       if (aviso) return aviso;
+
+      /*
+       * Y al final, la más leve de las tres: quién figura a cargo.
+       *
+       * El orden entre las preguntas importa, porque se hace UNA por guardado.
+       * Ésta va última a propósito: las otras dos son sobre la plata misma
+       * —dónde queda encerrada, cómo se corren todos los saldos—, y ésta es
+       * sobre a quién se le pregunta por ella. Si un mismo guardado cambia las
+       * dos cosas, la que tiene que salir primero es la del dinero.
+       */
+      const ajeno = avisoSiElResponsableEsDeOtraIglesia(db, { data, existing, confirmado });
+      if (ajeno) return ajeno;
 
       return null;
     },
