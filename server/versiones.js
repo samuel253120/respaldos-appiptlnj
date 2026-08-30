@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.219.0", fecha: "2026-08-30", titulo: "La cartola deja de sumar la plata que todavía no llega: cerraba en $ 810.000 mientras la ficha de la misma cuenta decía $ 0. Las filas de más adelante siguen en la hoja, marcadas «agendado» y sin saldo, y su total se dice aparte" },
   { version: "1.218.0", fecha: "2026-08-30", titulo: "La regla de «una sola cuenta general por nivel» cuenta solo las vigentes: la iglesia que cerraba su cuenta y cambiaba de banco no podía abrir la que la reemplaza, y el aviso le nombraba justo la cuenta que acababa de dar por terminada" },
   { version: "1.217.0", fecha: "2026-08-30", titulo: "La cuenta que se vuelve a abrir deja de tener fecha de cierre: quedaba «Activa» con la fecha puesta y desde la pantalla no había forma de borrarla, porque ese campo solo se ve con la cuenta cerrada. A las que ya quedaron así se les quita al arrancar" },
   { version: "1.216.0", fecha: "2026-08-30", titulo: "El estado «Cerrada» congela también el saldo inicial: una cuenta cerrada rechazaba un ingreso de $ 1 y aceptaba subirle el punto de partida a $ 9.000.000. Ahora se frena, con la salida escrita: reabrirla, corregirlo y cerrarla de nuevo" },

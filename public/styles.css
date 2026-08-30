@@ -390,6 +390,28 @@ a.badge:hover, a.badge:focus-visible { filter: brightness(0.94); text-decoration
 .comprobante-monto .num { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* En la cartola, la columna del saldo se lee como una columna de cifras */
 table.cartola td.num { font-variant-numeric: tabular-nums; }
+/*
+ * En la cartola el concepto SÍ se parte en dos líneas.
+ *
+ * La regla de los informes de asistencia deja todas las celdas en una sola
+ * línea —ahí son cortas y una fecha partida se ve mal—, y la cartola usa esa
+ * misma clase. Pero acá el concepto es lo más largo de la hoja: «Aporte a la
+ * corporación (10%) — ofrenda de servicio general del 30 de noviembre de 2026»
+ * estiraba la tabla a 1.247 px dentro de una caja de 994, y se llevaba fuera de
+ * la pantalla las tres columnas de plata —Entró, Salió y Saldo—, que son
+ * justamente las que se vienen a mirar. Medido en una ventana de 1.280: la
+ * columna «Saldo» terminaba en el píxel 1.508. Lo demás sigue en una línea.
+ *
+ * El selector lleva las tres clases a propósito: escrito como
+ * `table.cartola td[...]` EMPATA en especificidad con la regla de los informes
+ * —las dos son (0,2,2)— y, al empatar, gana la que va más abajo en el archivo,
+ * que es la otra. Se ve igual de bien en el código y no hace nada.
+ */
+table.grid.informe.cartola td[data-label="Concepto"] { white-space: normal; }
+/* Lo que todavía no ocurre se lee como lo que es: está en la hoja, pero no
+   suma al saldo. Va apagado, no escondido (ver viewCartolaCuenta en app.js). */
+table.cartola tr.por-venir td { color: var(--muted); }
+table.cartola tr.por-venir td.col-titular { font-style: italic; }
 /* El valor esperado de una lista: se lee, no se destaca */
 .valor-normal { color: var(--muted); }
 

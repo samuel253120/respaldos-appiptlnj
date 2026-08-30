@@ -3183,6 +3183,15 @@ async function viewCartolaCuenta(cuentaId, precarga) {
             <div class="lbl">Saldo final</div>
             <div class="num ${d.saldo_final < 0 ? 'saldo-negativo' : ''}">${fmtMoney(d.saldo_final)}</div>
           </div>
+          <!-- Lo anotado con fecha de más adelante, dentro de este período: está
+               en la hoja porque quien lo programó quiere verlo, pero no suma al
+               saldo, que es lo que hay hoy (ver server/saldos.js). Solo aparece
+               cuando lo hay, igual que en la ficha de la cuenta. -->
+          ${Number(d.agendado) ? `
+            <div class="fin slate">
+              <div class="lbl">Agendado${d.agendado_desde ? ` · desde el ${fechaCorta(d.agendado_desde)}` : ''}</div>
+              <div class="num">${fmtMoney(d.agendado)}</div>
+            </div>` : ''}
         </div>`}
         <div class="card">
           ${d.movimientos.length ? `
@@ -3203,15 +3212,21 @@ async function viewCartolaCuenta(cuentaId, precarga) {
                 <td class="num" data-label="Saldo"><b><span class="${d.saldo_anterior < 0 ? 'saldo-negativo' : ''}">${fmtMoney(d.saldo_anterior)}</span></b></td>
               </tr>`}
               ${d.movimientos.map((mv) => `
-                <tr data-ir="#/m/tesoreria/edit/${mv.id}">
+                <tr data-ir="#/m/tesoreria/edit/${mv.id}"${Number(mv.agendado) ? ' class="por-venir"' : ''}>
                   <td class="col-primera col-titular" data-label="Fecha">${esc(fechaCorta(mv.fecha))}</td>
                   <td data-label="Concepto">${esc(mv.concepto)}${Number(mv.entre_cuentas)
-                    ? ' <span class="badge agendado">entre cuentas</span>' : ''}</td>
+                    ? ' <span class="badge">entre cuentas</span>' : ''}${Number(mv.agendado)
+                    ? ' <span class="badge agendado" title="Todavía no ocurre: no suma al saldo">agendado</span>' : ''}</td>
                   <td data-label="Categoría">${esc(mv.categoria || '')}</td>
                   ${sinCifras(d) ? `<td data-label="Tipo">${esc(mv.tipo)}</td>` : `
                   <td class="num" data-label="Entró">${mv.tipo === 'Ingreso' ? fmtMoney(mv.monto) : ''}</td>
                   <td class="num" data-label="Salió">${mv.tipo === 'Egreso' ? fmtMoney(mv.monto) : ''}</td>
-                  <td class="num" data-label="Saldo"><span class="${mv.saldo < 0 ? 'saldo-negativo' : ''}">${fmtMoney(mv.saldo)}</span></td>`}
+                  <!-- A lo que todavía no ocurre no se le pone saldo: ese saldo no
+                       existió nunca, y escribirlo era lo que hacía que la hoja
+                       terminara en una cifra que no está en el banco. -->
+                  <td class="num" data-label="Saldo">${Number(mv.agendado)
+                    ? '<span class="mut">—</span>'
+                    : `<span class="${mv.saldo < 0 ? 'saldo-negativo' : ''}">${fmtMoney(mv.saldo)}</span>`}</td>`}
                 </tr>`).join('')}
             </tbody>
             ${sinCifras(d) ? '' : `
@@ -3229,7 +3244,11 @@ async function viewCartolaCuenta(cuentaId, precarga) {
           ${pieDelDocumento()}<br>
           El saldo corre por fecha y, dentro de un mismo día, por el orden en que se anotaron los
           movimientos. El saldo anterior incluye el saldo inicial de la cuenta y todo lo anterior al
-          período.
+          período.${Number(d.agendado) ? `
+          El saldo es lo que hay hoy: ${fmtNumero(d.movimientos_agendados)}
+          ${d.movimientos_agendados === 1 ? 'movimiento de esta hoja está anotado' : 'movimientos de esta hoja están anotados'}
+          con fecha de más adelante —van marcados «agendado»— y ${d.movimientos_agendados === 1 ? 'no suma' : 'no suman'}
+          al saldo hasta el día que les corresponda.` : ''}
         </div>
       </div>`;
   }

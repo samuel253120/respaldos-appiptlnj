@@ -462,17 +462,20 @@ module.exports = {
       const desde = req.query.desde || null;
       const hasta = req.query.hasta || null;
       const inicial = Number(cuenta.saldo_inicial) || 0;
+      const { YA_OCURRIO, AGENDADO } = require('../saldos');
 
       /*
        * Con qué saldo empieza la hoja: el inicial de la cuenta más todo lo
-       * anterior al período. Sin esto la cartola de julio empezaría en cero y
-       * no cuadraría con nada.
+       * anterior al período QUE YA OCURRIÓ. Sin lo primero, la cartola de julio
+       * empezaría en cero y no cuadraría con nada; sin lo segundo, una cartola
+       * pedida sobre un período que arranca más adelante empezaría contando
+       * plata que todavía no llegó.
        */
       const anterior = desde
         ? db
             .prepare(
               `SELECT COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE -monto END), 0) AS s
-                 FROM tesoreria WHERE cuenta_id = ? AND fecha < ?`
+                 FROM tesoreria WHERE cuenta_id = ? AND fecha < ? AND ${YA_OCURRIO}`
             )
             .get(cuenta.id, desde).s
         : 0;
@@ -483,21 +486,53 @@ module.exports = {
       if (hasta) { cond.push('fecha <= ?'); params.push(hasta); }
       const donde = `WHERE ${cond.join(' AND ')}`;
 
+      /*
+       * EL SALDO SE CORTA EN EL DÍA DE HOY, también acá.
+       *
+       * La cartola es, por definición, la hoja que se compara con la del banco:
+       * el número de abajo tiene que ser el que está en el banco. Traía las
+       * filas de un servicio agendado —«Ofrenda de servicio general del 30 de
+       * noviembre», $ 900.000— corriendo el saldo hacia arriba, sin marca
+       * alguna. Medido sobre la tesorería general de una iglesia con un servicio
+       * programado: el listado de cuentas decía $ 0, su ficha decía $ 0 y
+       * «agendado $ 810.000 · desde el 30-11», y esta hoja decía $ 810.000. Dos
+       * pantallas de la misma cuenta, el mismo día, con $ 810.000 de diferencia.
+       *
+       * No se sacan de la hoja: quien programó ese servicio quiere poder verlo.
+       * Se MARCAN y se dejan fuera del saldo, que es lo que ya hace el resto del
+       * sistema con lo agendado (ver server/saldos.js). El saldo que corre fila
+       * a fila se detiene en la última fila que ya ocurrió; a las de más adelante
+       * no se les pone saldo, porque ese saldo no existió nunca.
+       *
+       * La suma que corre NO necesita excluir lo agendado, y probé a hacerlo:
+       * ninguna prueba se caía. Es correcto que no se caiga. La ventana suma
+       * las filas ANTERIORES a cada una en el orden `fecha, id`, y una fila con
+       * fecha de más adelante va siempre después de todas las que ya
+       * ocurrieron: nunca entra en el saldo de ninguna. Lo que sí hace falta es
+       * el CASE de afuera, que es el que deja en blanco el saldo de esas filas.
+       */
       const saldoAnterior = inicial + anterior;
       const movimientos = db
         .prepare(
           `SELECT id, fecha, tipo, categoria, concepto, monto, metodo, comprobante,
                   traspaso_id, servicio_id, entre_cuentas,
-                  ? + SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE -monto END)
-                      OVER (ORDER BY fecha, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS saldo
+                  CASE WHEN ${AGENDADO} THEN 1 ELSE 0 END AS agendado,
+                  CASE WHEN ${AGENDADO} THEN NULL ELSE
+                    ? + SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE -monto END)
+                        OVER (ORDER BY fecha, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                  END AS saldo
              FROM tesoreria ${donde}
             ORDER BY fecha, id`
         )
         .all(saldoAnterior, ...params);
 
-      const suma = (t) => movimientos.reduce((a, m) => a + (m.tipo === t ? Number(m.monto) || 0 : 0), 0);
-      const ingresos = suma('Ingreso');
-      const egresos = suma('Egreso');
+      const suma = (t, cuales) => cuales.reduce((a, m) => a + (m.tipo === t ? Number(m.monto) || 0 : 0), 0);
+      const ocurridos = movimientos.filter((m) => !m.agendado);
+      const porVenir = movimientos.filter((m) => m.agendado);
+      const ingresos = suma('Ingreso', ocurridos);
+      const egresos = suma('Egreso', ocurridos);
+      // Y lo que está anotado para más adelante, dicho aparte y con su fecha
+      const agendado = suma('Ingreso', porVenir) - suma('Egreso', porVenir);
 
       /*
        * Y sin las cifras, para quien no alcanza la llave de los montos.
@@ -518,8 +553,12 @@ module.exports = {
         ingresos,
         egresos,
         saldo_final: saldoAnterior + ingresos - egresos,
+        agendado,
+        movimientos_agendados: porVenir.length,
+        agendado_desde: porVenir.length ? porVenir[0].fecha : null,
         movimientos,
-      }, ['saldo_inicial', 'saldo_anterior', 'ingresos', 'egresos', 'saldo_final', 'monto', 'saldo', 'movimientos']));
+      }, ['saldo_inicial', 'saldo_anterior', 'ingresos', 'egresos', 'saldo_final', 'agendado',
+          'monto', 'saldo', 'movimientos']));
     });
 
     // Estado de una cuenta: saldo, totales y sus últimos movimientos.

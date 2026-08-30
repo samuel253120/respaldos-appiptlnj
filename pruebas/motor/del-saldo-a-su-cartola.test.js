@@ -81,18 +81,35 @@ test('la cartola cierra en la misma cifra que decía la fila', () => {
   assert.equal(laCartola.saldo_final, 40000 + 300000 - 50000 + 12000);
 });
 
-test('y lo agendado que la fila anuncia aparte, la cartola lo tiene adelante', () => {
+test('y lo agendado que la fila anuncia aparte, la cartola lo dice aparte también', () => {
+  /*
+   * Esta prueba decía otra cosa hasta la 1.219.0: que mirando TODO, el saldo
+   * final de la cartola llegaba a `saldo + agendado`. Eso era exactamente el
+   * defecto —la hoja que se compara con la del banco cerraba en una cifra que
+   * incluía plata que todavía no había llegado—, y la prueba lo daba por bueno.
+   *
+   * La promesa que importa es la misma y se comprueba mejor: el clic tiene que
+   * llevar a una pantalla que hable de la misma plata. Ahora son DOS cifras y
+   * las dos tienen que calzar con las dos de la fila.
+   */
   const enLaFila = resumen({ user: usuario, query: {} }).porCuenta.find((c) => c.id === cuenta);
   assert.equal(enLaFila.agendado, 900000);
 
   const todo = cartola({ user: usuario, params: { id: String(cuenta) }, query: {} });
-  assert.equal(todo.saldo_final, enLaFila.saldo + enLaFila.agendado,
-    'mirando TODO, la cartola llega hasta donde la fila dice que va a llegar');
+  assert.equal(todo.saldo_final, enLaFila.saldo,
+    'el saldo final de la hoja es el que está en el banco, igual que el de la fila');
+  assert.equal(todo.agendado, enLaFila.agendado,
+    'y lo anotado para más adelante, aparte en las dos');
 });
 
 test('la última fila de la cartola es su saldo final', () => {
   const c = cartola({ user: usuario, params: { id: String(cuenta) }, query: { hasta: HOY } });
   assert.equal(c.movimientos[c.movimientos.length - 1].saldo, c.saldo_final);
+  // Y mirando TODO también: la última fila QUE YA OCURRIÓ es la que cierra la
+  // hoja; las de más adelante van debajo, marcadas y sin saldo
+  const todo = cartola({ user: usuario, params: { id: String(cuenta) }, query: {} });
+  const ocurridas = todo.movimientos.filter((m) => !m.agendado);
+  assert.equal(ocurridas[ocurridas.length - 1].saldo, todo.saldo_final);
 });
 
 /* ------------------------------------------------------- la pantalla */
