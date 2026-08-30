@@ -190,14 +190,46 @@ module.exports = {
       help: 'Foto o archivo. Si es una foto, se ajusta sola de tamaño al subirla.',
     },
     { name: 'fecha', label: 'Fecha del documento', type: 'date' },
-    { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias' },
+    {
+      /*
+       * La iglesia NO se escribe a mano: sale del miembro.
+       *
+       * El campo estaba abierto y lo que se escribiera se guardaba. Medido: el
+       * documento de una miembro de la Central, guardado con la Norte, quedaba
+       * con la Norte (201); y corregirlo después a una tercera, también (200).
+       * Hasta la 1.191.0 eso decidía además quién podía abrir el archivo, así
+       * que una equivocación al llenar el formulario mandaba el carnet de
+       * alguien a otra iglesia. Hoy el alcance va por la ficha de la persona
+       * (`alcance.comoSuPadre`, arriba) y esto es solo un dato descuadrado,
+       * pero un dato que nadie elige a mano no tiene por qué ser editable.
+       *
+       * Se muestra igual, en gris: dice en qué iglesia se archivó el papel, que
+       * no es siempre la de hoy —cuando alguien se traslada, su carpeta se va
+       * con ella y esta columna se queda diciendo dónde se armó—.
+       */
+      name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true,
+      help: 'La iglesia en que se archivó el documento. La pone el sistema con la del miembro.',
+    },
     { name: 'observaciones', label: 'Observaciones', type: 'textarea' },
   ],
   hooks: {
     beforeSave(data, { isNew, id, existing, db, confirmado }) {
-      // La iglesia se hereda del miembro
+      /*
+       * La iglesia sale del miembro, y solo cuando corresponde ponerla.
+       *
+       * Al CREAR, siempre. Al corregir un documento guardado, no: la columna
+       * dice en qué iglesia se archivó el papel y esa es la del día en que se
+       * archivó. Si se recalculara en cada guardado, arreglarle una coma a la
+       * observación de una miembro trasladada le movería la iglesia al papel y
+       * se perdería el dato. Las dos excepciones son cuando el documento cambia
+       * de dueño —entonces se archiva en la carpeta del nuevo— y cuando el
+       * papel viene sin iglesia, de una importación o de antes: ahí se aprovecha
+       * el guardado para dejarlo completo.
+       */
       const miembroId = data.miembro_id !== undefined ? data.miembro_id : existing ? existing.miembro_id : null;
-      if (miembroId && !data.iglesia_id) {
+      const cambiaDeDueno = !existing
+        || (data.miembro_id !== undefined && Number(data.miembro_id) !== Number(existing.miembro_id));
+      if (miembroId && (cambiaDeDueno || !existing.iglesia_id)) {
         const miembro = db.prepare('SELECT iglesia_id FROM miembros WHERE id = ?').get(miembroId);
         if (miembro && miembro.iglesia_id) data.iglesia_id = miembro.iglesia_id;
       }

@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.199.0", fecha: "2026-08-30", titulo: "La iglesia de un documento la pone el sistema con la del miembro y ya no se escribe a mano, sin dejar de decir en qué iglesia se archivó el papel" },
   { version: "1.198.0", fecha: "2026-08-30", titulo: "Quitar un papel de la carpeta de alguien queda anotado en el historial de esa persona, con cuál era y de cuándo, y no solo en el Registro de Cambios" },
   { version: "1.197.0", fecha: "2026-08-29", titulo: "Subir a la carpeta de alguien un papel que ya está pregunta antes de guardarlo, con la fecha del que ya estaba, y deja seguir a quien confirma" },
   { version: "1.196.0", fecha: "2026-08-29", titulo: "La hoja impresa de un miembro lleva la lista de los documentos que tiene en carpeta, y las hojas largas dejan de cortarse en la primera página" },
