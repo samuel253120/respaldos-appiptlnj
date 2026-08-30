@@ -28,6 +28,13 @@ const { TIPOS_DE_AYUDA } = require('../tipos-de-ayuda');
  * movimiento le corresponde a cada decisión.
  */
 const puente = require('../ayuda-tesoreria');
+/*
+ * Cómo se compara un texto escrito por una persona y cuándo NO hay que volver
+ * a preguntar viven en server/repetido.js: son las mismas reglas de Tesorería,
+ * de Traspasos y de las cuatro carpetas de documentos. Escritas otra vez acá,
+ * un día esta se olvidaría de comparar sin tildes.
+ */
+const { comoSeCompara, enPesos, seguiIgual } = require('../repetido');
 
 /** De qué registro sale el beneficiario de esta ayuda. */
 const DE_QUIEN = ['Miembro', 'No miembro'];
@@ -76,6 +83,105 @@ function aNombreDeQuien(data, { existing, db }) {
   data.beneficiario = require('../nombre-del-beneficiario').comoSeLlama(ficha);
   data[deDonde.otro] = null;
   return null;
+}
+
+/**
+ * La ayuda igual a esta que ya estaba anotada, o null si no hay ninguna.
+ *
+ * «Igual» es: LA MISMA PERSONA, EL MISMO TIPO Y EL MISMO DÍA. Ni el monto ni la
+ * descripción entran, y no es un descuido: los dos casos que se quieren atrapar
+ * —dos personas atendiendo el mismo mostrador, o alguien que vuelve a
+ * registrarla porque no la encontró— casi nunca traen el monto y la descripción
+ * tecleados igual. Exigir que coincidan dejaría pasar justo lo que se busca.
+ *
+ * La fecha SÍ entra, al revés que en las carpetas de documentos. Allá el mismo
+ * papel se vuelve a escanear semanas después y exigir la fecha haría fallar la
+ * pregunta; acá una ayuda ES un hecho de un día, y la misma canasta al mes
+ * siguiente es una entrega nueva y corriente que nadie tiene por qué confirmar.
+ *
+ * El estado no entra tampoco: una solicitada y otra solicitada el mismo día
+ * para lo mismo son igual de sospechosas. Va en el aviso, que es donde sirve.
+ *
+ * El `id IS NOT ?` es por si acaso, y hoy no se alcanza: para llegar hasta acá
+ * el guardado tiene que haber cambiado la persona, el tipo o la fecha, y en ese
+ * caso la fila que se está corrigiendo —que todavía guarda los valores viejos—
+ * ya no calza con los que se buscan. Se deja escrito igual, como en
+ * server/carpetas.js, porque es lo que sostiene la regla si algún día cambian
+ * los campos que hacen «la misma»: sin él, una ayuda se avisaría a sí misma
+ * como repetida. Romperlo no pone roja ninguna prueba, y queda dicho acá para
+ * que nadie lo lea como código vivo que alguien olvidó probar.
+ */
+function laMismaAyudaYaAnotada(db, { campo, quien, tipo, fecha }, id) {
+  if (!campo || !quien || !tipo || !fecha) return null;
+  return db
+    .prepare(
+      `SELECT a.id, a.tipo_ayuda, a.fecha, a.estado, a.valor_estimado, a.created_at,
+              u.nombre AS quien_la_anoto
+         FROM ayudas_sociales a
+         LEFT JOIN usuarios u ON u.id = a.created_by
+        WHERE a."${campo}" = ? AND a.fecha = ? AND a.id IS NOT ?
+        ORDER BY a.id`
+    )
+    .all(quien, String(fecha).slice(0, 10), id || 0)
+    .find((otra) => comoSeCompara(otra.tipo_ayuda) === comoSeCompara(tipo)) || null;
+}
+
+/**
+ * El aviso de ayuda repetida, o null si no hay ninguna.
+ *
+ * Se pregunta, no se bloquea: dos entregas iguales el mismo día existen —dos
+ * cajas para una familia grande, un aporte en dos partes— y el sistema no está
+ * para discutírselo a quien tiene a la persona enfrente.
+ *
+ * Lo que no puede es dejarlo pasar en silencio, y el daño va más allá de la
+ * cifra: la insignia de la ficha —«3 entregas · la última el 01-08-2026»— es lo
+ * que alguien mira antes de decidir si le entrega otra vez. Con una entrega
+ * repetida, esa insignia dice que ya recibió más de lo que recibió.
+ */
+function avisoDeAyudaRepetida(otra, aQuien) {
+  const { comoSeLee } = require('../fechas');
+  const senas = [
+    otra.estado ? otra.estado.toLowerCase() : null,
+    Number(otra.valor_estimado) > 0 ? enPesos(otra.valor_estimado) : 'sin monto anotado',
+    otra.created_at ? `anotada el ${comoSeLee(String(otra.created_at).slice(0, 10))}` : null,
+    otra.quien_la_anoto ? `por ${otra.quien_la_anoto}` : null,
+  ].filter(Boolean).join(', ');
+
+  return {
+    error:
+      `Ya hay una ayuda de ${otra.tipo_ayuda} para ${aQuien} con fecha `
+      + `${comoSeLee(String(otra.fecha).slice(0, 10))} (${senas}). `
+      + 'Si es esta misma, ábrala en vez de registrarla de nuevo: repetida, su historial dice que '
+      + 'recibió más de lo que recibió, y eso es lo que se mira antes de decidir si se le entrega '
+      + 'otra vez. Si de verdad fueron dos, confirme.',
+    confirmar: 'ayuda_ya_registrada',
+  };
+}
+
+/** La pregunta completa, tal como la llama el `beforeSave`. */
+function preguntaSiSeRepite(data, { existing, db, confirmado }) {
+  if (confirmado) return null;
+
+  const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
+  const campo = dato('miembro_id') ? 'miembro_id' : dato('no_miembro_id') ? 'no_miembro_id' : null;
+  if (!campo) return null;
+
+  const quien = dato(campo);
+  const tipo = dato('tipo_ayuda');
+  const fecha = dato('fecha');
+
+  /*
+   * Al CORREGIR una guardada solo se pregunta si este guardado cambia algo de
+   * lo que la hace «la misma». Si no, la repetida ya estaba antes de abrir la
+   * ficha y alguien ya dijo que eran dos.
+   */
+  const sinCambios = seguiIgual(existing, { [campo]: quien, tipo_ayuda: tipo, fecha }, [
+    [campo, 'igual'], ['tipo_ayuda', 'texto'], ['fecha', 'fecha'],
+  ]);
+  if (sinCambios) return null;
+
+  const otra = laMismaAyudaYaAnotada(db, { campo, quien, tipo, fecha }, existing && existing.id);
+  return otra ? avisoDeAyudaRepetida(otra, data.beneficiario || (existing && existing.beneficiario) || 'esta persona') : null;
 }
 
 module.exports = {
@@ -172,8 +278,8 @@ module.exports = {
 
   hooks: {
     /**
-     * Las tres reglas de una ayuda: a nombre de quién quedó, de dónde salió y
-     * qué le falta si se está entregando.
+     * Las reglas de una ayuda: a nombre de quién quedó, de dónde salió, si no
+     * está anotada ya, y qué le falta si se está entregando.
      *
      * El orden importa. Las dos primeras son reparos: lo que devuelven no se
      * puede guardar de ninguna manera. La tercera es una pregunta que se puede
@@ -186,6 +292,17 @@ module.exports = {
       if (problema) return problema;
       const cuenta = puente.revisarDeDondeSalio(data, { user, existing, db });
       if (cuenta) return cuenta;
+
+      /*
+       * Y después las dos preguntas, en este orden. La confirmación es una sola
+       * para todo el guardado, así que la que se muestra tiene que ser la que
+       * más importa: una ayuda repetida dice algo FALSO del historial de una
+       * persona, y con eso se decide si se le entrega otra vez. Una a la que le
+       * falta el monto dice algo INCOMPLETO, que es menos grave. Es el mismo
+       * criterio con que Tesorería pone primero el movimiento repetido.
+       */
+      const repetida = preguntaSiSeRepite(data, { existing, db, confirmado });
+      if (repetida) return repetida;
       return puente.loQueLeFaltaAlEntregar({ data, existing, confirmado });
     },
 

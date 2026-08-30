@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.206.0", fecha: "2026-08-30", titulo: "Registrar dos veces la misma ayuda —la misma persona, el mismo tipo y el mismo día— pregunta antes de guardarla, con las señas de la que ya estaba, y deja seguir a quien confirma: repetida, el historial de esa persona dice que recibió más de lo que recibió" },
   { version: "1.205.0", fecha: "2026-08-30", titulo: "Al marcar una ayuda como entregada, el sistema pregunta por lo que falta —cuánto valía, el respaldo, quién la aprobó— y deja seguir a quien confirma; el informe dice cuántas entregas no llevan monto en vez de sumarlas como $ 0; y un formulario con un campo obligatorio escondido vuelve a poder guardarse" },
   { version: "1.204.0", fecha: "2026-08-30", titulo: "La ayuda que se entrega queda en el libro de la plata: al marcarla entregada se dice si salió de una cuenta de tesorería —y ahí se anota sola su egreso— o si fue en especie, y el informe separa las dos para que cuadre con el balance" },
   { version: "1.203.0", fecha: "2026-08-30", titulo: "Un módulo cerrado para un rol queda cerrado también por su puerta de atrás: quien solo consulta ya no ve las ayudas sociales ni baja los archivos que cuelgan de un módulo que no tiene habilitado" },

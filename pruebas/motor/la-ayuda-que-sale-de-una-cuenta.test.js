@@ -74,10 +74,19 @@ const BERTA = db
 const ADMIN = { id: 9101, rol: 'admin', iglesias: '[]', iglesia_id: null, cuerpos: '[]' };
 const DE_LA_NORTE = { id: 9102, rol: 'secretario', iglesias: `[${LA_OTRA}]`, iglesia_id: LA_OTRA, cuerpos: '[]' };
 
-/** Una ayuda guardada de verdad: pasa por el hook y por la sincronización. */
+/**
+ * Una ayuda guardada de verdad: pasa por el hook y por la sincronización.
+ *
+ * Va con la confirmación puesta porque varias de estas pruebas anotan a
+ * propósito dos ayudas iguales seguidas —para ver que el egreso se corrige y no
+ * se duplica— y desde la 1.206.0 eso hace una pregunta. Confirmar no tapa nada
+ * de lo que este archivo mide: los reparos de verdad —la cuenta de otra
+ * iglesia, la cerrada, el egreso de cero— no se pueden confirmar y siguen
+ * saliendo igual. De las preguntas se ocupan sus propios archivos.
+ */
 function guardar(datos, existing) {
   const data = { ...datos };
-  const error = AYUDAS.hooks.beforeSave(data, { user: ADMIN, isNew: !existing, existing, db });
+  const error = AYUDAS.hooks.beforeSave(data, { user: ADMIN, isNew: !existing, existing, db, confirmado: true });
   if (error) return { error: String(error.error || error) };
 
   const campos = Object.keys(data).filter((c) => data[c] !== undefined);

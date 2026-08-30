@@ -221,9 +221,14 @@ test('la ficha de una persona dice lo mismo que el informe', () => {
 /* ------------------------------- se puede apagar */
 
 test('apagada la pregunta en Configuración, no pregunta nada', () => {
+  /*
+   * Con otra fecha, y no la de las de arriba: ahí ya hay ayudas anotadas de
+   * esta misma persona y este mismo tipo, y desde la 1.206.0 eso hace su propia
+   * pregunta —la del repetido—, que no es la que se está apagando acá.
+   */
   ajustes.guardar('ayuda_pregunta_al_entregar', '0');
   try {
-    assert.equal(preguntar(LO_MINIMO()), null);
+    assert.equal(preguntar(LO_MINIMO({ fecha: '2026-10-09' })), null);
   } finally {
     ajustes.guardar('ayuda_pregunta_al_entregar', '1');
   }
