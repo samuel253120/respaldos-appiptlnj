@@ -47,10 +47,21 @@ const unaIglesia = (nombre, codigo) => db
 const CENTRAL = unaIglesia('Central del archivo', 'IG-ARS1');
 const NORTE = unaIglesia('Norte del archivo', 'IG-ARS2');
 
-const ANA = { id: 701, iglesias: `[${CENTRAL}]`, iglesia_id: CENTRAL, cuerpos: '[]' };
-const EVA = { id: 702, iglesias: `[${CENTRAL}]`, iglesia_id: CENTRAL, cuerpos: '[]' };
-const DE_LA_NORTE = { id: 703, iglesias: `[${NORTE}]`, iglesia_id: NORTE, cuerpos: '[]' };
-const ADMIN = { id: 704, iglesias: '[]', iglesia_id: null, cuerpos: '[]' };
+/*
+ * Estas cuatro llevan rol, y hasta la 1.203 no lo llevaban.
+ *
+ * Mientras `puedeVer` preguntaba una sola cosa —«¿alcanza usted la ficha de la
+ * que cuelga este archivo?»— un usuario sin rol servía igual para probar el
+ * alcance. Ahora pregunta dos, y la primera es si el módulo está habilitado
+ * para su cuenta; sin rol no hay ninguno habilitado, así que estas cuatro
+ * quedaban afuera antes de llegar a lo que esta prueba mide. El arreglo es
+ * darles el rol que siempre representaron —quien trabaja con los papeles de
+ * una ficha es el secretario— y no aflojar la puerta para que pasen.
+ */
+const ANA = { id: 701, rol: 'secretario', iglesias: `[${CENTRAL}]`, iglesia_id: CENTRAL, cuerpos: '[]' };
+const EVA = { id: 702, rol: 'secretario', iglesias: `[${CENTRAL}]`, iglesia_id: CENTRAL, cuerpos: '[]' };
+const DE_LA_NORTE = { id: 703, rol: 'secretario', iglesias: `[${NORTE}]`, iglesia_id: NORTE, cuerpos: '[]' };
+const ADMIN = { id: 704, rol: 'admin', iglesias: '[]', iglesia_id: null, cuerpos: '[]' };
 
 let n = 0;
 /** Un archivo de verdad en la carpeta de subidas, como lo deja la subida. */
@@ -159,12 +170,21 @@ test('si no se puede preguntar por la configuración, no se entrega', () => {
   assert.match(suya, /catch \(e\) \{\s*return false;/, 'ante la duda, no se entrega');
   const paraBorrar = src.slice(src.indexOf('function loUsaLaConfiguracion'), src.indexOf('function esDeLaInstitucion'));
   assert.match(paraBorrar, /return true;/, 'y la de borrar sigue diciendo que sí, para no borrar de más');
-  // Solo el cuerpo de `puedeVer`: hasta el `}` que la cierra al margen. Un
-  // recorte más largo se lleva por delante a las funciones vecinas —una de
-  // ellas se llama justamente `loUsaLaConfiguracion`— y la prueba miente.
+  /*
+   * Solo el cuerpo de `puedeVer`: hasta el `}` que la cierra al margen. Un
+   * recorte más largo se lleva por delante a las funciones vecinas —una de
+   * ellas se llama justamente `loUsaLaConfiguracion`— y la prueba miente.
+   *
+   * Esto se cuidaba con un largo máximo en caracteres, y el número envejeció:
+   * al sumarle a `puedeVer` la pregunta por el permiso (1.203.0) con su
+   * explicación al lado, el recorte pasó de 1.700 a 2.200 y la prueba se puso
+   * roja sin que hubiera nada malo. Lo que hay que comprobar no es cuánto mide
+   * sino que sea UNA sola función, y eso no envejece con los comentarios.
+   */
   const desde = src.indexOf('function puedeVer');
   const mirar = src.slice(desde, src.indexOf('\n}', desde) + 2);
-  assert.ok(mirar.length < 1800, `el recorte de puedeVer mide ${mirar.length}`);
+  const cuantas = (mirar.match(/^function /gm) || []).length;
+  assert.equal(cuantas, 1, `el recorte abarca ${cuantas} funciones, no una`);
   assert.match(mirar, /esDeLaInstitucion\(archivo\)/);
   assert.doesNotMatch(mirar, /loUsaLaConfiguracion/, 'la de borrar no puede decidir quién mira');
 });

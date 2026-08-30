@@ -36,6 +36,8 @@ const path = require('path');
 const { db, UPLOADS_DIR } = require('./db');
 const { allModules } = require('./registry');
 const alcance = require('./alcance');
+// El permiso por módulo, que es la otra mitad de «¿puede abrir este archivo?»
+const { can } = require('./permissions');
 
 /** Las columnas de archivo de cada módulo, calculadas una sola vez. */
 let dondeBuscar = null;
@@ -129,6 +131,28 @@ function duenoDe(archivo) {
 function puedeVer(archivo, usuario) {
   const dueno = duenoDe(archivo);
   if (dueno) {
+    /*
+     * DOS PREGUNTAS, NO UNA.
+     *
+     * El alcance dice de QUÉ IGLESIAS es lo que esta persona puede mirar. El
+     * permiso dice QUÉ MÓDULOS puede abrir. Acá se preguntaba solo lo primero,
+     * y las dos hacen falta: a quien tiene el módulo cerrado, el alcance le
+     * contesta que sí —no está acotado a ninguna iglesia en particular— y le
+     * entregaba igual el archivo.
+     *
+     * Medido al cerrarle Ayudas Sociales al rol de consulta (1.203.0): sus
+     * ocho puertas contestaron 403 —el listado, la ficha, el historial de una
+     * persona, el informe, la planilla— y la novena, la boleta adjunta a una
+     * ayuda, seguía contestando 200. Cerrar el módulo dejaba la ventana
+     * abierta.
+     *
+     * No es de este módulo: vale para cualquiera que un rol tenga cerrado. Un
+     * archivo se entrega cuando su ficha se puede abrir, y para eso hay que
+     * poder abrir el módulo donde vive.
+     */
+    if (!can(usuario, dueno.def.name, 'view')) {
+      return { ok: false, motivo: 'Ese archivo pertenece a un módulo que su cuenta no tiene habilitado' };
+    }
     if (!alcance.alcanza(dueno.def, dueno.fila, usuario)) {
       return { ok: false, motivo: 'Ese archivo pertenece a un registro que está fuera de lo que tiene asignado' };
     }

@@ -439,10 +439,38 @@ const MATRIX = {
     '*': RO,
     ...llavesDeFabrica('consulta'),
     credenciales: [], // punto 12.3
-    // Las fichas de No Miembros son de gente en situación vulnerable y las
-    // lleva quien administra las ayudas. Quien solo consulta no entra: le
-    // basta con el nombre que aparece en la ayuda que esté mirando.
+    /*
+     * LO DE LA GENTE EN SITUACIÓN VULNERABLE NO ES DE CONSULTA GENERAL.
+     *
+     * Las fichas de No Miembros son de gente en situación vulnerable y las
+     * lleva quien administra las ayudas. Quien solo consulta no entra.
+     *
+     * Acá decía además que «le basta con el nombre que aparece en la ayuda que
+     * esté mirando», y eso describía algo distinto de lo que pasaba: la puerta
+     * se cerraba de un lado y quedaba abierta del otro. Medido con un usuario
+     * de rol consulta recién creado, contra el sistema andando:
+     *
+     *   listar No Miembros / abrir una ficha .....  403 · 403
+     *   listar Ayudas Sociales ...................  200, las seis
+     *   abrir una ayuda con sus notas ............  200 — «está en tratamiento
+     *                                                oncológico»
+     *   bajar la boleta adjunta ..................  200
+     *   el historial completo de una señora ......  200 · 5 ayudas, $123.000
+     *   el informe, con nombre y apellido ........  200
+     *   bajarlo todo en planilla, notas incluidas   200 · 6 filas
+     *
+     * Ver un nombre de paso no es poder listar a todas las personas que la
+     * iglesia ayudó, leer por qué, cuánto se les dio y qué se anotó de su
+     * salud, y llevárselo en un archivo que ya no vuelve. Así que la ayuda
+     * social se cierra por la misma razón por la que se cerró No Miembros, y
+     * las dos quedan juntas para que nadie abra una sin ver la otra.
+     *
+     * Quien de verdad la necesite la recibe por su nombre: en Usuarios,
+     * «Excepciones para esta persona» le devuelve el módulo sin abrírselo al
+     * resto del rol.
+     */
     no_miembros: [],
+    ayudas_sociales: [],
     tesoreria: [],
     cuentas_tesoreria: [],
     categorias_tesoreria: [],
