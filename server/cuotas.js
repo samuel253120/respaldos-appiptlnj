@@ -17,6 +17,33 @@ const OPCIONES_MES = MESES.map((nombre, i) => ({ value: String(i + 1).padStart(2
 
 const nombreDelMes = (mes) => (OPCIONES_MES.find((m) => m.value === String(mes)) || {}).label || String(mes);
 
+/** La cuenta donde va la plata de las cuotas de un cuerpo, si la tiene. */
+function cuentaDeLasCuotas(cuerpoId, conexion) {
+  return conexion
+    .prepare("SELECT * FROM cuentas_tesoreria WHERE cuerpo_id = ? AND tipo = 'Cuotas de integrantes'")
+    .get(cuerpoId);
+}
+
+/**
+ * El aviso de que la cuota no tiene dónde entrar, o null.
+ *
+ * A diferencia de la ofrenda de un servicio —donde el hecho que se registra es
+ * el culto, y la plata es una consecuencia—, una cuota ES la plata: registrarla
+ * sabiendo que no va a quedar anotada en ninguna cuenta no le sirve a nadie.
+ * Por eso acá se frena y se dice qué hacer, en vez de preguntar.
+ *
+ * Que el registro esté APAGADO en Configuración es otra cosa y no frena nada:
+ * eso es una decisión que alguien tomó; una cuenta cerrada es un accidente.
+ */
+function avisoSiLaCuentaEstaCerrada(cuerpoId, conexion) {
+  if (!require('./ajustes').activo('cuota_registra_tesoreria')) return null;
+  const cuenta = cuentaDeLasCuotas(cuerpoId, conexion);
+  const cerrada = require('./cuenta-cerrada').avisoSiEstaCerrada(cuenta);
+  return cerrada
+    ? `${cerrada}, así que esta cuota no quedaría anotada en ninguna parte. Reábrala para poder registrar cuotas.`
+    : null;
+}
+
 /**
  * Deja el ingreso que corresponde a este pago en la cuenta de cuotas del
  * cuerpo —que es aparte de su tesorería general, porque es plata que se
@@ -26,14 +53,20 @@ const nombreDelMes = (mes) => (OPCIONES_MES.find((m) => m.value === String(mes))
 function sincronizarConLaTesoreria(fila, conexion) {
   const registrar = require('./ajustes').activo('cuota_registra_tesoreria');
   // Las cuotas van a su propia cuenta: es plata que el cuerpo maneja aparte
-  const cuenta = conexion
-    .prepare("SELECT id FROM cuentas_tesoreria WHERE cuerpo_id = ? AND tipo = 'Cuotas de integrantes'")
-    .get(fila.cuerpo_id);
+  const cuenta = cuentaDeLasCuotas(fila.cuerpo_id, conexion);
   const guardado = fila.movimiento_id
     ? conexion.prepare('SELECT id FROM tesoreria WHERE id = ?').get(fila.movimiento_id)
     : null;
 
-  if (!registrar || !cuenta || !(Number(fila.monto) > 0)) {
+  /*
+   * Y si la cuenta de cuotas está CERRADA, tampoco. Faltaba: medido, una cuenta
+   * de cuotas cerrada con $ 1.000 quedó con $ 4.000 después de registrar una
+   * cuota de julio, sin que nada dijera una palabra. Su propio movimiento, si
+   * ya lo tiene, se sigue corrigiendo: lo que está anotado es historia (la
+   * regla, entera, en server/cuenta-cerrada.js).
+   */
+  const cerrada = !require('./cuenta-cerrada').admitePlataNueva(cuenta);
+  if (!registrar || !cuenta || !(Number(fila.monto) > 0) || (cerrada && !guardado)) {
     if (guardado) {
       conexion.prepare('DELETE FROM tesoreria WHERE id = ?').run(guardado.id);
       conexion.prepare('UPDATE cuotas_cuerpo SET movimiento_id = NULL WHERE id = ?').run(fila.id);
@@ -101,6 +134,9 @@ function registrarPago(conexion, { integranteId, anio, mes, monto, fecha, metodo
   const cuanto = Number(monto) > 0 ? Number(monto) : Number(cuerpo.cuota_mensual) || 0;
   if (!(cuanto > 0)) return { error: 'Este cuerpo todavía no tiene definido el monto de su cuota.' };
 
+  const sinDonde = avisoSiLaCuentaEstaCerrada(ficha.cuerpo_id, conexion);
+  if (sinDonde) return { error: sinDonde };
+
   const cuando = fecha || new Date().toISOString().slice(0, 10);
   const info = conexion
     .prepare(
@@ -125,4 +161,7 @@ function borrarPago(conexion, cuotaId) {
   return { borrada: true };
 }
 
-module.exports = { MESES, OPCIONES_MES, nombreDelMes, sincronizarConLaTesoreria, registrarPago, borrarPago };
+module.exports = {
+  MESES, OPCIONES_MES, nombreDelMes, sincronizarConLaTesoreria,
+  registrarPago, borrarPago, cuentaDeLasCuotas, avisoSiLaCuentaEstaCerrada,
+};

@@ -123,8 +123,13 @@ module.exports = {
       if (!require('../alcance').alcanzaIglesia(user, origen.iglesia_id)) {
         return `La cuenta "${origen.nombre}" no está entre las iglesias que administra`;
       }
-      if (origen.estado === 'Cerrada') return `La cuenta "${origen.nombre}" está cerrada: no puede salir dinero de ella`;
-      if (destino.estado === 'Cerrada') return `La cuenta "${destino.nombre}" está cerrada: no puede entrar dinero en ella`;
+      // La misma regla que en las otras cuatro puertas (server/cuenta-cerrada.js),
+      // dicha por el lado que corresponde: de un traspaso se sale y se entra
+      const cerrada = require('../cuenta-cerrada');
+      const noSale = cerrada.avisoSiEstaCerrada(origen, 'sale');
+      if (noSale) return noSale;
+      const noEntra = cerrada.avisoSiEstaCerrada(destino, 'entra');
+      if (noEntra) return noEntra;
 
       data.iglesia_id = origen.iglesia_id || null;
 

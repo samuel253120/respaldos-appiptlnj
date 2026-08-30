@@ -255,10 +255,12 @@ module.exports = {
         return `La cuenta "${cuenta.nombre}" no está entre las iglesias que administra`;
       }
 
-      // Una cuenta cerrada no recibe movimientos nuevos, pero los suyos se pueden corregir
+      // Una cuenta cerrada no recibe movimientos nuevos, pero los suyos se
+      // pueden corregir (la regla, entera, en server/cuenta-cerrada.js)
       const cambiaDeCuenta = !existing || String(existing.cuenta_id) !== String(cuentaId);
-      if (cuenta.estado === 'Cerrada' && cambiaDeCuenta) {
-        return `La cuenta "${cuenta.nombre}" está cerrada: no admite nuevos movimientos`;
+      if (cambiaDeCuenta) {
+        const cerrada = require('../cuenta-cerrada').avisoSiEstaCerrada(cuenta);
+        if (cerrada) return cerrada;
       }
 
       data.iglesia_id = cuenta.iglesia_id || null;

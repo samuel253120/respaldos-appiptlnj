@@ -159,10 +159,12 @@ function revisarDeDondeSalio(data, { user, existing, db }) {
       + 'o una de la corporación.';
   }
 
-  // Una cuenta cerrada no recibe movimientos nuevos, pero los suyos se corrigen
+  // Una cuenta cerrada no recibe movimientos nuevos, pero los suyos se
+  // corrigen (la regla, entera, en server/cuenta-cerrada.js)
   const cambiaDeCuenta = !existing || String(existing.cuenta_id) !== String(cuentaId);
-  if (cuenta.estado === 'Cerrada' && cambiaDeCuenta) {
-    return `La cuenta "${cuenta.nombre}" está cerrada: no admite nuevos movimientos.`;
+  if (cambiaDeCuenta) {
+    const cerrada = require('./cuenta-cerrada').avisoSiEstaCerrada(cuenta);
+    if (cerrada) return `${cerrada}.`;
   }
 
   if (estado === 'Entregada' && !(Number(dato('valor_estimado')) > 0)) {

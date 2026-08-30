@@ -44,6 +44,7 @@
  * con él, y no se editan por separado en Tesorería.
  */
 const { fechaLarga } = require('./formato');
+const cuentaCerrada = require('./cuenta-cerrada');
 
 const NOTA = 'Movimiento generado por el Registro de Servicios.';
 
@@ -119,9 +120,23 @@ function sincronizarOfrenda(fila, db) {
       ? db.prepare('SELECT id FROM tesoreria WHERE id = ?').get(fila[lado.columna])
       : null;
 
-    // Sin ofrenda, sin cuenta donde anotarla o con el registro apagado:
-    // no queda movimiento (y se retira el que hubiera).
-    if (!registrar || !lado.cuenta || lado.monto <= 0) {
+    /*
+     * Sin ofrenda, sin cuenta donde anotarla, con el registro apagado o con la
+     * cuenta CERRADA: no queda movimiento (y se retira el que hubiera).
+     *
+     * Lo de la cuenta cerrada faltaba, y era la puerta grande: el ingreso que
+     * se escribe a mano en Tesorería se rechazaba con su explicación, y este
+     * puente le metía la ofrenda del domingo igual, sin decir nada. Medido: una
+     * tesorería general cerrada con $ 250.000 quedó con $ 610.000, y el fondo
+     * para la corporación, cerrado y en cero, con $ 40.000.
+     *
+     * Su propio movimiento, si ya lo tiene, se sigue corrigiendo: la cuenta
+     * cerrada no recibe plata NUEVA: lo que ya está anotado es historia y se
+     * corrige. Es la misma regla de las otras cuatro puertas
+     * (server/cuenta-cerrada.js).
+     */
+    const cerrada = !cuentaCerrada.admitePlataNueva(lado.cuenta);
+    if (!registrar || !lado.cuenta || lado.monto <= 0 || (cerrada && !guardado)) {
       if (guardado) {
         db.prepare('DELETE FROM tesoreria WHERE id = ?').run(guardado.id);
         db.prepare(`UPDATE servicios SET "${lado.columna}" = NULL WHERE id = ?`).run(fila.id);
@@ -155,4 +170,35 @@ function sincronizarOfrenda(fila, db) {
   }
 }
 
-module.exports = { sincronizarOfrenda, movimientosDeLaOfrenda };
+/**
+ * El aviso de que la ofrenda de este servicio no tiene dónde entrar, o null.
+ *
+ * Se pregunta al guardar el servicio, no al anotar el movimiento: quien está
+ * registrando el culto del domingo no tiene por qué ir a mirar Tesorería para
+ * enterarse de que su ofrenda se perdió por el camino. Y se PREGUNTA, no se
+ * bloquea: el servicio ocurrió, la asistencia importa y la ofrenda se recibió;
+ * lo que no puede es pasar en silencio.
+ */
+function avisoSiLaCuentaEstaCerrada(fila, db, confirmado) {
+  if (confirmado) return null;
+  if (!require('./ajustes').activo('ofrenda_registra_tesoreria')) return null;
+
+  const lados = movimientosDeLaOfrenda(fila, db);
+  // Un movimiento que ya existe se sigue corrigiendo: no es plata nueva
+  const nuevos = lados.filter((l) => !fila[l.columna]);
+  const cerradas = cuentaCerrada.lasCerradasDe(nuevos);
+  if (!cerradas.length) return null;
+
+  const una = cerradas.length === 1;
+  return {
+    error:
+      `${una ? 'La cuenta' : 'Las cuentas'} ${cuentaCerrada.nombradas(cerradas)} de esta iglesia `
+      + `${una ? 'está cerrada' : 'están cerradas'}, así que la ofrenda de este servicio no va a `
+      + `quedar anotada en Tesorería: el servicio se guarda igual, pero esa plata no aparecerá en `
+      + `ningún saldo. Para que quede anotada, reabra ${una ? 'la cuenta' : 'las cuentas'} y vuelva `
+      + 'a guardar el servicio. Si de verdad corresponde dejarla fuera, confirme.',
+    confirmar: 'ofrenda_sin_cuenta',
+  };
+}
+
+module.exports = { sincronizarOfrenda, movimientosDeLaOfrenda, avisoSiLaCuentaEstaCerrada };

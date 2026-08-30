@@ -88,6 +88,15 @@ module.exports = {
         .prepare('SELECT id FROM cuotas_cuerpo WHERE integrante_id = ? AND anio = ? AND mes = ? AND id != ?')
         .get(ficha.id, anio, mes, id || 0);
       if (repetida) return 'Esa persona ya tiene registrado el pago de ese mes en este cuerpo.';
+
+      // Una cuota que no tiene dónde quedar anotada no se registra: la cuota ES
+      // la plata (ver `avisoSiLaCuentaEstaCerrada` en server/cuotas.js). Solo
+      // para las nuevas: una ya anotada se sigue corrigiendo.
+      if (!id) {
+        const sinDonde = require('../cuotas').avisoSiLaCuentaEstaCerrada(ficha.cuerpo_id, db);
+        if (sinDonde) return sinDonde;
+      }
+
       if (!dato('fecha_pago')) data.fecha_pago = new Date().toISOString().slice(0, 10);
       return null;
     },

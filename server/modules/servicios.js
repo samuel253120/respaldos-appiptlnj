@@ -445,6 +445,21 @@ module.exports = {
       if (repetido && !confirmado) return repetido;
 
       /*
+       * Y enseguida, si la ofrenda tiene dónde entrar.
+       *
+       * Va acá arriba, apenas detrás del servicio repetido, porque es lo otro
+       * que cuesta plata: con la tesorería general de la iglesia cerrada, este
+       * servicio se guardaba normal y su ofrenda no quedaba anotada en ninguna
+       * parte —antes de la 1.214.0, peor todavía: entraba igual a la cuenta
+       * cerrada—. Se pregunta, no se bloquea: el servicio ocurrió y la
+       * asistencia importa; lo que no puede es pasar en silencio (ver
+       * server/ofrenda-tesoreria.js).
+       */
+      const sinDondeAnotar = require('../ofrenda-tesoreria')
+        .avisoSiLaCuentaEstaCerrada({ ...(existing || {}), ...data }, db, confirmado);
+      if (sinDondeAnotar) return sinDondeAnotar;
+
+      /*
        * Acá se rechazaba todo servicio cuya hora de término fuera anterior a
        * la de inicio, comparando las dos como si fueran del mismo día. Con eso
        * una vigilia —22:00 a 02:30— no se podía registrar, y quien la

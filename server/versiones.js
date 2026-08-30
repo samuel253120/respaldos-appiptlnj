@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.214.0", fecha: "2026-08-30", titulo: "Una cuenta cerrada deja de recibir plata por las dos puertas que le faltaban: la ofrenda de un servicio y la cuota de un integrante entraban igual, sin decir nada. Ahora el servicio pregunta antes de guardarse y la cuota se frena, cada uno en su pantalla" },
   { version: "1.213.0", fecha: "2026-08-30", titulo: "El estado y la cartola de una cuenta aplican el alcance entero —la iglesia, el cuerpo y el nivel de tesorería—, igual que su ficha: hasta ahora comprobaban solo la iglesia, y la cuenta de la corporación no es de ninguna, así que cualquiera podía abrir su cartola" },
   { version: "1.212.0", fecha: "2026-08-30", titulo: "El permiso «Montos del dinero» tapa también los saldos de las cuentas, la cartola y los totales de los informes: hasta ahora escondía el monto de cada movimiento y dejaba ver, en la pantalla de al lado, el saldo de la cuenta entera y sus movimientos uno por uno" },
   { version: "1.211.0", fecha: "2026-08-30", titulo: "Las notas internas y el nombre del archivo dejan de salir en la hoja impresa de una ayuda —y cualquier campo que pida quedarse fuera del papel ahora se respeta de verdad—, y una ayuda se encuentra por su monto, con puntos o sin ellos" },
