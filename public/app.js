@@ -3363,6 +3363,26 @@ async function viewInformeAyudas(precarga) {
         : '',
       r.en_camino ? `${fmtNumero(r.en_camino)} ayuda(s) están solicitadas o aprobadas y todavía no entregadas.` : '',
       r.rechazadas ? `${fmtNumero(r.rechazadas)} fueron rechazadas.` : '',
+      /*
+       * De lo entregado, qué parte salió de una cuenta.
+       *
+       * Sin esta línea el informe decía «$123.000 entregados» y el balance de
+       * Tesorería decía que no había salido nada: dos verdades sobre la misma
+       * plata, en dos pantallas del mismo sistema. Lo que salió de cuentas es
+       * exactamente lo que el libro tiene anotado como «Ayuda social», así que
+       * las dos cifras ya se pueden cuadrar. Lo demás no es un error: una caja
+       * de mercadería donada vale lo que vale y no salió de ninguna cuenta.
+       */
+      r.en_especie
+        ? `De lo entregado, ${fmtMoney(r.de_cuentas)} salió de cuentas de tesorería —donde queda
+           anotado como egreso— y ${fmtMoney(r.en_especie)} se entregó en especie, que no descuenta
+           de ninguna cuenta.`
+        : '',
+      r.sin_decidir
+        ? `${fmtNumero(r.sin_decidir)} entrega(s) de este período son anteriores a que se preguntara
+           de dónde salía lo entregado, así que no están en el libro de la tesorería. Se pueden poner
+           al día abriendo cada una e indicándolo.`
+        : '',
     ].filter(Boolean);
 
     caja.innerHTML = `
@@ -3376,6 +3396,7 @@ async function viewInformeAyudas(precarga) {
           <div class="fin slate"><div class="lbl">Recibieron más de una vez</div><div class="num">${esc(fmtNumero(r.repitieron))}</div></div>
           <div class="fin blue"><div class="lbl">Entregas</div><div class="num">${esc(fmtNumero(r.entregas))}</div></div>
           <div class="fin green"><div class="lbl">Valor estimado entregado</div><div class="num">${fmtMoney(r.entregado)}</div></div>
+          <div class="fin slate"><div class="lbl">Salió de cuentas</div><div class="num">${fmtMoney(r.de_cuentas)}</div></div>
         </div>
         ${aclaraciones.length
           ? `<div class="resumen-nota">${aclaraciones.map((a) => `<p>${esc(a.replace(/\s+/g, ' '))}</p>`).join('')}</div>`
@@ -7405,13 +7426,18 @@ function fieldHtml(f, row, isNew) {
 
       // Con muchas opciones, en vez de una lista larguísima se ofrece un
       // buscador: se escribe parte del nombre, del apellido o del RUT.
+      //
+      // Lo que se escribe ahí no siempre es una persona. Una cuenta de
+      // tesorería también pasa de veinte y su casilla decía «escriba el
+      // nombre, el apellido o el RUT», que para una cuenta no quiere decir
+      // nada. El campo puede traer el suyo.
       if (usaBuscador(f, lista)) {
         input = `
           <div class="refbuscar" id="rb_${f.name}" data-ruta="${esc(ruta)}">
             <input type="hidden" name="${f.name}" value="${esc(val)}" />
             <input type="text" class="rb-txt" autocomplete="off" spellcheck="false"
                    value="${esc(etiquetaActual)}"
-                   placeholder="Escriba el nombre, el apellido o el RUT…" ${f.required ? 'required' : ''} />
+                   placeholder="${esc(f.placeholder || 'Escriba el nombre, el apellido o el RUT…')}" ${f.required ? 'required' : ''} />
             <button type="button" class="rb-x" title="Quitar la selección" ${val ? '' : 'hidden'}>×</button>
             <ul class="rb-lista" hidden></ul>
           </div>`;

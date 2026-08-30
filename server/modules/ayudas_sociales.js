@@ -21,9 +21,62 @@
  */
 
 const { TIPOS_DE_AYUDA } = require('../tipos-de-ayuda');
+/*
+ * Lo que la ayuda entregada deja en el libro de la plata vive aparte, en
+ * server/ayuda-tesoreria.js, como ya viven la ofrenda de un servicio y la
+ * cuota de un integrante. Acá quedan los campos con que se decide; allá, qué
+ * movimiento le corresponde a cada decisión.
+ */
+const puente = require('../ayuda-tesoreria');
 
 /** De qué registro sale el beneficiario de esta ayuda. */
 const DE_QUIEN = ['Miembro', 'No miembro'];
+
+/**
+ * A nombre de quién quedó esta ayuda, y con un solo enlace.
+ *
+ * El nombre se copia de la ficha en vez de pedirse aparte: escribirlo a mano
+ * permitía que la ayuda dijera un nombre y apuntara a otra persona. Y se
+ * suelta el enlace del lado que no corresponde, porque si alguien registra la
+ * ayuda a nombre de un miembro y después la corrige a un no miembro, el enlace
+ * viejo quedaría ahí apuntando a alguien que no recibió nada.
+ *
+ * Estaba escrito dentro del hook; salió acá cuando el hook pasó a hacer dos
+ * cosas, para que la segunda no dependiera de dónde volvía la primera: esta
+ * regla termina antes de tiempo en las ayudas viejas —las que no traen tipo de
+ * beneficiario— y con las dos juntas eso se llevaba puesta la revisión de la
+ * cuenta.
+ */
+function aNombreDeQuien(data, { existing, db }) {
+  const tipo = data.beneficiario_tipo !== undefined
+    ? data.beneficiario_tipo
+    : existing && existing.beneficiario_tipo;
+
+  const deDonde = tipo === 'Miembro'
+    ? { tabla: 'miembros', campo: 'miembro_id', otro: 'no_miembro_id', que: 'El miembro' }
+    : tipo === 'No miembro'
+      ? { tabla: 'no_miembros', campo: 'no_miembro_id', otro: 'miembro_id', que: 'La persona' }
+      : null;
+
+  // Las ayudas registradas antes de que existiera este campo no traen tipo
+  // y conservan el nombre que se escribió en su momento: no se tocan.
+  if (!deDonde) return null;
+
+  const id = data[deDonde.campo] !== undefined
+    ? data[deDonde.campo]
+    : existing && existing[deDonde.campo];
+  if (!id) return `${deDonde.que} de esta ayuda no está indicado.`;
+
+  const ficha = db.prepare(`SELECT nombres, apellidos FROM "${deDonde.tabla}" WHERE id = ?`).get(id);
+  if (!ficha) return `${deDonde.que} de esta ayuda ya no está en el sistema.`;
+
+  // La misma fórmula con que después se pone al día cuando la ficha se
+  // corrige (ver server/nombre-del-beneficiario.js): escritas por separado,
+  // un día difieren por un espacio y las ayudas quedan «cambiando» solas.
+  data.beneficiario = require('../nombre-del-beneficiario').comoSeLlama(ficha);
+  data[deDonde.otro] = null;
+  return null;
+}
 
 module.exports = {
   name: 'ayudas_sociales',
@@ -80,48 +133,63 @@ module.exports = {
     { name: 'solicitud_id', label: 'Solicitud de origen', type: 'ref', ref: 'solicitudes', readonly: true },
     { name: 'soporte', label: 'Soporte / Evidencia', type: 'file' },
     { name: 'notas', label: 'Notas', type: 'textarea' },
+
+    // ---------------- De dónde salió ----------------
+    /*
+     * La decisión que antes no existía. Sin ella, una ayuda entregada no decía
+     * si la plata había salido de una cuenta de la iglesia o si era mercadería
+     * donada, y el libro de la tesorería no se enteraba de ninguna de las dos.
+     */
+    {
+      name: 'salida', label: '¿De dónde salió?', type: 'select',
+      options: puente.DE_DONDE, seccion: 'De dónde salió',
+      help: 'Al marcarla «Entregada» hay que decirlo. Si salió de una cuenta, el sistema anota solo '
+        + 'el egreso en Tesorería; si fue en especie, no anota nada y queda escrito que lo fue.',
+    },
+    {
+      name: 'cuenta_id', label: 'Cuenta de tesorería', type: 'ref', ref: 'cuentas_tesoreria',
+      optionsRoute: '/ayudas_sociales/cuentas',
+      placeholder: 'Escriba el nombre de la cuenta…',
+      showIf: { field: 'salida', equals: puente.DE_UNA_CUENTA },
+      help: 'De qué cuenta se descuenta lo entregado. Se ofrecen las cuentas activas de esta iglesia '
+        + 'y las de la corporación.',
+    },
+    /*
+     * Cómo se pagó lo dice la ayuda y no va escrito fijo: la ofrenda anotaba
+     * «Efectivo» en todos sus movimientos, y con parte de la plata llegando al
+     * banco el libro no cuadraba con la cartola. Se arregló allá; no tiene por
+     * qué volver a pasar acá.
+     */
+    {
+      name: 'metodo', label: 'Cómo se pagó', type: 'select', default: 'Efectivo',
+      options: ['Efectivo', 'Transferencia', 'Cheque', 'Otro'],
+      showIf: { field: 'salida', equals: puente.DE_UNA_CUENTA },
+    },
+    // El movimiento que dejó en Tesorería, para poder corregirlo y retirarlo
+    // con ella. Se maneja desde acá y no se escribe a mano.
+    { name: 'movimiento_id', type: 'number', oculto: true, readonly: true },
   ],
 
   hooks: {
+    /** Las dos reglas de una ayuda: a nombre de quién quedó y de dónde salió. */
+    beforeSave(data, { user, isNew, existing, db }) {
+      const problema = aNombreDeQuien(data, { existing, db });
+      if (problema) return problema;
+      // Y de dónde salió: la otra mitad está en server/ayuda-tesoreria.js
+      return puente.revisarDeDondeSalio(data, { user, existing, db });
+    },
+
     /**
-     * Deja escrito el nombre de quien recibió la ayuda, y solo uno de los dos
-     * enlaces.
-     *
-     * El nombre se copia de la ficha en vez de pedirse aparte: escribirlo a
-     * mano permitía que la ayuda dijera un nombre y apuntara a otra persona.
-     * Y se suelta el enlace del lado que no corresponde, porque si alguien
-     * registra la ayuda a nombre de un miembro y después la corrige a un no
-     * miembro, el enlace viejo quedaría ahí apuntando a alguien que no recibió
-     * nada.
+     * Deja el libro de la plata calzando con lo que dice la ayuda. Qué
+     * movimiento le corresponde a cada caso está en server/ayuda-tesoreria.js.
      */
-    beforeSave(data, { isNew, existing, db }) {
-      const tipo = data.beneficiario_tipo !== undefined
-        ? data.beneficiario_tipo
-        : existing && existing.beneficiario_tipo;
+    afterSave(fila, { db }) {
+      puente.sincronizarEgresoDeAyuda(fila, db);
+    },
 
-      const deDonde = tipo === 'Miembro'
-        ? { tabla: 'miembros', campo: 'miembro_id', otro: 'no_miembro_id', que: 'El miembro' }
-        : tipo === 'No miembro'
-          ? { tabla: 'no_miembros', campo: 'no_miembro_id', otro: 'miembro_id', que: 'La persona' }
-          : null;
-
-      // Las ayudas registradas antes de que existiera este campo no traen tipo
-      // y conservan el nombre que se escribió en su momento: no se tocan.
-      if (!deDonde) return null;
-
-      const id = data[deDonde.campo] !== undefined
-        ? data[deDonde.campo]
-        : existing && existing[deDonde.campo];
-      if (!id) return `${deDonde.que} de esta ayuda no está indicado.`;
-
-      const ficha = db.prepare(`SELECT nombres, apellidos FROM "${deDonde.tabla}" WHERE id = ?`).get(id);
-      if (!ficha) return `${deDonde.que} de esta ayuda ya no está en el sistema.`;
-
-      // La misma fórmula con que después se pone al día cuando la ficha se
-      // corrige (ver server/nombre-del-beneficiario.js): escritas por separado,
-      // un día difieren por un espacio y las ayudas quedan «cambiando» solas.
-      data.beneficiario = require('../nombre-del-beneficiario').comoSeLlama(ficha);
-      data[deDonde.otro] = null;
+    beforeDelete(fila, { db }) {
+      // El egreso de una ayuda que se elimina no puede quedar en el libro
+      puente.retirarEgresoDeAyuda(fila.id, db);
       return null;
     },
   },
@@ -161,6 +229,42 @@ module.exports = {
       }
       return { whereSql: where.length ? 'WHERE ' + where.join(' AND ') : '', params };
     };
+
+    /*
+     * LAS CUENTAS DONDE SE PUEDE ANOTAR EL EGRESO DE UNA AYUDA.
+     *
+     * Tiene su propia ruta, y no la de Tesorería, por una razón concreta: el
+     * selector de cuenta de un movimiento pide permiso de Tesorería, y quien
+     * registra las ayudas en el mostrador no lo tiene —el rol de secretario
+     * tiene Ayudas Sociales y no tiene Tesorería—. Con la ruta de allá, el
+     * desplegable le llegaba vacío justo a quien tiene que llenarlo.
+     *
+     * Que pueda anotar un egreso sin ser tesorero no es una excepción de este
+     * módulo: es lo que ya pasa con la ofrenda de un servicio, que también la
+     * registra el secretario y también deja sus movimientos. Quien anota el
+     * hecho anota su consecuencia; lo que no puede es andar por Tesorería.
+     *
+     * Se ofrecen las de la iglesia de la ayuda y las de la corporación —que no
+     * son de ninguna—, activas y dentro de su alcance, que es exactamente lo
+     * que después deja pasar la revisión al guardar.
+     */
+    router.get('/ayudas_sociales/cuentas', requirePerm('ayudas_sociales', 'view'), (req, res) => {
+      const params = [];
+      const where = ["estado = 'Activa'"];
+      const suyas = require('../alcance').iglesiasDe(req.user);
+      if (suyas.length) {
+        where.push(`(iglesia_id IS NULL OR iglesia_id IN (${suyas.map(() => '?').join(',')}))`);
+        params.push(...suyas);
+      }
+      if (req.query.iglesia_id) {
+        where.push('(iglesia_id IS NULL OR iglesia_id = ?)');
+        params.push(req.query.iglesia_id);
+      }
+      const filas = db
+        .prepare(`SELECT id, nombre, ambito FROM cuentas_tesoreria WHERE ${where.join(' AND ')} ORDER BY ambito, nombre`)
+        .all(...params);
+      res.json(filas.map((c) => ({ id: c.id, label: `${c.nombre} · ${c.ambito}` })));
+    });
 
     /*
      * EL INFORME DE AYUDAS: a cuántas personas distintas se ha ayudado.

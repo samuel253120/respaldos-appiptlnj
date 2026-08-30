@@ -85,12 +85,13 @@ function avisoDeMovimientoRepetido(db, datos) {
  * y el sistema no está para discutírselo.
  *
  * No se pregunta por los movimientos que genera otro módulo —la ofrenda de un
- * servicio, los dos lados de un traspaso—: esos no pasan por acá, pero si algún
- * día pasaran, nadie les va a adjuntar una boleta a mano.
+ * servicio, los dos lados de un traspaso, el egreso de una ayuda entregada—:
+ * esos no pasan por acá, pero si algún día pasaran, nadie les va a adjuntar una
+ * boleta a mano. El respaldo de una ayuda es el suyo, y vive en la ayuda.
  */
 function avisoDeEgresoSinRespaldo({ data, existing, tipo, monto }) {
   if (tipo !== 'Egreso') return null;
-  if (existing && (existing.traspaso_id || existing.servicio_id)) return null;
+  if (existing && (existing.traspaso_id || existing.servicio_id || existing.ayuda_id)) return null;
 
   const comprobante = data.comprobante !== undefined
     ? data.comprobante
@@ -154,11 +155,12 @@ module.exports = {
       /*
        * Solo dice que falta cuando falta de verdad: un ingreso no necesita
        * boleta, y los movimientos que genera otro módulo —la ofrenda de un
-       * servicio, los dos lados de un traspaso— no los adjunta nadie a mano.
+       * servicio, los dos lados de un traspaso, el egreso de una ayuda— no los
+       * adjunta nadie a mano: el de la ayuda es el suyo y vive en la ayuda.
        */
       calc: (r) => {
         if (r.comprobante) return { texto: '📎 Sí', nivel: 'ok' };
-        if (r.tipo !== 'Egreso' || r.traspaso_id || r.servicio_id) return { texto: '—', nivel: '' };
+        if (r.tipo !== 'Egreso' || r.traspaso_id || r.servicio_id || r.ayuda_id) return { texto: '—', nivel: '' };
         return { texto: 'Falta', nivel: 'medio' };
       },
     },
@@ -170,7 +172,7 @@ module.exports = {
       donde: (valor) => (valor === 'Con respaldo'
         ? { sql: "comprobante IS NOT NULL AND TRIM(comprobante) <> ''", params: [] }
         : {
-            sql: `tipo = 'Egreso' AND traspaso_id IS NULL AND servicio_id IS NULL
+            sql: `tipo = 'Egreso' AND traspaso_id IS NULL AND servicio_id IS NULL AND ayuda_id IS NULL
                     AND (comprobante IS NULL OR TRIM(comprobante) = '')`,
             params: [],
           }),
@@ -199,6 +201,7 @@ module.exports = {
     {
       name: 'cuenta_id', label: 'Cuenta de tesorería', type: 'ref', ref: 'cuentas_tesoreria', required: true,
       optionsRoute: '/cuentas_tesoreria/activas',
+      placeholder: 'Escriba el nombre de la cuenta…',
       help: 'En qué cuenta entra o sale este dinero: la general de la corporación o de la iglesia, o una cuenta de proyecto. Solo se ofrecen las cuentas activas.',
     },
     {
@@ -211,10 +214,13 @@ module.exports = {
     },
     { name: 'comprobante', label: 'Comprobante (imagen o PDF)', type: 'file', seccion: 'Respaldo y notas' },
     { name: 'notas', label: 'Notas', type: 'textarea' },
-    // Movimientos generados por un traspaso o por la ofrenda de un servicio
-    // (se manejan desde allá, para que los dos lados queden siempre cuadrados)
+    // Movimientos generados por otro módulo: se manejan desde allá, para que
+    // los dos lados queden siempre cuadrados y el libro no diga una cosa
+    // distinta de la que dice el registro que lo originó
     { name: 'traspaso_id', type: 'number', oculto: true, readonly: true },
     { name: 'servicio_id', type: 'number', oculto: true, readonly: true },
+    // …y por una ayuda social entregada con cargo a una cuenta
+    { name: 'ayuda_id', type: 'number', oculto: true, readonly: true },
     /*
      * Un lado de un traslado entre cuentas de la organización: los dos de un
      * traspaso, y los dos del aporte que una ofrenda pasa al fondo. No es plata
@@ -233,6 +239,9 @@ module.exports = {
       }
       if (existing && existing.servicio_id) {
         return 'Este movimiento lo generó la ofrenda de un servicio: modifíquelo en «Registro de Servicios»';
+      }
+      if (existing && existing.ayuda_id) {
+        return 'Este movimiento lo generó una ayuda social entregada: modifíquelo en «Ayudas Sociales»';
       }
 
       // La iglesia del movimiento es la de su cuenta (o ninguna, si es de la corporación)

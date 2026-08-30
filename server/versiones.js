@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.204.0", fecha: "2026-08-30", titulo: "La ayuda que se entrega queda en el libro de la plata: al marcarla entregada se dice si salió de una cuenta de tesorería —y ahí se anota sola su egreso— o si fue en especie, y el informe separa las dos para que cuadre con el balance" },
   { version: "1.203.0", fecha: "2026-08-30", titulo: "Un módulo cerrado para un rol queda cerrado también por su puerta de atrás: quien solo consulta ya no ve las ayudas sociales ni baja los archivos que cuelgan de un módulo que no tiene habilitado" },
   { version: "1.202.0", fecha: "2026-08-30", titulo: "Las carpetas de iglesias, pastores y solicitudes reciben lo que se le arregló a la de los miembros: preguntan por el papel repetido, anotan la baja en el historial de su dueño, y las hojas de iglesia y pastor salen con su historial y su carpeta" },
   { version: "1.201.0", fecha: "2026-08-30", titulo: "Arriba del listado de servicios quedan dos cifras y ninguna es de plata: el dinero se va a buscar al informe o a Tesorería, y el total de asistencia sale porque se lee como gente" },

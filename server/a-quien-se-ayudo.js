@@ -57,6 +57,18 @@ const QUIEN = `
     ELSE NULL
   END`;
 
+/*
+ * «Salió de una cuenta», escrito una sola vez.
+ *
+ * El texto es el mismo que guarda la ayuda y vive en server/ayuda-tesoreria.js,
+ * no repetido acá: escritos por separado, el día que uno cambie el informe
+ * empieza a decir cero sin que nada falle. Va pegado a la consulta porque no
+ * lleva comillas dentro; si algún día las llevara, esto tiene que pasar a ser
+ * un parámetro.
+ */
+const { DE_UNA_CUENTA } = require('./ayuda-tesoreria');
+const DE_UNA_CUENTA_SQL = `salida = '${DE_UNA_CUENTA}'`;
+
 /** Une el recorte que se está mirando con una condición más. */
 function y(whereSql, mas) {
   if (!mas) return whereSql;
@@ -77,6 +89,27 @@ function cifrasDe(db, whereSql, params) {
       `SELECT COUNT(*) AS registradas,
               SUM(CASE WHEN estado = 'Entregada' THEN 1 ELSE 0 END) AS entregas,
               SUM(CASE WHEN estado = 'Entregada' THEN COALESCE(valor_estimado, 0) ELSE 0 END) AS entregado,
+              /*
+               * De lo entregado, cuánto salió de una cuenta y cuánto no.
+               *
+               * Sin esta división el informe decía «$123.000 entregados» y el
+               * balance de Tesorería decía que no había salido nada, y las dos
+               * pantallas eran del mismo sistema. Ahora la de acá se puede
+               * cuadrar con la de allá: lo que salió de cuentas es exactamente
+               * lo que el libro tiene anotado con categoría «Ayuda social».
+               *
+               * Lo demás no es un error: una caja de mercadería donada vale lo
+               * que vale y no salió de ninguna cuenta. Y las ayudas de antes de
+               * que la decisión existiera se cuentan aparte, sin inventarles un
+               * lado.
+               */
+              SUM(CASE WHEN estado = 'Entregada' AND ${DE_UNA_CUENTA_SQL}
+                       THEN COALESCE(valor_estimado, 0) ELSE 0 END) AS de_cuentas,
+              SUM(CASE WHEN estado = 'Entregada' AND salida IS NOT NULL
+                            AND NOT (${DE_UNA_CUENTA_SQL})
+                       THEN COALESCE(valor_estimado, 0) ELSE 0 END) AS en_especie,
+              SUM(CASE WHEN estado = 'Entregada' AND (salida IS NULL OR salida = '')
+                       THEN 1 ELSE 0 END) AS sin_decidir,
               SUM(CASE WHEN estado IN ('Solicitada', 'Aprobada') THEN 1 ELSE 0 END) AS en_camino,
               SUM(CASE WHEN estado = 'Rechazada' THEN 1 ELSE 0 END) AS rechazadas,
               SUM(CASE WHEN miembro_id IS NULL AND no_miembro_id IS NULL THEN 1 ELSE 0 END) AS sin_ficha
@@ -103,6 +136,9 @@ function cifrasDe(db, whereSql, params) {
     registradas: r.registradas || 0,
     entregas: r.entregas || 0,
     entregado: r.entregado || 0,
+    de_cuentas: r.de_cuentas || 0,
+    en_especie: r.en_especie || 0,
+    sin_decidir: r.sin_decidir || 0,
     en_camino: r.en_camino || 0,
     rechazadas: r.rechazadas || 0,
     sin_ficha: r.sin_ficha || 0,

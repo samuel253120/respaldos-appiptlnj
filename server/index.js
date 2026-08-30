@@ -213,7 +213,7 @@ app.get('/api/meta', authRequired, (req, res) => {
       fields: [
         ...m.fields
           .filter((f) => !f.oculto)
-          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, sensible, reservado, futuro }) => ({
+          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, sensible, reservado, futuro, placeholder }) => ({
             name, label, type, required: !!required, options: options || null,
             // Los límites viajan para que el formulario avise antes de mandar.
             // Quien manda igual —o escribe la dirección a mano— se topa con la
@@ -231,6 +231,10 @@ app.get('/api/meta', authRequired, (req, res) => {
             optionsRoute: optionsRoute || null, readonly: !!readonly, mostrarEdad: !!mostrarEdad,
             seccion: seccion || null, destacado: !!destacado, ancho: ancho || null, recorte: recorte || null,
             recorta: recorta || null,
+            // Lo que dice la casilla vacía de un buscador de referencias. Sin
+            // esto, la de una cuenta de tesorería pedía «el nombre, el apellido
+            // o el RUT», que para una cuenta no quiere decir nada.
+            placeholder: placeholder || null,
             buscador: buscador === undefined ? null : !!buscador,
             calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
             computed: false,

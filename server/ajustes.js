@@ -208,6 +208,15 @@ const OPCIONES = [
           'urgentes que se documentan después. En cero, no pregunta nunca.',
       },
       {
+        clave: 'ayuda_registra_tesoreria', label: 'Registrar las ayudas sociales en tesorería',
+        tipo: 'boolean', defecto: '1',
+        ayuda:
+          'Al marcar una ayuda como entregada hay que decir de dónde salió. Si salió de una cuenta de ' +
+          'tesorería, el sistema anota ahí el egreso; si fue en especie —mercadería donada, ropa—, no ' +
+          'anota nada. Apáguelo si prefiere que la tesorera los ingrese a mano: la pregunta de dónde ' +
+          'salió se sigue haciendo, porque es lo que deja constancia de si la iglesia puso la plata.',
+      },
+      {
         clave: 'ofrenda_registra_tesoreria', label: 'Registrar la ofrenda en tesorería', tipo: 'boolean', defecto: '1',
         ayuda:
           'Al guardar un servicio con ofrenda, el sistema anota tres movimientos: el ingreso de la ofrenda ' +
