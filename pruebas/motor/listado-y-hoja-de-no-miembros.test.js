@@ -182,9 +182,27 @@ test('la hoja no dice el mismo dato dos veces', () => {
   const { sinLoQueNoDiceNada } = require('../../server/meta-liviana');
   assert.equal(sinLoQueNoDiceNada({ name: 'x', enElPapel: false }).enElPapel, false,
     'el «no va en el papel» es una decisión, no una ausencia');
+  /*
+   * La lista de propiedades de /api/meta es CERRADA: lo que no se nombra ahí no
+   * llega al navegador, y falla en silencio. Lo que se vigila es que `enElPapel`
+   * esté en ella, no cuáles son todas: escrita entera, esta comprobación se caía
+   * cada vez que alguien agregaba una propiedad legítima al lado —pasó con
+   * `reservado` en la 1.212.0—, y una prueba que se rompe por lo correcto acaba
+   * arreglándose sin leerla.
+   */
   const indice = fs.readFileSync(path.join(__dirname, '../../server/index.js'), 'utf8');
-  assert.match(indice, /\(m\.computed \|\| \[\]\)\.map\(\(\{ name, label, type, help, ordenarPor, ancho, enElPapel \}\)/,
+  const deLosCalculados = indice.match(/\(m\.computed \|\| \[\]\)\.map\(\(\{([^}]*)\}\)([\s\S]*?)\n\s*\}\)\),/);
+  assert.ok(deLosCalculados, 'la descripción de los campos calculados tiene que salir de una sola lista');
+  assert.ok(deLosCalculados[1].split(',').map((x) => x.trim()).includes('enElPapel'),
     'y un campo calculado tiene que poder mandarlo');
+  /*
+   * Y tiene que ponerlo en lo que devuelve, no solo recibirlo. Son dos pasos y
+   * la comprobación miraba uno: quitando la línea que lo asigna —dejando el
+   * nombre en la lista— la hoja volvía a imprimir el dato dos veces y ninguna
+   * prueba se caía.
+   */
+  assert.match(deLosCalculados[2], /enElPapel:/,
+    'recibirlo y no devolverlo es lo mismo que no recibirlo');
 });
 
 test('la tabla de entregas no hereda el ancho de la etiqueta de un campo', () => {

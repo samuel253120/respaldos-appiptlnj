@@ -37,7 +37,9 @@ const cuenta = db
             VALUES ('General del Clip TT','Iglesia local','General',?,'Activa',99000000)`)
   .run(iglesia).lastInsertRowid;
 
-const usuario = { id: 1, rol: 'Administrador' };
+// El rol como lo guarda la base ('admin'), no su etiqueta (ver ROLES en
+// server/permissions.js): un rol que no existe no alcanza ninguna llave.
+const usuario = { id: 1, rol: 'admin' };
 const guardar = (datos, { existing = null, confirmado = false } = {}) =>
   tesoreria.hooks.beforeSave({ ...datos }, { user: usuario, db, existing, confirmado, isNew: !existing });
 

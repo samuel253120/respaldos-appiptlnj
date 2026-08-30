@@ -41,10 +41,18 @@ function grupoDe(f) {
   return f.sensible ? SALUD : null;
 }
 
-/** Los grupos reservados que tiene un módulo, con sus campos. */
+/**
+ * Los grupos reservados que tiene un módulo, con sus campos.
+ *
+ * Los CALCULADOS cuentan igual que los guardados. No es un detalle: el saldo de
+ * una cuenta no es una columna —se suma al leer—, y por eso se le escapaba a
+ * todo esto. La llave «Montos del dinero» tapaba el monto de cada movimiento y
+ * dejaba pasar el saldo de la cuenta entera, $ 58.420.654, en el listado y en
+ * la ficha. Un dato calculado se lee igual que uno guardado; se reserva igual.
+ */
 function gruposDe(def) {
   const salida = new Map();
-  for (const f of def.fields || []) {
+  for (const f of [...(def.fields || []), ...(def.computed || [])]) {
     const grupo = grupoDe(f);
     if (!grupo) continue;
     if (!salida.has(grupo)) salida.set(grupo, []);
@@ -173,7 +181,46 @@ function buscaTambienPara(def, usuario) {
     .map((t) => t.sql);
 }
 
+/**
+ * Una respuesta armada a mano, sin las cifras que esta persona no alcanza.
+ *
+ * `limpiar` sirve para las filas de un módulo, donde cada campo declara su
+ * grupo y el motor las recorta solas. Las rutas que arman su propia respuesta
+ * no pasan por ahí: el estado de una cuenta, su cartola, el balance del
+ * período. Ahí la cifra la escribe la ruta, con el nombre que quiere, y el
+ * recorte del motor no la alcanza.
+ *
+ * Eso dejaba la llave anulada por la puerta de al lado: quien no podía ver el
+ * monto de un movimiento en el listado de Tesorería abría la cartola de esa
+ * misma cuenta y recibía los ciento cincuenta movimientos del mes, uno por
+ * uno, con su monto.
+ *
+ * Se nombran las claves que llevan plata y se van. Se quitan del todo, no se
+ * mandan en cero: un cero es una cifra, y la peor de todas, porque se lee como
+ * «esta cuenta está vacía». Queda `cifras_ocultas` para que la pantalla lo
+ * diga en vez de mostrar una hoja en blanco.
+ */
+function sinLasCifras(usuario, llave, dato, claves) {
+  if (!dato || alcanzaGrupo(usuario, llave)) return dato;
+  const quitar = (d) => {
+    if (Array.isArray(d)) return d.map(quitar);
+    const salida = { ...d };
+    for (const clave of claves) {
+      // Una lista de filas no se borra entera: se le quitan las cifras a cada
+      // una, y quedan la fecha, el concepto y la categoría, que es justo lo
+      // que la llave promete dejar a la vista.
+      if (Array.isArray(salida[clave])) salida[clave] = quitar(salida[clave]);
+      else delete salida[clave];
+    }
+    return salida;
+  };
+  const salida = quitar(dato);
+  // El aviso va una vez, arriba: repetirlo fila por fila no dice nada más
+  if (!Array.isArray(salida)) salida.cifras_ocultas = true;
+  return salida;
+}
+
 module.exports = {
-  alcanza, alcanzaGrupo, limpiar, limpiarVarias, protegerAlGuardar,
+  alcanza, alcanzaGrupo, limpiar, limpiarVarias, protegerAlGuardar, sinLasCifras,
   gruposDe, grupoDe, vedados, buscablesPara, buscaTambienPara, LLAVE,
 };

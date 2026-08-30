@@ -408,7 +408,17 @@ module.exports = {
         )
         .all(...suyasResumen);
 
-      res.json({ ...cuentas, porCategoria, porCuenta });
+      /*
+       * Y sin las cifras para quien no alcanza la llave de los montos: la
+       * llave dice esconder «los totales de los informes», y este resumen es
+       * el que encabeza el listado. Los CONTEOS se quedan —cuántos movimientos
+       * hay, cuántos son entre cuentas—: eso es el «QUÉ se movió» que la llave
+       * promete dejar a la vista. Se van los pesos.
+       */
+      res.json(require('../sensibles').sinLasCifras(req.user, 'tesoreria_montos',
+        { ...cuentas, porCategoria, porCuenta },
+        ['ingresos', 'egresos', 'balance', 'movido', 'total', 'monto', 'saldo', 'agendado',
+         'porCategoria', 'porCuenta']));
     });
 
     /*
@@ -427,14 +437,18 @@ module.exports = {
     router.get('/tesoreria/informe', requirePerm('tesoreria', 'view'), (req, res) => {
       const { whereSql, params } = loQueSeEstaMirando(req);
       const entreCuentas = require('../entre-cuentas');
-      res.json({
+      // El balance que se lleva a la reunión es, entero, «los totales de los
+      // informes» que la llave de los montos dice esconder: sin ella no queda
+      // papel que imprimir, y eso es lo correcto.
+      res.json(require('../sensibles').sinLasCifras(req.user, 'tesoreria_montos', {
         desde: req.query.desde || null,
         hasta: req.query.hasta || null,
         resumen: entreCuentas.totalesDe(db, whereSql, params),
         porMes: entreCuentas.porMesDe(db, whereSql, params),
         porCategoria: entreCuentas.porCategoriaDe(db, whereSql, params),
         porCuenta: entreCuentas.porCuentaDe(db, whereSql, params),
-      });
+      }, ['resumen', 'ingresos', 'egresos', 'balance', 'movido', 'total', 'monto', 'saldo',
+          'agendado', 'porMes', 'porCategoria', 'porCuenta']));
     });
   },
 };

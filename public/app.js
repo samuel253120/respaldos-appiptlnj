@@ -57,6 +57,23 @@ function estaReservado(f, row) {
   return !tieneLlave(f.reservado);
 }
 
+/**
+ * Una pantalla de plata a la que el servidor le quitó las cifras.
+ *
+ * Las pantallas de Tesorería no se arman con los campos de un módulo: el
+ * estado de una cuenta, su cartola y el balance del período arman su propia
+ * respuesta, y el servidor les quita los pesos a quien no alcanza la llave
+ * «Montos del dinero» (ver `sinLasCifras` en server/sensibles.js). Sin esto la
+ * pantalla dibujaba las tarjetas con el rótulo y el número en blanco, que se
+ * lee como «no hay nada», y el balance salía a imprimir vacío.
+ */
+const sinCifras = (d) => !!(d && d.cifras_ocultas);
+
+const AVISO_SIN_CIFRAS =
+  '<div class="aviso"><b>🔒 Cifras reservadas</b><span>Su cuenta ve qué se movió y cuándo '
+  + '—la fecha, el concepto, la categoría— pero no los montos ni los saldos. Los ve quien tenga '
+  + 'el permiso «Montos del dinero».</span></div>';
+
 const $app = document.getElementById('app');
 
 /**
@@ -2752,6 +2769,12 @@ async function viewList(name, filtrosIniciales) {
     if (!el) return;
     try {
       const r = await api('GET', '/tesoreria/resumen?' + params.toString());
+      /*
+       * Sin las cifras no hay tira que pintar: son todas cifras. Se dice, y no
+       * se dibujan cuatro tarjetas con el rótulo puesto y el número en blanco,
+       * que es lo que salía antes de la 1.212.0 y se lee como «no hay nada».
+       */
+      if (sinCifras(r)) { el.innerHTML = AVISO_SIN_CIFRAS; return; }
       const cuentas = (r.porCuenta || []);
       /*
        * Las que tienen algo que mostrar, y las demás detrás de un botón.
@@ -2937,6 +2960,13 @@ async function viewBalanceTesoreria(precarga) {
       caja.innerHTML = `<p style="padding:18px;color:var(--danger)">${esc(e.message)}</p>`;
       return;
     }
+    /*
+     * El balance del período es, entero, «los totales de los informes» que la
+     * llave «Montos del dinero» dice esconder: sin ella no queda papel que
+     * imprimir, y eso es lo correcto. Se dice acá en vez de sacar una hoja con
+     * el membrete, los títulos y todas las cifras en blanco.
+     */
+    if (sinCifras(d)) { caja.innerHTML = `<div class="card" style="padding:18px">${AVISO_SIN_CIFRAS}</div>`; return; }
     const r = d.resumen;
     // Un balance acotado que no lo dice se lee como si fuera el de todo, y se
     // imprime igual: el período va en el título, que es donde el ojo busca de
@@ -3141,6 +3171,7 @@ async function viewCartolaCuenta(cuentaId, precarga) {
           Cartola de ${esc(d.cuenta.nombre)}
           <span class="mut">${esc(d.cuenta.ambito)} · ${esc(periodo)}</span>
         </h3>
+        ${sinCifras(d) ? AVISO_SIN_CIFRAS : `
         <div class="resumen-cifras">
           <div class="fin slate">
             <div class="lbl">Saldo anterior${d.desde ? ` · al ${fechaCorta(d.desde)}` : ''}</div>
@@ -3152,15 +3183,17 @@ async function viewCartolaCuenta(cuentaId, precarga) {
             <div class="lbl">Saldo final</div>
             <div class="num ${d.saldo_final < 0 ? 'saldo-negativo' : ''}">${fmtMoney(d.saldo_final)}</div>
           </div>
-        </div>
+        </div>`}
         <div class="card">
           ${d.movimientos.length ? `
           <div style="overflow-x:auto">
           <table class="grid informe grid-lista cartola">
             <thead><tr>
-              <th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Entró</th><th>Salió</th><th>Saldo</th>
+              <th>Fecha</th><th>Concepto</th><th>Categoría</th>${sinCifras(d) ? '<th>Tipo</th>'
+                : '<th>Entró</th><th>Salió</th><th>Saldo</th>'}
             </tr></thead>
             <tbody>
+              ${sinCifras(d) ? '' : `
               <tr class="tot">
                 <td class="col-primera col-titular" data-label="Fecha">${d.desde ? esc(fechaCorta(d.desde)) : ''}</td>
                 <td data-label="Concepto"><b>Saldo anterior</b></td>
@@ -3168,18 +3201,20 @@ async function viewCartolaCuenta(cuentaId, precarga) {
                 <td class="num" data-label="Entró"></td>
                 <td class="num" data-label="Salió"></td>
                 <td class="num" data-label="Saldo"><b><span class="${d.saldo_anterior < 0 ? 'saldo-negativo' : ''}">${fmtMoney(d.saldo_anterior)}</span></b></td>
-              </tr>
+              </tr>`}
               ${d.movimientos.map((mv) => `
                 <tr data-ir="#/m/tesoreria/edit/${mv.id}">
                   <td class="col-primera col-titular" data-label="Fecha">${esc(fechaCorta(mv.fecha))}</td>
                   <td data-label="Concepto">${esc(mv.concepto)}${Number(mv.entre_cuentas)
                     ? ' <span class="badge agendado">entre cuentas</span>' : ''}</td>
                   <td data-label="Categoría">${esc(mv.categoria || '')}</td>
+                  ${sinCifras(d) ? `<td data-label="Tipo">${esc(mv.tipo)}</td>` : `
                   <td class="num" data-label="Entró">${mv.tipo === 'Ingreso' ? fmtMoney(mv.monto) : ''}</td>
                   <td class="num" data-label="Salió">${mv.tipo === 'Egreso' ? fmtMoney(mv.monto) : ''}</td>
-                  <td class="num" data-label="Saldo"><span class="${mv.saldo < 0 ? 'saldo-negativo' : ''}">${fmtMoney(mv.saldo)}</span></td>
+                  <td class="num" data-label="Saldo"><span class="${mv.saldo < 0 ? 'saldo-negativo' : ''}">${fmtMoney(mv.saldo)}</span></td>`}
                 </tr>`).join('')}
             </tbody>
+            ${sinCifras(d) ? '' : `
             <tfoot><tr class="tot">
               <td class="col-primera col-titular" data-label="Fecha">${d.hasta ? esc(fechaCorta(d.hasta)) : ''}</td>
               <td data-label="Concepto"><b>Saldo final</b></td>
@@ -3187,7 +3222,7 @@ async function viewCartolaCuenta(cuentaId, precarga) {
               <td class="num" data-label="Entró"><b>${fmtMoney(d.ingresos)}</b></td>
               <td class="num" data-label="Salió"><b>${fmtMoney(d.egresos)}</b></td>
               <td class="num" data-label="Saldo"><b><span class="${d.saldo_final < 0 ? 'saldo-negativo' : ''}">${fmtMoney(d.saldo_final)}</span></b></td>
-            </tr></tfoot>
+            </tr></tfoot>`}
           </table></div>` : '<div class="empty-state" style="padding:26px">Esta cuenta no tiene movimientos en este período.</div>'}
         </div>
         <div class="informe-pie mut">
@@ -3622,6 +3657,10 @@ function cellValue(f, row, col) {
   if (col === 'id') return row.id;
   // En el listado, a las personas se las nombra como se las nombra: el primer
   // nombre y los dos apellidos. El nombre completo está en su ficha.
+  // Lo reservado que el servidor no mandó se dice, no se deja en blanco: una
+  // celda vacía en una columna de plata se lee como «esta cuenta está en cero»
+  // (ver estaReservado, y server/sensibles.js).
+  if (estaReservado(f, row)) return '<span class="mut" title="Reservado: su cuenta no ve esta cifra">—</span>';
   const v = f.recorta ? recortar(f.recorta, row[f.name]) : row[f.name];
   if (f.computed) {
     if (v == null || v === '') return '';
@@ -12627,6 +12666,10 @@ function mostrarSaldoOrigen() {
     marca.textContent = 'Consultando el saldo…';
     try {
       const e = await api('GET', `/cuentas_tesoreria/${select.value}/estado`);
+      // Quien no alcanza la llave de los montos anota movimientos igual; lo que
+      // no ve es cuánto hay. Se dice, en vez de escribir «Saldo disponible hoy:»
+      // sin número al lado.
+      if (sinCifras(e)) { marca.innerHTML = '<span class="mut">🔒 El saldo de esta cuenta es reservado.</span>'; return; }
       marca.innerHTML = `Saldo disponible hoy: <b class="${e.saldo < 0 ? 'saldo-negativo' : ''}">${fmtMoney(e.saldo)}</b>`
         + (Number(e.agendado)
           ? ` <span class="mut">(y ${fmtMoney(e.agendado)} agendado para más adelante)</span>` : '');
@@ -14091,6 +14134,7 @@ async function renderEstadoCuenta(cuentaId, contenedor) {
           ${modMov ? `<button class="btn sm secondary" id="btnVerMovs">Ver todos los movimientos</button>` : ''}
           ${modMov ? `<button class="btn sm secondary" id="btnCartola">🧾 Cartola</button>` : ''}
         </div>
+        ${sinCifras(e) ? `<div style="padding:0 18px 6px">${AVISO_SIN_CIFRAS}</div>` : `
         <div class="fin-cards" style="padding:0 18px 6px">
           <div class="fin slate"><div class="lbl">Saldo inicial</div><div class="num">${fmtMoney(e.saldo_inicial)}</div></div>
           <div class="fin green"><div class="lbl">Ingresos</div><div class="num">${fmtMoney(e.ingresos)}</div></div>
@@ -14104,7 +14148,7 @@ async function renderEstadoCuenta(cuentaId, contenedor) {
               <div class="lbl">Agendado${e.agendado_desde ? ` · desde el ${fechaCorta(e.agendado_desde)}` : ''}</div>
               <div class="num">${fmtMoney(e.agendado)}</div>
             </div>` : ''}
-        </div>
+        </div>`}
         ${Number(e.agendado) ? `
           <p class="mut" style="padding:0 18px 4px;margin:0">
             El saldo es lo que hay hoy. Además hay ${fmtNumero(e.movimientos_agendados)}
@@ -14115,7 +14159,8 @@ async function renderEstadoCuenta(cuentaId, contenedor) {
           ${e.ultimos.map((m) => `
             <li data-ir="#/m/tesoreria/edit/${m.id}">
               <span>${fechaCorta(m.fecha)} · ${esc(m.concepto)} <span class="mut">— ${esc(m.categoria || '')}</span></span>
-              <b class="${m.tipo === 'Egreso' ? 'monto-egreso' : 'monto-ingreso'}">${m.tipo === 'Egreso' ? '−' : '+'} ${fmtMoney(m.monto)}</b>
+              <b class="${m.tipo === 'Egreso' ? 'monto-egreso' : 'monto-ingreso'}">${
+                sinCifras(e) ? esc(m.tipo) : `${m.tipo === 'Egreso' ? '−' : '+'} ${fmtMoney(m.monto)}`}</b>
             </li>`).join('')}
         </ul>` : '<div class="empty-state" style="padding:26px">Esta cuenta todavía no tiene movimientos.</div>'}
       </div>`;
@@ -15134,12 +15179,22 @@ async function renderTesoreriaCuerpo(cuerpoId, caja) {
   ]);
   if (!cuentas) return;
 
+  /*
+   * El total de las cuentas del cuerpo, salvo que las cifras sean reservadas.
+   *
+   * El saldo viene recortado de la fila —no llega en cero, no llega—, así que
+   * sumarlo daba «saldo total $ 0» a quien no alcanza la llave de los montos:
+   * un cero inventado, y de los peores, porque se lee como que el cuerpo no
+   * tiene un peso (ver estaReservado, y server/sensibles.js).
+   */
+  const reservado = cuentas.rows.some((c) => (c.reservado_oculto || []).includes('tesoreria_montos'));
   const saldo = cuentas.rows.reduce((t, c) => t + (Number(c.saldo) || 0), 0);
   caja.innerHTML = `
     <div class="card" style="margin-top:18px">
       <div class="toolbar">
         <b>💰 Tesorería del cuerpo</b>
-        <span style="color:var(--muted);font-size:13px">saldo total ${fmtMoney(saldo)}</span>
+        <span style="color:var(--muted);font-size:13px">${
+          reservado ? '🔒 saldos reservados' : `saldo total ${fmtMoney(saldo)}`}</span>
         <span class="spacer"></span>
         ${MOD['cuentas_tesoreria'].perms.create
           ? `<a class="btn sm" href="#/m/cuentas_tesoreria/new?cuerpo_id=${cuerpoId}">➕ Nueva cuenta</a>`
@@ -15154,7 +15209,7 @@ async function renderTesoreriaCuerpo(cuerpoId, caja) {
             <span>${esc(c.nombre)}
               <span class="badge ${c.tipo === 'General' ? 'blue' : ''}">${esc(c.tipo)}</span>
               ${c.estado === 'Cerrada' ? '<span class="badge">Cerrada</span>' : ''}</span>
-            <span class="mut cifra">${fmtMoney(c.saldo)}</span>
+            <span class="mut cifra">${reservado ? '—' : fmtMoney(c.saldo)}</span>
           </li>`).join('')}
       </ul>` : '<div class="empty-state" style="padding:22px">Este cuerpo todavía no tiene cuentas.</div>'}
       ${movimientos && movimientos.rows.length ? `

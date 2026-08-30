@@ -250,9 +250,13 @@ app.get('/api/meta', authRequired, (req, res) => {
             calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
             computed: false,
           })).map(sinLoQueNoDiceNada),
-        ...(m.computed || []).map(({ name, label, type, help, ordenarPor, ancho, enElPapel }) => sinLoQueNoDiceNada({
+        ...(m.computed || []).map(({ name, label, type, help, ordenarPor, ancho, enElPapel, reservado }) => sinLoQueNoDiceNada({
           name, label, type, help: help || null, computed: true, readonly: true,
           ancho: ancho || null,
+          // Un calculado también se reserva a una llave: el saldo de una cuenta
+          // es una cifra como cualquier otra. Sin esta línea la pantalla no se
+          // entera y dibuja la columna en blanco, sin decir por qué.
+          reservado: reservado || null,
           // Un calculado no se puede ordenar… salvo que diga por qué columna
           // se ordena en su lugar. La edad lo hace: por la fecha de nacimiento.
           ordenable: !!ordenarPor,
@@ -495,8 +499,17 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     counts.ayudas_entregado_mes = suyas.entregado;
   }
 
+  /*
+   * Las cifras del panel piden las dos llaves, no una.
+   *
+   * Ver Tesorería y ver sus MONTOS son dos permisos distintos, y acá se pedía
+   * solo el primero: quien tenía tapado el monto de cada movimiento abría el
+   * panel y encontraba los ingresos del mes, los egresos y el balance
+   * histórico de todo lo que alcanza, de una sola mirada. Es la misma llave
+   * que se cerró en la cartola y en los saldos de las cuentas.
+   */
   let finanzas = null;
-  if (can(req.user, 'tesoreria', 'view')) {
+  if (can(req.user, 'tesoreria', 'view') && can(req.user, 'tesoreria_montos', 'view')) {
     const mes = new Date().toISOString().slice(0, 7); // YYYY-MM
     const marcas = susIglesias.map(() => '?').join(',');
     // El resumen no puede sumar plata que esa persona no puede ver: quien no

@@ -176,7 +176,8 @@ function revisarLoQueSeBuscaDeMas(def) {
 function revisarLoReservado(def) {
   const { LLAVES } = require('./permissions');
   const declaradas = new Set(LLAVES.map((l) => l.name));
-  for (const f of def.fields) {
+  // Los calculados también: un saldo se reserva igual que un monto guardado
+  for (const f of [...def.fields, ...(def.computed || [])]) {
     const llave = f.reservado;
     if (!llave || declaradas.has(llave)) continue;
     throw new Error(

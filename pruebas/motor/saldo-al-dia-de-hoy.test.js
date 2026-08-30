@@ -154,7 +154,14 @@ test('un ingreso nunca deja nada en rojo', () => {
 
 test('el resumen por cuenta usa el mismo corte, y dice lo agendado en su columna', () => {
   const ruta = rutaDelResumen();
-  const r = ruta({ user: { rol: 'Administrador' }, query: {} });
+  /*
+   * El rol como lo guarda la base ('admin'), no su etiqueta ('Administrador',
+   * ver ROLES en server/permissions.js). Estas pruebas reemplazan `requirePerm`
+   * por un pasar de largo, así que un rol inventado no molestaba a nadie; desde
+   * la 1.212.0 la ruta le pregunta al usuario si alcanza la llave de los montos,
+   * y un rol que no existe no alcanza ninguna.
+   */
+  const r = ruta({ user: { rol: 'admin' }, query: {} });
   const suya = r.porCuenta.find((c) => c.id === general);
   assert.equal(suya.saldo, 0, 'el mismo cero que dice la ficha');
   assert.equal(suya.agendado, 450000);
@@ -162,7 +169,7 @@ test('el resumen por cuenta usa el mismo corte, y dice lo agendado en su columna
 
 test('una cuenta sin ningún movimiento aparece igual, con su saldo inicial', () => {
   const conPlata = cuenta('Con saldo inicial YY', 'Proyecto / Trabajo', 25000);
-  const r = rutaDelResumen()({ user: { rol: 'Administrador' }, query: {} });
+  const r = rutaDelResumen()({ user: { rol: 'admin' }, query: {} });
   const suya = r.porCuenta.find((c) => c.id === conPlata);
   assert.ok(suya, 'una cuenta sin movimientos no puede caerse del listado');
   assert.equal(suya.saldo, 25000);

@@ -50,7 +50,9 @@ const yaAnotado = db
   )
   .run(DIA, CONCEPTO, cuenta, iglesia).lastInsertRowid;
 
-const usuario = { id: 1, rol: 'Administrador' };
+// El rol como lo guarda la base ('admin'), no su etiqueta (ver ROLES en
+// server/permissions.js): un rol que no existe no alcanza ninguna llave.
+const usuario = { id: 1, rol: 'admin' };
 
 /** Lo que contesta el módulo al intentar guardar este movimiento. */
 function guardar(datos, { existing = null, confirmado = false } = {}) {

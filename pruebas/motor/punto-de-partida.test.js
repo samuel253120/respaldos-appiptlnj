@@ -46,7 +46,9 @@ db.prepare(
           ('2026-02-03','Egreso','Compras','Tres VV',1900000,?,?)`
 ).run(conMovimientos, iglesia, conMovimientos, iglesia, conMovimientos, iglesia);
 
-const usuario = { id: 1, rol: 'Administrador' };
+// El rol como lo guarda la base ('admin'), no su etiqueta (ver ROLES en
+// server/permissions.js): un rol que no existe no alcanza ninguna llave.
+const usuario = { id: 1, rol: 'admin' };
 const fichaDe = (id) => db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(id);
 
 /** Lo que contesta el módulo al intentar guardar estos cambios en una cuenta. */

@@ -91,7 +91,19 @@ module.exports = {
 
   computed: [
     {
-      name: 'saldo', label: 'Saldo', type: 'money',
+      /*
+       * El saldo es una cifra del dinero, y se reserva como tal.
+       *
+       * La llave «Montos del dinero» dice lo que esconde: «los montos de cada
+       * movimiento, LOS SALDOS DE LAS CUENTAS y los totales de los informes».
+       * Cumplía la primera parte y no la segunda: a quien no la tenía, el
+       * listado de Tesorería le tapaba el monto de cada movimiento y esta
+       * pantalla le mostraba $ 58.420.654 de un tirón. El saldo no es una
+       * columna —se suma al leer—, y por ahí se le escapaba al recorte del
+       * motor; desde la 1.212.0 los calculados también se reservan (ver
+       * `gruposDe` en server/sensibles.js).
+       */
+      name: 'saldo', label: 'Saldo', type: 'money', reservado: 'tesoreria_montos',
       calc: (r, { db }) => {
         const m = movimientosDe(r.id, db);
         return (Number(r.saldo_inicial) || 0) + m.ingresos - m.egresos;
@@ -131,6 +143,7 @@ module.exports = {
     { name: 'fecha_apertura', label: 'Fecha de apertura', type: 'date' },
     {
       name: 'saldo_inicial', label: 'Saldo inicial', type: 'money', default: 0,
+      reservado: 'tesoreria_montos',
       help: 'Con cuánto empezó la cuenta, antes de registrar movimientos en el sistema.',
     },
     {
@@ -327,7 +340,18 @@ module.exports = {
       const ingresos = suma('Ingreso');
       const egresos = suma('Egreso');
 
-      res.json({
+      /*
+       * Y sin las cifras, para quien no alcanza la llave de los montos.
+       *
+       * Es la puerta por la que la llave quedaba anulada: el listado de
+       * Tesorería le tapaba el monto de cada movimiento y la cartola de esa
+       * misma cuenta se los devolvía los ciento cincuenta juntos, con el saldo
+       * corriendo fila a fila. Lo que la llave promete dejar a la vista —la
+       * fecha, el concepto, la categoría, el método— se queda; se van las
+       * cifras, incluidas las de cada fila (ver `sinLasCifras` en
+       * server/sensibles.js).
+       */
+      res.json(require('../sensibles').sinLasCifras(req.user, 'tesoreria_montos', {
         cuenta: { id: cuenta.id, nombre: cuenta.nombre, ambito: cuenta.ambito, tipo: cuenta.tipo, estado: cuenta.estado },
         desde, hasta,
         saldo_inicial: inicial,
@@ -336,7 +360,7 @@ module.exports = {
         egresos,
         saldo_final: saldoAnterior + ingresos - egresos,
         movimientos,
-      });
+      }, ['saldo_inicial', 'saldo_anterior', 'ingresos', 'egresos', 'saldo_final', 'monto', 'saldo', 'movimientos']));
     });
 
     // Estado de una cuenta: saldo, totales y sus últimos movimientos.
@@ -353,7 +377,9 @@ module.exports = {
         .prepare(`SELECT id, fecha, tipo, categoria, concepto, monto FROM tesoreria
                   WHERE cuenta_id = ? ORDER BY fecha DESC, id DESC LIMIT 10`)
         .all(cuenta.id);
-      res.json({
+      // Sin las cifras para quien no alcanza la llave de los montos: cuántos
+      // movimientos hay y desde cuándo se pueden decir; cuánta plata, no.
+      res.json(require('../sensibles').sinLasCifras(req.user, 'tesoreria_montos', {
         nombre: cuenta.nombre,
         estado: cuenta.estado,
         saldo_inicial: Number(cuenta.saldo_inicial) || 0,
@@ -365,7 +391,7 @@ module.exports = {
         movimientos_agendados: Number(agendado.movimientos) || 0,
         agendado_desde: agendado.primera || null,
         ultimos,
-      });
+      }, ['saldo_inicial', 'ingresos', 'egresos', 'saldo', 'agendado', 'monto', 'ultimos']));
     });
   },
 };

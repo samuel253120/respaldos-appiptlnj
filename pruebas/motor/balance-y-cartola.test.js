@@ -149,7 +149,16 @@ function ruta(modulo, cual) {
 }
 
 const cartola = ruta(cuentasMod, '/cuentas_tesoreria/:id(\\d+)/cartola');
-const usuario = { id: 1, rol: 'Administrador' };
+/*
+ * El rol como lo guarda la base, no como se lee en pantalla.
+ *
+ * Decía 'Administrador', que es la ETIQUETA del rol; el valor es 'admin' (ver
+ * ROLES en server/permissions.js). Nada se quejaba porque estas pruebas
+ * reemplazan `requirePerm` por un pasar de largo, así que las rutas nunca le
+ * preguntaban nada a este usuario. Desde la 1.212.0 sí: la cartola le pregunta
+ * si alcanza la llave de los montos, y un rol que no existe no alcanza ninguna.
+ */
+const usuario = { id: 1, rol: 'admin' };
 
 test('la cartola de febrero empieza en el saldo que de verdad había', () => {
   const { d } = cartola({ user: usuario, params: { id: String(general) }, query: { desde: '2026-02-01', hasta: '2026-02-28' } });
