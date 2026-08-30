@@ -104,8 +104,24 @@ function revisarDeDondeSalio(data, { user, existing, db }) {
   const salida = dato('salida');
 
   if (estado === 'Entregada' && !salida) {
-    return 'Antes de marcarla «Entregada» hay que decir de dónde salió: de una cuenta de tesorería '
-      + 'o en especie. Es lo que decide si el egreso queda anotado en el libro de la plata.';
+    /*
+     * Se exige EN EL MOMENTO EN QUE SALE, y solo ahí.
+     *
+     * Las ayudas entregadas antes de que esta pregunta existiera no la traen, y
+     * exigírsela al primer guardado dejaba una ficha vieja imposible de tocar:
+     * quien entra a arreglarle una coma se topaba con un reparo que a lo mejor
+     * no sabe contestar —la entrega fue hace dos años— y no podía guardar nada.
+     * Se descubrió al escribir la prueba de la pregunta al entregar.
+     *
+     * Así que de las viejas no se exige: quedan como estaban, el informe las
+     * cuenta aparte y lo dice en pantalla, y el día que alguien complete el
+     * dato, se completa.
+     */
+    if (!existing || existing.estado !== 'Entregada') {
+      return 'Antes de marcarla «Entregada» hay que decir de dónde salió: de una cuenta de tesorería '
+        + 'o en especie. Es lo que decide si el egreso queda anotado en el libro de la plata.';
+    }
+    return null;
   }
 
   /*
@@ -155,6 +171,73 @@ function revisarDeDondeSalio(data, { user, existing, db }) {
   }
 
   return null;
+}
+
+/**
+ * Lo que le falta a una ayuda que se marca como entregada.
+ *
+ * Tres datos, y ninguno es un capricho:
+ *
+ *   · EL MONTO, porque sin él el informe la cuenta como cero. No dice «falta
+ *     el dato»: dice «$ 0», y quien lo lee entiende que se entregó algo que no
+ *     valía nada. Medido antes de esto: una ayuda guardada con lo mínimo salía
+ *     en el informe como «Otro · entregas 1 · valor estimado $ 0».
+ *   · EL RESPALDO, que es la boleta, la foto de la entrega o el papel firmado.
+ *     Cuando llega una revisión, el respaldo que no está en el sistema hay que
+ *     buscarlo en una carpeta, entrega por entrega.
+ *   · QUIÉN LA APROBÓ, porque entregar plata o mercadería de la iglesia es una
+ *     decisión de alguien, y sin nombre no es de nadie.
+ *
+ * SE PREGUNTA, NO SE BLOQUEA. Es exactamente lo que ya hace Tesorería con la
+ * boleta de un egreso grande: hay entregas que se documentan después, y el
+ * sistema no está para discutírselo a quien está en el mostrador con la
+ * persona enfrente. Lo que no puede es dejarlo pasar en silencio.
+ *
+ * SE PREGUNTA UNA VEZ, cuando la ayuda pasa a «Entregada», que es cuando la
+ * cosa salió. Volver a preguntarlo cada vez que se le arregla una coma a una
+ * ficha vieja es ruido, y el ruido enseña a confirmar sin leer, que es lo
+ * contrario de lo que esto busca. La excepción es borrar un dato que ya
+ * estaba: eso no es una coma, es perderlo.
+ */
+function loQueLeFaltaAlEntregar({ data, existing, confirmado }) {
+  if (confirmado) return null;
+  if (!require('./ajustes').activo('ayuda_pregunta_al_entregar')) return null;
+
+  const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
+  if (dato('estado') !== 'Entregada') return null;
+
+  const vacio = (v) => v === null || v === undefined || String(v).trim() === '';
+  const faltan = [
+    !(Number(dato('valor_estimado')) > 0) ? 'cuánto valía' : null,
+    vacio(dato('soporte')) ? 'el respaldo de la entrega' : null,
+    vacio(dato('aprobada_por')) ? 'quién la aprobó' : null,
+  ].filter(Boolean);
+  if (!faltan.length) return null;
+
+  /*
+   * ¿Es este el momento en que sale? Lo es si recién pasa a entregada, y
+   * también si se está borrando uno de los tres datos que sí estaba: abrir una
+   * ficha y guardar no puede dejar en blanco algo que alguien anotó.
+   */
+  const reciénSale = !existing || existing.estado !== 'Entregada';
+  const seEstáBorrando = ['valor_estimado', 'soporte', 'aprobada_por'].some(
+    (n) => existing && !vacio(existing[n]) && data[n] !== undefined && vacio(data[n])
+  );
+  if (!reciénSale && !seEstáBorrando) return null;
+
+  const lista = faltan.length === 1
+    ? faltan[0]
+    : `${faltan.slice(0, -1).join(', ')} ni ${faltan[faltan.length - 1]}`;
+
+  return {
+    error:
+      `Esta ayuda queda como entregada y no dice ${lista}. `
+      + (faltan.includes('cuánto valía')
+        ? 'Sin el monto, el informe la suma como $ 0, que se lee como que no valía nada. '
+        : '')
+      + 'Se puede completar después abriendo la ayuda. Si va así, confirme.',
+    confirmar: 'ayuda_entregada_sin_datos',
+  };
 }
 
 /**
@@ -211,5 +294,6 @@ function retirarEgresoDeAyuda(id, db) {
 
 module.exports = {
   sincronizarEgresoDeAyuda, retirarEgresoDeAyuda, egresoDeLaAyuda, revisarDeDondeSalio,
+  loQueLeFaltaAlEntregar,
   DE_UNA_CUENTA, EN_ESPECIE, DE_DONDE, CATEGORIA,
 };

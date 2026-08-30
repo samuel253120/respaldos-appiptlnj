@@ -3319,6 +3319,19 @@ async function viewInformeAyudas(precarga) {
       : `${soloDe}de todo lo registrado`;
 
     /*
+     * Una cifra de plata a la que le faltan datos lo dice al lado.
+     *
+     * Sin esto, la ayuda que nadie valorizó se suma como cero y la fila queda
+     * en «entregas 1 · valor estimado $ 0», que se lee como que se entregó
+     * algo que no valía nada. Lo que pasa es otra cosa: que el total es un
+     * piso. Va pegado a la cifra y no al pie, porque quien mira una tabla mira
+     * la columna, no las notas.
+     */
+    const sinMonto = (cuantas) => (cuantas
+      ? `<span class="mut" style="font-weight:400;font-size:11.5px;white-space:nowrap"> +${esc(fmtNumero(cuantas))} sin monto</span>`
+      : '');
+
+    /*
      * La aclaración se escribe entera para cada tabla y no se arma pegando el
      * nombre de la columna: salían frases como «de dos tipo de ayuda
      * distintas» y «de dos mes distintas». Una nota mal escrita al pie de una
@@ -3339,14 +3352,14 @@ async function viewInformeAyudas(precarga) {
                 <td class="col-primera col-titular" data-label="${esc(columna)}">${esc(comoSeLlama(f))}</td>
                 <td class="num" data-label="Entregas">${esc(fmtNumero(f.entregas))}</td>
                 <td class="num" data-label="Personas">${esc(fmtNumero(f.personas))}</td>
-                <td class="num" data-label="Valor estimado">${fmtMoney(f.entregado)}</td>
+                <td class="num" data-label="Valor estimado">${fmtMoney(f.entregado)}${sinMonto(f.sin_monto)}</td>
               </tr>`).join('')}
           </tbody>
           <tfoot><tr class="tot">
             <td class="col-primera col-titular" data-label="${esc(columna)}"><b>Total</b></td>
             <td class="num" data-label="Entregas"><b>${esc(fmtNumero(r.entregas))}</b></td>
             <td class="num" data-label="Personas"><b>${esc(fmtNumero(r.personas))}</b></td>
-            <td class="num" data-label="Valor estimado"><b>${fmtMoney(r.entregado)}</b></td>
+            <td class="num" data-label="Valor estimado"><b>${fmtMoney(r.entregado)}</b>${sinMonto(r.sin_monto)}</td>
           </tr></tfoot>
         </table></div>
         <p class="mut" style="padding:0 14px 12px;font-size:12.5px">Las personas de cada fila no suman
@@ -3377,6 +3390,11 @@ async function viewInformeAyudas(precarga) {
         ? `De lo entregado, ${fmtMoney(r.de_cuentas)} salió de cuentas de tesorería —donde queda
            anotado como egreso— y ${fmtMoney(r.en_especie)} se entregó en especie, que no descuenta
            de ninguna cuenta.`
+        : '',
+      r.sin_monto
+        ? `${fmtNumero(r.sin_monto)} de las ${fmtNumero(r.entregas)} entrega(s) no dicen cuánto valían,
+           así que en las cifras de plata cuentan como $ 0: lo entregado es al menos lo que dice el
+           total, no exactamente eso. Se completa abriendo cada una y anotando el valor.`
         : '',
       r.sin_decidir
         ? `${fmtNumero(r.sin_decidir)} entrega(s) de este período son anteriores a que se preguntara
@@ -6357,8 +6375,13 @@ async function renderAyudasDeLaPersona(tipo, personaId, contenedor, yaEsMiembro)
                ${d.antes_de_inscribirse === 1 ? 'entregó' : 'entregaron'} cuando todavía no estaba inscrita, y
                ${d.antes_de_inscribirse === 1 ? 'cuelga' : 'cuelgan'} de su ficha de No Miembro.</div>`
           : ''}
-        ${d.entregado
-          ? `<div class="card-body" style="font-size:13px">Suma estimada de lo entregado: <b>${esc(fmtMoney(d.entregado))}</b></div>`
+        ${d.entregado || d.sin_monto
+          ? `<div class="card-body" style="font-size:13px">Suma estimada de lo entregado:
+               <b>${esc(fmtMoney(d.entregado))}</b>${d.sin_monto
+                 ? ` <span class="mut">— ${fmtNumero(d.sin_monto)} de sus entregas no ${d.sin_monto === 1 ? 'dice' : 'dicen'}
+                     cuánto ${d.sin_monto === 1 ? 'valía' : 'valían'}, así que ${d.sin_monto === 1 ? 'cuenta' : 'cuentan'}
+                     como $ 0</span>`
+                 : ''}</div>`
           : ''}`
         : `<div class="card-body mut" style="font-size:13px">No se le ha registrado ninguna ayuda.</div>`}
     </div>`;
@@ -7255,6 +7278,36 @@ function aplicarCondiciones() {
         visible = String(div.dataset.showifValor).split('|').includes(actual);
       }
       div.style.display = visible ? '' : 'none';
+
+      /*
+       * UN CAMPO QUE NO SE VE NO PUEDE SER OBLIGATORIO.
+       *
+       * Esconderlo con `display:none` no lo saca de la revisión que hace el
+       * navegador antes de mandar el formulario: si sigue marcado obligatorio y
+       * está vacío, el navegador intenta poner el cursor ahí, no puede, y no
+       * manda nada. En la consola queda «An invalid form control with name=''
+       * is not focusable» y en la pantalla, nada: el botón Guardar no hace
+       * absolutamente nada y no hay ningún mensaje que explique por qué.
+       *
+       * Medido en Ayudas Sociales: registrar una ayuda a nombre de un NO
+       * MIEMBRO era imposible desde el formulario. El campo «Miembro» —que es
+       * obligatorio y se esconde al elegir «No miembro»— se dibuja como
+       * buscador cuando hay más de veinte personas, o sea en cualquier iglesia
+       * de verdad, y su casilla de texto se quedaba obligatoria. A nombre de un
+       * miembro sí guardaba, porque el campo escondido de ese lado era un
+       * desplegable corriente.
+       *
+       * Vale para cualquier campo con condición, no solo para esos dos.
+       */
+      div.querySelectorAll('input, select, textarea').forEach((control) => {
+        if (!visible && control.required) {
+          control.dataset.eraObligatorio = '1';
+          control.required = false;
+        } else if (visible && control.dataset.eraObligatorio) {
+          control.required = true;
+          delete control.dataset.eraObligatorio;
+        }
+      });
     });
     renumerarBloques();
   };

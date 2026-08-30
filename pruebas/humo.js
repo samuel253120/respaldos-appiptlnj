@@ -7,6 +7,8 @@
  * perfil y configuración. De cada pantalla revisa tres cosas:
  *
  *   · que el formulario no se quede pegado en «Cargando…»
+ *   · que no tenga un campo obligatorio escondido, que impide guardarlo sin
+ *     decir por qué
  *   · que la pantalla no se salga de lado (hay que desplazarse en horizontal)
  *   · que el navegador no tire ningún error
  *
@@ -120,6 +122,7 @@ async function revisarUnMedio(navegador, medio, ancho) {
   const repetidos = [];
   const tapados = [];
   const recortados = [];
+  const noSePuedeGuardar = [];
 
   const revisar = async (ruta) => {
     await pagina.goto(URL + '/' + ruta);
@@ -131,6 +134,35 @@ async function revisarUnMedio(navegador, medio, ancho) {
       return g ? /Cargando…/.test(g.innerText) : false;
     });
     if (cargando) pegados.push(ruta);
+
+    /*
+     * UN FORMULARIO QUE NO SE PUEDE GUARDAR Y NO LO DICE.
+     *
+     * Un campo obligatorio que está escondido —porque depende del valor de
+     * otro (`showIf`)— sigue entrando en la revisión que hace el navegador
+     * antes de mandar el formulario. Si está vacío, el navegador intenta poner
+     * el cursor ahí, no puede, y no manda nada: el botón Guardar deja de hacer
+     * absolutamente nada y en la pantalla no aparece ningún mensaje.
+     *
+     * No lo veía ninguna prueba. La pantalla no se sale de lado, no queda
+     * pegada en «Cargando…» y el único rastro es una línea en la consola del
+     * navegador que además viene sin nombre: «An invalid form control with
+     * name='' is not focusable». Se descubrió en Ayudas Sociales: registrar una
+     * ayuda a nombre de un NO MIEMBRO era imposible desde el formulario, y a
+     * nombre de un miembro sí se podía, así que ni siquiera fallaba siempre.
+     *
+     * Se mide en todos los formularios de una vez, que es donde puede pasar.
+     */
+    const obligatoriosEscondidos = await pagina.evaluate(() => {
+      const form = document.getElementById('recForm');
+      if (!form) return [];
+      return [...form.querySelectorAll('[required]')]
+        .filter((c) => !c.getClientRects().length)
+        .map((c) => c.name || (c.closest('.refbuscar') || {}).id || '(sin nombre)');
+    });
+    if (obligatoriosEscondidos.length) {
+      noSePuedeGuardar.push(`${ruta} → ${[...new Set(obligatoriosEscondidos)].join(', ')}`);
+    }
 
     /*
      * Un campo que sale DOS VECES en el mismo formulario.
@@ -339,6 +371,7 @@ async function revisarUnMedio(navegador, medio, ancho) {
       ` · pestañas abiertas: ${conPestanas}` +
       ` · pegados en "Cargando…": ${pegados.length ? pegados.join(', ') : 'ninguno'}` +
       ` · campos repetidos: ${repetidos.length ? repetidos.join(' | ') : 'ninguno'}` +
+      ` · formularios que no se podrían guardar: ${noSePuedeGuardar.length ? noSePuedeGuardar.join(' | ') : 'ninguno'}` +
       (ancho <= 700 ? ` · datos tapados por los botones: ${tapados.length ? tapados.join(' | ') : 'ninguno'}` : '') +
       (ancho <= 700 ? ` · recortado sin salida: ${recortados.length ? recortados.join(' | ') : 'nada'}` : '') +
       ` · se salen de lado: ${Object.keys(anchos).length ? JSON.stringify(anchos) : 'ninguna'}` +
@@ -346,7 +379,7 @@ async function revisarUnMedio(navegador, medio, ancho) {
   );
   await pagina.close();
   return pegados.length + Object.keys(anchos).length + distintos.length + repetidos.length
-    + tapados.length + recortados.length;
+    + tapados.length + recortados.length + noSePuedeGuardar.length;
 }
 
 (async () => {

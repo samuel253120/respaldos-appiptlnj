@@ -208,6 +208,15 @@ const OPCIONES = [
           'urgentes que se documentan después. En cero, no pregunta nunca.',
       },
       {
+        clave: 'ayuda_pregunta_al_entregar', label: 'Preguntar por lo que falta al entregar una ayuda',
+        tipo: 'boolean', defecto: '1',
+        ayuda:
+          'Al marcar una ayuda como entregada sin decir cuánto valía, sin el respaldo de la entrega o ' +
+          'sin quién la aprobó, el sistema lo pregunta antes de guardar. No lo impide: hay entregas ' +
+          'que se documentan después. Sin el monto, eso sí, el informe la suma como $ 0, que se lee ' +
+          'como que no valía nada.',
+      },
+      {
         clave: 'ayuda_registra_tesoreria', label: 'Registrar las ayudas sociales en tesorería',
         tipo: 'boolean', defecto: '1',
         ayuda:

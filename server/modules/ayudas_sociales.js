@@ -171,12 +171,22 @@ module.exports = {
   ],
 
   hooks: {
-    /** Las dos reglas de una ayuda: a nombre de quién quedó y de dónde salió. */
-    beforeSave(data, { user, isNew, existing, db }) {
+    /**
+     * Las tres reglas de una ayuda: a nombre de quién quedó, de dónde salió y
+     * qué le falta si se está entregando.
+     *
+     * El orden importa. Las dos primeras son reparos: lo que devuelven no se
+     * puede guardar de ninguna manera. La tercera es una pregunta que se puede
+     * contestar «está bien, guardar así», y el mecanismo de confirmación es uno
+     * solo para todo el guardado: si fuera antes, taparía un reparo de verdad
+     * con una pregunta que se puede saltar.
+     */
+    beforeSave(data, { user, isNew, existing, db, confirmado }) {
       const problema = aNombreDeQuien(data, { existing, db });
       if (problema) return problema;
-      // Y de dónde salió: la otra mitad está en server/ayuda-tesoreria.js
-      return puente.revisarDeDondeSalio(data, { user, existing, db });
+      const cuenta = puente.revisarDeDondeSalio(data, { user, existing, db });
+      if (cuenta) return cuenta;
+      return puente.loQueLeFaltaAlEntregar({ data, existing, confirmado });
     },
 
     /**
@@ -383,6 +393,10 @@ module.exports = {
           `SELECT COUNT(*) AS registradas,
                   SUM(CASE WHEN estado = 'Entregada' THEN 1 ELSE 0 END) AS entregas,
                   SUM(CASE WHEN estado = 'Entregada' THEN COALESCE(valor_estimado, 0) ELSE 0 END) AS entregado,
+                  -- Y cuántas de esas no dicen cuánto valían: la suma de abajo
+                  -- las cuenta como cero, y sin decirlo parece el total exacto
+                  SUM(CASE WHEN estado = 'Entregada' AND COALESCE(valor_estimado, 0) <= 0
+                           THEN 1 ELSE 0 END) AS sin_monto,
                   MAX(CASE WHEN estado = 'Entregada' THEN fecha END) AS ultima,
                   SUM(CASE WHEN estado IN ('Solicitada', 'Aprobada') THEN 1 ELSE 0 END) AS en_camino,
                   SUM(CASE WHEN no_miembro_id IS NOT NULL AND ${esMiembro ? '1' : '0'} = 1
@@ -396,6 +410,7 @@ module.exports = {
         registradas: r.registradas || 0,
         entregas: r.entregas || 0,
         entregado: r.entregado || 0,
+        sin_monto: r.sin_monto || 0,
         ultima: r.ultima || null,
         en_camino: r.en_camino || 0,
         antes_de_inscribirse: r.antes || 0,

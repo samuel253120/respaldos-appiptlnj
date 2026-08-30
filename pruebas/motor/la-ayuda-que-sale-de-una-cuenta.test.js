@@ -101,9 +101,20 @@ function guardar(datos, existing) {
 
 const suMovimiento = (id) => db.prepare('SELECT * FROM tesoreria WHERE ayuda_id = ?').get(id);
 
+/*
+ * Una ayuda BIEN LLENA, a propósito.
+ *
+ * Lleva quién la aprobó y su respaldo porque desde la 1.205.0 una ayuda que se
+ * marca entregada sin esos datos hace una pregunta antes de guardar, y estas
+ * pruebas son del puente con la tesorería, no de la pregunta. Contestarle que
+ * sí a todo con `confirmado` habría sido más corto y habría dejado de probar
+ * el camino de verdad: así se prueba el que hace alguien que llena la ficha.
+ * De la pregunta se ocupa la-ayuda-entregada-dice-cuanto-valia.test.js.
+ */
 const UNA = (mas = {}) => ({
   fecha: '2026-08-12', iglesia_id: NUESTRA, beneficiario_tipo: 'No miembro', no_miembro_id: BERTA,
   tipo_ayuda: 'Alimentos', valor_estimado: 45000, estado: 'Entregada',
+  aprobada_por: 'Pastora Ruiz', soporte: '1788000000000-boleta-de-la-caja.pdf',
   salida: puente.DE_UNA_CUENTA, cuenta_id: CAJA, metodo: 'Transferencia', ...mas,
 });
 
@@ -112,6 +123,20 @@ const UNA = (mas = {}) => ({
 test('no se entrega sin decir de dónde salió', () => {
   const { error } = guardar(UNA({ salida: null, cuenta_id: null, metodo: null }));
   assert.match(String(error), /de dónde salió/);
+});
+
+test('ni una que ya estaba entregada de antes de que se preguntara', () => {
+  /*
+   * Se exige en el momento en que la cosa sale, que es cuando alguien lo sabe.
+   * A una ficha de hace dos años, exigírselo la dejaba imposible de tocar:
+   * quien entra a arreglarle una coma no puede contestar de dónde salió.
+   */
+  const deAntes = { id: 1, estado: 'Entregada', salida: null };
+  assert.equal(
+    AYUDAS.hooks.beforeSave({ descripcion: 'una coma' },
+      { user: ADMIN, isNew: false, existing: deAntes, db, confirmado: false }),
+    null
+  );
 });
 
 test('pero una ayuda que todavía no se entrega no tiene que decirlo', () => {

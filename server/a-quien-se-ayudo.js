@@ -110,6 +110,17 @@ function cifrasDe(db, whereSql, params) {
                        THEN COALESCE(valor_estimado, 0) ELSE 0 END) AS en_especie,
               SUM(CASE WHEN estado = 'Entregada' AND (salida IS NULL OR salida = '')
                        THEN 1 ELSE 0 END) AS sin_decidir,
+              /*
+               * Y cuántas de las entregas no dicen cuánto valían.
+               *
+               * Sin esta cuenta, una ayuda sin monto se suma como cero y el
+               * informe la muestra como «entregas 1 · valor estimado $ 0», que
+               * se lee como que se entregó algo que no valía nada. Con ella, la
+               * pantalla puede decir lo que de verdad pasa: que el total es un
+               * piso y no el total.
+               */
+              SUM(CASE WHEN estado = 'Entregada' AND COALESCE(valor_estimado, 0) <= 0
+                       THEN 1 ELSE 0 END) AS sin_monto,
               SUM(CASE WHEN estado IN ('Solicitada', 'Aprobada') THEN 1 ELSE 0 END) AS en_camino,
               SUM(CASE WHEN estado = 'Rechazada' THEN 1 ELSE 0 END) AS rechazadas,
               SUM(CASE WHEN miembro_id IS NULL AND no_miembro_id IS NULL THEN 1 ELSE 0 END) AS sin_ficha
@@ -139,6 +150,7 @@ function cifrasDe(db, whereSql, params) {
     de_cuentas: r.de_cuentas || 0,
     en_especie: r.en_especie || 0,
     sin_decidir: r.sin_decidir || 0,
+    sin_monto: r.sin_monto || 0,
     en_camino: r.en_camino || 0,
     rechazadas: r.rechazadas || 0,
     sin_ficha: r.sin_ficha || 0,
@@ -162,6 +174,10 @@ function abiertoPor(db, columna, whereSql, params, orden) {
       `SELECT ${columna} AS clave,
               COUNT(*) AS entregas,
               SUM(COALESCE(valor_estimado, 0)) AS entregado,
+              -- Cada fila dice cuántas de las suyas van sin monto: si no, la
+              -- que tiene la mitad sin anotar se ve igual que la que está
+              -- completa, y su cifra parece un total cuando es un piso.
+              SUM(CASE WHEN COALESCE(valor_estimado, 0) <= 0 THEN 1 ELSE 0 END) AS sin_monto,
               COUNT(DISTINCT ${QUIEN}) AS personas
          FROM ayudas_sociales ${dentro}
         GROUP BY 1
