@@ -186,6 +186,90 @@ function solicitudesSinRespuesta(usuario, dejar) {
   }
 }
 
+/**
+ * Lo que se pidió y nadie entregó.
+ *
+ * El sistema avisa de una credencial por vencer, de un documento por vencer, de
+ * una solicitud sin respuesta, de cuotas al debe, del respaldo atrasado, de
+ * quien lleva muchas faltas seguidas y de quien cumplió dieciocho. De una
+ * familia que pidió una caja de mercadería en marzo y sigue esperando, no
+ * avisaba nadie: de nueve revisiones, ninguna era de ayudas, y es lo único que
+ * este sistema entrega a una persona.
+ *
+ * UN SOLO AVISO CON TODAS, y no uno por ayuda. Una solicitud tiene responsable
+ * y se le avisa a quien la tiene a cargo; una ayuda no tiene dueño, así que
+ * quien administra las ayudas recibiría un campanazo por cada una. Lo que sirve
+ * en el mostrador es la lista, no el recuento.
+ *
+ * La clave lleva los números de las ayudas que están esperando: mientras sean
+ * las mismas no vuelve a avisar todos los días, y en cuanto entre otra —o se
+ * entregue alguna— sí, porque la lista ya es otra.
+ *
+ * Se cuenta desde la FECHA DE LA AYUDA, que es cuando se pidió, y no desde
+ * cuándo se tecleó: una ayuda del 10 de marzo anotada en agosto lleva
+ * esperando desde marzo.
+ */
+function ayudasSinEntregar(usuario, dejar) {
+  const { can } = require('../permissions');
+  if (!can(usuario, 'ayudas_sociales', 'view')) return;
+
+  const cuantos = ajustes.numero('avisos_ayuda_dias', 1, 120);
+  const params = [`-${cuantos} days`];
+  /*
+   * El alcance se pide a la misma pieza que usa el listado: quien no ve una
+   * ayuda en pantalla tampoco recibe un aviso sobre ella. Sin alias en la
+   * tabla, porque las condiciones vienen con los nombres de columna a secas.
+   */
+  let suyas = '';
+  try {
+    const cond = [];
+    suyas = require('../alcance').condiciones(
+      require('../registry').getModule('ayudas_sociales'), usuario, cond
+    );
+    params.push(...cond);
+  } catch (e) {
+    return;   // una base a medio migrar no puede tumbar la pasada del día
+  }
+
+  const filas = db
+    .prepare(
+      `SELECT id, fecha, tipo_ayuda, beneficiario, estado FROM ayudas_sociales
+        WHERE estado IN ('Solicitada', 'Aprobada')
+          AND fecha <= date('now','localtime', ?)
+          ${suyas ? `AND (${suyas})` : ''}
+        ORDER BY fecha LIMIT 50`
+    )
+    .all(...params);
+  if (!filas.length) return;
+
+  const comoSeLee = (iso) => String(iso).slice(0, 10).split('-').reverse().join('-');
+  const diasDesde = (iso) => {
+    const cuando = Date.parse(`${String(iso).slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(cuando)) return null;
+    return Math.max(0, Math.floor((Date.now() - cuando) / 86400000));
+  };
+  const cuenta = (a) => {
+    const d = diasDesde(a.fecha);
+    return d === null ? comoSeLee(a.fecha) : `${comoSeLee(a.fecha)}, hace ${d} día(s)`;
+  };
+
+  dejar({
+    tipo: 'ayuda_sin_entregar',
+    clave: `ayudas_esperando:${filas.map((a) => a.id).join(',')}`,
+    titulo: filas.length === 1
+      ? `Una ayuda pedida sigue sin entregarse`
+      : `${filas.length} ayudas pedidas siguen sin entregarse`,
+    cuerpo: filas.slice(0, 3)
+      .map((a) => `${a.tipo_ayuda || 'Ayuda'} para ${a.beneficiario || 'alguien'} (${cuenta(a)}, «${a.estado}»)`)
+      .join('; ') + (filas.length > 3 ? `, y ${filas.length - 3} más.` : '.'),
+    // Con una sola, a su ficha; con varias, al listado, que es donde se
+    // trabajan: mandar a la ficha de la primera esconde las otras.
+    enlace: filas.length === 1
+      ? `#/m/ayudas_sociales/ficha/${filas[0].id}`
+      : '#/m/ayudas_sociales',
+  });
+}
+
 /** Los cumpleaños de hoy, de la gente que esa persona alcanza. */
 function cumpleanosDeHoy(usuario, dejar) {
   const { can } = require('../permissions');
@@ -475,8 +559,8 @@ function cumplieronLaMayoria(usuario, dejar) {
 }
 
 const REVISIONES = [credencialesPorVencer, documentosPorVencer, solicitudesSinRespuesta,
-  solicitudesSinResponsableActivo, cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas, faltasSeguidas,
-  cumplieronLaMayoria];
+  solicitudesSinResponsableActivo, ayudasSinEntregar, cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas,
+  faltasSeguidas, cumplieronLaMayoria];
 
 // ------------------------------------------------------------- la pasada ----
 
@@ -567,4 +651,5 @@ function empezar() {
 module.exports = {
   empezar, mirar, pasada, leToca, REVISIONES,
   solicitudesSinRespuesta, solicitudesSinResponsableActivo, cumplieronLaMayoria,
+  ayudasSinEntregar,
 };

@@ -484,6 +484,14 @@ const OPCIONES = [
         ayuda: 'Días que puede llevar abierta una solicitud a cargo de alguien antes de que el sistema se lo recuerde.',
       },
       {
+        clave: 'avisos_ayuda_dias', label: 'Avisar de una ayuda pedida y no entregada a los tantos días',
+        tipo: 'number', defecto: '7', min: 1, max: 120,
+        ayuda:
+          'Días que puede llevar una ayuda en «Solicitada» o «Aprobada» antes de que el sistema lo '
+          + 'recuerde a quien administra las ayudas. Se cuenta desde la fecha de la ayuda, que es '
+          + 'cuando se pidió.',
+      },
+      {
         clave: 'avisos_documento_dias', label: 'Avisar de un documento por vencer con tantos días de anticipación',
         tipo: 'number', defecto: '30', min: 1, max: 365,
         ayuda:

@@ -55,6 +55,19 @@ const TIPOS = {
     llave: 'solicitudes_tramitar',
     ayuda: 'Solicitudes abiertas cuyo responsable ya no entra al sistema, porque se desactivó su cuenta.',
   },
+  ayuda_sin_entregar: {
+    label: 'Ayudas pedidas que siguen sin entregarse',
+    urgente: false,
+    /*
+     * Solo a quien administra las ayudas: para el resto es un aviso sobre algo
+     * que no está en sus manos, igual que la solicitud sin responsable.
+     */
+    llave: 'ayudas_sociales',
+    ayuda:
+      'Una ayuda que quedó «Solicitada» o «Aprobada» y sigue así pasados los días que se indiquen en '
+      + 'Configuración. Es lo único que el sistema entrega a una persona y no avisaba nadie: una '
+      + 'familia que pidió mercadería en marzo podía seguir esperando sin que se notara.',
+  },
   credencial_por_vencer: {
     label: 'Credenciales por vencer',
     urgente: false,
