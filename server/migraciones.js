@@ -2751,6 +2751,60 @@ function cuentasAbiertasSinFechaDeCierre() {
   marcarAplicada(NOMBRE);
 }
 
+/**
+ * Lo que se quedó en la iglesia anterior cuando un cuerpo se cambió de iglesia.
+ *
+ * La iglesia de una cuenta, de una ficha de integrante y de un movimiento se
+ * COPIA del cuerpo al guardarse, y esa copia se hacía una vez y no se volvía a
+ * mirar: un cuerpo que se cambiaba de iglesia dejaba atrás su caja, su gente y
+ * su plata. Desde la 1.220 lo suyo se va con él (ver
+ * server/lo-que-sigue-al-cuerpo.js), pero eso vale de ahí en adelante: lo que
+ * ya se quedó atrás sigue atrás, y no es un rótulo desactualizado —es quién
+ * tiene acceso a esa plata y a esa gente—.
+ *
+ * Así que se pasa una vez por todos los cuerpos y se le da a lo suyo la
+ * iglesia que el cuerpo tiene hoy. Es la MISMA regla, la de ese archivo, no
+ * una copia: si mañana una tabla más sigue al cuerpo, esto no se toca.
+ *
+ * Los cuerpos sin iglesia se saltan: son los de la corporación, que no es una
+ * iglesia, y darles la suya sería dejarles la columna en blanco.
+ *
+ * Recibe la conexión porque esto toca TODOS los cuerpos, y las pruebas del
+ * motor comparten una sola base entre procesos: correrla ahí le cambiaría los
+ * datos a los demás archivos mientras están mirándolos. Se la prueba sobre una
+ * copia, que es también como corre de verdad —sobre una base sola, al arrancar—.
+ */
+function loQueSeQuedoEnLaIglesiaAnterior(conexion = db) {
+  const NOMBRE = 'lo del cuerpo sigue al cuerpo cuando cambia de iglesia';
+  const yaEsta = () => !!conexion.prepare('SELECT nombre FROM migraciones WHERE nombre = ?').get(NOMBRE);
+  const marcar = () => conexion.prepare('INSERT OR IGNORE INTO migraciones (nombre) VALUES (?)').run(NOMBRE);
+  if (yaEsta()) return;
+
+  const hayTabla = (t) =>
+    !!conexion.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('cuerpos')) return marcar();
+
+  const sigue = require('./lo-que-sigue-al-cuerpo');
+  const cuerpos = conexion.prepare('SELECT id, nombre, iglesia_id FROM cuerpos WHERE iglesia_id IS NOT NULL').all();
+
+  const total = new Map();
+  let cuantos = 0;
+  for (const cuerpo of cuerpos) {
+    const movidas = sigue.mudarLoSuyo(cuerpo.id, cuerpo.iglesia_id, conexion);
+    if (!movidas.length) continue;
+    cuantos += 1;
+    for (const m of movidas) total.set(m.que, (total.get(m.que) || 0) + m.cuantas);
+  }
+
+  if (cuantos) {
+    const detalle = [...total.entries()].map(([que, c]) => `${c} ${que}`).join(', ');
+    console.log(
+      `🏛️  ${cuantos} cuerpo(s) tenían cosas suyas en una iglesia que ya no era la suya: se movieron ${detalle}.`
+    );
+  }
+  marcar();
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -2810,6 +2864,7 @@ function ejecutarMigraciones() {
     ['el porcentaje del aporte queda con su servicio', elPorcentajeDelAporteQuedaConSuServicio],
     ['los traslados entre cuentas quedan marcados', losTrasladosQuedanMarcados],
     ['las cuentas abiertas no llevan fecha de cierre', cuentasAbiertasSinFechaDeCierre],
+    ['lo del cuerpo sigue al cuerpo cuando cambia de iglesia', loQueSeQuedoEnLaIglesiaAnterior],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -3062,6 +3117,7 @@ module.exports = {
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, elConteoDeLeidosSeGuarda,
   elAvisoDiceDeQuienViene, losDestinatariosQuedanAnotados, elPorcentajeDelAporteQuedaConSuServicio,
   losTrasladosQuedanMarcados, cuentasAbiertasSinFechaDeCierre,
+  loQueSeQuedoEnLaIglesiaAnterior,
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
   hojasDePresentacionYMatrimonio, certificadosApaisados,

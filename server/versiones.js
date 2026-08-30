@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.220.0", fecha: "2026-08-30", titulo: "Cuando un cuerpo se cambia de iglesia, lo suyo se va con él: sus cuentas de tesorería, las fichas de sus integrantes, sus cuotas, sus directivas y los movimientos de sus cuentas se quedaban en la iglesia anterior, con la plata a la vista de quien ya no corresponde. Queda anotado en el Registro de Cambios, y al arrancar se corrige lo que ya se había quedado atrás" },
   { version: "1.219.0", fecha: "2026-08-30", titulo: "La cartola deja de sumar la plata que todavía no llega: cerraba en $ 810.000 mientras la ficha de la misma cuenta decía $ 0. Las filas de más adelante siguen en la hoja, marcadas «agendado» y sin saldo, y su total se dice aparte" },
   { version: "1.218.0", fecha: "2026-08-30", titulo: "La regla de «una sola cuenta general por nivel» cuenta solo las vigentes: la iglesia que cerraba su cuenta y cambiaba de banco no podía abrir la que la reemplaza, y el aviso le nombraba justo la cuenta que acababa de dar por terminada" },
   { version: "1.217.0", fecha: "2026-08-30", titulo: "La cuenta que se vuelve a abrir deja de tener fecha de cierre: quedaba «Activa» con la fecha puesta y desde la pantalla no había forma de borrarla, porque ese campo solo se ve con la cuenta cerrada. A las que ya quedaron así se les quita al arrancar" },

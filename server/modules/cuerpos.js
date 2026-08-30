@@ -265,6 +265,40 @@ module.exports = {
     afterSave(fila, { isNew, existing, user, db }) {
       if (isNew) require('../cuentas-de-cuerpos').crearLasQueFalten(db, fila);
 
+      /*
+       * Si el cuerpo se cambió de iglesia, lo suyo se va con él.
+       *
+       * La iglesia de un cuerpo decide QUIÉN VE cada cosa suya, y sus cuentas,
+       * sus fichas de integrante y los movimientos de esas cuentas la copian
+       * del cuerpo al guardarse: esa copia se hacía una vez y no se volvía a
+       * mirar. Medido al mudar un cuerpo de 52 integrantes, todo se quedaba en
+       * la iglesia anterior (ver server/lo-que-sigue-al-cuerpo.js).
+       *
+       * Queda anotado en el Registro de Cambios, y no por prolijidad: son filas
+       * de dinero y de gente cambiando de manos, y moverlas en silencio es
+       * exactamente lo que ese registro existe para evitar.
+       */
+      // Sin `existing` no hay de dónde venir, y eso ya deja fuera al recién
+      // creado: pedir además `!isNew` no agregaba ninguna condición, solo la
+      // repetía. Y la comparación tiene que estar: si se mudara en cada
+      // guardado, corregirle el teléfono a un cuerpo dejaría anotado en el
+      // Registro de Cambios que su plata se movió de iglesia, que no pasó.
+      const cambiaDeIglesia = existing
+        && String(existing.iglesia_id) !== String(fila.iglesia_id);
+      if (cambiaDeIglesia) {
+        const sigue = require('../lo-que-sigue-al-cuerpo');
+        const movidas = sigue.mudarLoSuyo(fila.id, fila.iglesia_id, db);
+        if (movidas.length) {
+          require('../bitacora').anotarCambio({
+            def: module.exports,
+            accion: 'Cambio',
+            fila,
+            detalle: `Al cambiar de iglesia se movió con el cuerpo: ${sigue.comoSeLee(movidas)}.`,
+            usuario: user,
+          });
+        }
+      }
+
       /**
        * Recién marcado como directiva: entran los líderes que ya lo eran.
        *
