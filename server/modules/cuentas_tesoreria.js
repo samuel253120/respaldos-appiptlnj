@@ -270,23 +270,47 @@ module.exports = {
         return 'La cuenta de «Cuotas de integrantes» es de un cuerpo o grupo: son las cuotas que pagan sus integrantes';
       }
 
-      // Una sola cuenta "General" y un solo "Fondo para la corporación" por nivel
+      const quedaCerrada = dato('estado') === 'Cerrada';
+      const estabaCerrada = !!existing && existing.estado === 'Cerrada';
+
+      /*
+       * Una sola cuenta "General", un solo "Fondo para la corporación" y una
+       * sola de "Cuotas" por nivel. VIGENTES: una cerrada es historia y no
+       * compite con nada.
+       *
+       * La regla no miraba el estado, y eso dejaba a una iglesia sin poder
+       * abrir la cuenta que reemplaza a la que acaba de cerrar: «Ya existe la
+       * cuenta general de ese nivel ("Tesorería general — Iglesia Central")»,
+       * nombrando justo la cuenta que la iglesia dio por terminada, y sin
+       * ofrecer ninguna salida. Cambiar de banco es lo más común que le pasa a
+       * una cuenta.
+       *
+       * Contar solo las activas arregla las dos direcciones de una vez: también
+       * impide volver a abrir la vieja cuando su reemplazo ya está andando, que
+       * sería quedarse con dos cuentas generales vigentes.
+       */
       const unicas = {
         General: 'la cuenta general',
         'Fondo para la corporación': 'el fondo para la corporación',
         'Cuotas de integrantes': 'la cuenta de cuotas',
       };
       const tipo = dato('tipo');
-      if (unicas[tipo]) {
+      if (unicas[tipo] && !quedaCerrada) {
         const cuerpoId = ambito === 'Cuerpo / Grupo' ? dato('cuerpo_id') : null;
         const iglesiaId = ambito === 'Corporación' ? null : dato('iglesia_id');
+        const VIGENTE = "estado = 'Activa'";
         const otra = cuerpoId
-          ? db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND cuerpo_id = ? AND id != ?').get(tipo, cuerpoId, id || 0)
+          ? db.prepare(`SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND cuerpo_id = ? AND id != ? AND ${VIGENTE}`).get(tipo, cuerpoId, id || 0)
           : iglesiaId
-            ? db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND iglesia_id = ? AND cuerpo_id IS NULL AND id != ?').get(tipo, iglesiaId, id || 0)
-            : db.prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND iglesia_id IS NULL AND id != ?').get(tipo, id || 0);
+            ? db.prepare(`SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND iglesia_id = ? AND cuerpo_id IS NULL AND id != ? AND ${VIGENTE}`).get(tipo, iglesiaId, id || 0)
+            : db.prepare(`SELECT id, nombre FROM cuentas_tesoreria WHERE tipo = ? AND iglesia_id IS NULL AND id != ? AND ${VIGENTE}`).get(tipo, id || 0);
         if (otra) {
-          return `Ya existe ${unicas[tipo]} de ese nivel ("${otra.nombre}"). Las demás cuentas deben ser de tipo «Proyecto / Trabajo».`;
+          // Volver a abrir la vieja y abrir una segunda no son el mismo acto, y
+          // el consejo que sirve para uno no sirve para el otro
+          return estabaCerrada
+            ? `No se puede volver a abrir: mientras estuvo cerrada se abrió ${unicas[tipo]} de ese nivel ("${otra.nombre}"). `
+              + 'Cierre esa primero si quiere volver a usar esta.'
+            : `Ya existe ${unicas[tipo]} de ese nivel ("${otra.nombre}"). Las demás cuentas deben ser de tipo «Proyecto / Trabajo».`;
         }
       }
 
@@ -302,8 +326,6 @@ module.exports = {
        * se está cerrando— y queda a la vista para corregirla. Es lo mismo que
        * hace una solicitud con su fecha de respuesta al darse por cerrada.
        */
-      const quedaCerrada = dato('estado') === 'Cerrada';
-      const estabaCerrada = !!existing && existing.estado === 'Cerrada';
       // Se mira lo que trae ESTE guardado, no lo que hubiera antes: si no dice
       // cuándo, es hoy. Una fecha vieja de un cierre anterior no es la de este.
       if (quedaCerrada && !estabaCerrada && !data.fecha_cierre) {
