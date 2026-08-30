@@ -137,11 +137,11 @@ async function montarEscenario(admin) {
     { nombre: `Iglesia Sur ${MARCA}`, codigo: 'ZZPRUEBA-S', estado: 'Activa' });
 
   const damas = await buscarOCrear('cuerpos', (f) => f.nombre === `Damas ${MARCA} Norte`,
-    { nombre: `Damas ${MARCA} Norte`, tipo: 'Dorcas', iglesia_id: norte.id, estado: 'Activo' });
+    { nombre: `Damas ${MARCA} Norte`, tipo: 'Cuerpo', iglesia_id: norte.id, estado: 'Activo' });
   const jovenes = await buscarOCrear('cuerpos', (f) => f.nombre === `Jovenes ${MARCA} Norte`,
-    { nombre: `Jovenes ${MARCA} Norte`, tipo: 'Juventud', iglesia_id: norte.id, estado: 'Activo' });
+    { nombre: `Jovenes ${MARCA} Norte`, tipo: 'Cuerpo', iglesia_id: norte.id, estado: 'Activo' });
   const cuerpoSur = await buscarOCrear('cuerpos', (f) => f.nombre === `Damas ${MARCA} Sur`,
-    { nombre: `Damas ${MARCA} Sur`, tipo: 'Dorcas', iglesia_id: sur.id, estado: 'Activo' });
+    { nombre: `Damas ${MARCA} Sur`, tipo: 'Cuerpo', iglesia_id: sur.id, estado: 'Activo' });
 
   // La gente. Los apellidos son la aguja con que después se busca la fuga.
   let siguiente = 21000000;
@@ -178,12 +178,12 @@ async function montarEscenario(admin) {
 
   const pastorSur = await buscarOCrear('pastores', (f) => f.apellidos === `Pastorsur${MARCA}`,
     { nombres: 'Pastor', apellidos: `Pastorsur${MARCA}`, rut: await nuevoRut(),
-      iglesia_id: sur.id, cargo: 'Pastor', estado: 'Activo' });
+      iglesia_id: sur.id, cargo: 'Pastor Probando', estado: 'Activo' });
 
   const cuentaSur = await buscarOCrear('cuentas_tesoreria', (f) => f.nombre === `Caja ${MARCA} Sur`,
-    { nombre: `Caja ${MARCA} Sur`, ambito: 'Iglesia', iglesia_id: sur.id, estado: 'Activa', saldo_inicial: 100000 });
+    { nombre: `Caja ${MARCA} Sur`, ambito: 'Iglesia local', iglesia_id: sur.id, estado: 'Activa', saldo_inicial: 100000 });
   const cuentaJovenes = await buscarOCrear('cuentas_tesoreria', (f) => f.nombre === `Caja ${MARCA} Jovenes`,
-    { nombre: `Caja ${MARCA} Jovenes`, ambito: 'Cuerpo', iglesia_id: norte.id, cuerpo_id: jovenes.id,
+    { nombre: `Caja ${MARCA} Jovenes`, ambito: 'Cuerpo / Grupo', iglesia_id: norte.id, cuerpo_id: jovenes.id,
       estado: 'Activa', saldo_inicial: 50000 });
 
   const actividadSur = await buscarOCrear('asistencias', (f) => f.nombre === `Culto ${MARCA} Sur`,

@@ -50,6 +50,8 @@ const bitacora = require('./bitacora');
 const alcance = require('./alcance');
 const dependencias = require('./dependencias');
 const fechas = require('./fechas');
+// Que un desplegable no admita lo que no ofrece (ver server/opciones.js)
+const opciones = require('./opciones');
 
 /**
  * Un dato que no cuadra, no una avería: lo que un módulo devuelve desde su
@@ -1331,6 +1333,19 @@ function buildRouter() {
           const antes = existing[nombre];
           return String(antes == null ? '' : antes) !== String(val == null ? '' : val);
         };
+
+        /*
+         * Y que un desplegable no admita lo que no ofrece.
+         *
+         * La pantalla ofrecía las opciones escritas y por la API entraba
+         * cualquier otra cosa: un tipo de ayuda «Lo que sea», el estado de un
+         * miembro «Cualquier cosa». Por qué se mira solo lo que este guardado
+         * está cambiando —y no la ficha entera— está en server/opciones.js: hay
+         * fichas que ya traen un valor fuera de su lista y no pueden quedar
+         * imposibles de guardar por algo que su dueño no eligió.
+         */
+        const fueraDeLista = opciones.loQueNoEstaEnLaLista(def, data, cambia);
+        if (fueraDeLista) return res.status(400).json({ error: fueraDeLista });
 
         /*
          * Y que el archivo que se adjunta esté de verdad en el disco.
