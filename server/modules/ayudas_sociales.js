@@ -194,6 +194,37 @@ module.exports = {
   display: '{tipo_ayuda} — {beneficiario}',
   dateField: 'fecha',
   searchFields: ['beneficiario', 'descripcion', 'tipo_ayuda'],
+  /*
+   * «¿Cuál era la ayuda de cuarenta y cinco mil?» es una pregunta de
+   * mostrador, y hasta la 1.211.0 había que bajar la planilla y buscarla en
+   * Excel: «45000» y «45.000» daban CERO los dos. Es el mismo hallazgo que
+   * tuvo Tesorería y se arregla igual.
+   *
+   * Va en `buscaTambien` y no en `searchFields` porque el monto se guarda como
+   * número: la columna es REAL, así que pegado como texto sale «45000.0».
+   *
+   * Y el CAST no es para que se encuentre —«45000» calzaría igual dentro de
+   * «45000.0»— sino para que NO SE ENCUENTRE DE MÁS. El buscador compara
+   * también sin separadores, así que «45000.0» sin el punto queda «450000», y
+   * buscar cuatrocientos cincuenta mil encontraba una ayuda de cuarenta y
+   * cinco mil. Medido con las dos expresiones, sobre una ayuda de $45.000:
+   *
+   *                                   «45000»  «45.000»  «450000»
+   *   CAST(valor_estimado AS INTEGER)     1        1          0
+   *   valor_estimado                      1        1          1   ← de más
+   *
+   * Se descubrió al romper el CAST a propósito y ver que no se caía nada: la
+   * prueba solo miraba que lo que está se encuentre, no que lo que no está no
+   * aparezca.
+   *
+   * Y va SOLO el monto. Las notas siguen fuera del buscador a propósito:
+   * buscar «oncológico» devuelve cero, y tiene que seguir devolviendo cero
+   * —son el cuaderno interno de quien atiende, no un índice—. No lleva
+   * `reservado` porque el valor de una ayuda no pertenece a ningún grupo
+   * reservado de este módulo; el día que lo tenga, el motor no arranca hasta
+   * que se declare (ver revisarLoQueSeBuscaDeMas en server/registry.js).
+   */
+  buscaTambien: [{ sql: 'CAST(valor_estimado AS INTEGER)' }],
   listFields: ['fecha', 'beneficiario', 'beneficiario_tipo', 'tipo_ayuda', 'valor_estimado', 'estado', 'iglesia_id'],
   filterFields: ['beneficiario_tipo', 'tipo_ayuda', 'estado', 'iglesia_id'],
   defaultSort: { field: 'fecha', dir: 'desc' },
@@ -237,8 +268,25 @@ module.exports = {
     // De qué solicitud salió, cuando salió de una. Lo escribe el sistema al
     // aprobarla; queda a la vista para poder ir a leer lo que se pidió.
     { name: 'solicitud_id', label: 'Solicitud de origen', type: 'ref', ref: 'solicitudes', readonly: true },
-    { name: 'soporte', label: 'Soporte / Evidencia', type: 'file' },
-    { name: 'notas', label: 'Notas', type: 'textarea' },
+    /*
+     * Estos dos no van en la hoja impresa, y por dos razones distintas.
+     *
+     * EL SOPORTE, porque lo que se imprimiría es el nombre del archivo en el
+     * servidor —«1788065198180-b616c941-boleta.txt»—, que es ruido técnico en
+     * un documento formal. La revisión de Documentos ya lo dejó fuera de la
+     * hoja del miembro por lo mismo.
+     *
+     * LAS NOTAS, porque son el cuaderno interno de quien atiende: sirven para
+     * acordarse de que hay que pasar a ver a alguien. Medido, lo que salía
+     * impreso: «Se le ofreció visita del pastor. Está en tratamiento
+     * oncológico.». En una hoja que se firma y se entrega —a la directiva, a
+     * una fundación, a la propia persona— eso es otra cosa.
+     *
+     * En pantalla se siguen viendo los dos, para quien abre la ayuda: lo que
+     * cambia es qué se lleva el papel.
+     */
+    { name: 'soporte', label: 'Soporte / Evidencia', type: 'file', enElPapel: false },
+    { name: 'notas', label: 'Notas', type: 'textarea', enElPapel: false },
 
     // ---------------- De dónde salió ----------------
     /*

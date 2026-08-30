@@ -213,7 +213,7 @@ app.get('/api/meta', authRequired, (req, res) => {
       fields: [
         ...m.fields
           .filter((f) => !f.oculto)
-          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, sensible, reservado, futuro, placeholder }) => ({
+          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, sensible, reservado, futuro, placeholder, enElPapel }) => ({
             name, label, type, required: !!required, options: options || null,
             // Los límites viajan para que el formulario avise antes de mandar.
             // Quien manda igual —o escribe la dirección a mano— se topa con la
@@ -235,6 +235,17 @@ app.get('/api/meta', authRequired, (req, res) => {
             // esto, la de una cuenta de tesorería pedía «el nombre, el apellido
             // o el RUT», que para una cuenta no quiere decir nada.
             placeholder: placeholder || null,
+            /*
+             * «Este campo NO va en la hoja impresa». El falso dice algo y por
+             * eso viaja (ver EL_NO_DICE_ALGO en server/meta-liviana.js); no
+             * venir significa lo contrario, que va como todos.
+             *
+             * Iba solo para los campos calculados, que es donde se estrenó, y
+             * un campo corriente que lo declaraba se imprimía igual: la
+             * pantalla nunca se enteraba. Se vio al mandar a imprimir una
+             * ayuda social y encontrar sus notas privadas en la hoja.
+             */
+            enElPapel: enElPapel === undefined ? null : !!enElPapel,
             buscador: buscador === undefined ? null : !!buscador,
             calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
             computed: false,

@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.211.0", fecha: "2026-08-30", titulo: "Las notas internas y el nombre del archivo dejan de salir en la hoja impresa de una ayuda —y cualquier campo que pida quedarse fuera del papel ahora se respeta de verdad—, y una ayuda se encuentra por su monto, con puntos o sin ellos" },
   { version: "1.210.0", fecha: "2026-08-30", titulo: "El vigía avisa de lo que se pidió y nadie entregó: las ayudas que llevan días en «Solicitada» o «Aprobada» llegan en un solo aviso a quien las administra, con para quién, de qué y hace cuánto" },
   { version: "1.209.0", fecha: "2026-08-30", titulo: "Borrar una ayuda, una solicitud o un certificado deja su línea en el historial de la persona, con de cuándo era y cuánto: hasta ahora el historial seguía afirmando que se le entregó algo que ya no está" },
   { version: "1.208.0", fecha: "2026-08-30", titulo: "Deshacer una entrega pregunta antes, y dice cuánto se retira del libro de la plata al hacerlo: cambiar «Entregada» por otro estado no es corregir un tipeo, es decir que lo que ya se había dado por entregado no salió" },
