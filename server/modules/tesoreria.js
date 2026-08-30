@@ -385,28 +385,45 @@ module.exports = {
       const entreCuentas = require('../entre-cuentas');
       const cuentas = entreCuentas.totalesDe(db, whereSql, params);
       const porCategoria = entreCuentas.porCategoriaDe(db, whereSql, params);
-      const suyasResumen = require('../alcance').iglesiasDe(req.user);
       /*
        * Saldo por cuenta, para ver de un vistazo cómo está repartido el dinero.
        * El saldo cuenta solo lo que ya ocurrió, y lo anotado más adelante va en
        * su propia columna: no es plata que esté en la caja (ver server/saldos.js).
        * El corte va en los CASE y no en el JOIN porque hacen falta las dos cifras.
+       *
+       * Qué cuentas entran lo decide el MISMO alcance que el listado de Cuentas
+       * de Tesorería, pedido en una línea. Acá había un recorte escrito a mano
+       * —«las iglesias que administra»— y le faltaban las otras dos partes: los
+       * cuerpos asignados y el nivel de tesorería. Medido con una tesorera de
+       * cuerpo, que en su listado ve 33 de 41: este resumen le devolvía las 41,
+       * ocho de un nivel que no alcanza, con su saldo. Entre ellas la general de
+       * la corporación, $ 56.231.187.
+       *
+       * El recorte va en una SUBCONSULTA sobre la tabla sola, y no pegado al
+       * WHERE de acá: las condiciones que emite server/alcance.js traen los
+       * nombres de columna a secas, y en esta consulta hay dos tablas con una
+       * columna `iglesia_id` —la cuenta y el movimiento—. Pegada directamente,
+       * la condición se ataba al movimiento y no a la cuenta: a un tesorero de
+       * una sola iglesia, que ve 28 cuentas, el resumen le devolvía CERO.
        */
       const YA = "t.fecha <= date('now','localtime')";
+      const deLasCuentas = [];
+      const suyas = require('../alcance')
+        .condiciones(require('../registry').getModule('cuentas_tesoreria'), req.user, deLasCuentas);
       const porCuenta = db
         .prepare(
-          `SELECT c.id, c.nombre, c.ambito, c.tipo,
-                  COALESCE(c.saldo_inicial, 0)
+          `SELECT cuentas_tesoreria.id, cuentas_tesoreria.nombre, cuentas_tesoreria.ambito, cuentas_tesoreria.tipo,
+                  COALESCE(cuentas_tesoreria.saldo_inicial, 0)
                     + COALESCE(SUM(CASE WHEN ${YA} AND t.tipo = 'Ingreso' THEN t.monto ELSE 0 END), 0)
                     - COALESCE(SUM(CASE WHEN ${YA} AND t.tipo = 'Egreso'  THEN t.monto ELSE 0 END), 0) AS saldo,
                   COALESCE(SUM(CASE WHEN NOT (${YA}) THEN (CASE WHEN t.tipo = 'Ingreso' THEN t.monto ELSE -t.monto END) ELSE 0 END), 0) AS agendado
-             FROM cuentas_tesoreria c
-             LEFT JOIN tesoreria t ON t.cuenta_id = c.id
-            ${suyasResumen.length ? `WHERE c.iglesia_id IN (${suyasResumen.map(() => '?').join(',')})` : ''}
-            GROUP BY c.id
-            ORDER BY c.ambito, c.tipo DESC, c.nombre`
+             FROM cuentas_tesoreria
+             LEFT JOIN tesoreria t ON t.cuenta_id = cuentas_tesoreria.id
+            ${suyas ? `WHERE cuentas_tesoreria.id IN (SELECT id FROM cuentas_tesoreria WHERE ${suyas})` : ''}
+            GROUP BY cuentas_tesoreria.id
+            ORDER BY cuentas_tesoreria.ambito, cuentas_tesoreria.tipo DESC, cuentas_tesoreria.nombre`
         )
-        .all(...suyasResumen);
+        .all(...deLasCuentas);
 
       /*
        * Y sin las cifras para quien no alcanza la llave de los montos: la

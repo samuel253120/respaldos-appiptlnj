@@ -294,11 +294,26 @@ module.exports = {
      * orden que ese, y es el mismo con que se leen en el listado.
      */
     router.get('/cuentas_tesoreria/:id(\\d+)/cartola', requirePerm('tesoreria', 'view'), (req, res) => {
-      const cuenta = db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(req.params.id);
-      if (!cuenta) return res.status(404).json({ error: 'Cuenta no encontrada' });
-      if (!require('../alcance').alcanzaIglesia(req.user, cuenta.iglesia_id)) {
-        return res.status(403).json({ error: 'Esa cuenta está fuera de lo que tiene asignado' });
-      }
+      /*
+       * Quién puede mirar esta cuenta lo contesta `registroSuyo`, y no una
+       * comprobación escrita acá.
+       *
+       * Acá había una a mano: `alcanzaIglesia(req.user, cuenta.iglesia_id)`.
+       * Eso es la mitad del alcance —falta el cuerpo— y no es nada del NIVEL de
+       * tesorería, que es la otra llave que acota la plata (server/tesorerias.js).
+       * Medido con una tesorera de cuerpo: el listado le mostraba 33 de 41
+       * cuentas, todas de su nivel, la ficha de la cuenta de la corporación le
+       * contestaba 403… y esta ruta le entregaba su cartola del año entera,
+       * 1.168 filas, con el saldo corriendo. La cuenta de la corporación tiene
+       * `iglesia_id = null`, y esa comprobación con null la pasa cualquiera.
+       *
+       * `registroSuyo` existe justo para esto —lo escribió la auditoría de
+       * aislamiento de la 1.98.0, que encontró diez rutas propias en la misma
+       * situación— y aplica el mismo alcance que el listado y la ficha, entero,
+       * en una línea (ver server/alcance.js).
+       */
+      const cuenta = require('../alcance').registroSuyo(req, res, 'cuentas_tesoreria', req.params.id, 'Esa cuenta');
+      if (!cuenta) return;
 
       const desde = req.query.desde || null;
       const hasta = req.query.hasta || null;
@@ -365,11 +380,11 @@ module.exports = {
 
     // Estado de una cuenta: saldo, totales y sus últimos movimientos.
     router.get('/cuentas_tesoreria/:id(\\d+)/estado', requirePerm('cuentas_tesoreria', 'view'), (req, res) => {
-      const cuenta = db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(req.params.id);
-      if (!cuenta) return res.status(404).json({ error: 'Cuenta no encontrada' });
-      if (!require('../alcance').alcanzaIglesia(req.user, cuenta.iglesia_id)) {
-        return res.status(403).json({ error: 'Esa cuenta está fuera de lo que tiene asignado' });
-      }
+      // El mismo alcance entero que la ficha, por la misma puerta que la
+      // cartola de acá arriba: esta ruta le contestaba a la tesorera de cuerpo
+      // el saldo de la corporación y sus últimos diez movimientos.
+      const cuenta = require('../alcance').registroSuyo(req, res, 'cuentas_tesoreria', req.params.id, 'Esa cuenta');
+      if (!cuenta) return;
       const m = movimientosDe(cuenta.id, db);
       // Lo que ya está anotado para más adelante, que no es saldo todavía
       const agendado = require('../saldos').loAgendadoDe(cuenta.id, db);

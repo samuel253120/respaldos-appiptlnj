@@ -356,7 +356,10 @@ function registroSuyo(req, res, modulo, id, queEs) {
   const def = getModule(modulo);
   const fila = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
   if (!fila) {
-    res.status(404).json({ error: `${queEs} no encontrado` });
+    // «no se encontró» y no «no encontrado»: `queEs` lo escribe cada módulo con
+    // el artículo que le corresponde —«Esa acta», «Esa cuenta», «Ese pastor»—,
+    // y una terminación fija le quedaba mal a la mitad de ellos.
+    res.status(404).json({ error: `${queEs} no se encontró` });
     return null;
   }
   if (!alcanza(def, fila, req.user)) {

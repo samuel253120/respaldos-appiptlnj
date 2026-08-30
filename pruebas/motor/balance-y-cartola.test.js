@@ -201,7 +201,10 @@ test('la cartola incluye los traslados: es el libro de la cuenta, no el balance'
 test('una cuenta que no existe da 404, no una cartola vacía', () => {
   const { codigo, d } = cartola({ user: usuario, params: { id: '999999' }, query: {} });
   assert.equal(codigo, 404);
-  assert.match(d.error, /no encontrada/i);
+  // Desde la 1.213.0 la ruta pide el alcance con `registroSuyo`, que dice «Esa
+  // cuenta no se encontró»: concuerda, y antes decía «no encontrado» en los
+  // módulos femeninos (ver server/alcance.js)
+  assert.match(d.error, /no se encontró/i);
 });
 
 /* ------------------------------------------------------------- el informe */
