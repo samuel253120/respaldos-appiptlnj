@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.208.0", fecha: "2026-08-30", titulo: "Deshacer una entrega pregunta antes, y dice cuánto se retira del libro de la plata al hacerlo: cambiar «Entregada» por otro estado no es corregir un tipeo, es decir que lo que ya se había dado por entregado no salió" },
   { version: "1.207.0", fecha: "2026-08-30", titulo: "Un desplegable deja de admitir lo que no ofrece: los setenta y siete campos del sistema que traen su lista escrita la comprueban al guardar, y las fichas que ya traían un valor de antes se siguen pudiendo guardar" },
   { version: "1.206.0", fecha: "2026-08-30", titulo: "Registrar dos veces la misma ayuda —la misma persona, el mismo tipo y el mismo día— pregunta antes de guardarla, con las señas de la que ya estaba, y deja seguir a quien confirma: repetida, el historial de esa persona dice que recibió más de lo que recibió" },
   { version: "1.205.0", fecha: "2026-08-30", titulo: "Al marcar una ayuda como entregada, el sistema pregunta por lo que falta —cuánto valía, el respaldo, quién la aprobó— y deja seguir a quien confirma; el informe dice cuántas entregas no llevan monto en vez de sumarlas como $ 0; y un formulario con un campo obligatorio escondido vuelve a poder guardarse" },

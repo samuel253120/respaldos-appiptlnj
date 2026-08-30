@@ -294,13 +294,21 @@ module.exports = {
       if (cuenta) return cuenta;
 
       /*
-       * Y después las dos preguntas, en este orden. La confirmación es una sola
+       * Y después las preguntas, en este orden. La confirmación es una sola
        * para todo el guardado, así que la que se muestra tiene que ser la que
-       * más importa: una ayuda repetida dice algo FALSO del historial de una
-       * persona, y con eso se decide si se le entrega otra vez. Una a la que le
-       * falta el monto dice algo INCOMPLETO, que es menos grave. Es el mismo
-       * criterio con que Tesorería pone primero el movimiento repetido.
+       * más importa:
+       *
+       *   1. DESHACER UNA ENTREGA borra un hecho que ya se dio por cierto y,
+       *      si salió de una cuenta, le mueve el saldo. Es lo más grave.
+       *   2. UNA AYUDA REPETIDA dice algo FALSO del historial de una persona,
+       *      y con eso se decide si se le entrega otra vez.
+       *   3. UNA SIN MONTO dice algo INCOMPLETO, que es menos grave.
+       *
+       * Es el mismo criterio con que Tesorería pone primero el movimiento
+       * repetido: lo que cuesta plata se pregunta antes.
        */
+      const seDeshace = puente.avisoSiSeDeshaceLaEntrega({ data, existing, db, confirmado });
+      if (seDeshace) return seDeshace;
       const repetida = preguntaSiSeRepite(data, { existing, db, confirmado });
       if (repetida) return repetida;
       return puente.loQueLeFaltaAlEntregar({ data, existing, confirmado });

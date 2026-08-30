@@ -241,6 +241,52 @@ function loQueLeFaltaAlEntregar({ data, existing, confirmado }) {
 }
 
 /**
+ * El aviso de una entrega que se deshace, o null si no hay nada que decir.
+ *
+ * Cambiar «Entregada» por «Solicitada» no es corregir un tipeo: es decir que
+ * la mercadería no salió después de haber dicho que sí. Medido antes de esto,
+ * el cambio pasaba con un 200 y sin una palabra —quedaba anotado en el
+ * Registro de Cambios, que ya es más de lo que hacen otros módulos, pero nadie
+ * se enteraba en el momento—.
+ *
+ * Y desde la 1.204.0 arrastra algo más: si la ayuda había salido de una cuenta
+ * de tesorería, deshacerla RETIRA ese egreso del libro. Eso es lo correcto
+ * —no se gastó lo que no se entregó— y es justamente lo que hay que decir
+ * antes, con el monto, porque quien deshace la entrega por un descuido está
+ * moviendo el saldo de una cuenta sin saberlo.
+ *
+ * Se pregunta, no se bloquea: marcar «Entregada» por error y tener que
+ * deshacerlo es exactamente para lo que sirve poder corregir una ficha. Es el
+ * mismo mecanismo con que se avisa al mover el saldo inicial de una cuenta.
+ */
+function avisoSiSeDeshaceLaEntrega({ data, existing, db, confirmado }) {
+  if (confirmado || !existing) return null;
+  if (existing.estado !== 'Entregada') return null;
+
+  const ahora = data.estado;
+  if (ahora === undefined || ahora === null || ahora === existing.estado) return null;
+
+  const egreso = existing.movimiento_id
+    ? db.prepare('SELECT monto FROM tesoreria WHERE id = ?').get(existing.movimiento_id)
+    : null;
+
+  const enPesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
+
+  return {
+    error:
+      `Esta ayuda está marcada como entregada y pasaría a «${ahora}». Deshacer una entrega no es `
+      + 'corregir un tipeo: es decir que lo que ya se había dado por entregado no salió, y así queda '
+      + 'anotado. '
+      + (egreso
+        ? `Además se retira de Tesorería el egreso de ${enPesos(egreso.monto)} que dejó, así que el `
+          + 'saldo de esa cuenta cambia. '
+        : '')
+      + 'Si de verdad no se entregó, confirme.',
+    confirmar: 'entrega_que_se_deshace',
+  };
+}
+
+/**
  * Deja la tesorería calzando con lo que dice la ayuda: crea el egreso que
  * falte, corrige el que cambió y retira el que ya no corresponde.
  *
@@ -294,6 +340,6 @@ function retirarEgresoDeAyuda(id, db) {
 
 module.exports = {
   sincronizarEgresoDeAyuda, retirarEgresoDeAyuda, egresoDeLaAyuda, revisarDeDondeSalio,
-  loQueLeFaltaAlEntregar,
+  loQueLeFaltaAlEntregar, avisoSiSeDeshaceLaEntrega,
   DE_UNA_CUENTA, EN_ESPECIE, DE_DONDE, CATEGORIA,
 };
