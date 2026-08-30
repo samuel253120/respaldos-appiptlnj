@@ -142,20 +142,28 @@ test('una cuenta que no existe se distingue de una que no le corresponde', () =>
 
 // ------------------------------------------ el resumen dice las mismas cuentas ----
 
-/** Las cuentas que esta persona ve en su listado, por el mismo camino que el listado. */
-function suListado(user) {
-  const params = [];
-  const donde = alcance.condiciones(getModule('cuentas_tesoreria'), user, params);
-  return db.prepare(`SELECT id FROM cuentas_tesoreria ${donde ? `WHERE ${donde}` : ''}`).all(...params).map((c) => c.id);
-}
+/**
+ * ¿Ve esta persona esta cuenta en su listado? Se pregunta por el mismo camino
+ * que el listado, cuenta por cuenta.
+ *
+ * Se mira SOLO sobre las cuatro cuentas de esta prueba y no sobre la tabla
+ * entera: las pruebas del motor comparten una base y corren en paralelo, así
+ * que entre la consulta del listado y la del resumen otro archivo alcanza a
+ * crear una cuenta suya. Comparar las dos listas completas hacía fallar esto
+ * una de cada seis corridas, y el defecto era de la prueba.
+ */
+const laVe = (user, cuentaId) =>
+  alcance.alcanza(getModule('cuentas_tesoreria'), db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(cuentaId), user);
 
 test('el resumen de Tesorería devuelve exactamente las cuentas que esa persona ve', () => {
+  const lasMias = [deLaCorporacion, deLaIglesiaA, deLaIglesiaB, delCuerpo];
   for (const [quien, user] of [['administrador', todoPoderoso], ['de una iglesia', deUnaIglesia], ['de los cuerpos', deLosCuerpos]]) {
-    const suyas = suListado(user).sort((a, b) => a - b);
     const { d } = resumen({ user, query: {} });
-    const enElResumen = (d.porCuenta || []).map((c) => c.id).sort((a, b) => a - b);
-    assert.deepEqual(enElResumen, suyas,
-      `${quien}: el resumen y el listado tienen que decir las mismas cuentas`);
+    const enElResumen = new Set((d.porCuenta || []).map((c) => c.id));
+    for (const cuenta of lasMias) {
+      assert.equal(enElResumen.has(cuenta), laVe(user, cuenta),
+        `${quien}: el resumen y el listado tienen que decir lo mismo de la cuenta ${cuenta}`);
+    }
   }
 });
 

@@ -76,6 +76,47 @@ function avisoSiSeMueveElPuntoDePartida(db, { data, existing, confirmado }) {
   };
 }
 
+/**
+ * El aviso de que se está cerrando una cuenta con plata dentro, o null.
+ *
+ * Cerrar no es un rótulo: es lo que decide si esa plata se puede volver a
+ * mover. Medido —cuenta de proyecto con $ 250.000 anotados—: se cerraba con un
+ * 200 y sin preguntar nada, y de ahí en adelante la plata no salía por ninguna
+ * de las tres puertas que existen. El traspaso: «está cerrada: no puede salir
+ * dinero de ella». El egreso a mano: «no admite nuevos movimientos». El
+ * borrado: «tiene 1 movimiento(s) registrado(s)». Las tres negativas son
+ * correctas cada una por su lado; juntas dejan la plata sin salida, y el saldo
+ * sigue sumando en todos los totales de una cuenta que la organización dio por
+ * terminada.
+ *
+ * La salida existe —reabrirla, traspasar el saldo y volver a cerrarla— y no
+ * estaba escrita en ninguna parte, así que quien se topara con esto iba a
+ * pensar que el sistema le perdió la plata. Se dice acá, en el único momento en
+ * que sirve decirlo: antes de cerrarla.
+ *
+ * Se pregunta y no se bloquea, como con el saldo inicial: hay cierres que se
+ * hacen así a propósito, y discutírselo a quien sabe lo que está haciendo sería
+ * peor que el problema.
+ */
+function avisoSiSeCierraConPlata(db, { data, existing, confirmado }) {
+  if (confirmado || !existing) return null;
+  if (data.estado !== 'Cerrada' || existing.estado === 'Cerrada') return null;
+
+  const m = movimientosDe(existing.id, db);
+  const saldo = (Number(existing.saldo_inicial) || 0) + m.ingresos - m.egresos;
+  if (!saldo) return null;
+
+  return {
+    error:
+      `Esta cuenta tiene ${enPesos(saldo)}. Cerrarla los deja adentro y desde ahí no van a poder `
+      + 'salir: una cuenta cerrada no admite movimientos nuevos, no puede ser el origen de un '
+      + 'traspaso y tampoco se elimina mientras tenga movimientos anotados. Lo habitual es '
+      + 'traspasar el saldo a otra cuenta y después cerrarla; si ya quedó cerrada, hay que volver a '
+      + 'abrirla para poder sacarlo. Si de verdad corresponde cerrarla así, confirme.',
+    confirmar: 'cuenta_cerrada_con_saldo',
+  };
+}
+
 module.exports = {
   name: 'cuentas_tesoreria',
   label: 'Cuentas de Tesorería',
@@ -212,6 +253,29 @@ module.exports = {
       }
 
       if (isNew && !data.fecha_apertura) data.fecha_apertura = new Date().toISOString().slice(0, 10);
+
+      /*
+       * Una cuenta que se cierra dice CUÁNDO se cerró.
+       *
+       * El campo existe y aparece en la ficha en cuanto el estado es «Cerrada»,
+       * pero no era obligatorio: medido, una cuenta quedó cerrada con la fecha
+       * en blanco, y una fecha de cierre vacía no se distingue de una cuenta que
+       * nadie ha cerrado. Se pone sola con el día de hoy —que es el día en que
+       * se está cerrando— y queda a la vista para corregirla. Es lo mismo que
+       * hace una solicitud con su fecha de respuesta al darse por cerrada.
+       */
+      const quedaCerrada = dato('estado') === 'Cerrada';
+      const estabaCerrada = !!existing && existing.estado === 'Cerrada';
+      // Se mira lo que trae ESTE guardado, no lo que hubiera antes: si no dice
+      // cuándo, es hoy. Una fecha vieja de un cierre anterior no es la de este.
+      if (quedaCerrada && !estabaCerrada && !data.fecha_cierre) {
+        data.fecha_cierre = new Date().toISOString().slice(0, 10);
+      }
+
+      // Y antes de cerrarla, si tiene plata adentro, se pregunta: es lo que
+      // decide si esa plata se va a poder volver a mover
+      const conPlata = avisoSiSeCierraConPlata(db, { data, existing, confirmado });
+      if (conPlata) return conPlata;
 
       /*
        * Mover el punto de partida corre todos los saldos de la cuenta.
