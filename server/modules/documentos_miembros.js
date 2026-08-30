@@ -164,7 +164,7 @@ module.exports = {
     "(SELECT coalesce(m.nombres,'') || ' ' || coalesce(m.apellidos,'')"
     + ' FROM miembros m WHERE m.id = documentos_miembros.miembro_id)',
   ],
-  listFields: ['miembro_id', 'tipo', 'nombre', 'fecha', 'archivo'],
+  listFields: ['miembro_id', 'tipo', 'nombre', 'fecha', 'vence', 'archivo'],
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
     { name: 'miembro_id', label: 'Miembro', type: 'ref', ref: 'miembros', required: true },
@@ -182,14 +182,32 @@ module.exports = {
       ],
     },
     {
+      /*
+       * La ayuda decía «ej: "Carnet vigente hasta 2030"», o sea: el sistema
+       * pedía que la vigencia se escribiera DENTRO del nombre, donde ningún
+       * aviso la puede leer. Ahora hay una columna para eso, unas líneas más
+       * abajo, y el ejemplo deja de empujar hacia el lado equivocado.
+       */
       name: 'nombre', label: 'Nombre del documento', type: 'text', required: true,
-      help: 'Con qué nombre se reconoce este documento (ej: «Carnet vigente hasta 2030»).',
+      help: 'Con qué nombre se reconoce este documento (ej: «Carnet de Rosa», «Carta de traslado a la Norte»).',
     },
     {
       name: 'archivo', label: 'Documento', type: 'file', required: true,
       help: 'Foto o archivo. Si es una foto, se ajusta sola de tamaño al subirla.',
     },
     { name: 'fecha', label: 'Fecha del documento', type: 'date' },
+    {
+      /*
+       * Hasta cuándo vale el papel, para poder avisar antes de que haga falta.
+       *
+       * Es opcional a propósito: una carta de traslado o un certificado de
+       * bautismo no vencen nunca, y obligar a poner una fecha llevaría a
+       * inventarla. Los que sí vencen —el carnet, sobre todo— son justo los que
+       * se descubren vencidos el día del trámite.
+       */
+      name: 'vence', label: 'Vence el', type: 'date', futuro: true, noAntesDe: 'fecha',
+      help: 'Solo si el documento tiene vigencia. El sistema avisa antes de que se venza.',
+    },
     {
       /*
        * La iglesia NO se escribe a mano: sale del miembro.
@@ -259,4 +277,61 @@ module.exports = {
       return null;
     },
   },
+
+  porVencer,
 };
+
+/* =====================================================================
+ * LOS PAPELES QUE HAY QUE RENOVAR
+ *
+ * Nada avisaba de un carnet vencido, y la ayuda del propio campo empujaba a
+ * escribir la vigencia dentro del nombre —«Carnet vigente hasta 2030»—, donde
+ * ningún aviso la puede leer. Medido antes: ningún campo de vencimiento en el
+ * módulo y ningún aviso del panel sobre documentos, mientras el sistema sí
+ * sabía avisar de una credencial por vencer, de cuotas al debe, del respaldo
+ * atrasado, de faltas seguidas y de quien cumplió la mayoría.
+ *
+ * La maquinaria estaba hecha: esto es la misma forma de `credenciales.porVencer`
+ * —sale de acá y no de la ruta, para que la pantalla y el aviso del panel no
+ * puedan discrepar— y el aviso es una línea más en el vigía.
+ *
+ * Se cuenta desde HOY: lo que ya venció entra con días negativos, porque un
+ * carnet vencido hace un mes es más urgente que uno que vence en veinte días y
+ * los dos tienen que salir en la misma lista.
+ *
+ * A los que NO vencen no hace falta dejarlos fuera a mano. `date()` devuelve
+ * nulo con lo que no sea una fecha —nulo, vacío, espacios, texto— y comparar
+ * contra nulo no es cierto, así que no entran solos. Comprobado. Acá estaban
+ * escritas las dos comprobaciones «por si acaso» y no cuidaban nada: romperlas
+ * no ponía roja ninguna prueba. Es la misma advertencia que ya estaba escrita
+ * en el filtro de edad del motor (server/crud.js), y se cayó igual en ella.
+ *
+ * El alcance se pide a `alcance.condiciones`, que devuelve los nombres de
+ * columna SIN calificar —«miembro_id IN (…)»— y esta consulta tiene dos tablas.
+ * En vez de reescribirle el SQL a mano para ponerle el alias, se usa tal cual
+ * dentro de un `IN (SELECT id FROM documentos_miembros WHERE …)`: ahí no hay
+ * ambigüedad posible y, sobre todo, no hay que adivinar qué columnas nombra la
+ * condición, que es lo que se rompería el día que el alcance cambie.
+ * ===================================================================== */
+function porVencer(usuario, dentroDe) {
+  const { db } = require('../db');
+  const alcance = require('../alcance');
+  const dias = dentroDe === undefined
+    ? require('../ajustes').numero('avisos_documento_dias', 1, 365)
+    : dentroDe;
+
+  const params = [];
+  const donde = alcance.condiciones(module.exports, usuario, params);
+  return db
+    .prepare(
+      `SELECT d.id, d.miembro_id, d.tipo, d.nombre, d.vence,
+              CAST(julianday(d.vence) - julianday(date('now','localtime')) AS INTEGER) AS dias,
+              trim(coalesce(m.nombres,'') || ' ' || coalesce(m.apellidos,'')) AS titular
+         FROM documentos_miembros d
+         LEFT JOIN miembros m ON m.id = d.miembro_id
+        WHERE date(d.vence) <= date('now','localtime', '+' || ? || ' days')
+          ${donde ? `AND d.id IN (SELECT id FROM documentos_miembros WHERE ${donde})` : ''}
+        ORDER BY d.vence LIMIT 200`
+    )
+    .all(dias, ...params);
+}

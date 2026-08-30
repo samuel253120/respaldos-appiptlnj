@@ -188,10 +188,30 @@ test('avisa de quien ya cumplió 18 y sigue como menor de edad', () => {
 
   assert.equal(dejados.length, 1);
   assert.equal(dejados[0].tipo, 'cumplio_la_mayoria');
-  assert.match(dejados[0].detalle, /Aniceta Cumplioaños/);
-  assert.match(dejados[0].detalle, /directiva/, 'dice por qué importa, no solo que pasó');
-  assert.match(dejados[0].ruta, /f_tipo_miembro=/, 'y lleva a quiénes son');
-  assert.match(dejados[0].ruta, /edad_desde=18/);
+  /*
+   * `cuerpo` y `enlace`, no «detalle» y «ruta».
+   *
+   * Esta prueba decía «detalle» y «ruta» porque así estaba escrito el aviso, y
+   * pasaba. Pero `avisos.crear` toma solo las claves que conoce, y esas dos no
+   * están entre ellas: el aviso llegaba con el título pelado, sin texto y sin
+   * adónde ir, y la prueba no lo veía porque miraba el objeto que arma el
+   * vigía y no el que guarda el sistema. Se corrigieron las dos cosas en la
+   * 1.200.0, y abajo se comprueba lo que de verdad importa: que el texto y el
+   * enlace lleguen a la campanita.
+   */
+  assert.match(dejados[0].cuerpo, /Aniceta Cumplioaños/);
+  assert.match(dejados[0].cuerpo, /directiva/, 'dice por qué importa, no solo que pasó');
+  assert.match(dejados[0].enlace, /f_tipo_miembro=/, 'y lleva a quiénes son');
+  assert.match(dejados[0].enlace, /edad_desde=18/);
+
+  const avisos = require('../../server/avisos/avisos');
+  const usuario = db.prepare(
+    "INSERT INTO usuarios (rut, nombre, rol, activo, password) VALUES ('20777888-8','Quien recibe el aviso','admin',1,'x')"
+  ).run().lastInsertRowid;
+  const guardado = avisos.crear({ ...dejados[0], usuario_id: usuario });
+  assert.ok(guardado, 'el aviso no llegó a guardarse');
+  assert.match(guardado.cuerpo || '', /Aniceta Cumplioaños/, 'el texto tiene que llegar a la campanita');
+  assert.match(guardado.enlace || '', /f_tipo_miembro=/, 'y el enlace también');
   assert.equal(grande, Number(grande));
 });
 

@@ -83,6 +83,68 @@ function credencialesPorVencer(usuario, dejar) {
 }
 
 /**
+ * Papeles de la carpeta de alguien que están por vencer, o ya vencidos.
+ *
+ * Es el hermano del aviso de la credencial y se hizo con la misma forma: el
+ * módulo sabe cuáles son —`documentos_miembros.porVencer`, acotado a lo que
+ * esa persona alcanza— y acá solo se redacta.
+ *
+ * UN AVISO POR PERSONA Y NO UNO POR PAPEL. La credencial avisa una por una
+ * porque cada una es de alguien distinto y hay pocas; los documentos son
+ * muchos y de la misma persona pueden vencer tres el mismo mes —el carnet, el
+ * certificado y el permiso—. Tres campanazos por la misma señora la misma
+ * mañana es la forma más rápida de que alguien apague los avisos.
+ *
+ * Lo vencido manda sobre lo por vencer en el título: es lo que hay que salir a
+ * pedir hoy, no lo que se puede pedir la semana que viene.
+ */
+function documentosPorVencer(usuario, dejar) {
+  const { can } = require('../permissions');
+  if (!can(usuario, 'documentos_miembros', 'view')) return;
+  let papeles = [];
+  try {
+    papeles = require('../modules/documentos_miembros').porVencer(usuario) || [];
+  } catch (e) {
+    return;   // una base a medio migrar no puede tumbar la pasada del día
+  }
+  if (!papeles.length) return;
+
+  const porPersona = new Map();
+  for (const d of papeles) {
+    const suyos = porPersona.get(d.miembro_id) || [];
+    suyos.push(d);
+    porPersona.set(d.miembro_id, suyos);
+  }
+
+  for (const [miembroId, suyos] of porPersona) {
+    const titular = suyos[0].titular || 'Un miembro';
+    const vencidos = suyos.filter((d) => Number(d.dias) < 0);
+    const elPrimero = suyos[0];
+    const comoSeLee = (iso) => String(iso).slice(0, 10).split('-').reverse().join('-');
+    const cuenta = (d) => (Number(d.dias) < 0
+      ? `venció hace ${Math.abs(Number(d.dias))} día(s)`
+      : `le quedan ${Number(d.dias)} día(s)`);
+
+    dejar({
+      tipo: 'documento_por_vencer',
+      /*
+       * La clave lleva a quién y con qué fechas: mientras sean los mismos
+       * papeles con el mismo vencimiento no vuelve a avisar todos los días, y
+       * en cuanto venza otro o se renueve alguno, sí.
+       */
+      clave: `documentos_vencen:${miembroId}:${suyos.map((d) => `${d.id}=${d.vence}`).join(',')}`,
+      titulo: suyos.length === 1
+        ? `${vencidos.length ? 'Venció' : 'Por vencer'}: ${elPrimero.tipo} de ${titular}`
+        : `${suyos.length} documentos de ${titular} ${vencidos.length ? 'vencidos o por vencer' : 'por vencer'}`,
+      cuerpo: suyos.slice(0, 3)
+        .map((d) => `${d.tipo} (${comoSeLee(d.vence)}, ${cuenta(d)})`)
+        .join('; ') + (suyos.length > 3 ? `, y ${suyos.length - 3} más.` : '.'),
+      enlace: `#/m/miembros/ficha/${miembroId}/documentos`,
+    });
+  }
+}
+
+/**
  * Solicitudes a su cargo que ya debían estar contestadas.
  *
  * DOS PLAZOS, Y EL COMPROMETIDO MANDA. Si la solicitud dice para cuándo se
@@ -399,14 +461,22 @@ function cumplieronLaMayoria(usuario, dejar) {
     titulo: grandes.length === 1
       ? 'Una ficha sigue como menor de edad'
       : `${grandes.length} fichas siguen como menores de edad`,
-    detalle: `${nombres}${resto > 0 ? ` y ${resto} más` : ''} ya cumplieron 18 años y siguen como `
+    /*
+     * `cuerpo` y `enlace`, que son los nombres que entiende `avisos.crear`.
+     * Estaban escritos «detalle» y «ruta», y como `crear` toma solo las claves
+     * que conoce, los dos se perdían en silencio: este aviso salía con el
+     * título solo, sin texto y sin adónde ir. Se vio al escribir el aviso de
+     * los documentos por vencer, que se copió de acá.
+     */
+    cuerpo: `${nombres}${resto > 0 ? ` y ${resto} más` : ''} ya cumplieron 18 años y siguen como `
       + `"${TIPO_DE_MENOR}". De ese tipo sale quién compone la directiva de la iglesia.`,
-    ruta: '#/m/miembros?f_tipo_miembro=' + encodeURIComponent(TIPO_DE_MENOR) + '&edad_desde=18',
+    enlace: '#/m/miembros?f_tipo_miembro=' + encodeURIComponent(TIPO_DE_MENOR) + '&edad_desde=18',
   });
 }
 
-const REVISIONES = [credencialesPorVencer, solicitudesSinRespuesta, solicitudesSinResponsableActivo,
-  cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas, faltasSeguidas, cumplieronLaMayoria];
+const REVISIONES = [credencialesPorVencer, documentosPorVencer, solicitudesSinRespuesta,
+  solicitudesSinResponsableActivo, cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas, faltasSeguidas,
+  cumplieronLaMayoria];
 
 // ------------------------------------------------------------- la pasada ----
 

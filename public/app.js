@@ -3673,6 +3673,19 @@ function selectLabel(f, v) {
 const CON_FICHA = ['miembros', 'pastores', 'cuerpos', 'iglesias', 'no_miembros'];
 
 /** "07-11-1973": la fecha como se lee y se dice acá. */
+/**
+ * Si un documento ya venció, a la fecha de hoy.
+ *
+ * En la hoja impresa la fecha sola no basta: quien la lee está buscando qué
+ * hay que renovar, y comparar diez fechas contra el día de hoy a ojo es
+ * justamente lo que la hoja tendría que ahorrarle.
+ */
+function estaVencido(iso) {
+  const cuando = String(iso || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cuando)) return false;
+  return cuando < new Date().toISOString().slice(0, 10);
+}
+
 function fechaCorta(iso) {
   const s = String(iso || '').slice(0, 10);
   const [y, m, d] = s.split('-');
@@ -10777,13 +10790,16 @@ function printGenerico(m, row, susAyudas, suHistorial, susDocumentos) {
         : 'Sin documentos en carpeta.'}</div>
     ${papeles.length ? `
       <table class="grid tramite">
-        <thead><tr><th>Fecha</th><th>Tipo de documento</th><th>Nombre</th><th>Observaciones</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Tipo de documento</th><th>Nombre</th><th>Vence</th><th>Observaciones</th></tr></thead>
         <tbody>
           ${papeles.map((d) => `
             <tr>
               <td class="nowrap">${esc(d.fecha ? fechaCorta(d.fecha) : '')}</td>
               <td>${esc(d.tipo || '')}</td>
               <td>${esc(d.nombre || '')}${d.archivo ? '' : ' <i>— anotado, sin archivo en el sistema</i>'}</td>
+              <td class="nowrap">${d.vence
+                ? `${esc(fechaCorta(d.vence))}${estaVencido(d.vence) ? ' <b>(vencido)</b>' : ''}`
+                : '—'}</td>
               <td>${esc(d.observaciones || '')}</td>
             </tr>`).join('')}
         </tbody>

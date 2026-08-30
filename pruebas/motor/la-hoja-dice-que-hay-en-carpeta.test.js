@@ -122,11 +122,18 @@ test('un papel anotado sin archivo sale marcado', () => {
   assert.match(laHoja, /\$\{d\.archivo \? '' : ' <i>— anotado, sin archivo en el sistema<\/i>'\}/);
 });
 
-test('la tabla lleva las cuatro columnas que sirven en papel', () => {
+test('la tabla lleva las columnas que sirven en papel', () => {
+  /*
+   * Eran cuatro hasta la 1.200.0, cuando el documento pudo decir hasta cuándo
+   * vale: la vigencia entra en la hoja porque quien la lee está buscando
+   * justamente qué hay que renovar.
+   */
   const desde = laHoja.indexOf('<h2 class="print-h2">Documentos en carpeta</h2>');
   const hasta = laHoja.indexOf('Y su historial, debajo de todo');
   const seccion = laHoja.slice(desde, hasta);
-  assert.match(seccion, /<th>Fecha<\/th><th>Tipo de documento<\/th><th>Nombre<\/th><th>Observaciones<\/th>/);
+  assert.match(seccion, /<th>Fecha<\/th><th>Tipo de documento<\/th><th>Nombre<\/th><th>Vence<\/th><th>Observaciones<\/th>/);
+  assert.match(seccion, /estaVencido\(d\.vence\) \? ' <b>\(vencido\)<\/b>' : ''/,
+    'y lo vencido se marca: comparar diez fechas contra hoy a ojo es lo que la hoja tiene que ahorrar');
   assert.match(seccion, /fechaCorta\(d\.fecha\)/, 'la fecha del documento, escrita como se escribe');
   assert.doesNotMatch(seccion, /d\.archivo\}<\/td>/,
     'el nombre del archivo en el servidor no le dice nada a quien lee la hoja');

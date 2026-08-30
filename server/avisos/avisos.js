@@ -60,6 +60,13 @@ const TIPOS = {
     urgente: false,
     ayuda: 'Una credencial de su iglesia que vence dentro del plazo de aviso.',
   },
+  documento_por_vencer: {
+    label: 'Documentos de la carpeta por vencer',
+    urgente: false,
+    ayuda:
+      'Un documento de la carpeta de alguien —el carnet, sobre todo— que vence dentro del plazo de aviso '
+      + 'o que ya venció. Sirve para pedir el papel nuevo antes del trámite y no el día del trámite.',
+  },
   respaldo_atrasado: {
     label: 'Respaldo sin bajar y espacio en disco',
     urgente: false,
