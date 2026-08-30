@@ -42,6 +42,13 @@ const naceHace = (anios, dias = 0) => db
   .prepare("SELECT date('now','localtime', ?, ?) d").get(`-${anios} years`, `-${dias} days`).d;
 
 let n = 0;
+/*
+ * Las fichas que crea ESTE archivo. Los archivos del motor comparten una sola
+ * base y corren en paralelo, así que cualquier cuenta sobre el total de la
+ * tabla puede cambiar en el medio por fichas de otra prueba: lo que se compare
+ * tiene que ser lo propio.
+ */
+const lasDeEsteArchivo = [];
 function alguien(anios, cuerpos = [], opciones = {}) {
   n++;
   const id = db
@@ -54,6 +61,7 @@ function alguien(anios, cuerpos = [], opciones = {}) {
        VALUES (?, ?, ?, ?, '2024-01-01', 'Miembro')`
     ).run(c, id, iglesia, opciones.como || 'Activo');
   }
+  lasDeEsteArchivo.push(id);
   return id;
 }
 
@@ -126,9 +134,20 @@ test('a quien no tiene una fecha usable no se le inventa una edad', () => {
 });
 
 test('una edad que no es un número no filtra nada', () => {
-  const todos = ids({}).length;
+  /*
+   * Se compara sobre las fichas de este archivo y no sobre el total de la
+   * tabla. La primera versión contaba el total dos veces —una sin filtro y una
+   * con basura— y las comparaba: con los archivos corriendo en paralelo, una
+   * ficha creada por otra prueba entre las dos cuentas hacía fallar esta, que
+   * no tiene nada que ver con eso. Sobre un conjunto conocido dice lo mismo y
+   * lo dice mejor: no cambia el largo Y son exactamente las mismas.
+   */
+  const mias = new Set(lasDeEsteArchivo);
+  const lasPropias = (consulta) => ids(consulta).filter((id) => mias.has(id)).sort((a, b) => a - b);
+  const sinFiltrar = lasPropias({});
+  assert.ok(sinFiltrar.length >= 10, `el escenario de este archivo tiene ${sinFiltrar.length} fichas`);
   for (const basura of ['', 'dieciocho', '-4', '999', 'null', '18; DROP TABLE miembros']) {
-    assert.equal(ids({ edad_desde: basura }).length, todos, `«${basura}» no tendría que acotar`);
+    assert.deepEqual(lasPropias({ edad_desde: basura }), sinFiltrar, `«${basura}» no tendría que acotar`);
   }
   assert.ok(db.prepare('SELECT COUNT(*) c FROM miembros').get().c > 0, 'la tabla sigue ahí');
 });

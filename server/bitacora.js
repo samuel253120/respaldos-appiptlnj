@@ -628,6 +628,37 @@ function registrarEliminado(def, fila, user, arrastre) {
     detalle += `${detalle ? ' — ' : ''}Se llevó consigo ${arrastre.arrastradas} registro(s)${lista ? `: ${lista}` : ''}.`;
   }
   anotarCambio({ def, accion: 'Eliminación', fila, usuario: user, detalle });
+
+  /*
+   * Y si lo que se quitó fue un papel de la carpeta de alguien, en SU historial.
+   *
+   * El de arriba es el libro del sistema; este es el libro de la persona, y
+   * desde la 1.186.0 es el que sale impreso en su hoja. Adjuntar dejaba línea
+   * y quitar no dejaba ninguna, así que el historial quedaba diciendo que se
+   * le adjuntó un carnet que hoy no está, sin nada que lo explicara. Medido:
+   * al adjuntar, 2 anotaciones; al borrarlo, 2.
+   *
+   * La fecha es la de HOY y no la del documento, al revés que la de adjuntar:
+   * un carnet de 2020 se adjuntó en 2020, pero se quitó el día que alguien lo
+   * quitó. Y se dice de cuándo era el papel, porque una carpeta puede tener
+   * dos que se llamen igual y hay que saber cuál se fue.
+   *
+   * Cuando lo que se borra es la persona entera, su carpeta se va con ella y
+   * acá no llega ninguna fila de documento: el motor anota el borrado del
+   * miembro con lo que se llevó consigo, y no una línea por papel. Aun así
+   * `anotar` no escribe en el historial de un miembro que ya no existe.
+   *
+   * Las carpetas de iglesias y de pastores tienen el mismo hueco y el mismo
+   * arreglo a un nombre de distancia; se dejan para cuando les toque.
+   */
+  if (def.name === 'documentos_miembros' && fila.miembro_id) {
+    const { comoSeLee } = require('./fechas');
+    const cuando = fila.fecha ? `, del ${comoSeLee(String(fila.fecha).slice(0, 10))}` : '';
+    anotar({
+      miembroId: fila.miembro_id, tipo: 'Documento', iglesiaId: fila.iglesia_id || null, usuario: user,
+      descripcion: `Se quitó "${fila.nombre || fila.tipo || 'un documento'}" (${fila.tipo || ''}${cuando}) de su carpeta.`,
+    });
+  }
 }
 
 /**
