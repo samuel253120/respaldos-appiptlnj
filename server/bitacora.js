@@ -581,16 +581,8 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
     return;
   }
 
-  // 7. Módulos que apuntan a un miembro
-  // Cada uno dice además CUÁNDO ocurrió lo suyo, que no es cuándo se tecleó:
-  // una ayuda del 10 de marzo anotada en agosto es del 10 de marzo.
-  const relacionados = {
-    solicitudes: (r) => ({ tipo: 'Solicitud', cuando: r.fecha, texto: `Solicitud "${r.asunto || r.tipo}" (${r.estado || 'Pendiente'}).` }),
-    ayudas_sociales: (r) => ({ tipo: 'Ayuda social', cuando: r.fecha, texto: `Ayuda social: ${r.tipo_ayuda || ''} — ${r.estado || ''}.` }),
-    certificados: (r) => ({ tipo: 'Certificado', cuando: r.fecha_emision, texto: `Certificado de ${r.tipo || ''} N.º ${r.numero || ''}.` }),
-    documentos_miembros: (r) => ({ tipo: 'Documento', cuando: r.fecha, texto: `Se adjuntó "${r.nombre || r.tipo || 'un documento'}" (${r.tipo || ''}).` }),
-  };
-  const traductor = relacionados[def.name];
+  // 7. Módulos que apuntan a un miembro (la tabla está más abajo: LO_QUE_LE_PASA)
+  const traductor = LO_QUE_LE_PASA[def.name] && LO_QUE_LE_PASA[def.name].alta;
   if (traductor && despues.miembro_id) {
     // Solo al crear, o cuando cambia el estado de una solicitud o ayuda
     const cambioEstado = !isNew && antes && antes.estado !== despues.estado;
@@ -654,6 +646,28 @@ function registrarEliminado(def, fila, user, arrastre) {
    * con lo que se llevó consigo, y no una línea por papel. Aun así, ninguno de
    * estos escribe en el historial de una ficha que ya no existe.
    */
+  /*
+   * Y si lo que se borró era algo que le había dejado una línea a una persona
+   * —una solicitud, una ayuda, un certificado—, la línea de la baja.
+   *
+   * Sin esto, el historial seguía afirmando lo que ya no era cierto. En una
+   * ayuda es lo más delicado: la línea dice que a alguien se le entregó algo, y
+   * sobrevivía al registro que la sostenía. La fecha es la de HOY y no la del
+   * hecho, igual que en la carpeta: la ayuda era del 14 de julio, pero se
+   * eliminó el día que alguien la eliminó.
+   *
+   * `anotar` no escribe si la persona ya no está: cuando se borra la ficha
+   * entera, sus ayudas se van con ella y esto no crea líneas huérfanas.
+   */
+  const suyo = LO_QUE_LE_PASA[def.name];
+  if (suyo && suyo.baja && fila.miembro_id) {
+    const { tipo, texto } = suyo.baja(fila);
+    anotar({
+      miembroId: fila.miembro_id, tipo, iglesiaId: fila.iglesia_id || null,
+      usuario: user, descripcion: texto,
+    });
+  }
+
   const carpeta = LAS_CARPETAS[def.name];
   if (carpeta && fila[carpeta.campo]) {
     const { comoSeLee } = require('./fechas');
@@ -667,6 +681,64 @@ function registrarEliminado(def, fila, user, arrastre) {
       descripcion: `Se quitó ${abre}${cual}${cierra} (${fila.tipo || ''}${cuando}) de su carpeta.`,
     });
   }
+}
+
+/**
+ * LO QUE LE PASA A UNA PERSONA Y QUEDA EN SU HISTORIAL.
+ *
+ * Cuatro módulos apuntan a un miembro y le dejan una línea: lo que pidió, lo
+ * que se le entregó, lo que se le certificó y lo que se le guardó en su
+ * carpeta. Cada uno dice además CUÁNDO ocurrió lo suyo, que no es cuándo se
+ * tecleó: una ayuda del 10 de marzo anotada en agosto es del 10 de marzo.
+ *
+ * ── Y LA LÍNEA DE LA BAJA ──
+ *
+ * Cada uno tiene DOS mitades, el alta y la baja, y hasta la 1.209.0 solo la
+ * carpeta tenía las dos. Los otros tres dejaban su línea al crearse y ninguna
+ * al borrarse, así que el historial quedaba afirmando algo que ya no era
+ * cierto. En una ayuda es lo más delicado de todo: la línea que queda dice que
+ * a una persona se le entregó algo, y esa afirmación sobrevivía al registro que
+ * la sostenía. Medido: tres líneas antes de borrar, tres después.
+ *
+ * Escrito como tabla y no como cuatro condiciones seguidas por lo mismo que
+ * LAS_CARPETAS: lo que cambia entre ellos es el texto, no la regla.
+ *
+ * La carpeta de documentos no lleva `baja` acá: la suya vive en LAS_CARPETAS,
+ * que sabe además escribirla en la iglesia, el pastor o la solicitud de la que
+ * cuelgue. Ponerla en los dos lugares dejaría dos líneas por un solo hecho.
+ */
+const LO_QUE_LE_PASA = {
+  solicitudes: {
+    alta: (r) => ({ tipo: 'Solicitud', cuando: r.fecha, texto: `Solicitud "${r.asunto || r.tipo}" (${r.estado || 'Pendiente'}).` }),
+    baja: (r) => ({ tipo: 'Solicitud', texto: `Se eliminó la solicitud "${r.asunto || r.tipo || ''}" (${r.estado || ''}).` }),
+  },
+  ayudas_sociales: {
+    alta: (r) => ({ tipo: 'Ayuda social', cuando: r.fecha, texto: `Ayuda social: ${r.tipo_ayuda || ''} — ${r.estado || ''}.` }),
+    baja: (r) => ({
+      tipo: 'Ayuda social',
+      texto: `Se eliminó el registro de la ayuda social: ${r.tipo_ayuda || ''} — ${r.estado || ''}`
+        + `${cuandoEra(r.fecha)}${enPesosSiHay(r.valor_estimado)}.`,
+    }),
+  },
+  certificados: {
+    alta: (r) => ({ tipo: 'Certificado', cuando: r.fecha_emision, texto: `Certificado de ${r.tipo || ''} N.º ${r.numero || ''}.` }),
+    baja: (r) => ({ tipo: 'Certificado', texto: `Se eliminó el certificado de ${r.tipo || ''} N.º ${r.numero || ''}.` }),
+  },
+  documentos_miembros: {
+    alta: (r) => ({ tipo: 'Documento', cuando: r.fecha, texto: `Se adjuntó "${r.nombre || r.tipo || 'un documento'}" (${r.tipo || ''}).` }),
+  },
+};
+
+/** «, del 14-07-2026», o nada si no traía fecha. */
+function cuandoEra(fecha) {
+  if (!fecha) return '';
+  return `, del ${require('./fechas').comoSeLee(String(fecha).slice(0, 10))}`;
+}
+
+/** « ($ 45.000)», o nada si no traía monto: cero no es un monto. */
+function enPesosSiHay(monto) {
+  const n = Number(monto) || 0;
+  return n > 0 ? ` ($ ${Math.round(n).toLocaleString('es-CL')})` : '';
 }
 
 /**
