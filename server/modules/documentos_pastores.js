@@ -29,6 +29,8 @@ const TIPOS_DE_DOCUMENTO = [
  * Se ven y se agregan desde la ficha del pastor, al pie. La iglesia se hereda
  * de su ficha, que es lo que acota quién puede verlos.
  */
+const carpetas = require('../carpetas');
+
 module.exports = {
   name: 'documentos_pastores',
   label: 'Documentos de Pastores',
@@ -61,7 +63,7 @@ module.exports = {
     { name: 'observaciones', label: 'Observaciones', type: 'textarea' },
   ],
   hooks: {
-    beforeSave(data, { isNew, existing, db }) {
+    beforeSave(data, { isNew, id, existing, db, confirmado }) {
       // La iglesia se hereda del pastor: es la que decide quién puede verlo
       const pastorId = data.pastor_id !== undefined ? data.pastor_id : existing ? existing.pastor_id : null;
       if (pastorId) {
@@ -69,7 +71,11 @@ module.exports = {
         if (pastor && pastor.iglesia_id) data.iglesia_id = pastor.iglesia_id;
       }
       if (isNew && !data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
-      return null;
+      // ¿No será el mismo papel que ya está? Ver server/carpetas.js
+      return carpetas.preguntaSiSeRepite({
+        db, tabla: 'documentos_pastores', campoDueno: 'pastor_id', deQuien: 'este pastor',
+        data, id, existing, confirmado,
+      });
     },
   },
 };

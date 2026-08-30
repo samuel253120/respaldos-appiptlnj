@@ -12,6 +12,8 @@
  *
  * Se ven y se agregan desde la propia ficha de la solicitud, en su pestaña.
  */
+const carpetas = require('../carpetas');
+
 module.exports = {
   name: 'documentos_solicitudes',
   label: 'Documentos de Solicitudes',
@@ -56,14 +58,18 @@ module.exports = {
     { name: 'observaciones', label: 'Observaciones', type: 'textarea' },
   ],
   hooks: {
-    beforeSave(data, { isNew, existing, db }) {
+    beforeSave(data, { isNew, id, existing, db, confirmado }) {
       const solicitudId = data.solicitud_id !== undefined ? data.solicitud_id : existing ? existing.solicitud_id : null;
       if (solicitudId) {
         const s = db.prepare('SELECT iglesia_id FROM solicitudes WHERE id = ?').get(solicitudId);
         if (s && s.iglesia_id) data.iglesia_id = s.iglesia_id;
       }
       if (isNew && !data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
-      return null;
+      // ¿No será el mismo antecedente que ya está? Ver server/carpetas.js
+      return carpetas.preguntaSiSeRepite({
+        db, tabla: 'documentos_solicitudes', campoDueno: 'solicitud_id', deQuien: 'esta solicitud',
+        data, id, existing, confirmado,
+      });
     },
     /** Que un antecedente llegue queda anotado en el seguimiento. */
     afterSave(fila, { isNew, user, db }) {

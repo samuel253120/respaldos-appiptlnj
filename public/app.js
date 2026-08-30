@@ -6220,7 +6220,7 @@ async function renderSolicitudesDeLaPersona(tipo, personaId, contenedor) {
  * llega al tope, y entonces la hoja lo DICE en vez de cortar en silencio, que
  * es la misma regla que sigue la pestaña en pantalla.
  */
-const HISTORIAL_EN_LA_HOJA = ['miembros'];
+const HISTORIAL_EN_LA_HOJA = ['miembros', 'iglesias', 'pastores'];
 const HISTORIAL_EN_EL_PAPEL = 200;
 
 /**
@@ -6237,11 +6237,16 @@ const HISTORIAL_EN_EL_PAPEL = 200;
  * cuando se entrega una congregación, se prepara un traslado o alguien
  * pregunta qué le falta por presentar.
  *
- * La hoja de una iglesia y la de un pastor tienen el mismo hueco y el mismo
- * arreglo a un nombre de distancia; se dejan para cuando les toque, igual que
- * se hizo con el historial en la 1.185.0.
+ * Y desde la 1.202.0 lo mismo vale para la hoja de una iglesia y la de un
+ * pastor, que hasta entonces salían con sus datos y nada más: sin historial
+ * —el arreglo de la 1.185.0 nombraba solo a los miembros— y sin carpeta. Se
+ * entrega una congregación con la hoja de la iglesia en la mano, y ahí tiene
+ * que estar lo que la iglesia guarda.
+ *
+ * La de una solicitud no entra en estas dos listas porque no se imprime con
+ * `printGenerico`: tiene su propia hoja, que ya lleva su tramitación.
  */
-const DOCUMENTOS_EN_LA_HOJA = ['miembros'];
+const DOCUMENTOS_EN_LA_HOJA = ['miembros', 'iglesias', 'pastores'];
 const DOCUMENTOS_EN_EL_PAPEL = 200;
 
 const COMO_RECIBE_AYUDA = { miembros: 'Miembro', no_miembros: 'No miembro' };
@@ -9317,8 +9322,8 @@ async function viewPrint(name, id) {
    * Y cuando alguien pide su constancia. Hasta la 1.185.0 eso se copiaba a mano
    * de la pantalla, porque el historial no salía en ninguna hoja del sistema.
    *
-   * La de una iglesia y la de un pastor tienen el mismo hueco y el mismo
-   * arreglo a un nombre de distancia; se dejan para cuando les toque.
+   * Desde la 1.202.0 la de una iglesia y la de un pastor llevan el suyo
+   * también: son las tres fichas que se entregan en papel.
    */
   let suHistorial = null;
   const panelHist = HISTORIAL_EN_LA_HOJA.includes(name) ? PANEL_HISTORIAL[name] : null;
@@ -10798,6 +10803,13 @@ function printGenerico(m, row, susAyudas, suHistorial, susDocumentos) {
    */
   const papeles = (susDocumentos && susDocumentos.rows) || [];
   const cuantosPapeles = susDocumentos ? susDocumentos.total : 0;
+  /*
+   * La columna de vencimiento solo si alguno vence. La carpeta de un miembro
+   * tiene esa fecha desde la 1.200.0; la de una iglesia y la de un pastor no
+   * la tienen, así que en sus hojas la columna saldría entera con rayas. Una
+   * columna que nunca dice nada, en una hoja que alguien firma, es peso muerto.
+   */
+  const algunoVence = papeles.some((d) => d.vence);
   const carpeta = susDocumentos ? `
     <h2 class="print-h2">Documentos en carpeta</h2>
     <div class="sub">${papeles.length < cuantosPapeles
@@ -10807,16 +10819,17 @@ function printGenerico(m, row, susAyudas, suHistorial, susDocumentos) {
         : 'Sin documentos en carpeta.'}</div>
     ${papeles.length ? `
       <table class="grid tramite">
-        <thead><tr><th>Fecha</th><th>Tipo de documento</th><th>Nombre</th><th>Vence</th><th>Observaciones</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Tipo de documento</th><th>Nombre</th>${algunoVence
+          ? '<th>Vence</th>' : ''}<th>Observaciones</th></tr></thead>
         <tbody>
           ${papeles.map((d) => `
             <tr>
               <td class="nowrap">${esc(d.fecha ? fechaCorta(d.fecha) : '')}</td>
               <td>${esc(d.tipo || '')}</td>
               <td>${esc(d.nombre || '')}${d.archivo ? '' : ' <i>— anotado, sin archivo en el sistema</i>'}</td>
-              <td class="nowrap">${d.vence
+              ${algunoVence ? `<td class="nowrap">${d.vence
                 ? `${esc(fechaCorta(d.vence))}${estaVencido(d.vence) ? ' <b>(vencido)</b>' : ''}`
-                : '—'}</td>
+                : '—'}</td>` : ''}
               <td>${esc(d.observaciones || '')}</td>
             </tr>`).join('')}
         </tbody>

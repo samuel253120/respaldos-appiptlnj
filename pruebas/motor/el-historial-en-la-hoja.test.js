@@ -44,8 +44,10 @@ test('el trozo que se revisa es el de la hoja genérica', () => {
 
 /* ------------------------------- la hoja la lleva */
 
-test('la ficha del miembro es de las que llevan su historial en la hoja', () => {
-  assert.match(app, /const HISTORIAL_EN_LA_HOJA = \['miembros'\]/);
+test('las tres fichas que se entregan en papel llevan su historial en la hoja', () => {
+  // La del miembro desde la 1.185.0; la de una iglesia y la de un pastor desde
+  // la 1.202.0, que es cuando les tocó.
+  assert.match(app, /const HISTORIAL_EN_LA_HOJA = \['miembros', 'iglesias', 'pastores'\]/);
 });
 
 test('se pide con el campo del panel y con tope', () => {
@@ -132,13 +134,17 @@ test('el módulo sigue sin imprimirse por su cuenta', () => {
     + 'lo que hace falta en papel es la historia de la persona, y va en su ficha');
 });
 
-test('el historial de una iglesia y el de un pastor quedan para su turno', () => {
-  // Tienen el mismo hueco y el mismo arreglo a un nombre de distancia. Se dejan
-  // fuera a propósito, no por olvido, y esto lo deja dicho.
-  assert.match(app, /const HISTORIAL_EN_LA_HOJA = \['miembros'\];/);
+test('el historial de una iglesia y el de un pastor ya no quedan para su turno', () => {
+  /*
+   * Esta prueba decía lo contrario: que se dejaban fuera a propósito, no por
+   * olvido. Les tocó en la 1.202.0 y ahora dice lo que hay. El mapa de paneles
+   * sigue siendo el mismo de donde salen el módulo y el campo, para que no
+   * haya dos listas que un día digan cosas distintas.
+   */
+  assert.match(app, /const HISTORIAL_EN_LA_HOJA = \['miembros', 'iglesias', 'pastores'\];/);
   const mapa = app.slice(app.indexOf('const PANEL_HISTORIAL'), app.indexOf('/** Documentos adjuntos a una ficha'));
-  assert.match(mapa, /iglesias: \{/);
-  assert.match(mapa, /pastores: \{/);
+  assert.match(mapa, /iglesias: \{ modulo: 'historial_iglesias', campo: 'iglesia_id'/);
+  assert.match(mapa, /pastores: \{ modulo: 'historial_pastores', campo: 'pastor_id'/);
 });
 
 test('la hoja de una solicitud sigue imprimiendo su tramitación por su lado', () => {

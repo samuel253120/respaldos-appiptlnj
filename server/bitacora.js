@@ -630,36 +630,78 @@ function registrarEliminado(def, fila, user, arrastre) {
   anotarCambio({ def, accion: 'Eliminación', fila, usuario: user, detalle });
 
   /*
-   * Y si lo que se quitó fue un papel de la carpeta de alguien, en SU historial.
+   * Y si lo que se quitó fue un papel de una carpeta, en el historial de su
+   * dueño: de la persona, de la iglesia, del pastor o de la solicitud.
    *
-   * El de arriba es el libro del sistema; este es el libro de la persona, y
-   * desde la 1.186.0 es el que sale impreso en su hoja. Adjuntar dejaba línea
-   * y quitar no dejaba ninguna, así que el historial quedaba diciendo que se
-   * le adjuntó un carnet que hoy no está, sin nada que lo explicara. Medido:
-   * al adjuntar, 2 anotaciones; al borrarlo, 2.
+   * El de arriba es el libro del sistema; este es el libro de cada ficha, y es
+   * el que sale impreso en su hoja. Adjuntar dejaba línea y quitar no dejaba
+   * ninguna, así que el historial quedaba diciendo que se adjuntó un carnet
+   * que hoy no está, sin nada que lo explicara. Medido, en las cuatro
+   * carpetas: al adjuntar sube una línea; al borrar, ninguna.
    *
    * La fecha es la de HOY y no la del documento, al revés que la de adjuntar:
    * un carnet de 2020 se adjuntó en 2020, pero se quitó el día que alguien lo
    * quitó. Y se dice de cuándo era el papel, porque una carpeta puede tener
-   * dos que se llamen igual y hay que saber cuál se fue.
+   * dos que se llamen igual —se pregunta, pero quien confirma pasa— y hay que
+   * saber cuál se fue.
    *
-   * Cuando lo que se borra es la persona entera, su carpeta se va con ella y
-   * acá no llega ninguna fila de documento: el motor anota el borrado del
-   * miembro con lo que se llevó consigo, y no una línea por papel. Aun así
-   * `anotar` no escribe en el historial de un miembro que ya no existe.
+   * Cada carpeta escribe con las comillas de su propio «se adjuntó», para que
+   * las dos líneas se lean como una sola historia: las de las fichas usan
+   * comillas rectas y el seguimiento de una solicitud, angulares.
    *
-   * Las carpetas de iglesias y de pastores tienen el mismo hueco y el mismo
-   * arreglo a un nombre de distancia; se dejan para cuando les toque.
+   * Cuando lo que se borra es la ficha entera, su carpeta se va con ella y acá
+   * no llega ninguna fila de documento: el motor anota el borrado de la ficha
+   * con lo que se llevó consigo, y no una línea por papel. Aun así, ninguno de
+   * estos escribe en el historial de una ficha que ya no existe.
    */
-  if (def.name === 'documentos_miembros' && fila.miembro_id) {
+  const carpeta = LAS_CARPETAS[def.name];
+  if (carpeta && fila[carpeta.campo]) {
     const { comoSeLee } = require('./fechas');
     const cuando = fila.fecha ? `, del ${comoSeLee(String(fila.fecha).slice(0, 10))}` : '';
-    anotar({
-      miembroId: fila.miembro_id, tipo: 'Documento', iglesiaId: fila.iglesia_id || null, usuario: user,
-      descripcion: `Se quitó "${fila.nombre || fila.tipo || 'un documento'}" (${fila.tipo || ''}${cuando}) de su carpeta.`,
+    const [abre, cierra] = carpeta.comillas || ['"', '"'];
+    const cual = fila.nombre || fila.tipo || 'un documento';
+    carpeta.anota(fila[carpeta.campo], {
+      tipo: 'Documento',
+      iglesiaId: fila.iglesia_id || null,
+      usuario: user,
+      descripcion: `Se quitó ${abre}${cual}${cierra} (${fila.tipo || ''}${cuando}) de su carpeta.`,
     });
   }
 }
+
+/**
+ * Las cuatro carpetas del sistema: de quién cuelga cada una y dónde escribe.
+ *
+ * Escrito como tabla y no como cuatro condiciones seguidas porque lo que
+ * cambia entre ellas son tres datos, no la regla. La de una solicitud escribe
+ * en su seguimiento, que es su historial y vive aparte (server/solicitudes).
+ */
+const LAS_CARPETAS = {
+  documentos_miembros: {
+    campo: 'miembro_id',
+    anota: (id, datos) => anotar({ miembroId: id, ...datos }),
+  },
+  documentos_iglesias: {
+    campo: 'iglesia_id',
+    anota: (id, datos) => anotarIglesia(id, datos),
+  },
+  documentos_pastores: {
+    campo: 'pastor_id',
+    anota: (id, datos) => anotarPastor(id, datos),
+  },
+  documentos_solicitudes: {
+    campo: 'solicitud_id',
+    comillas: ['«', '»'],
+    anota: (id, datos) => {
+      // Solo si la solicitud sigue existiendo: si se borró entera, su
+      // seguimiento se fue con ella y esto crearía una línea huérfana.
+      if (!db.prepare('SELECT 1 FROM solicitudes WHERE id = ?').get(id)) return;
+      require('./solicitudes/seguimiento').anotar(db, id, {
+        tipo: datos.tipo, descripcion: datos.descripcion, user: datos.usuario,
+      });
+    },
+  },
+};
 
 /**
  * La credencial de un pastor, anotada en su bitácora de miembro.

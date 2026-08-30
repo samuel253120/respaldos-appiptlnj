@@ -61,7 +61,10 @@ test('la hoja pide la carpeta de esa ficha, con tope y de lo más nuevo a lo má
 });
 
 test('solo la llevan las fichas que lo declaran, y el panel dice de qué módulo sale', () => {
-  assert.match(app, /const DOCUMENTOS_EN_LA_HOJA = \['miembros'\];/);
+  // Eran los miembros; desde la 1.202.0 también la iglesia y el pastor, que
+  // son las otras dos fichas que se entregan en papel. La solicitud no: tiene
+  // su propia hoja, con su propia tramitación.
+  assert.match(app, /const DOCUMENTOS_EN_LA_HOJA = \['miembros', 'iglesias', 'pastores'\];/);
   assert.match(laRuta, /DOCUMENTOS_EN_LA_HOJA\.includes\(name\) \? PANEL_DOCUMENTOS\[name\] : null/,
     'el módulo y el campo salen del mismo mapa que usa la pestaña, no de un nombre escrito otra vez');
   assert.match(laRuta, /if \(panelDocs && MOD\[panelDocs\.modulo\]\)/,
@@ -131,9 +134,16 @@ test('la tabla lleva las columnas que sirven en papel', () => {
   const desde = laHoja.indexOf('<h2 class="print-h2">Documentos en carpeta</h2>');
   const hasta = laHoja.indexOf('Y su historial, debajo de todo');
   const seccion = laHoja.slice(desde, hasta);
-  assert.match(seccion, /<th>Fecha<\/th><th>Tipo de documento<\/th><th>Nombre<\/th><th>Vence<\/th><th>Observaciones<\/th>/);
+  assert.match(seccion, /<th>Fecha<\/th><th>Tipo de documento<\/th><th>Nombre<\/th>\$\{algunoVence\s*\n?\s*\? '<th>Vence<\/th>' : ''\}<th>Observaciones<\/th>/,
+    'y la de vencimiento va entre las dos últimas, cuando la hay');
   assert.match(seccion, /estaVencido\(d\.vence\) \? ' <b>\(vencido\)<\/b>' : ''/,
     'y lo vencido se marca: comparar diez fechas contra hoy a ojo es lo que la hoja tiene que ahorrar');
+  /*
+   * La columna solo cuando alguno vence: la carpeta de un miembro tiene esa
+   * fecha, la de una iglesia y la de un pastor no, y una columna entera de
+   * rayas en una hoja que alguien firma es peso muerto.
+   */
+  assert.match(app, /const algunoVence = papeles\.some\(\(d\) => d\.vence\);/);
   assert.match(seccion, /fechaCorta\(d\.fecha\)/, 'la fecha del documento, escrita como se escribe');
   assert.doesNotMatch(seccion, /d\.archivo\}<\/td>/,
     'el nombre del archivo en el servidor no le dice nada a quien lee la hoja');

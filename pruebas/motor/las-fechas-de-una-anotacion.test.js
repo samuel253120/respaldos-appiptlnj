@@ -166,7 +166,15 @@ test('la plata sigue saliendo con su signo y sus miles, en el Registro de Cambio
     datos: { monto: 310000, fecha: '2026-06-22' },
     user: { id: 1, nombre: 'Quien Guarda' },
   });
-  const linea = db.prepare('SELECT * FROM registro_cambios WHERE id > ? ORDER BY id').all(desde)[0];
+  /*
+   * Se busca la línea DE ESTE MOVIMIENTO y no «la primera escrita después».
+   * Los archivos del motor comparten una sola base y corren en paralelo: otra
+   * prueba escribiendo en el Registro de Cambios entre las dos consultas hacía
+   * fallar esta, que no tiene nada que ver con eso. Pasó.
+   */
+  const linea = db
+    .prepare('SELECT * FROM registro_cambios WHERE id > ? AND modulo = ? AND registro_id = ? ORDER BY id')
+    .all(desde, registry.getModule('tesoreria').label, movimiento)[0];
   assert.ok(linea, 'no quedó nada anotado en el Registro de Cambios');
   assert.match(linea.detalle, /Monto: \$\u00a0250\.000 → \$\u00a0310\.000/,
     'la plata con su signo y sus miles, como siempre');

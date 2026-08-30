@@ -9,6 +9,8 @@
  * Se ven y se agregan desde la propia ficha de la iglesia, al pie. Por eso no
  * ocupa un lugar propio en el menú (`menu: false`).
  */
+const carpetas = require('../carpetas');
+
 module.exports = {
   name: 'documentos_iglesias',
   label: 'Documentos de Iglesias',
@@ -51,9 +53,13 @@ module.exports = {
     { name: 'observaciones', label: 'Observaciones', type: 'textarea' },
   ],
   hooks: {
-    beforeSave(data, { isNew }) {
+    beforeSave(data, { isNew, id, existing, db, confirmado }) {
       if (isNew && !data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
-      return null;
+      // ¿No será el mismo papel que ya está? Ver server/carpetas.js
+      return carpetas.preguntaSiSeRepite({
+        db, tabla: 'documentos_iglesias', campoDueno: 'iglesia_id', deQuien: 'esta iglesia',
+        data, id, existing, confirmado,
+      });
     },
   },
 };

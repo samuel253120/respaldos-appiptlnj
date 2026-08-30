@@ -19,6 +19,7 @@
  * Las versiones anteriores a la 1.58.0 son de antes de este registro.
  */
 const VERSIONES = [
+  { version: "1.202.0", fecha: "2026-08-30", titulo: "Las carpetas de iglesias, pastores y solicitudes reciben lo que se le arregló a la de los miembros: preguntan por el papel repetido, anotan la baja en el historial de su dueño, y las hojas de iglesia y pastor salen con su historial y su carpeta" },
   { version: "1.201.0", fecha: "2026-08-30", titulo: "Arriba del listado de servicios quedan dos cifras y ninguna es de plata: el dinero se va a buscar al informe o a Tesorería, y el total de asistencia sale porque se lee como gente" },
   { version: "1.200.0", fecha: "2026-08-30", titulo: "Un documento puede decir hasta cuándo vale, y el sistema avisa antes de que se venza, con el plazo que fije Configuración" },
   { version: "1.199.0", fecha: "2026-08-30", titulo: "La iglesia de un documento la pone el sistema con la del miembro y ya no se escribe a mano, sin dejar de decir en qué iglesia se archivó el papel" },
