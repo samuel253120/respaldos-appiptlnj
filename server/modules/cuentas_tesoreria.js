@@ -44,6 +44,45 @@ function movimientosDe(cuentaId, db) {
 /** Un monto como se lee acá. */
 const enPesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
 
+/** ¿Este guardado mueve el punto de partida, y a cuánto? */
+function seMueveElPuntoDePartida(data, existing) {
+  if (!existing || data.saldo_inicial === undefined) return null;
+  const antes = Number(existing.saldo_inicial) || 0;
+  const ahora = Number(data.saldo_inicial) || 0;
+  return antes === ahora ? null : { antes, ahora };
+}
+
+/**
+ * Lo que impide mover el saldo inicial de una cuenta cerrada, o null.
+ *
+ * «Cerrada» congelaba los movimientos y dejaba suelto el único número que no es
+ * un movimiento. Medido: una cuenta cerrada con $ 100.000 rechazaba un ingreso
+ * de $ 1 —«no admite nuevos movimientos»— y aceptaba subirle el saldo inicial a
+ * $ 9.000.000, dejándola en $ 9.100.000. El estado que refuse un peso y acepte
+ * nueve millones no está refusando nada.
+ *
+ * Acá se frena y no se pregunta, y es a propósito: es la misma regla que
+ * rechaza el movimiento de $ 1, dicha del mismo modo. Y la salida está escrita
+ * —volver a abrirla, corregirlo y cerrarla de nuevo—, que es lo que faltaba en
+ * el otro lado de este mismo estado.
+ *
+ * Se refuse solo si la cuenta QUEDA cerrada. Reabrirla y corregir el punto de
+ * partida en el mismo guardado es el camino escrito hecho en un paso, y
+ * negárselo a quien acaba de reabrirla sería incomprensible: al terminar ese
+ * guardado la cuenta está activa, que es el estado donde el saldo inicial se
+ * mueve. Los demás datos de una cuenta cerrada se siguen corrigiendo —su
+ * responsable, su fecha de cierre, su descripción—: ninguno mueve plata.
+ */
+function loQueNoSeMueveEnUnaCuentaCerrada({ data, existing, quedaCerrada }) {
+  if (!existing || existing.estado !== 'Cerrada' || !quedaCerrada) return null;
+  if (!seMueveElPuntoDePartida(data, existing)) return null;
+  return (
+    `La cuenta "${existing.nombre}" está cerrada: su saldo inicial no se puede mover. Una cuenta `
+    + 'cerrada tampoco admite movimientos nuevos, y el saldo inicial es plata igual que ellos. '
+    + 'Vuelva a abrirla, corrija el punto de partida y ciérrela de nuevo.'
+  );
+}
+
 /**
  * El aviso de que se está moviendo el saldo inicial de una cuenta que ya tiene
  * movimientos, o null si no hay nada que preguntar.
@@ -53,11 +92,10 @@ const enPesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CL')}`
  * anotado, donde el punto de partida ES el saldo y moverlo no descuadra nada.
  */
 function avisoSiSeMueveElPuntoDePartida(db, { data, existing, confirmado }) {
-  if (confirmado || !existing || data.saldo_inicial === undefined) return null;
-
-  const antes = Number(existing.saldo_inicial) || 0;
-  const ahora = Number(data.saldo_inicial) || 0;
-  if (antes === ahora) return null;
+  if (confirmado) return null;
+  const cambio = seMueveElPuntoDePartida(data, existing);
+  if (!cambio) return null;
+  const { antes, ahora } = cambio;
 
   const m = movimientosDe(existing.id, db);
   if (!m.movimientos) return null;
@@ -271,6 +309,11 @@ module.exports = {
       if (quedaCerrada && !estabaCerrada && !data.fecha_cierre) {
         data.fecha_cierre = new Date().toISOString().slice(0, 10);
       }
+
+      // Sobre una cuenta que sigue cerrada, el punto de partida no se mueve:
+      // es la misma regla que rechaza un movimiento de $ 1
+      const congelado = loQueNoSeMueveEnUnaCuentaCerrada({ data, existing, quedaCerrada });
+      if (congelado) return congelado;
 
       // Y antes de cerrarla, si tiene plata adentro, se pregunta: es lo que
       // decide si esa plata se va a poder volver a mover
