@@ -193,6 +193,44 @@ test('el listado de servicios muestra sus totales arriba', () => {
   assert.match(app, /'\/servicios\/resumen\?' \+ params\.toString\(\)/);
 });
 
+test('arriba del listado van dos cifras, y ninguna es de plata', () => {
+  /*
+   * Esta pantalla es el registro de lo que pasó en los servicios, no la
+   * tesorería. Arriba del listado había cinco cifras y tres salieron en la
+   * 1.201.0, pedidas por quien usa el sistema:
+   *
+   *   · «Ofrenda recibida» y «Aporte a la corporación», porque el dinero se va
+   *     a buscar a Tesorería o al informe, que se abre a propósito. El de cada
+   *     servicio sigue en su propia ficha.
+   *   · el total de «Asistencia», porque es una suma de sumas y se lee como
+   *     gente: 2.338 en una iglesia que nunca ha juntado tanto en un servicio
+   *     no informa, confunde.
+   *
+   * Medido en un teléfono de 390 px: el bloque pasó de 221 px a 73 px.
+   */
+  const desde = app.indexOf('async function cargarResumenDeServicios');
+  const hasta = app.indexOf('nota.textContent', desde);
+  assert.ok(desde > -1 && hasta > desde);
+  const elResumen = app.slice(desde, hasta);
+
+  const rotulos = [...elResumen.matchAll(/<div class="lbl">([^<]+)<\/div>/g)].map((m) => m[1]);
+  assert.deepEqual(rotulos, ['Servicios', 'Promedio de asistencia']);
+  assert.doesNotMatch(elResumen, /fmtMoney/, 'ninguna cifra de plata arriba del listado');
+  assert.doesNotMatch(elResumen, /r\.asistencia/, 'ni el total de asistencia, que se lee como gente');
+  assert.match(elResumen, /Promedio de asistencia/,
+    'y el promedio dice de qué es: suelto al lado de «Servicios», «156» podía leerse como plata');
+});
+
+test('pero el informe las sigue llevando todas', () => {
+  // Salieron de la pantalla que se mira todos los días, no del sistema: el
+  // informe se abre a propósito y es donde esas sumas sirven.
+  const desde = app.indexOf('Informe de servicios <span');
+  const trozo = app.slice(desde, desde + 2000);
+  for (const cifra of ['Servicios', 'Asistencia', 'Ofrenda recibida', 'Aporte a la corporación', 'Queda para la iglesia']) {
+    assert.ok(trozo.includes(cifra), `al informe le falta «${cifra}»`);
+  }
+});
+
 test('y hay un informe, con su botón y su dirección propia', () => {
   assert.match(app, /btnInformeServicios/);
   assert.match(app, /parts\[0\] === 'servicios' && parts\[1\] === 'informe'/);

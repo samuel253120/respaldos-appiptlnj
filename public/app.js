@@ -2701,6 +2701,26 @@ async function viewList(name, filtrosIniciales) {
    * Suma lo mismo que muestra el listado —la búsqueda, los filtros y el rango
    * de fechas van tal cual—, así que acotar a agosto y mirar el total es una
    * sola cosa. Antes había que ir fila por fila con una calculadora.
+   *
+   * ── QUÉ VA ACÁ Y QUÉ NO ──
+   *
+   * Dos cifras, y las dos de servicios: cuántos hubo y cuánta gente fue en
+   * promedio a cada uno. Arriba del listado había otras tres y salieron:
+   *
+   *   · la ofrenda recibida y el aporte a la corporación, porque esta pantalla
+   *     es el registro de lo que pasó en los servicios y no la tesorería. El
+   *     dinero de cada servicio sigue en su propia ficha, y las sumas siguen
+   *     enteras en el informe —que se abre a propósito, apretando «Informe»— y
+   *     en Tesorería, que es donde se va a buscarlas.
+   *
+   *   · el total de asistencia, porque es una suma de sumas y se lee como si
+   *     fuera gente. «2.338» en una iglesia que nunca ha juntado tanto en un
+   *     servicio no informa: confunde. El promedio, en cambio, es una cifra
+   *     que se puede reconocer.
+   *
+   * Y por eso el promedio dice de qué es. Cuando estaba debajo de «Asistencia»
+   * se entendía solo; suelto al lado de «Servicios», «156» podía leerse como
+   * plata.
    */
   async function cargarResumenDeServicios(params) {
     const el = document.getElementById('serviciosResumen');
@@ -2710,10 +2730,7 @@ async function viewList(name, filtrosIniciales) {
       const r = await api('GET', '/servicios/resumen?' + params.toString());
       el.innerHTML = `
         <div class="fin blue"><div class="lbl">Servicios</div><div class="num">${esc(fmtNumero(r.servicios))}</div></div>
-        <div class="fin green"><div class="lbl">Ofrenda recibida</div><div class="num">${fmtMoney(r.ofrenda)}</div></div>
-        <div class="fin slate"><div class="lbl">Aporte a la corporación</div><div class="num">${fmtMoney(r.aporte)}</div></div>
-        <div class="fin slate"><div class="lbl">Asistencia</div><div class="num">${esc(fmtNumero(r.asistencia))}</div></div>
-        <div class="fin blue"><div class="lbl">Promedio por servicio</div><div class="num">${esc(fmtNumero(r.promedio_asistencia))}</div></div>`;
+        <div class="fin blue"><div class="lbl">Promedio de asistencia</div><div class="num">${esc(fmtNumero(r.promedio_asistencia))}</div></div>`;
       /*
        * De cuántos servicios salió el promedio, cuando no salió de todos: un
        * servicio al que nadie le anotó la asistencia no es un servicio al que
