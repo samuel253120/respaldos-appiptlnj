@@ -10,6 +10,10 @@
  * La organización distingue cuatro tipos de iglesia, de mayor a menor: la
  * MATRIZ —una sola en toda la organización—, las SEDES, las LOCALES y los
  * ANEXOS. El sistema hace cumplir que la matriz sea única.
+ *
+ * Una iglesia NO SE BORRA: se marca inactiva, y eso significa algo —no recibe
+ * gente, cuerpos ni plata nuevos— desde la 1.232.0. La regla entera, con lo
+ * que se midió antes de tenerla, está en server/iglesia-inactiva.js.
  */
 
 const { REGIONES } = require('../regiones');
@@ -28,6 +32,14 @@ module.exports = {
   group: 'Organización',
   order: 50,
   display: '{nombre}',
+  /*
+   * Lo que esta iglesia ofrece cuando otro módulo la referencia en un
+   * formulario: las que reciben cosas nuevas, más la que ese campo ya tuviera
+   * elegida. Sin lo segundo, abrir la ficha de un miembro de una iglesia
+   * inactiva la habría dejado sin iglesia en el desplegable, y guardar la
+   * habría borrado.
+   */
+  opcionesPorDefecto: '/iglesias/activas?ademas={iglesia_id}',
   searchFields: ['nombre', 'codigo', 'ciudad', 'direccion'],
   listFields: ['foto', 'nombre', 'tipo', 'codigo', 'ciudad', 'telefono', 'pastor_id', 'estado'],
   filterFields: ['tipo', 'estado'],
@@ -94,6 +106,40 @@ module.exports = {
       },
     },
   ],
+  extraRoutes(router, { db, requirePerm, scopeClause }) {
+    /*
+     * Las iglesias que reciben cosas nuevas, para los desplegables.
+     *
+     * `ademas` trae lo que ese campo ya tenía elegido, y esa iglesia entra
+     * aunque esté inactiva: es la ficha de alguien que pertenece a una
+     * congregación que se retiró, y su iglesia tiene que seguir a la vista.
+     *
+     * Se pide con la llave de VER iglesias, que es la que ya hace falta para
+     * que el desplegable diga sus nombres, y sale acotado por el alcance de
+     * siempre.
+     */
+    router.get('/iglesias/activas', requirePerm('iglesias', 'view'), (req, res) => {
+      const inactivas = require('../iglesia-inactiva');
+      const params = [];
+      const where = [];
+      const suyas = scopeClause(req.user, params);
+      if (suyas) where.push(suyas);
+
+      const ademas = Number(req.query.ademas) || 0;
+      if (ademas) {
+        params.push(ademas);
+        where.push(`(${inactivas.condicionDeActivas()} OR id = ?)`);
+      } else {
+        where.push(inactivas.condicionDeActivas());
+      }
+
+      const filas = db
+        .prepare(`SELECT id, nombre FROM iglesias${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY nombre`)
+        .all(...params);
+      res.json(filas.map((i) => ({ id: i.id, label: i.nombre })));
+    });
+  },
+
   hooks: {
     beforeSave(data, { id, existing, db }) {
       /*

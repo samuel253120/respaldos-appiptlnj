@@ -211,15 +211,33 @@ test('una cuenta que no existe da 404, no una cartola vacía', () => {
 
 const informe = ruta(tesoreria, '/tesoreria/informe');
 
+/*
+ * Todo lo que se le pregunte al informe va acotado A ESTA IGLESIA, la que este
+ * archivo sembró. `usuario` es un administrador general —no tiene iglesias
+ * asignadas, así que alcanza todo—, y estas pruebas del motor corren en
+ * procesos paralelos sobre UNA SOLA base descartable: sin el filtro, el
+ * informe suma también lo que los otros doscientos archivos vayan anotando
+ * mientras esto corre.
+ *
+ * Se notó donde más incomoda: «el informe y el resumen dicen lo mismo» pedía
+ * dos veces la misma suma global y comparaba las dos respuestas, así que
+ * bastaba con que un archivo hermano guardara un movimiento de 2026 entre una
+ * y otra para que discreparan en esa cifra. Falló una vez cada catorce
+ * corridas, y lo que informaba no era un defecto del sistema sino el ruido de
+ * al lado. Acotado a lo suyo, lo que compara es lo que dice comparar.
+ */
+const loSuyo = (mas = {}) => ({ user: usuario, query: { f_iglesia_id: String(iglesia), ...mas } });
+const ELANO = { desde: '2026-01-01', hasta: '2026-12-31' };
+
 test('el informe trae las cuatro cosas con las que se arma un balance', () => {
-  const { d } = informe({ user: usuario, query: { desde: '2026-01-01', hasta: '2026-12-31' } });
+  const { d } = informe(loSuyo(ELANO));
   assert.ok(d.resumen && d.porMes && d.porCategoria && d.porCuenta);
   assert.equal(d.desde, '2026-01-01');
   assert.equal(d.hasta, '2026-12-31');
 });
 
 test('el informe y el resumen de la pantalla dicen lo mismo del mismo período', () => {
-  const req = { user: usuario, query: { desde: '2026-01-01', hasta: '2026-12-31' } };
+  const req = loSuyo(ELANO);
   const { d: inf } = informe(req);
   const { d: res } = ruta(tesoreria, '/tesoreria/resumen')(req);
   assert.equal(inf.resumen.ingresos, res.ingresos, 'la hoja impresa no puede discrepar de la pantalla');
@@ -228,9 +246,9 @@ test('el informe y el resumen de la pantalla dicen lo mismo del mismo período',
 });
 
 test('el informe respeta el período: lo del año anterior no entra', () => {
-  const { d } = informe({ user: usuario, query: { desde: '2026-01-01', hasta: '2026-12-31' } });
+  const { d } = informe(loSuyo(ELANO));
   assert.ok(!d.porMes.some((m) => m.mes.startsWith('2025')), 'noviembre de 2025 quedó fuera');
-  const { d: todo } = informe({ user: usuario, query: {} });
+  const { d: todo } = informe(loSuyo());
   assert.ok(todo.porMes.some((m) => m.mes === '2025-11'), 'y sin período, sí está');
   assert.equal(todo.resumen.ingresos - d.resumen.ingresos, 777000);
 });

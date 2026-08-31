@@ -583,8 +583,26 @@ function porQueFalloLaRed(e) {
  * la lista completa del módulo referenciado, salvo que el campo declare su
  * propia ruta (`optionsRoute`) para acotar la lista.
  */
-function rutaOpciones(f, valores) {
-  const ruta = f.optionsRoute || f.ref || 'miembros';
+function rutaOpciones(f, valores, { filtrando = false } = {}) {
+  /*
+   * El módulo apuntado puede decir qué ofrece cuando lo referencian: una
+   * iglesia inactiva no sale en los desplegables donde se elige a qué iglesia
+   * va algo nuevo, porque el guardado la va a rechazar. Lo declara el módulo
+   * apuntado y no los treinta campos que lo apuntan (ver `opcionesPorDefecto`
+   * en server/index.js).
+   *
+   * DOS SALVEDADES, y las dos son la misma idea: eso vale para ELEGIR dónde va
+   * algo nuevo, no para mirar lo que ya hay.
+   *
+   *   · Un FILTRO del listado tiene que seguir ofreciéndolas todas: acotar por
+   *     una iglesia retirada es justamente cómo se consulta lo suyo.
+   *   · Un campo de VARIAS —«Iglesias que administra», de una cuenta de
+   *     usuario— también: alguien tiene que poder quedar a cargo de los
+   *     registros de una congregación que se cerró.
+   */
+  const suyas = !filtrando && f.type === 'ref' && f.ref
+    && MOD[f.ref] && MOD[f.ref].opcionesPorDefecto;
+  const ruta = f.optionsRoute || suyas || f.ref || 'miembros';
   if (!ruta.includes('{')) return ruta;
   // Una ruta puede depender de otro campo del formulario, como los cargos de
   // una directiva, que salen de los integrantes del cuerpo elegido:
@@ -659,8 +677,11 @@ async function getOptions(clave, force) {
   const ruta = clave.startsWith('/') ? clave : `/${clave}/options`;
   let rows = await api('GET', ruta);
   // Para elegir una iglesia basta con su nombre: el de la institución ya está
-  // en el menú y en todo lo que se imprime.
-  if (ruta === '/iglesias/options') {
+  // en el menú y en todo lo que se imprime. Vale para CUALQUIER lista de
+  // iglesias, no solo para la de siempre: desde la 1.232.0 los formularios
+  // piden «/iglesias/activas», y con la comprobación pegada a una sola ruta
+  // esos nombres salían largos otra vez.
+  if (ruta.startsWith('/iglesias/')) {
     rows = rows.map((o) => ({ ...o, label: iglesiaDeTrabajo(o.label) || o.label }));
   }
   optionsCache[clave] = rows;
@@ -2391,7 +2412,7 @@ async function viewList(name, filtrosIniciales) {
   };
   // Los filtros que apuntan a otro módulo se llenan con sus registros
   filterFields.filter((f) => f.type === 'ref').forEach((f) => {
-    getOptions(rutaOpciones(f)).then((opts) => {
+    getOptions(rutaOpciones(f, null, { filtrando: true })).then((opts) => {
       const sel = document.getElementById('f_' + f.name);
       if (!sel) return;
       sel.innerHTML = `<option value="">— ${esc(f.label)} —</option>` +

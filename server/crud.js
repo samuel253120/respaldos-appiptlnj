@@ -1453,6 +1453,20 @@ function buildRouter() {
             }
           }
 
+          /*
+           * Una iglesia inactiva no recibe nada nuevo (ver
+           * server/iglesia-inactiva.js).
+           *
+           * Va DESPUÉS del gancho del módulo y no arriba, con las otras
+           * comprobaciones generales, porque hay módulos que no reciben la
+           * iglesia y la deducen ahí: un traspaso la toma de su cuenta de
+           * origen, una cuenta de cuerpo la toma de su cuerpo, un artículo de
+           * inventario también. Preguntando antes, esos entrarían igual.
+           */
+          const iglesiaCerrada = require('./iglesia-inactiva')
+            .avisoSiLaIglesiaEstaInactiva(db, def, { data, existing, isNew });
+          if (iglesiaCerrada) throw new ErrorDeDatos(iglesiaCerrada);
+
           const keys = Object.keys(data);
           let row;
           if (isNew) {

@@ -191,6 +191,17 @@ app.get('/api/meta', authRequired, (req, res) => {
       // el libro de la oficina de partes. La barra del listado ofrece el
       // enlace, así que se llega desde donde uno está mirando los documentos
       pantallaExtra: m.pantallaExtra || null,
+      /*
+       * Qué ofrece este módulo cuando OTRO lo referencia en un formulario.
+       *
+       * Un campo de referencia sin ruta propia pide el listado entero del
+       * módulo apuntado, y eso ofrece cosas que el guardado va a rechazar: una
+       * iglesia inactiva sale en los treinta desplegables donde se elige a qué
+       * iglesia va algo nuevo. Ponerle `optionsRoute` a esos treinta campos
+       * sería treinta lugares donde acordarse; declarándolo el módulo apuntado
+       * es uno.
+       */
+      opcionesPorDefecto: m.opcionesPorDefecto || null,
       dateField: m.dateField || null,
       searchFields: m.searchFields,
       listFields: m.listFields,
