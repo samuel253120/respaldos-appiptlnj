@@ -55,6 +55,42 @@ function elQueYaEstaba(db, { fecha, origenId, destinoId, monto, concepto }) {
   return candidatos.find((c) => repetido.comoSeCompara(c.concepto) === suyo) || null;
 }
 
+/**
+ * El aviso de que borrar este traspaso le cambia el saldo a una cuenta cerrada,
+ * o null si ninguna de las dos lo está.
+ *
+ * Se dice de qué lado y con cuánto: al borrarlo, la plata VUELVE a la cuenta de
+ * origen y SALE de la de destino, y no es lo mismo explicarle a alguien que se
+ * le va a devolver dinero a una caja cerrada que decirle que se le va a quitar.
+ */
+function avisoSiElBorradoTocaUnaCuentaCerrada(db, fila, confirmado) {
+  if (confirmado) return null;
+  const cerrada = require('../cuenta-cerrada');
+  const de = (id) => db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(id);
+  const origen = de(fila.cuenta_origen_id);
+  const destino = de(fila.cuenta_destino_id);
+
+  const tocadas = [
+    { cuenta: origen, queLePasa: 'le vuelven' },
+    { cuenta: destino, queLePasa: 'le salen' },
+  ].filter((l) => l.cuenta && !cerrada.admitePlataNueva(l.cuenta));
+  if (!tocadas.length) return null;
+
+  const cuanto = repetido.enPesos(fila.monto);
+  const partes = tocadas.map((l) => `a "${l.cuenta.nombre}" ${l.queLePasa} ${cuanto}`);
+
+  return {
+    error:
+      `${tocadas.length === 1 ? 'Una de las cuentas de este traspaso está cerrada' : 'Las dos cuentas de este traspaso están cerradas'}, `
+      + `y al eliminarlo ${partes.join(' y ')}. Una cuenta cerrada no admite movimientos nuevos, no `
+      + 'puede ser el origen de un traspaso y no se elimina mientras tenga movimientos anotados: por '
+      + 'ninguna otra puerta del sistema se le puede mover un peso, y ese saldo probablemente ya está '
+      + 'cuadrado contra la cartola del banco. Si el traspaso está mal anotado y hay que borrarlo '
+      + 'igual, confirme.',
+    confirmar: 'borrar_toca_cuenta_cerrada',
+  };
+}
+
 module.exports = {
   name: 'traspasos',
   label: 'Traspasos entre Cuentas',
@@ -272,7 +308,35 @@ module.exports = {
       }
     },
 
-    beforeDelete(fila, { db }) {
+    beforeDelete(fila, { db, confirmado }) {
+      /*
+       * Antes de llevarse los dos movimientos: ¿alguna de las dos cuentas está
+       * CERRADA?
+       *
+       * Ésta era la sexta puerta, y la única que no preguntaba. Medido: una
+       * cuenta recibió $ 400.000, se cerró, y al eliminar el traspaso que se
+       * los trajo el saldo pasó de $ 400.000 a $ 0 con un 200 y sin una
+       * palabra. Las otras tres puertas, sobre esa misma cuenta y el mismo
+       * día, contestaban lo que corresponde:
+       *
+       *   un egreso a mano ........ «no admite nuevos movimientos»
+       *   un traspaso de salida ... «no puede salir dinero de ella»
+       *   eliminar la cuenta ...... «tiene 1 movimiento(s) registrado(s)»
+       *
+       * El sistema sabía que de esa cuenta no podía salir dinero, lo decía dos
+       * veces y con dos frases distintas, y por el botón de eliminar salía
+       * igual, callado. Un traspaso del año pasado borrado por prolijidad le
+       * cambia el saldo a una cuenta que la organización ya dio por terminada
+       * y que probablemente ya está cuadrada contra la cartola del banco.
+       *
+       * Se PREGUNTA y no se bloquea, como al cerrar una cuenta con plata
+       * dentro: un traspaso mal anotado hay que poder borrarlo, y prohibirlo
+       * dejaría el error escrito para siempre. Lo que no puede es que la
+       * decisión se tome sin saber lo que toca.
+       */
+      const aviso = avisoSiElBorradoTocaUnaCuentaCerrada(db, fila, confirmado);
+      if (aviso) return aviso;
+
       // Al eliminar el traspaso se van sus dos movimientos: si no, quedarían
       // sumando o restando en cuentas donde ese dinero ya no se movió.
       db.prepare('DELETE FROM tesoreria WHERE traspaso_id = ?').run(fila.id);

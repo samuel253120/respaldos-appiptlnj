@@ -2670,12 +2670,12 @@ async function viewList(name, filtrosIniciales) {
           e.stopPropagation();
           if (!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
           try {
-            await api('DELETE', `/${name}/${b.dataset.id}`);
+            await borrarPreguntando(`/${name}/${b.dataset.id}`);
             toast('Registro eliminado');
             invalidarOpciones(name);
             load();
           } catch (err) {
-            toast(err.message, true);
+            if (err !== SE_ARREPINTIO) toast(err.message, true);
           }
         });
       });
@@ -7234,6 +7234,34 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
     errEl.textContent = '';
     seguir();
   });
+}
+
+/** Se devuelve cuando la persona contesta que no a la segunda pregunta. */
+const SE_ARREPINTIO = Symbol('se arrepintió');
+
+/**
+ * Borra un registro, y si el servidor pregunta algo, lo pregunta.
+ *
+ * Un gancho de borrado puede contestar con una PREGUNTA en vez de una negativa
+ * —un objeto con `confirmar`, igual que al guardar—. Pasa cuando el borrado es
+ * legítimo pero toca algo que conviene mirar: eliminar un traspaso se lleva sus
+ * dos movimientos, y si una de las dos cuentas está cerrada eso le cambia el
+ * saldo a una caja que la organización ya dio por terminada.
+ *
+ * Se pregunta en la misma caja del navegador que ya se usa para borrar, y no en
+ * una ventana nueva a propósito: acá no hay un formulario donde poner el aviso
+ * —se borra desde el listado— y sumarle una pantalla al camino de borrar es
+ * cambiarle el paso a todos los módulos para el caso de uno.
+ */
+async function borrarPreguntando(ruta) {
+  try {
+    return await api('DELETE', ruta);
+  } catch (err) {
+    if (!(err.datos && err.datos.confirmar)) throw err;
+    if (!confirm(`${err.message}\n\n¿Eliminarlo igual?`)) throw SE_ARREPINTIO;
+    const junta = ruta.includes('?') ? '&' : '?';
+    return api('DELETE', `${ruta}${junta}igual_asi=1`);
+  }
 }
 
 /**

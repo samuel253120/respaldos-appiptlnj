@@ -1563,8 +1563,26 @@ function buildRouter() {
       try {
         db.transaction(() => {
           if (def.hooks && def.hooks.beforeDelete) {
-            const err = def.hooks.beforeDelete(row, { user: req.user, db });
-            if (err) throw new ErrorDeDatos(err);
+            /*
+             * Un gancho de borrado puede devolver dos cosas, igual que el de
+             * guardar: un texto es una negativa —el registro no se borra— y un
+             * objeto con `confirmar` es una PREGUNTA, que la pantalla convierte
+             * en dos botones.
+             *
+             * Antes solo podía negarse, y eso obligaba a elegir entre dejar
+             * pasar algo que merecía una advertencia o prohibir algo legítimo.
+             * Se notó borrando un traspaso: se llevaba $ 400.000 de una cuenta
+             * cerrada sin decir una palabra, mientras las otras tres puertas del
+             * sistema se negaban a mover un peso de esa misma cuenta. Prohibirlo
+             * habría sido peor —un traspaso mal anotado hay que poder borrarlo—.
+             */
+            const confirmado = req.query.igual_asi === 'true' || req.query.igual_asi === '1';
+            const err = def.hooks.beforeDelete(row, { user: req.user, db, confirmado });
+            if (err) {
+              const problema = new ErrorDeDatos(typeof err === 'string' ? err : err.error);
+              if (err && err.confirmar) problema.confirmar = err.confirmar;
+              throw problema;
+            }
           }
 
           /**
@@ -1590,7 +1608,9 @@ function buildRouter() {
           db.prepare(`DELETE FROM "${def.name}" WHERE id = ?`).run(req.params.id);
         }).immediate();
       } catch (e) {
-        if (e instanceof ErrorDeDatos || e.esDeDatos) return res.status(400).json({ error: e.message });
+        if (e instanceof ErrorDeDatos || e.esDeDatos) {
+          return res.status(400).json({ error: e.message, ...(e.confirmar ? { confirmar: e.confirmar } : {}) });
+        }
         return averiaInterna(res, `eliminar en ${def.label}`, e);
       }
       res.json({ ok: true });
