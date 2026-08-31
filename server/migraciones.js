@@ -2752,7 +2752,7 @@ function cuentasAbiertasSinFechaDeCierre() {
 }
 
 /**
- * El nivel de cada artículo de inventario que ya estaba anotado.
+ * El nivel y el régimen de cada artículo de inventario que ya estaba anotado.
  *
  * Hasta la 1.228 el nivel no era un campo: se deducía de si «Cuerpo / Grupo»
  * venía vacío o lleno. Desde la 1.229 se elige, con las mismas tres opciones
@@ -2794,10 +2794,28 @@ function elNivelDeCadaArticuloDeInventario(conexion = db) {
   const deIglesia = poner(IGLESIA, 'iglesia_id IS NOT NULL');
   const deLaCorporacion = poner(CORPORACION, '1 = 1');
 
-  if (deCuerpo || deIglesia || deLaCorporacion) {
+  /*
+   * Y su régimen: todo lo que ya estaba anotado es PROPIO.
+   *
+   * No es una suposición: hasta acá el módulo no admitía otra cosa —no había
+   * dónde decir que algo es prestado o está en depósito—, así que un artículo
+   * anotado antes de esta versión es, por construcción, de la organización.
+   * Lo ajeno que alguien haya escrito en «Notas» sigue ahí, palabra por
+   * palabra, para que se pueda revisar y reclasificar a mano.
+   */
+  let conRegimen = 0;
+  if (columnas.includes('regimen')) {
+    const [PROPIO] = require('./bienes-ajenos').REGIMENES;
+    conRegimen = conexion
+      .prepare("UPDATE inventarios SET regimen = ? WHERE regimen IS NULL OR regimen = ''")
+      .run(PROPIO).changes;
+  }
+
+  if (deCuerpo || deIglesia || deLaCorporacion || conRegimen) {
     console.log(
       `📦 Inventarios: ${deCuerpo + deIglesia + deLaCorporacion} artículo(s) estrenaron su nivel · ` +
-        `${deLaCorporacion} de la corporación, ${deIglesia} de una iglesia, ${deCuerpo} de un cuerpo.`
+        `${deLaCorporacion} de la corporación, ${deIglesia} de una iglesia, ${deCuerpo} de un cuerpo` +
+        (conRegimen ? ` · ${conRegimen} quedaron como bien propio, que es lo único que se podía anotar antes.` : '.')
     );
   }
   marcar();

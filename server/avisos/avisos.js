@@ -80,6 +80,17 @@ const TIPOS = {
       'Un documento de la carpeta de alguien —el carnet, sobre todo— que vence dentro del plazo de aviso '
       + 'o que ya venció. Sirve para pedir el papel nuevo antes del trámite y no el día del trámite.',
   },
+  prestamo_por_devolver: {
+    label: 'Cosas prestadas que hay que devolver',
+    urgente: false,
+    // Solo a quien lleva el inventario: para el resto es un aviso sobre algo
+    // que no está en sus manos, igual que la ayuda sin entregar
+    llave: 'inventarios',
+    ayuda:
+      'Un artículo del inventario anotado como «Prestado» cuya fecha de devolución se acerca o ya '
+      + 'pasó. Es lo que un hermano le prestó a la iglesia y hay que devolverle: sin este aviso, de '
+      + 'un préstamo nadie se acuerda hasta que el dueño lo va a pedir.',
+  },
   respaldo_atrasado: {
     label: 'Respaldo sin bajar y espacio en disco',
     urgente: false,

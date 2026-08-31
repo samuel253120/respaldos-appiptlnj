@@ -9550,8 +9550,25 @@ async function viewPrint(name, id) {
     ).catch(() => null);
   }
 
+  /*
+   * Un artículo de inventario que no es de la iglesia se imprime como
+   * CONSTANCIA, no como ficha: es un papel que firman el dueño y la iglesia. La
+   * cláusula del depósito la escribe la corporación en Configuración y llega
+   * por su propia ruta; si no se puede traer, la hoja sale igual —sin ella— en
+   * vez de no salir, que es la regla de las ayudas y del historial.
+   */
+  let clausulaDeposito = null;
+  if (name === 'inventarios' && row.regimen === 'En depósito') {
+    clausulaDeposito = await api('GET', '/inventarios/clausula-deposito')
+      .then((d) => d.texto)
+      .catch(() => null);
+  }
+
   let sheet;
   if (name === 'solicitudes') sheet = printSolicitud(m, row, deLaSolicitud);
+  else if (name === 'inventarios' && (row.regimen === 'Prestado' || row.regimen === 'En depósito')) {
+    sheet = printBienAjeno(m, row, clausulaDeposito);
+  }
   else if (name === 'certificados') sheet = printCertificado(row, formatoCert, { conPagina: true });
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
@@ -10751,6 +10768,86 @@ function printActa(m, row, esAsamblea, asistencia) {
         <div class="firma">${esc(row.secretario || 'Secretario(a)')}<br>Secretario(a)</div>
       </div>
       <div class="doc-pie">${pieDelDocumento()}</div>
+    </div>`;
+}
+
+/**
+ * Hoja de un bien que NO es de la iglesia: préstamo o depósito, para firmar.
+ *
+ * Es lo que hace que el régimen sirva de algo fuera de la pantalla. La ficha
+ * corriente de inventario dice qué hay y dónde está; ésta dice de quién es,
+ * desde cuándo, hasta cuándo, y —en el depósito— bajo qué condiciones, con las
+ * dos firmas al pie. Sin ella la responsabilidad queda de palabra: una nota
+ * sin fecha, sin firma y que el dueño nunca vio.
+ *
+ * Las dos hojas son la misma salvo el párrafo del medio, porque el trato es
+ * distinto: en el PRÉSTAMO la iglesia recibe algo que tiene que devolver y
+ * responde por ello; en el DEPÓSITO lo guarda por comodidad del dueño y no
+ * responde. El texto del depósito no está acá: lo escribe la corporación en
+ * Configuración y llega por su propia ruta (ver `extraRoutes` en
+ * server/modules/inventarios.js), porque es lo que se firma.
+ *
+ * Se imprime en dos copias, que es como se firma un papel así: una queda en la
+ * iglesia y la otra se la lleva el dueño.
+ */
+function printBienAjeno(m, row, clausula) {
+  const enDeposito = row.regimen === 'En depósito';
+  const fila = (k, v) => (v == null || v === '' ? '' : `<tr><td class="k">${esc(k)}</td><td>${esc(v)}</td></tr>`);
+  const nivel = row.cuerpo_id_label
+    ? `${row.cuerpo_id_label} — ${row.iglesia_id_label || ''}`
+    : row.iglesia_id_label || 'La corporación';
+
+  const trato = enDeposito
+    ? `<h3>Condiciones del depósito</h3>
+       <div class="blk">${esc(clausula || '')
+         .split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')}</div>`
+    : `<h3>Condiciones del préstamo</h3><div class="blk"><p>${[
+        'El bien descrito en esta hoja fue prestado a la iglesia por su dueño, quien conserva su',
+        'dominio sobre él. La iglesia lo recibe para su uso, se obliga a cuidarlo y a devolverlo',
+        row.fecha_devolucion ? `el ${fechaLarga(row.fecha_devolucion)},` : 'cuando su dueño lo requiera,',
+        'y responde por él mientras lo tenga en su poder.',
+      /*
+       * Se junta con espacios y no se escribe como un párrafo con saltos de
+       * línea: `.blk` lleva `white-space: pre-wrap` —lo necesita el acta, donde
+       * los saltos que alguien escribió son parte del texto—, así que la
+       * sangría del código salía impresa en la hoja, con las líneas cortadas
+       * donde las cortó el editor. Se vio en la hoja de verdad.
+       */
+      ].join(' ')}</p></div>`;
+
+  return `
+    <div class="print-sheet print-generic">
+      ${membreteDelDocumento()}
+      <h1>${enDeposito ? 'Constancia de depósito' : 'Constancia de préstamo'}</h1>
+      <div class="sub">${esc(nivel)} — Registro de inventario N.º ${row.id}</div>
+
+      <h3>El bien</h3>
+      <table class="meta-tbl">
+        ${fila('Artículo', row.articulo)}
+        ${fila('Categoría', row.categoria)}
+        ${fila('Cantidad', row.cantidad)}
+        ${fila('Estado en que se recibe', row.estado)}
+        ${fila('Ubicación', row.ubicacion)}
+        ${fila('Valor estimado', row.valor_estimado ? fmtMoney(row.valor_estimado) : '')}
+      </table>
+
+      <h3>Su dueño</h3>
+      <table class="meta-tbl">
+        ${fila('Nombre', row.dueno)}
+        ${fila('Teléfono o correo', row.dueno_contacto)}
+        ${fila('En la iglesia desde', row.fecha_recepcion ? fechaLarga(row.fecha_recepcion) : '')}
+        ${enDeposito ? '' : fila('Devolución comprometida', row.fecha_devolucion ? fechaLarga(row.fecha_devolucion) : 'Sin plazo')}
+        ${fila('Devuelto el', row.fecha_devuelto ? fechaLarga(row.fecha_devuelto) : '')}
+      </table>
+
+      ${trato}
+      ${row.notas ? `<h3>Observaciones</h3><div class="blk"><p>${esc(row.notas)}</p></div>` : ''}
+
+      <div class="acta-firmas">
+        <div class="firma">${esc(row.dueno || 'El dueño')}<br>Dueño del bien</div>
+        <div class="firma">Por la iglesia<br>Nombre, cargo y firma</div>
+      </div>
+      <div class="doc-pie">${pieDelDocumento('Se firma en dos copias: una queda en la iglesia y la otra la conserva el dueño.')}</div>
     </div>`;
 }
 

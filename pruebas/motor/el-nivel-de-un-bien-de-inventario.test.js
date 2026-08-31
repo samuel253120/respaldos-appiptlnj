@@ -45,12 +45,36 @@ const cuerpo = (iglesiaId) => db
   .run(`Cuerpo ${++n} del Inventario`, iglesiaId).lastInsertRowid;
 
 const admin = { id: 1, rol: 'admin', iglesias: [], cuerpos: [] };
-/** Corre el gancho como lo corre el motor, y devuelve [aviso, datos]. */
+/**
+ * Corre el gancho como lo corre el motor, y devuelve [aviso, datos].
+ *
+ * El régimen va puesto porque el motor lo pone: al crear, los campos que no
+ * vengan toman su valor por defecto ANTES del gancho (ver `aplicarDefectos` en
+ * server/crud.js), y el de este campo es «Propio». Llamando al gancho a mano
+ * ese paso no ocurre, así que se hace acá lo que el motor haría. Lo que estas
+ * pruebas miden es el NIVEL; el régimen tiene las suyas aparte.
+ */
 const guardar = (datos, existing = null) => {
-  const data = { ...datos };
+  const data = { regimen: 'Propio', ...datos };
   const aviso = inventarios.hooks.beforeSave(data, { user: admin, existing, db, isNew: !existing, id: null, confirmado: true });
   return [aviso, data];
 };
+
+test('el motor le pone su valor por defecto al régimen antes de llamar al gancho', () => {
+  /*
+   * Es lo que hace que un artículo corriente no tenga que elegir régimen. Si
+   * dejara de pasar, guardar cualquier cosa contestaría «El régimen del bien
+   * tiene que ser uno de estos tres» y nadie entendería por qué.
+   */
+  const { aplicarDefectos, buildRouter } = require('../../server/crud');
+  const { getModule } = require('../../server/registry');
+  assert.equal(typeof aplicarDefectos, 'function');
+  assert.equal(typeof buildRouter, 'function');
+
+  const data = { articulo: 'Sin régimen', ambito: 'Iglesia local', iglesia_id: 1, cantidad: 1 };
+  aplicarDefectos(getModule('inventarios'), data);
+  assert.equal(data.regimen, 'Propio');
+});
 
 // ------------------------------------------------- los tres niveles ----
 

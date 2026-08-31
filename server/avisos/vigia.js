@@ -145,6 +145,54 @@ function documentosPorVencer(usuario, dejar) {
 }
 
 /**
+ * Lo prestado a la iglesia que hay que devolver.
+ *
+ * Un hermano presta algo para el aniversario y a los dos meses nadie se
+ * acuerda: quien lo recibió puede llevar un año sin venir, y el dueño termina
+ * teniendo que ir a pedirlo. Es la misma forma que el aviso de un documento por
+ * vencer —lo que ya se pasó de la fecha entra con días negativos y sale
+ * primero—, porque es el mismo problema: una fecha que llega sola.
+ *
+ * Lo que está EN DEPÓSITO no avisa, y es a propósito: ahí no hay plazo ni
+ * compromiso de devolver nada, la cosa está guardada por voluntad de su dueño y
+ * él la retira cuando quiera (ver server/bienes-ajenos.js).
+ */
+function prestamosPorDevolver(usuario, dejar) {
+  const { can } = require('../permissions');
+  if (!can(usuario, 'inventarios', 'view')) return;
+  let prestados = [];
+  try {
+    prestados = require('../modules/inventarios').porVencer(usuario) || [];
+  } catch (e) {
+    return;   // una base a medio migrar no puede tumbar la pasada del día
+  }
+  if (!prestados.length) return;
+
+  const comoSeLee = (iso) => String(iso).slice(0, 10).split('-').reverse().join('-');
+  const cuenta = (a) => (Number(a.dias) < 0
+    ? `debía devolverse hace ${Math.abs(Number(a.dias))} día(s)`
+    : `quedan ${Number(a.dias)} día(s)`);
+  const atrasados = prestados.filter((a) => Number(a.dias) < 0);
+
+  dejar({
+    tipo: 'prestamo_por_devolver',
+    /*
+     * La clave lleva cada artículo con su fecha: mientras sean los mismos
+     * préstamos con el mismo plazo no vuelve a avisar todos los días, y en
+     * cuanto se agregue uno, se devuelva otro o se corra una fecha, sí.
+     */
+    clave: `prestamos_devolver:${prestados.map((a) => `${a.id}=${a.fecha_devolucion}`).join(',')}`,
+    titulo: prestados.length === 1
+      ? `${atrasados.length ? 'Hay que devolver' : 'Por devolver'}: ${prestados[0].articulo}`
+      : `${prestados.length} artículos prestados ${atrasados.length ? 'atrasados o por devolver' : 'por devolver'}`,
+    cuerpo: prestados.slice(0, 3)
+      .map((a) => `${a.articulo}, de ${a.dueno || 'su dueño'} (${comoSeLee(a.fecha_devolucion)}, ${cuenta(a)})`)
+      .join('; ') + (prestados.length > 3 ? `, y ${prestados.length - 3} más.` : '.'),
+    enlace: '#/m/inventarios?f_regimen=Prestado',
+  });
+}
+
+/**
  * Solicitudes a su cargo que ya debían estar contestadas.
  *
  * DOS PLAZOS, Y EL COMPROMETIDO MANDA. Si la solicitud dice para cuándo se
@@ -558,9 +606,9 @@ function cumplieronLaMayoria(usuario, dejar) {
   });
 }
 
-const REVISIONES = [credencialesPorVencer, documentosPorVencer, solicitudesSinRespuesta,
-  solicitudesSinResponsableActivo, ayudasSinEntregar, cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas,
-  faltasSeguidas, cumplieronLaMayoria];
+const REVISIONES = [credencialesPorVencer, documentosPorVencer, prestamosPorDevolver,
+  solicitudesSinRespuesta, solicitudesSinResponsableActivo, ayudasSinEntregar, cumpleanosDeHoy,
+  respaldoYDisco, cuotasAtrasadas, faltasSeguidas, cumplieronLaMayoria];
 
 // ------------------------------------------------------------- la pasada ----
 

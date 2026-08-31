@@ -233,6 +233,38 @@ const OPCIONES = [
           'y el ingreso de ese aporte en su «Fondo para la corporación». Apáguelo si prefiere ingresar las ' +
           'ofrendas a mano en Tesorería.',
       },
+      {
+        clave: 'inventario_aviso_devolucion_dias',
+        label: 'Avisar de lo prestado que hay que devolver, con esta anticipación (días)',
+        tipo: 'number', defecto: '15', min: 1, max: 365,
+        ayuda:
+          'Un artículo del inventario anotado como «Prestado» con fecha de devolución aparece en el ' +
+          'panel cuando falten estos días. Lo que ya se pasó de la fecha sale igual, diciendo hace ' +
+          'cuánto. Lo prestado sin fecha no avisa: no hay plazo que se pueda pasar.',
+      },
+      {
+        clave: 'inventario_clausula_deposito',
+        label: 'Cláusula de responsabilidad de los bienes en depósito',
+        tipo: 'textarea',
+        /*
+         * Es un texto que alguien firma, así que su redacción es de quien lo
+         * firma y no del código: acá está solo con el que llega el sistema, y
+         * cambiarlo no toca nada más. Sale tal cual en la hoja de depósito que
+         * se imprime desde la ficha del artículo.
+         */
+        defecto:
+          'El bien descrito en esta hoja se deja en dependencias de la iglesia por voluntad de su ' +
+          'dueño y para su sola comodidad, conservando éste su dominio sobre él. La iglesia lo ' +
+          'guardará con el mismo cuidado con que guarda lo propio, pero NO ASUME RESPONSABILIDAD ' +
+          'ALGUNA por su daño, deterioro, destrucción, robo o pérdida, cualquiera sea la causa. El ' +
+          'dueño podrá retirarlo cuando lo estime conveniente, y la iglesia podrá pedirle que lo ' +
+          'retire avisándole con antelación razonable. Quien firma declara haber leído y aceptado ' +
+          'lo anterior.',
+        ayuda:
+          'El texto que sale en la hoja de depósito, para firmar en dos copias. Escríbalo como la ' +
+          'corporación quiera que quede: se imprime tal cual. No se aplica a lo PRESTADO, donde la ' +
+          'iglesia sí responde por lo que le prestaron.',
+      },
     ],
   },
   {
