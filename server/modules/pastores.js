@@ -37,6 +37,14 @@ const esCargoPastoral = (cargo) => !!cargo && cargo !== CARGO_GUIA;
 function estadoFichaMiembro(pastor, db) {
   const miembro = fichaDeMiembro(pastor, db);
   if (!miembro) return { texto: 'Falta registrarlo', nivel: 'bajo', miembro: null };
+  /*
+   * Una ficha de miembro es de un solo pastor. Las que quedaron compartidas de
+   * antes no se corrigen solas —no hay manera de saber cuál de los dos es el
+   * bueno— así que se ponen a la vista acá, que es donde alguien las mira.
+   */
+  if (require('../su-ficha-de-miembro').quienesMasLaTienen(db, miembro.id, pastor.id).length) {
+    return { texto: 'La comparte con otro', nivel: 'bajo', miembro };
+  }
   if (pastor.rut && miembro.rut && pastor.rut !== miembro.rut) {
     return { texto: 'RUT distinto', nivel: 'bajo', miembro };
   }
@@ -197,6 +205,16 @@ module.exports = {
 
       const ya = fichaDeMiembro(pastor, db);
       if (ya) {
+        /*
+         * Esta puerta escribe el enlace derecho, sin pasar por el guardado, así
+         * que la regla hay que pedirla acá también: si no, el botón «Crear su
+         * ficha de miembro» sería la manera de saltarse lo que el formulario
+         * frena.
+         */
+        const deOtro = require('../su-ficha-de-miembro')
+          .avisoSiEsaFichaYaEsDeOtro(db, pastor.id, ya.id, { porElRut: !pastor.miembro_id });
+        if (deOtro) return res.status(400).json({ error: deOtro });
+
         db.prepare('UPDATE pastores SET miembro_id = ? WHERE id = ?').run(ya.id, pastor.id);
         return res.json({ ok: true, miembro_id: ya.id, creada: false });
       }
@@ -341,13 +359,25 @@ module.exports = {
       // Si no se indicó su ficha de miembro, se busca por RUT: es la misma persona
       const rut = data.rut !== undefined ? data.rut : existing ? existing.rut : null;
       let enlace = data.miembro_id !== undefined ? data.miembro_id : existing ? existing.miembro_id : null;
+      let porElRut = false;
       if (!enlace && rut) {
         const miembro = db.prepare('SELECT id FROM miembros WHERE rut = ?').get(rut);
         if (miembro) {
           data.miembro_id = miembro.id;
           enlace = miembro.id;
+          porElRut = true;
         }
       }
+
+      /*
+       * Y esa ficha de miembro tiene que ser suya y de nadie más: una persona
+       * no es dos pastores (ver server/su-ficha-de-miembro.js). Se comprueba
+       * sobre el enlace YA RESUELTO, así que atrapa las dos maneras de
+       * llegar: eligiéndolo a mano y dejando que el RUT lo reconozca solo.
+       */
+      const yaEsDeOtro = require('../su-ficha-de-miembro')
+        .avisoSiEsaFichaYaEsDeOtro(db, id, enlace, { porElRut });
+      if (yaEsDeOtro) return yaEsDeOtro;
 
       // Nadie es su propio cónyuge
       const conyuge = data.conyuge_id !== undefined ? data.conyuge_id : existing ? existing.conyuge_id : null;
