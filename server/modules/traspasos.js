@@ -55,6 +55,56 @@ function elQueYaEstaba(db, { fecha, origenId, destinoId, monto, concepto }) {
   return candidatos.find((c) => repetido.comoSeCompara(c.concepto) === suyo) || null;
 }
 
+/**
+ * El aviso de que el traspaso está fechado antes de que existieran las cuentas,
+ * o null.
+ *
+ * El sistema no acepta un traspaso con fecha futura y lo dice bien —«dice
+ * 15-01-2030, que todavía no llega»—. Hacia atrás no había tope: medido, un
+ * traspaso fechado el 03-03-1998 entre dos cuentas abiertas ese mismo día entró
+ * con un 201, el saldo lo contó, y la cartola de la cuenta lo puso ANTES de la
+ * apertura de la propia cuenta.
+ *
+ * Cada cuenta tiene su fecha de apertura y nadie la consultaba al anotar. Un
+ * dígito mal tecleado en el año manda el traspaso a un período ya cerrado y
+ * cuadrado, donde nadie lo va a buscar: es de los errores que no se descubren
+ * porque no se ven.
+ *
+ * SE PREGUNTA Y NO SE BLOQUEA: cargar historia vieja al empezar a usar el
+ * sistema es legítimo, y la fecha de apertura de una cuenta puede estar puesta
+ * a ojo. Y se nombra la cuenta con su fecha, que es lo que deja ver de un
+ * vistazo si el equivocado es el traspaso o la cuenta.
+ *
+ * Y SE PREGUNTA UNA VEZ: solo cuando la fecha se está escribiendo o cambiando.
+ * A un traspaso viejo se le corrige el concepto o se le adjunta el comprobante
+ * meses después, y volver a preguntarle por una fecha que ya se contestó —y que
+ * este guardado ni siquiera toca— es ruido: a la tercera vez nadie lee la
+ * pregunta y se aprieta «Está bien» de corrido, que es justo lo que hay que
+ * evitar el día que la pregunta sí importa.
+ */
+function avisoSiEsAnteriorALaApertura({ fecha, origen, destino, existing }) {
+  const dia = String(fecha || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return null;
+  if (existing && String(existing.fecha || '').slice(0, 10) === dia) return null;
+
+  const antes = [origen, destino].filter(
+    (c) => c && c.fecha_apertura && String(c.fecha_apertura).slice(0, 10) > dia
+  );
+  if (!antes.length) return null;
+
+  const cuales = antes
+    .map((c) => `"${c.nombre}" se abrió el ${comoSeLee(String(c.fecha_apertura).slice(0, 10))}`)
+    .join(' y ');
+  return {
+    error:
+      `Este traspaso está fechado el ${comoSeLee(dia)}, y ${cuales}. Revise el año: un dígito de `
+      + 'más manda el movimiento a un período que probablemente ya está cerrado y cuadrado, donde '
+      + 'nadie lo va a volver a mirar. Si de verdad es de esa fecha —historia que se está cargando '
+      + 'al sistema—, confirme.',
+    confirmar: 'traspaso_antes_de_la_apertura',
+  };
+}
+
 /** Lo de un traspaso que ES la plata: cuándo, cuánto y entre qué cuentas. */
 const LO_QUE_ES_LA_PLATA = ['fecha', 'monto', 'cuenta_origen_id', 'cuenta_destino_id'];
 
@@ -326,6 +376,19 @@ module.exports = {
             confirmar: 'traspaso_ya_anotado',
           };
         }
+
+        /*
+         * Después, la fecha: antes que el saldo en rojo y no después.
+         *
+         * Un año mal tecleado suele disparar las dos preguntas —en 1998 la
+         * cuenta no tenía nada, así que el traspaso la deja en rojo—, y de las
+         * dos, ésta es la que nombra el problema: «la cuenta se abrió el
+         * 01-01-2020» explica por qué; «queda en $ -50.000 al 03-03-1998» es el
+         * síntoma. Se hace UNA pregunta por guardado, así que tiene que salir la
+         * que sirve.
+         */
+        const fueraDeFecha = avisoSiEsAnteriorALaApertura({ fecha, origen, destino, existing });
+        if (fueraDeFecha) return fueraDeFecha;
 
         // ¿Se está sacando de la cuenta de origen más de lo que hay? Se pregunta
         // antes de dejarla en rojo. Los dos lados del traspaso que ya estuvieran

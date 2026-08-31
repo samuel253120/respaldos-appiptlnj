@@ -338,9 +338,49 @@ table.grid .btn.danger.sm:hover { background: #fee2e2; border-color: #fecaca; co
 .toolbar .tb-desplegar { display: none; }
 
 table.grid { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+/**
+ * EL TÍTULO DE UNA COLUMNA SE PARTE EN DOS ANTES QUE ECHAR LA TABLA DE LA
+ * PANTALLA.
+ *
+ * Llevaba `white-space: nowrap`, y eso le ponía piso al ancho de la tabla: la
+ * columna no podía ser más angosta que su título entero, aunque adentro
+ * dijera «Transferencia». Medido en una ventana de 1024 px —un notebook
+ * corriente— con los datos de prueba:
+ *
+ *   usuarios ............ escondía 533 px · «CUERPOS QUE ADMINISTRA» (215 px)
+ *   servicios ........... escondía 517 px · «TOTAL GENERAL DE ASISTENCIA» (247 px)
+ *   integrantes_cuerpo .. escondía 422 px · «¿QUIÉN ENTRA AL CUERPO O GRUPO?» (284 px)
+ *   asistencia_detalle .. escondía 407 px
+ *   asistencias ......... escondía 387 px
+ *   … quince listados en total, y en todos la columna más ancha era un TÍTULO.
+ *
+ * Lo escondido es siempre la última columna, y la última columna es la de
+ * imprimir y eliminar: quedaban fuera de la vista los 50 botones de Miembros,
+ * los 47 de Tesorería, los 10 de Traspasos. Se llega a ellos arrastrando la
+ * tabla de lado, que es un gesto que nadie descubre solo.
+ *
+ * Partir «FORMA DEL TRASPASO» en dos líneas cuesta unos pocos píxeles de alto
+ * una sola vez, arriba de todo. No partirlo costaba la columna entera. Vuelto
+ * a medir con el cambio puesto: en 1024 px quedan doce listados que todavía
+ * piden arrastre —de quince— y lo escondido baja de 4.070 px a 888 px, sin que
+ * ninguna columna siga siendo más ancha que su contenido.
+ *
+ * De 1280 px para arriba el cambio no cuesta nada, GANA: la tabla ya cabía,
+ * pero los títulos anchos le robaban sitio a las columnas de texto y las
+ * obligaban a partirse. La fila de Traspasos pasa de 100 px a 68 px en 1280 y
+ * de 75 px a 55 px en 1440; Asistencia, de 66 px a 52 px en 1440, y en 1280
+ * deja de esconder 131 px. En 1024 la fila sí crece —Tesorería de 52 px a
+ * 75 px— porque ahí el texto por fin cabe adentro en vez de irse de lado: es
+ * el mismo texto, antes cortado por el borde y ahora entero.
+ *
+ * La flecha del orden va pegada a la última palabra con un espacio duro (ver
+ * `initTabla` en public/app.js): sin eso, apretada la columna, se bajaba sola
+ * a la línea siguiente y quedaba flotando debajo del título.
+ */
 table.grid th {
   text-align: left; padding: 8px 12px; background: #f8fafc; color: var(--muted); font-size: 11.5px;
-  text-transform: uppercase; letter-spacing: 0.6px; border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap;
+  text-transform: uppercase; letter-spacing: 0.6px; border-bottom: 1px solid var(--border); cursor: pointer;
+  white-space: normal; overflow-wrap: break-word;
 }
 table.grid th .arrow { font-size: 10px; }
 table.grid td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }

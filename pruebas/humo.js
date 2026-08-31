@@ -122,6 +122,7 @@ async function revisarUnMedio(navegador, medio, ancho) {
   const repetidos = [];
   const tapados = [];
   const recortados = [];
+  const titulosQueNoSeParten = [];
   const noSePuedeGuardar = [];
 
   const revisar = async (ruta) => {
@@ -311,6 +312,40 @@ async function revisarUnMedio(navegador, medio, ancho) {
   let conPestanas = 0;
   for (const nombre of modulos) {
     await revisar(`#/m/${nombre}`);
+
+    /*
+     * UN TÍTULO DE COLUMNA QUE NO SE PUEDE PARTIR LE PONE PISO AL ANCHO DE LA
+     * TABLA.
+     *
+     * Los títulos llevaban `white-space: nowrap`, así que una columna no podía
+     * ser más angosta que su título entero aunque adentro dijera
+     * «Transferencia». Medido en 1024 px —un notebook corriente—: quince
+     * listados escondían 4.070 px a la derecha, y lo escondido es siempre la
+     * última columna, que es la de imprimir y eliminar. En Traspasos,
+     * «FORMA DEL TRASPASO» ocupaba 183 px y los diez botones de la tabla
+     * quedaban fuera de la vista.
+     *
+     * Se mira el estilo YA CALCULADO y no la hoja: así lo agarra venga de
+     * donde venga —una media query, una regla más específica, otra hoja—, que
+     * es justo lo que no puede ver una prueba que lee el código.
+     *
+     * Un título de una sola palabra no cuenta: partir «MONTO» no existe. Y en
+     * el teléfono no hay títulos —cada fila se dibuja como una tarjeta y la
+     * cabecera se esconde entera—, así que se saltan los que no están en
+     * pantalla: si no se ven, que no se partan da lo mismo.
+     */
+    const titulosDuros = await pagina.evaluate(() =>
+      [...document.querySelectorAll('#tableWrap thead th')]
+        .filter((th) => {
+          if (!th.getClientRects().length) return false;
+          const t = th.innerText.trim();
+          return t.split(/\s+/).length > 1 && getComputedStyle(th).whiteSpace.startsWith('nowrap');
+        })
+        .map((th) => th.innerText.trim().replace(/\s+/g, ' ')));
+    if (titulosDuros.length) {
+      titulosQueNoSeParten.push(`#/m/${nombre} → ${titulosDuros.slice(0, 3).join(' · ')}`);
+    }
+
     const id = await pagina.evaluate(() => {
       const fila = document.querySelector('table.grid tbody tr');
       return fila ? fila.dataset.id : null;
@@ -419,12 +454,13 @@ async function revisarUnMedio(navegador, medio, ancho) {
       ` · formularios que no se podrían guardar: ${noSePuedeGuardar.length ? noSePuedeGuardar.join(' | ') : 'ninguno'}` +
       (ancho <= 700 ? ` · datos tapados por los botones: ${tapados.length ? tapados.join(' | ') : 'ninguno'}` : '') +
       (ancho <= 700 ? ` · recortado sin salida: ${recortados.length ? recortados.join(' | ') : 'nada'}` : '') +
+      ` · títulos de columna que no se parten: ${titulosQueNoSeParten.length ? titulosQueNoSeParten.join(' | ') : 'ninguno'}` +
       ` · se salen de lado: ${Object.keys(anchos).length ? JSON.stringify(anchos) : 'ninguna'}` +
       ` · errores: ${distintos.length ? distintos.slice(0, 4).join(' | ') : 'ninguno'}`
   );
   await pagina.close();
   return pegados.length + Object.keys(anchos).length + distintos.length + repetidos.length
-    + tapados.length + recortados.length + noSePuedeGuardar.length;
+    + tapados.length + recortados.length + titulosQueNoSeParten.length + noSePuedeGuardar.length;
 }
 
 (async () => {

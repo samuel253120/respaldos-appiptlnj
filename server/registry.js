@@ -198,16 +198,38 @@ function revisarLoReservado(def) {
  *   {nombres}          Juan Carlos Alberto
  *   {nombres:primero}  Juan
  *   {nombre:persona}   de «Juan Carlos Pérez Soto», «Juan Pérez Soto»
+ *
+ * UNA FECHA SE LEE COMO FECHA. La plantilla pegaba el valor guardado tal cual,
+ * y como las fechas se guardan al modo del computador —2026-06-10— el título de
+ * la ficha decía «2026-06-10 — Aporte de junio» mientras el campo «Fecha del
+ * traspaso», dos centímetros más abajo, decía «10-06-2026». El mismo dato al
+ * derecho y al revés en la misma pantalla; en Chile el día va primero.
+ *
+ * No es de un módulo: seis pegan una fecha en su título —traspasos, servicios,
+ * asistencias, las dos clases de acta y las evaluaciones—, así que se arregla
+ * donde se arma el texto y no seis veces.
+ *
+ * Se mira el TIPO del campo y no su nombre: `fecha_apertura` es una fecha y
+ * `numero_acta` no, aunque las dos podrían llamarse parecido. Lo que no sea un
+ * campo declarado del módulo —`{persona}` de un enlace, una columna calculada—
+ * se pega igual que antes.
  */
 function displayOf(def, row) {
   if (!row) return '';
   const nombres = require('./nombres');
+  const { comoSeLee } = require('./fechas');
   const recortes = { primero: nombres.primerNombre, persona: nombres.acortar };
+  const tipoDe = {};
+  for (const f of def.fields || []) tipoDe[f.name] = f.type;
   return def.display
     .replace(/\{(\w+)(?::(\w+))?\}/g, (_, campo, recorte) => {
       const valor = row[campo] == null ? '' : String(row[campo]);
       const corta = recorte && recortes[recorte];
-      return corta ? corta(valor) : valor;
+      if (corta) return corta(valor);
+      if (tipoDe[campo] === 'date' && /^\d{4}-\d{2}-\d{2}/.test(valor)) {
+        return comoSeLee(valor.slice(0, 10));
+      }
+      return valor;
     })
     .trim() || `#${row.id}`;
 }

@@ -2609,8 +2609,12 @@ async function viewList(name, filtrosIniciales) {
               if (f && f.computed && !f.ordenable) {
                 return `<th class="no-sort${alineado}" style="cursor:default">${esc(lbl)}</th>`;
               }
-              const arrow = st.sort === c ? `<span class="arrow">${st.dir === 'asc' ? '▲' : '▼'}</span>` : '';
-              return `<th data-col="${c}"${alineado ? ` class="${alineado.trim()}"` : ''}>${esc(lbl)} ${arrow}</th>`;
+              // La flecha va pegada a la última palabra con un espacio duro: los
+              // títulos se parten en dos cuando la columna aprieta (ver
+              // `table.grid th` en public/styles.css), y con un espacio normal
+              // la flecha se bajaba sola a la línea de abajo.
+              const arrow = st.sort === c ? `&#160;<span class="arrow">${st.dir === 'asc' ? '▲' : '▼'}</span>` : '';
+              return `<th data-col="${c}"${alineado ? ` class="${alineado.trim()}"` : ''}>${esc(lbl)}${arrow}</th>`;
             }).join('')}
             <th class="no-sort"></th>
           </tr></thead>
@@ -3885,12 +3889,24 @@ function nuevoDe(m) {
   return /(a|ción|sión|dad|tad|ud|umbre|triz)$/.test(cabeza) ? 'Nueva' : 'Nuevo';
 }
 
-/** El nombre con el que se presenta un registro, según la plantilla del módulo. */
+/**
+ * El nombre con el que se presenta un registro, según la plantilla del módulo.
+ *
+ * Una fecha se lee como fecha: la plantilla pegaba el valor guardado, y el
+ * título de la ficha quedaba diciendo «2026-06-10 — Aporte de junio» encima de
+ * un campo «Fecha del traspaso» que decía «10-06-2026». Misma regla que en el
+ * servidor (ver `displayOf` en server/registry.js), que arma este mismo texto
+ * para las etiquetas de las referencias.
+ */
 function nombreDelRegistro(m, row) {
+  const tipoDe = {};
+  for (const f of m.fields || []) tipoDe[f.name] = f.type;
   const texto = String(m.display || '')
     .replace(/\{(\w+)(?::(\w+))?\}/g, (_, campo, recorte) => {
       const valor = row[campo] == null ? '' : String(row[campo]);
-      return recorte ? recortar(recorte, valor) : valor;
+      if (recorte) return recortar(recorte, valor);
+      if (tipoDe[campo] === 'date' && /^\d{4}-\d{2}-\d{2}/.test(valor)) return fechaCorta(valor);
+      return valor;
     })
     .replace(/\s+/g, ' ')
     .trim();
