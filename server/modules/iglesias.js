@@ -340,22 +340,39 @@ module.exports = {
       return null;
     },
 
-    afterSave(fila, { isNew, db }) {
-      if (!isNew) return;
-      const crear = db.prepare(
-        `INSERT INTO cuentas_tesoreria (nombre, ambito, iglesia_id, tipo, estado, saldo_inicial, descripcion)
-         VALUES (?, 'Iglesia local', ?, ?, 'Activa', 0, ?)`
-      );
-      const falta = (tipo) =>
-        !db.prepare('SELECT id FROM cuentas_tesoreria WHERE iglesia_id = ? AND tipo = ?').get(fila.id, tipo);
-      if (falta('General')) {
-        crear.run(`Tesorería general — ${fila.nombre}`, fila.id, 'General', 'Tesorería general de la iglesia local.');
+    afterSave(fila, { isNew, existing, user, db }) {
+      /*
+       * Sus dos cuentas: se abren al crearla y siguen su nombre después.
+       *
+       * Las dos cosas están en server/el-nombre-de-la-iglesia.js y no acá,
+       * porque la plantilla del nombre —«Tesorería general — Iglesia Central»—
+       * tiene que ser LA MISMA con la que después se las reconoce. Escrita dos
+       * veces, el día que una cambiara la otra dejaría de reconocer las cuentas
+       * que ella misma bautizó, y el renombrado no tocaría ninguna sin que
+       * nadie se enterara.
+       */
+      const suNombre = require('../el-nombre-de-la-iglesia');
+      if (isNew) {
+        suNombre.abrirLasSuyas(db, fila.id, fila.nombre);
+        return;
       }
-      if (falta('Fondo para la corporación')) {
-        crear.run(
-          `Fondo para la corporación — ${fila.nombre}`, fila.id, 'Fondo para la corporación',
-          'Donde la iglesia aparta lo que le corresponde a la corporación, hasta traspasarlo.'
-        );
+
+      /*
+       * Al cambiarle el nombre, sus cajas cambian con ella.
+       *
+       * El «solo cuando el nombre cambia» lo decide `seguirAlNombre` y no se
+       * repite acá: escrito en los dos lados, quitar cualquiera de los dos no
+       * rompía nada, porque el otro sostenía la regla en silencio.
+       */
+      const cambiadas = suNombre.seguirAlNombre(db, fila.id, existing && existing.nombre, fila.nombre);
+      if (cambiadas.length) {
+        require('../bitacora').anotarCambio({
+          def: module.exports,
+          accion: 'Cambio',
+          fila,
+          detalle: `Al cambiar el nombre de la iglesia se renombraron sus cuentas: ${suNombre.comoSeLee(cambiadas)}.`,
+          usuario: user,
+        });
       }
     },
 

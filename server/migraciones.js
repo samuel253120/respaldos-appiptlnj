@@ -2752,6 +2752,43 @@ function cuentasAbiertasSinFechaDeCierre() {
 }
 
 /**
+ * Las cajas que se quedaron con el nombre viejo de su iglesia.
+ *
+ * Al crear una iglesia, el sistema le abre sus dos cuentas y les escribe el
+ * nombre de la iglesia adentro; ese nombre se copiaba una vez y no se volvía a
+ * mirar, así que una congregación renombrada quedaba con dos cajas diciendo
+ * otra cosa —en el listado, en el desplegable de un movimiento, en el título de
+ * la cartola y en la cartola impresa que se compara con la del banco—.
+ *
+ * Desde la 1.236.0 las cuentas siguen al nombre cuando se lo cambian. Esto es
+ * para las que ya quedaron atrás. Quién califica y por qué está explicado en
+ * server/el-nombre-de-la-iglesia.js: llevan la plantilla exacta del sistema y
+ * nadie las ha editado nunca. Una cuenta que alguien renombró a mano lleva su
+ * marca y no se toca.
+ *
+ * No se marca como aplicada si la tabla todavía no tiene sus columnas: se
+ * intenta de nuevo al arrancar, como las demás.
+ */
+function lasCajasConElNombreViejoDeSuIglesia(conexion = db) {
+  const NOMBRE = 'las cajas con el nombre viejo de su iglesia';
+  const yaEsta = () => !!conexion.prepare('SELECT nombre FROM migraciones WHERE nombre = ?').get(NOMBRE);
+  const marcar = () => conexion.prepare('INSERT OR IGNORE INTO migraciones (nombre) VALUES (?)').run(NOMBRE);
+  if (yaEsta()) return;
+
+  const hayTabla = (t) =>
+    !!conexion.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('cuentas_tesoreria') || !hayTabla('iglesias')) return marcar();
+  const columnas = conexion.prepare('PRAGMA table_info(cuentas_tesoreria)').all().map((c) => c.name);
+  if (!columnas.includes('updated_by') || !columnas.includes('tipo')) return;
+
+  const arregladas = require('./el-nombre-de-la-iglesia').lasQueQuedaronAtras(conexion);
+  if (arregladas) {
+    console.log(`🏦 ${arregladas} caja(s) estrenan el nombre actual de su iglesia.`);
+  }
+  marcar();
+}
+
+/**
  * El nivel y el régimen de cada artículo de inventario que ya estaba anotado.
  *
  * Hasta la 1.228 el nivel no era un campo: se deducía de si «Cuerpo / Grupo»
@@ -2936,6 +2973,7 @@ function ejecutarMigraciones() {
     ['las cuentas abiertas no llevan fecha de cierre', cuentasAbiertasSinFechaDeCierre],
     ['lo del cuerpo sigue al cuerpo cuando cambia de iglesia', loQueSeQuedoEnLaIglesiaAnterior],
     ['el nivel de cada artículo de inventario', elNivelDeCadaArticuloDeInventario],
+    ['las cajas con el nombre viejo de su iglesia', lasCajasConElNombreViejoDeSuIglesia],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -3193,4 +3231,5 @@ module.exports = {
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
   hojasDePresentacionYMatrimonio, certificadosApaisados,
   elNivelDeCadaArticuloDeInventario,
+  lasCajasConElNombreViejoDeSuIglesia,
 };
