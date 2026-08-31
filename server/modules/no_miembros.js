@@ -23,6 +23,15 @@
  * miembros. Son personas de las que la iglesia lleva una ficha porque las
  * atiende, y nada más.
  *
+ * Y NO TIENE HISTORIAL PROPIO, POR AHORA. Un miembro tiene su bitácora —una
+ * línea por cada cosa que le pasa— y esta ficha no. No es un descuido ni un
+ * defecto: donde no hay línea de historial no queda ninguna afirmación falsa,
+ * y lo que la iglesia hizo por esta persona se ve igual en su pestaña
+ * «Ayudas», que muestra los registros vivos. Darle bitácora propia es una
+ * pieza del tamaño de un módulo —su tabla, su pestaña y su parte en la hoja
+ * impresa—, así que era una decisión de la corporación y no mía: contestada
+ * el 31-08-2026, por ahora no se hace.
+ *
  * LO QUE ESTA FICHA NO EXIGE ES TAN IMPORTANTE COMO LO QUE GUARDA. En la
  * práctica casi nunca se obtienen todos los datos: se entrega una caja de
  * mercadería y la persona no anda con el carnet, o no quiere dar el teléfono.

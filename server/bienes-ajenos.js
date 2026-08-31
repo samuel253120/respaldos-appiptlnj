@@ -37,6 +37,27 @@
  * imprime y se firma, así que su redacción es de quien la firma: vive en
  * Configuración → Organización y acá solo está el texto con que llega el
  * sistema. Cambiarlo no toca código.
+ *
+ * ---------------------------------------------------------------------------
+ * DOS COSAS QUE NO DECIDE ESTE ARCHIVO, Y YA ESTÁN DECIDIDAS
+ *
+ * El informe de Inventarios dejó dos preguntas abiertas porque no eran de
+ * programación sino de la corporación. Las dos quedaron contestadas el
+ * 31-08-2026, y las dos confirman cómo ya estaba construido. Se anotan acá
+ * para que nadie las vuelva a abrir creyendo que fue un descuido:
+ *
+ *   UN BIEN AJENO PUEDE ESTAR EN CUALQUIERA DE LOS TRES NIVELES, la
+ *   corporación incluida. Un hermano puede prestarle algo a la corporación
+ *   para una asamblea igual que se lo presta a su congregación, así que
+ *   «Prestado» y «En depósito» no se acotan al nivel de iglesia ni al de
+ *   cuerpo.
+ *
+ *   ANOTAR UN DEPÓSITO LO HACE QUIEN TENGA EL PERMISO DE INVENTARIOS, como
+ *   todo lo demás del módulo. Se evaluó pedirle un permiso propio —aceptar
+ *   algo bajo la cláusula de no responsabilidad es un compromiso de la
+ *   iglesia con un hermano— y se resolvió que no: un permiso más que casi
+ *   nadie sabría a quién darle protege menos que la hoja firmada, que es lo
+ *   que de verdad deja constancia.
  */
 
 /** Los tres regímenes. El primero es el corriente y es el valor de fábrica. */
