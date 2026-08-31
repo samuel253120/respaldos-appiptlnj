@@ -160,46 +160,10 @@ test('y una iglesia que no existe no frena nada', () => {
  * nada simulado: el pase se firma con la llave del sistema, el usuario existe
  * en la base y el guardado pasa por las mismas doce comprobaciones.
  */
-const express = require('express');
-const jwt = require('jsonwebtoken');
-const { buildRouter } = require('../../server/crud');
-const { JWT_SECRET } = require('../../server/auth');
 const { digitoVerificador } = require('../../server/rut');
+const { elSistemaAndando, cerrarElSistema } = require('./andando');
 
-let servidor = null;
-let pedir = null;
-
-/** El sistema andando, con una sesión de administrador ya abierta. */
-async function elSistemaAndando() {
-  if (pedir) return pedir;
-  const app = express();
-  app.use(express.json());
-  app.use('/api', buildRouter());
-  servidor = app.listen(0, '127.0.0.1');
-  await new Promise((listo) => servidor.once('listening', listo));
-  const puerto = servidor.address().port;
-
-  const rut = `${90000000 + (process.pid % 9000000)}`;
-  const quien = db
-    .prepare('INSERT INTO usuarios (rut, nombre, rol, activo, debe_cambiar_password) VALUES (?,?,?,1,0)')
-    .run(`${rut}-${digitoVerificador(rut)}`, `Administradora del retiro ${process.pid}`, 'admin');
-  const pase = jwt.sign({ id: quien.lastInsertRowid, rol: 'admin' }, JWT_SECRET, { expiresIn: '1h' });
-
-  pedir = async (metodo, ruta, cuerpo) => {
-    const r = await fetch(`http://127.0.0.1:${puerto}/api${ruta}`, {
-      method: metodo,
-      headers: { Authorization: `Bearer ${pase}`, 'Content-Type': 'application/json' },
-      body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
-    });
-    const texto = await r.text();
-    let json = null;
-    try { json = JSON.parse(texto); } catch (e) { /* no era JSON */ }
-    return { estado: r.status, texto, json };
-  };
-  return pedir;
-}
-
-test.after(() => { if (servidor) servidor.close(); });
+test.after(cerrarElSistema);
 
 test('guardando de verdad: una iglesia que se retira deja de recibir cosas', async () => {
   const api = await elSistemaAndando();

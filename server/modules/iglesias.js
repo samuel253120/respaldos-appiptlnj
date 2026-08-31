@@ -203,5 +203,47 @@ module.exports = {
         );
       }
     },
+
+    /**
+     * Borrar una iglesia: se frena si tiene algo dentro, y se pregunta si no.
+     *
+     * Hasta acá una iglesia no se podía borrar NUNCA, ni la que se acababa de
+     * crear con el nombre mal escrito: las dos cuentas que este mismo módulo le
+     * abre unas líneas más arriba y la línea de historial que la bitácora le
+     * anota bastaban para que el motor contara «tres registros colgando» y se
+     * negara. El sistema fabricaba los motivos por los que después se negaba.
+     *
+     * Qué cuenta como el rastro de haberla creado y qué cuenta como su
+     * contenido está en server/iglesia-vacia.js, y de ahí lo leen los dos que
+     * tienen que estar de acuerdo: esta pregunta y el plan del borrado que arma
+     * server/dependencias.js. Si dijeran cosas distintas, el borrado se
+     * aceptaría acá y se frenaría dos líneas después —o peor, al revés—.
+     */
+    beforeDelete(fila, { db, confirmado }) {
+      const vacia = require('../iglesia-vacia');
+      const dependencias = require('../dependencias');
+      const { contenido, rastro } = vacia.loQueCuelga(
+        db, fila.id, dependencias.referenciasHacia('iglesias'), dependencias.cuantasApuntan
+      );
+
+      // Lo que frena lo escribe el motor con las mismas palabras al armar el
+      // plan; acá se sale sin decir nada y se deja que lo diga él, para que no
+      // haya dos avisos distintos para lo mismo.
+      if (contenido.length) return null;
+      if (confirmado) return null;
+
+      /*
+       * Se pregunta aunque no cuelgue absolutamente nada. La primera versión se
+       * saltaba la pregunta en ese caso —«no hay nada que advertir»— y quedaba
+       * al revés de como tiene que ser: la iglesia más vacía era la única que se
+       * borraba de un clic. Borrar una iglesia no se deshace, y el botón,
+       * apretado sobre la de al lado, es irreparable.
+       */
+
+      return {
+        error: vacia.preguntaDeBorrado(`«${fila.nombre}»`, rastro),
+        confirmar: 'iglesia_sin_nada',
+      };
+    },
   },
 };

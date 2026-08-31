@@ -67,10 +67,18 @@ const TOPE_DE_CASCADA = 10000;
 /**
  * Módulos de los que no se arrastra nada.
  *
- * Una iglesia no se borra: se marca inactiva. Tiene veintiocho módulos
- * colgando —su gente, su dinero, sus actas, sus documentos— y no existe un
- * caso legítimo en que borrarla deba llevárselos. Si algo cuelga de ella, se
- * frena y se dice qué es.
+ * Una iglesia no se lleva por delante lo que cuelga de ella. Tiene treinta y
+ * tres referencias apuntándole —su gente, su dinero, sus actas, sus
+ * documentos— y no existe un caso legítimo en que borrarla deba llevárselos:
+ * si algo hay dentro, se frena y se dice qué es.
+ *
+ * La única excepción es el RASTRO DE HABERLA CREADO —sus cuentas recién
+ * abiertas y sin un peso, sus anotaciones automáticas de historial, sus líneas
+ * de auditoría—, que lo escribió el sistema y no una persona. Eso no la
+ * protege de nada: la protegía de ser borrada por errores propios. Qué cuenta
+ * como rastro y qué no está en server/iglesia-vacia.js, y desde ahí lo leen
+ * los dos que tienen que estar de acuerdo: este archivo, que arma el plan del
+ * borrado, y el gancho del módulo, que hace la pregunta.
  */
 const NO_SE_ARRASTRA_NADA = ['iglesias'];
 
@@ -177,32 +185,47 @@ function comoSeLlama(def, fila) {
 }
 
 /**
- * El aviso de una iglesia, que no se lleva nada consigo.
+ * Qué cuelga de una iglesia, separado en lo que ella TIENE y lo que el sistema
+ * ESCRIBIÓ sobre ella. El porqué de la distinción está en
+ * server/iglesia-vacia.js, que es de donde sale.
+ */
+function loQueCuelgaDeLaIglesia(db, fila) {
+  return require('./iglesia-vacia')
+    .loQueCuelga(db, fila.id, referenciasHacia('iglesias'), cuantasApuntan);
+}
+
+/**
+ * El plan del borrado de una iglesia.
  *
- * Se cuentan TODOS sus módulos y no solo el primero que aparezca: quien va a
- * borrar una iglesia necesita ver el tamaño de lo que estaba por hacer, no
- * enterarse de a un módulo por vez.
+ * Devuelve `{ freno }` si tiene algo dentro —y ahí se cuentan TODOS sus
+ * módulos y no solo el primero que aparezca, porque quien va a borrar una
+ * iglesia necesita ver el tamaño de lo que estaba por hacer—, o el rastro que
+ * se va con ella y los enlaces que hay que soltar.
+ *
+ * No pregunta nada: la pregunta la hace el gancho del módulo, que es el que
+ * sabe si la persona ya contestó (ver server/modules/iglesias.js). Acá se
+ * llega cuando esa pregunta ya está contestada.
  */
 function frenoDeIglesia(db, def, fila) {
-  const cuentas = [];
-  for (const campo of referenciasHacia(def.name)) {
-    const n = cuantasApuntan(db, campo, fila.id);
-    if (n) cuentas.push({ label: campo.def.label, n });
+  const vacia = require('./iglesia-vacia');
+  const { contenido, rastro } = loQueCuelgaDeLaIglesia(db, fila);
+  if (contenido.length) {
+    return { freno: vacia.avisoDeQueNoSeBorra(comoSeLlama(def, fila), contenido) };
   }
-  if (!cuentas.length) return null;
 
-  const juntos = new Map();
-  for (const c of cuentas) juntos.set(c.label, (juntos.get(c.label) || 0) + c.n);
-  const orden = [...juntos.entries()].sort((a, b) => b[1] - a[1]);
-  const total = orden.reduce((s, [, n]) => s + n, 0);
-  const primeros = orden.slice(0, 4).map(([label, n]) => `${n.toLocaleString('es-CL')} en ${label}`);
-  const resto = orden.length > 4 ? `, y ${orden.length - 4} módulo(s) más` : '';
-
-  return (
-    `No se puede eliminar ${comoSeLlama(def, fila)}: cuelgan de ella ` +
-    `${total.toLocaleString('es-CL')} registro(s) — ${primeros.join(', ')}${resto}. ` +
-    'Una iglesia no se borra con su gente y su historia adentro: márquela como inactiva.'
-  );
+  const arrastrar = [];
+  const soltar = [];
+  for (const r of rastro) {
+    if (r.que === vacia.SE_QUEDA) {
+      soltar.push({ campo: r.campo, id: fila.id });
+      continue;
+    }
+    const hijas = db
+      .prepare(`SELECT * FROM "${r.campo.def.name}" WHERE "${r.campo.nombre}" = ?`)
+      .all(fila.id);
+    for (const hija of hijas) arrastrar.push({ def: r.campo.def, fila: hija });
+  }
+  return { freno: null, arrastrar, soltar };
 }
 
 /**
@@ -227,8 +250,20 @@ function planDe(db, def, fila) {
     // Una iglesia no se lleva nada consigo: si algo cuelga de ella, no se
     // borra, y el aviso los cuenta todos de una vez.
     if (NO_SE_ARRASTRA_NADA.includes(actual.def.name)) {
-      const freno = frenoDeIglesia(db, actual.def, actual.fila);
-      if (freno) return { freno };
+      const suyo = frenoDeIglesia(db, actual.def, actual.fila);
+      if (suyo.freno) return { freno: suyo.freno };
+      soltar.push(...suyo.soltar);
+      // Lo que se va con ella entra a la cola como cualquier otra cosa que se
+      // arrastra: una cuenta vacía no debería tener nada colgando, y si un día
+      // lo tuviera, el que decide es el mismo camino de siempre y no éste.
+      for (const hija of suyo.arrastrar) {
+        const marca = `${hija.def.name}:${hija.fila.id}`;
+        if (vistas.has(marca)) continue;
+        vistas.add(marca);
+        tocadas++;
+        arrastrar.push(hija);
+        cola.push(hija);
+      }
       continue;
     }
 
@@ -393,4 +428,9 @@ function huerfanas(db) {
   return { total: encontrado.reduce((s, x) => s + x.cuantas, 0), donde: encontrado };
 }
 
-module.exports = { resolver, planDe, huerfanas, referenciasHacia, FRENA, ARRASTRA, SUELTA };
+module.exports = {
+  resolver, planDe, huerfanas, referenciasHacia, FRENA, ARRASTRA, SUELTA,
+  // Se exporta para que el gancho de borrado de Iglesias pregunte sobre
+  // exactamente lo mismo que después mira el plan (ver server/iglesia-vacia.js)
+  cuantasApuntan,
+};
