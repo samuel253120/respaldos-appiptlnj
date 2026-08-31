@@ -2752,6 +2752,41 @@ function cuentasAbiertasSinFechaDeCierre() {
 }
 
 /**
+ * Los nombres de iglesia con espacios de más.
+ *
+ * Desde la 1.238.0 el nombre se guarda sin ellos. Esto es para los que ya
+ * estaban: « iglesia  Central » salía tal cual en los desplegables —que es lo
+ * único que muestran—, se ordenaba antes que todos los demás por el espacio de
+ * adelante, y parecía otra iglesia distinta de la que se llama igual sin ellos.
+ *
+ * Es la normalización más chica que existe: no cambia ninguna palabra ni ningún
+ * acento, solo junta los espacios repetidos y saca los de las puntas. Nadie
+ * decide tener dos espacios entre dos palabras.
+ */
+function losNombresDeIglesiaSinEspaciosDeMas(conexion = db) {
+  const NOMBRE = 'los nombres de iglesia sin espacios de más';
+  const yaEsta = () => !!conexion.prepare('SELECT nombre FROM migraciones WHERE nombre = ?').get(NOMBRE);
+  const marcar = () => conexion.prepare('INSERT OR IGNORE INTO migraciones (nombre) VALUES (?)').run(NOMBRE);
+  if (yaEsta()) return;
+
+  const hayTabla = (t) =>
+    !!conexion.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('iglesias')) return marcar();
+
+  let arregladas = 0;
+  const poner = conexion.prepare('UPDATE iglesias SET nombre = ? WHERE id = ?');
+  for (const i of conexion.prepare('SELECT id, nombre FROM iglesias').all()) {
+    const parejo = String(i.nombre || '').replace(/\s+/g, ' ').trim();
+    if (parejo && parejo !== i.nombre) {
+      poner.run(parejo, i.id);
+      arregladas++;
+    }
+  }
+  if (arregladas) console.log(`⛪ ${arregladas} nombre(s) de iglesia sin espacios de más.`);
+  marcar();
+}
+
+/**
  * Las cajas que se quedaron con el nombre viejo de su iglesia.
  *
  * Al crear una iglesia, el sistema le abre sus dos cuentas y les escribe el
@@ -2974,6 +3009,7 @@ function ejecutarMigraciones() {
     ['lo del cuerpo sigue al cuerpo cuando cambia de iglesia', loQueSeQuedoEnLaIglesiaAnterior],
     ['el nivel de cada artículo de inventario', elNivelDeCadaArticuloDeInventario],
     ['las cajas con el nombre viejo de su iglesia', lasCajasConElNombreViejoDeSuIglesia],
+    ['los nombres de iglesia sin espacios de más', losNombresDeIglesiaSinEspaciosDeMas],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -3232,4 +3268,5 @@ module.exports = {
   hojasDePresentacionYMatrimonio, certificadosApaisados,
   elNivelDeCadaArticuloDeInventario,
   lasCajasConElNombreViejoDeSuIglesia,
+  losNombresDeIglesiaSinEspaciosDeMas,
 };

@@ -1089,17 +1089,29 @@ function buildRouter() {
       // Además del texto que se muestra, se envía con qué más se puede buscar
       // (RUT, teléfono, correo…) para que el buscador del selector encuentre
       // por cualquiera de esos datos sin volver a consultar al servidor.
-      res.json(
-        rows.map((r) => {
-          const label = displayOf(def, r);
-          const enElTexto = label.toLowerCase();
-          const extra = buscables
-            .map((n) => r[n])
-            .filter((v) => v != null && v !== '' && !enElTexto.includes(String(v).toLowerCase()))
-            .join(' ');
-          return { id: r.id, label, buscar: `${label} ${extra}`.trim() };
-        })
-      );
+      const opciones = rows.map((r) => {
+        const label = displayOf(def, r);
+        const enElTexto = label.toLowerCase();
+        const extra = buscables
+          .map((n) => r[n])
+          .filter((v) => v != null && v !== '' && !enElTexto.includes(String(v).toLowerCase()))
+          .join(' ');
+        return { id: r.id, label, buscar: `${label} ${extra}`.trim() };
+      });
+      /*
+       * Y un módulo puede retocar cómo se OFRECE lo suyo, mirando la lista
+       * entera y no una fila por vez.
+       *
+       * Hace falta donde una fila sola no alcanza para saber cómo nombrarla:
+       * dos iglesias que se llaman igual salen indistinguibles en el
+       * desplegable, y para decidir si hay que ponerles el código al lado hay
+       * que ver a las dos. `display` no sirve: se llama fila por fila y no sabe
+       * qué más hay en la lista.
+       *
+       * Recibe las opciones ya armadas y las filas en el mismo orden, por si
+       * necesita una columna que no viaja en la opción —el código, ahí—.
+       */
+      res.json(def.comoSeOfrecen ? def.comoSeOfrecen(opciones, rows) : opciones);
     });
 
     /**

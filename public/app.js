@@ -7422,6 +7422,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y dejarlo como estaba',
       seguir: 'Trasladarlo igual',
     },
+    iglesia_con_el_mismo_nombre: {
+      titulo: '⛪ Ya hay una iglesia llamada así',
+      volver: 'Volver y cambiarle el nombre',
+      seguir: 'Son dos congregaciones, guardar',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',

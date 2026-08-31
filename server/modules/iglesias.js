@@ -24,6 +24,98 @@ const TIPOS_DE_IGLESIA = ['Iglesia Matriz', 'Iglesia Sede', 'Iglesia Local', 'Ig
 /** El que ocupa una sola iglesia en toda la organización. */
 const TIPO_UNICO = 'Iglesia Matriz';
 
+/**
+ * Dos congregaciones que se llaman igual.
+ *
+ * El código no se puede repetir y el sistema lo hace cumplir; el NOMBRE sí se
+ * repetía, y se guardaban dos «Iglesia Central» con un 201 sin decir nada. Y el
+ * nombre es lo ÚNICO que muestran los desplegables: el código, que es lo que
+ * las distingue, no aparece en ninguna de las listas donde se elige a cuál va
+ * un miembro, un movimiento o un certificado. Dos «Iglesia Central» en un
+ * desplegable son indistinguibles.
+ *
+ * SE PREGUNTA Y SE DEJA SEGUIR: dos congregaciones del mismo nombre en ciudades
+ * distintas es un caso real —«Iglesia Central» de Concepción y de Temuco—. Es
+ * el mismo mecanismo de la ficha de miembro repetida.
+ *
+ * Y EL DESPLEGABLE MUESTRA EL CÓDIGO cuando hay dos que se llaman igual, y solo
+ * entonces: ponérselo siempre llenaría de ruido el caso normal, que es el de la
+ * congregación con un nombre propio.
+ */
+
+/** Dos nombres se comparan sin tildes, sin mayúsculas y sin espacios de más. */
+const comoSeCompara = (nombre) => String(nombre || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/\s+/g, ' ')
+  .trim();
+
+/**
+ * Las otras iglesias que se llaman igual que ésta. Se traen todas y se comparan
+ * acá porque SQLite no sabe ignorar las tildes, que es justo lo que hay que
+ * ignorar; son unas pocas decenas de filas y se pregunta al crear una iglesia o
+ * al cambiarle el nombre, que se hace de a una y a mano.
+ */
+function lasQueSeLlamanIgual(db, nombre, id) {
+  const buscado = comoSeCompara(nombre);
+  if (!buscado) return [];
+  return db
+    .prepare('SELECT id, nombre, codigo, ciudad FROM iglesias WHERE id IS NOT ?')
+    .all(id || 0)
+    .filter((otra) => comoSeCompara(otra.nombre) === buscado);
+}
+
+/** Cómo se distingue una iglesia de otra que se llama igual. */
+const comoSeDistingue = (fila) =>
+  [fila.codigo ? `código ${fila.codigo}` : '', fila.ciudad || ''].filter(Boolean).join(', ')
+  || 'sin código ni ciudad anotados';
+
+/** El aviso de que ya hay otra con ese nombre, o null. */
+function avisoDeIglesiaRepetida(db, nombre, id, confirmado) {
+  if (confirmado || !nombre) return null;
+  const iguales = lasQueSeLlamanIgual(db, nombre, id);
+  if (!iguales.length) return null;
+
+  const listadas = iguales.slice(0, 3).map((o) => `${o.nombre} (${comoSeDistingue(o)})`).join('; ');
+  const yMas = iguales.length > 3 ? `, y ${iguales.length - 3} más` : '';
+  return {
+    error:
+      (iguales.length === 1
+        ? `Ya hay una iglesia llamada así (${comoSeDistingue(iguales[0])}). `
+        : `Ya hay ${iguales.length} iglesias llamadas así: ${listadas}${yMas}. `)
+      + 'El nombre es lo único que muestran los desplegables donde se elige a qué iglesia va un '
+      + 'miembro, un movimiento o un certificado, así que dos con el mismo nombre no se distinguen '
+      + 'ahí. Si son dos congregaciones distintas —el mismo nombre en dos ciudades—, confirme: en '
+      + 'los desplegables van a salir con su código al lado.',
+    confirmar: 'iglesia_con_el_mismo_nombre',
+  };
+}
+
+/**
+ * Las mismas opciones, con el código al lado de las que comparten nombre.
+ *
+ * Lo usan los DOS caminos por los que se pide una lista de iglesias —la ruta
+ * propia del módulo, que es la que piden los formularios, y la genérica del
+ * motor, que es la que piden los filtros—, para que las dos muestren lo mismo.
+ * Escrito dos veces, un día una mostraría el código y la otra no.
+ */
+function conElCodigoSiSeRepite(opciones, filas) {
+  const cuantas = new Map();
+  for (const o of opciones) {
+    const clave = comoSeCompara(o.label);
+    cuantas.set(clave, (cuantas.get(clave) || 0) + 1);
+  }
+  return opciones.map((o, i) => {
+    if (cuantas.get(comoSeCompara(o.label)) < 2) return o;
+    const codigo = filas[i] && filas[i].codigo;
+    // El separador es un punto medio a propósito: la pantalla acorta el nombre
+    // de una iglesia partiéndolo por «/», «—» o «–» (ver iglesiaDeTrabajo en
+    // public/app.js), y con cualquiera de esos el código se perdería por el
+    // camino en la mitad de las listas.
+    return codigo ? { ...o, label: `${o.label} · ${codigo}` } : o;
+  });
+}
+
 module.exports = {
   name: 'iglesias',
   label: 'Iglesias',
@@ -117,6 +209,14 @@ module.exports = {
       },
     },
   ],
+  /*
+   * Y la lista genérica del motor —la que piden los filtros del listado— sale
+   * con lo mismo. Es la otra puerta por la que se ofrece una iglesia, y
+   * mostrar el código en una y no en la otra dejaría el desplegable de los
+   * filtros con dos opciones idénticas.
+   */
+  comoSeOfrecen: conElCodigoSiSeRepite,
+
   extraRoutes(router, { db, requirePerm, scopeClause, can }) {
     /*
      * Las iglesias que reciben cosas nuevas, para los desplegables.
@@ -145,9 +245,9 @@ module.exports = {
       }
 
       const filas = db
-        .prepare(`SELECT id, nombre FROM iglesias${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY nombre`)
+        .prepare(`SELECT id, nombre, codigo FROM iglesias${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY nombre`)
         .all(...params);
-      res.json(filas.map((i) => ({ id: i.id, label: i.nombre })));
+      res.json(conElCodigoSiSeRepite(filas.map((i) => ({ id: i.id, label: i.nombre })), filas));
     });
 
     /**
@@ -310,6 +410,16 @@ module.exports = {
        * único; acá solo se deja normalizado ANTES de esa comprobación, o dos
        * códigos que se escriben distinto y valen lo mismo pasarían los dos.
        */
+      /*
+       * El nombre se guarda sin espacios de más. No es cosmética: es lo único
+       * que muestran los desplegables, y « iglesia  Central » salía tal cual,
+       * ordenándose antes que todas las demás por el espacio de adelante y
+       * pareciendo otra iglesia que la que se llama igual sin ellos.
+       */
+      if (data.nombre !== undefined && data.nombre !== null) {
+        data.nombre = String(data.nombre).replace(/\s+/g, ' ').trim();
+      }
+
       if (data.codigo !== undefined) {
         const codigos = require('../codigo-iglesia');
         data.codigo = codigos.normalizar(data.codigo);
@@ -336,6 +446,20 @@ module.exports = {
           return `Ya hay una ${TIPO_UNICO}: ${otra.nombre}. ` +
             'Cámbiele el tipo a esa antes de designar otra.';
         }
+      }
+
+      /*
+       * ¿Ya hay otra iglesia llamada así? Va antes que la del pastor porque el
+       * motor deja pasar UNA pregunta por guardado y ésta es la más grave: una
+       * congregación indistinguible en todos los desplegables del sistema.
+       */
+      const nombre = data.nombre !== undefined ? data.nombre : existing ? existing.nombre : null;
+      const seLlamaIgual = avisoDeIglesiaRepetida(db, nombre, id, confirmado);
+      // Solo cuando ESTE guardado toca el nombre: si no, corregirle el teléfono
+      // a una de dos iglesias que ya se llaman igual volvería a preguntarlo
+      if (seLlamaIgual && data.nombre !== undefined
+          && (!existing || comoSeCompara(existing.nombre) !== comoSeCompara(data.nombre))) {
+        return seLlamaIgual;
       }
 
       /*
