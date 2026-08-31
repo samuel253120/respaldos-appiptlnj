@@ -384,17 +384,17 @@ function asistenciasNominales() {
  * Una actividad puede convocar a varios cuerpos. Las que tenían un solo
  * cuerpo pasan a la lista de convocados con ese mismo cuerpo dentro.
  */
-function actividadesConVariosCuerpos() {
-  const columnas = db.prepare('PRAGMA table_info("asistencias")').all().map((c) => c.name);
+function actividadesConVariosCuerpos(conexion = db) {
+  const columnas = conexion.prepare('PRAGMA table_info("asistencias")').all().map((c) => c.name);
   if (!columnas.includes('cuerpo_id') || !columnas.includes('cuerpos')) return;
 
-  const pendientes = db
+  const pendientes = conexion
     .prepare(`SELECT id, cuerpo_id FROM asistencias
                WHERE cuerpo_id IS NOT NULL AND (cuerpos IS NULL OR cuerpos = '' OR cuerpos = '[]')`)
     .all();
   if (!pendientes.length) return;
 
-  const actualizar = db.prepare('UPDATE asistencias SET cuerpos = ? WHERE id = ?');
+  const actualizar = conexion.prepare('UPDATE asistencias SET cuerpos = ? WHERE id = ?');
   for (const fila of pendientes) actualizar.run(JSON.stringify([fila.cuerpo_id]), fila.id);
   console.log(`🔁 asistencias: ${pendientes.length} actividad(es) pasaron a la lista de cuerpos convocados.`);
 }
@@ -1807,40 +1807,74 @@ function devolverLosQueLaDirectivaSaco() {
  * actividad, si la actividad tiene uno solo; o el único de los cuerpos
  * convocados al que esa persona pertenece. Donde hay más de una respuesta
  * posible no se inventa ninguna: se deja la marca como está.
+ *
+ * ESTA MIGRACIÓN NUNCA CORRIÓ, EN NINGUNA BASE, DESDE QUE SE ESCRIBIÓ. Pedía
+ * `a.cuerpo_id`, y `asistencias` había perdido esa columna un poco antes,
+ * cuando una actividad pasó a convocar VARIOS cuerpos y el campo se volvió
+ * `cuerpos`, que es una lista. Así que reventaba en cada arranque con «no such
+ * column: a.cuerpo_id», el error quedaba atrapado y escrito en la consola, y
+ * —lo peor— no se marcaba aplicada, de modo que volvía a intentarlo y a
+ * fallar la vez siguiente, para siempre.
+ *
+ * El respaldo que leía esa columna no se le pone un guardia: se quita, porque
+ * está muerto incluso en una base vieja que todavía la tenga. La migración
+ * «actividades con varios cuerpos» corre ANTES que ésta en la misma lista y
+ * copia cualquier cuerpo_id suelto dentro de `cuerpos`, así que cuando ésta
+ * mira, `cuerpos` ya está lleno. La prueba lo comprueba sobre una base a la
+ * que se le devuelve la columna a propósito.
  */
-function marcasDeAsistenciaConSuCuerpo() {
+function marcasDeAsistenciaConSuCuerpo(conexion = db) {
   const NOMBRE = 'marcas de asistencia con su cuerpo';
-  if (yaAplicada(NOMBRE)) return;
+  const yaEsta = () => !!conexion.prepare('SELECT nombre FROM migraciones WHERE nombre = ?').get(NOMBRE);
+  const marcar = () => conexion.prepare('INSERT OR IGNORE INTO migraciones (nombre) VALUES (?)').run(NOMBRE);
+  if (yaEsta()) return;
 
   const hayTabla = (t) =>
-    !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
-  if (!hayTabla('asistencia_detalle') || !hayTabla('asistencias')) return marcarAplicada(NOMBRE);
+    !!conexion.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('asistencia_detalle') || !hayTabla('asistencias')) return marcar();
 
-  const sueltas = db
+  const sueltas = conexion
     .prepare(
-      `SELECT d.id, d.miembro_id, d.asistencia_id, a.cuerpos, a.cuerpo_id
+      `SELECT d.id, d.miembro_id, d.no_miembro_id, d.asistencia_id, a.cuerpos
          FROM asistencia_detalle d
          JOIN asistencias a ON a.id = d.asistencia_id
         WHERE d.cuerpo_id IS NULL`
     )
     .all();
-  if (!sueltas.length) return marcarAplicada(NOMBRE);
+  if (!sueltas.length) return marcar();
 
-  const perteneceA = db.prepare(
-    `SELECT cuerpo_id FROM integrantes_cuerpo
-      WHERE miembro_id = ? AND cuerpo_id = ? AND estado <> 'Retirado'`
-  );
-  const poner = db.prepare('UPDATE asistencia_detalle SET cuerpo_id = ? WHERE id = ?');
+  /*
+   * Las dos clases de persona que se marcan. A un cuerpo también lo integra
+   * gente que no está en la membresía —desde que los grupos admiten a los no
+   * inscritos—, y sin esta segunda consulta sus marcas se quedaban sin
+   * resolver aunque el cuerpo fuera deducible con certeza, que es justamente
+   * lo que esta migración existe para evitar.
+   */
+  const integraElCuerpo = {
+    miembro: conexion.prepare(
+      `SELECT 1 FROM integrantes_cuerpo
+        WHERE cuerpo_id = ? AND miembro_id = ? AND estado <> 'Retirado'`
+    ),
+    no_miembro: conexion.prepare(
+      `SELECT 1 FROM integrantes_cuerpo
+        WHERE cuerpo_id = ? AND no_miembro_id = ? AND estado <> 'Retirado'`
+    ),
+  };
+  const poner = conexion.prepare('UPDATE asistencia_detalle SET cuerpo_id = ? WHERE id = ?');
 
   let puestas = 0;
   let sinResolver = 0;
-  db.transaction(() => {
+  conexion.transaction(() => {
     for (const m of sueltas) {
       let convocados = [];
       try { convocados = JSON.parse(m.cuerpos || '[]').map(Number).filter(Boolean); } catch (e) { convocados = []; }
-      if (!convocados.length && m.cuerpo_id) convocados = [Number(m.cuerpo_id)];
 
-      const suyos = convocados.filter((c) => perteneceA.get(m.miembro_id, c));
+      // Quién es: un miembro, alguien no inscrito, o —marca huérfana— nadie
+      const cual = m.miembro_id ? 'miembro' : m.no_miembro_id ? 'no_miembro' : null;
+      const quien = m.miembro_id || m.no_miembro_id;
+      const suyos = cual
+        ? convocados.filter((c) => integraElCuerpo[cual].get(c, quien))
+        : [];
       // Con uno solo no hay duda; con varios —o con ninguno— sí, y no se toca
       if (suyos.length === 1) { poner.run(suyos[0], m.id); puestas++; }
       else if (convocados.length === 1) { poner.run(convocados[0], m.id); puestas++; }
@@ -1857,7 +1891,7 @@ function marcasDeAsistenciaConSuCuerpo() {
         '(la persona pertenece a varios de los cuerpos convocados, o a ninguno). Se dejaron como estaban.'
     );
   }
-  marcarAplicada(NOMBRE);
+  marcar();
 }
 
 /**
@@ -3259,7 +3293,8 @@ function solicitudesConSeguimiento() {
 module.exports = {
   ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
   cadaIglesiaConSuCodigo, solicitudesNumeradasPorIglesia,
-  devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, elConteoDeLeidosSeGuarda,
+  devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, actividadesConVariosCuerpos,
+  elConteoDeLeidosSeGuarda,
   elAvisoDiceDeQuienViene, losDestinatariosQuedanAnotados, elPorcentajeDelAporteQuedaConSuServicio,
   losTrasladosQuedanMarcados, cuentasAbiertasSinFechaDeCierre,
   loQueSeQuedoEnLaIglesiaAnterior,
