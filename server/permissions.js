@@ -171,6 +171,27 @@ const LLAVES = [
       'los cuerpos. Sobre cuáles alcanza lo siguen diciendo los cuerpos asignados en su ficha.',
   },
   /**
+   * Cerrar una deuda no es lo mismo que anotarla.
+   *
+   * Anotar que la iglesia debe es trabajo de todos los días, y lo hace quien
+   * lleva la tesorería del nivel que corresponda. Declarar que YA NO SE DEBE
+   * —darla por pagada o por condonada— cierra el asunto: después de eso la
+   * deuda deja de contarse, deja de avisar y deja de aparecer entre lo que hay
+   * que pagar. Es la misma separación que ya hay entre corregir un registro y
+   * eliminarlo.
+   */
+  {
+    name: 'deudas_cerrar',
+    label: 'Cerrar deudas y compromisos',
+    group: 'Finanzas',
+    acciones: ['view'],
+    defecto: 'todos',
+    ayuda:
+      'Dar una deuda por Pagada o por Condonada. Quien no la tenga puede anotarla, corregirla y '
+      + 'registrar sus pagos, pero no declarar que ya no se debe. Sirve donde quien lleva el detalle '
+      + 'y quien responde por la caja no son la misma persona.',
+  },
+  /**
    * La credencial la firma el Pastor Presidente, no el sistema.
    *
    * De ahí que emitir y revocar no vayan con el permiso de «editar
@@ -397,6 +418,7 @@ const MATRIX = {
     ayudas_sociales: RW,
     no_miembros: RW,
     tesoreria: [],
+    deudas: [],
     cuentas_tesoreria: [],
     categorias_tesoreria: [],
     traspasos: [],
@@ -420,6 +442,7 @@ const MATRIX = {
     ...llavesDeFabrica('tesorero'),
     credenciales: [], // punto 12.3
     tesoreria: ALL,
+    deudas: ALL,
     cuentas_tesoreria: ALL,
     categorias_tesoreria: ALL,
     traspasos: ALL,
@@ -472,6 +495,7 @@ const MATRIX = {
     no_miembros: [],
     ayudas_sociales: [],
     tesoreria: [],
+    deudas: [],
     cuentas_tesoreria: [],
     categorias_tesoreria: [],
     traspasos: [],

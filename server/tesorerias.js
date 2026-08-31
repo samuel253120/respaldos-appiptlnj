@@ -45,6 +45,11 @@ const CUERPO = 'tesoreria_cuerpo';
 const LIBROS = {
   cuentas_tesoreria: { columna: 'cuerpo_id' },
   tesoreria: { columna: 'cuerpo_id', cuentas: ['cuenta_id'] },
+  /*
+   * Una deuda es del nivel de SU CAJA, igual que un movimiento: de ahí sale su
+   * cuerpo al guardar, así que la columna es de fiar y la cuenta la respalda.
+   */
+  deudas: { columna: 'cuerpo_id', cuentas: ['cuenta_id'] },
   cuotas_cuerpo: { siempre: CUERPO },
   /*
    * Un traspaso es de quien lo SACA, y por eso el nivel lo decide su cuenta de

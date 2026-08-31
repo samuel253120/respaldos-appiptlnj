@@ -89,6 +89,13 @@ const NO_SE_ARRASTRA_NADA = ['iglesias'];
 const EXCEPCIONES = {
   // ---- Dinero: no se borra junto con otra cosa ----
   'tesoreria.cuenta_id':            [FRENA, 'movimiento(s) de tesorería', 'Ciérrela en vez de eliminarla y su historial queda intacto.'],
+  /*
+   * Una deuda es un compromiso, no un dato de la caja: borrar la caja no puede
+   * hacer desaparecer lo que la organización debe. La regla por defecto la
+   * habría ARRASTRADO —la referencia es obligatoria— y con eso una caja
+   * eliminada se habría llevado consigo la constancia de una deuda viva.
+   */
+  'deudas.cuenta_id':               [FRENA, 'deuda(s) o compromiso(s) anotado(s)', 'Ciérrela en vez de eliminarla, o pase esas deudas a otra caja: una deuda no se borra con la caja.'],
   'traspasos.cuenta_origen_id':     [FRENA, 'traspaso(s) que salen de ella', 'Ciérrela en vez de eliminarla.'],
   'traspasos.cuenta_destino_id':    [FRENA, 'traspaso(s) que llegan a ella', 'Ciérrela en vez de eliminarla.'],
   'cuotas_cuerpo.integrante_id':    [FRENA, 'cuota(s) pagada(s)', 'Márquelo como «Retirado» en vez de eliminarlo, y su historial queda intacto.'],
