@@ -8,10 +8,11 @@
  *
  * Lo que entra por acá pasa por lo mismo que lo que se escribe a mano: los
  * campos obligatorios, el RUT, los duplicados, los rangos de las fechas, los
- * topes de los montos, las reglas propias del módulo, lo que el módulo hace
- * después de guardar —las cuentas de un cuerpo, la ofrenda de un servicio— y
- * el rastro en el historial. Durante un tiempo no fue así, y por acá entraban
- * cosas que el formulario ya no dejaba entrar.
+ * topes de los montos, EL ALCANCE —la iglesia de la fila, aquello a lo que
+ * apunta y el nivel de tesorería—, las reglas propias del módulo, lo que el
+ * módulo hace después de guardar —las cuentas de un cuerpo, la ofrenda de un
+ * servicio— y el rastro en el historial. Durante un tiempo no fue así, y por
+ * acá entraban cosas que el formulario ya no dejaba entrar.
  *
  * Comodidades pensadas para archivos exportados de otros sistemas:
  * - Los campos de relación (iglesia, cuerpo, miembro…) aceptan el NOMBRE en
@@ -27,7 +28,7 @@ const { getModule, displayOf } = require('./registry');
 const { authRequired, requirePerm } = require('./auth');
 const {
   coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, revisarLimites,
-  buscarDuplicado, avisoDeDuplicado,
+  buscarDuplicado, avisoDeDuplicado, referenciasFueraDeAlcance,
 } = require('./crud');
 const rut = require('./rut');
 const bitacora = require('./bitacora');
@@ -162,6 +163,39 @@ function prepararFila(def, fila, user) {
   if (datos.iglesia_id && !alcance.alcanzaIglesia(user, datos.iglesia_id)) {
     errores.push('Esa iglesia no está entre las que tiene asignadas');
   }
+
+  /*
+   * Y AQUELLO A LO QUE LA FILA APUNTA, que es la otra mitad del alcance.
+   *
+   * La iglesia de arriba no basta: un registro no es solo su iglesia, es
+   * también el cuerpo, la persona y la cuenta que nombra. El motor lo comprueba
+   * desde la 1.98.1 —«no se puede referenciar lo que no se puede ver»— y esta
+   * puerta no lo preguntaba. El formulario y la planilla decían cosas distintas
+   * sobre la misma fila, y la que decía que sí era la que no mira a nadie.
+   *
+   * Medido sobre una tesorera acotada a la Iglesia Central, con plata de sobra
+   * en la cuenta de origen para que ninguna otra comprobación tapara el
+   * resultado:
+   *
+   *   hacia una cuenta de la Iglesia Norte ... formulario 403 · planilla ENTRÓ
+   *   hacia la cuenta de la corporación ...... formulario 403 · planilla ENTRÓ
+   *
+   * y $ 150.000 aparecieron en cada una de esas dos cuentas ajenas.
+   *
+   * Y lo mismo por el NIVEL de tesorería: una tesorera de cuerpo sin la llave
+   * «Tesorería de la iglesia y la corporación» le sacó $ 90.000 a la cuenta
+   * general de su iglesia por planilla —el formulario le contesta 403— y
+   * después no veía el traspaso que acababa de anotar, porque el listado sí
+   * aplica el nivel. Anotó plata que no puede ver.
+   *
+   * Las dos comprobaciones son las MISMAS del formulario, llamadas desde acá:
+   * no hay una regla de planilla y otra de pantalla, hay una sola.
+   */
+  const ajenas = referenciasFueraDeAlcance(def, datos, user);
+  for (const cual of ajenas) errores.push(cual);
+
+  const nivel = require('./tesorerias').alGuardar(def, datos, user, db);
+  if (nivel) errores.push(nivel);
 
   for (const f of def.fields) {
     const valor = datos[f.name];
@@ -309,4 +343,9 @@ router.post('/:modulo', (req, res) => {
   });
 });
 
-module.exports = { router };
+/*
+ * `prepararFila` se exporta para poder exigirle a las pruebas del motor lo que
+ * de verdad importa de esta puerta: que le aplique a una fila de planilla las
+ * mismas reglas que el formulario le aplica a la misma fila escrita a mano.
+ */
+module.exports = { router, prepararFila };
