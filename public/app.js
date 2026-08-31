@@ -8232,12 +8232,29 @@ function initRefBuscador(f, row) {
 
   const cerrar = () => { lista.hidden = true; marcado = -1; };
 
+  /*
+   * El aviso de «cambió» va sobre el campo OCULTO, que es el que lleva el dato
+   * y el nombre del campo.
+   *
+   * Iba sobre la caja de texto, que es su hermana. Quien escuchara al campo por
+   * su nombre —`[name="cuenta_origen_id"]`— no se enteraba nunca: el aviso sube
+   * por otra rama. Eso dejó sin funcionar el saldo de la cuenta de origen en el
+   * formulario de traspaso: la función existe, consulta el saldo, lo pinta en
+   * rojo si es negativo y hasta contempla a quien no alcanza la llave de los
+   * montos, y su hueco estaba SIEMPRE VACÍO. Comprobado disparando el aviso a
+   * mano sobre el campo oculto: apareció al instante.
+   *
+   * Ya había mordido antes: los selectores que dependen de otro campo tuvieron
+   * que ponerse a escuchar el formulario entero en vez del campo, y su
+   * comentario explica el rodeo. Se arregla donde estaba el problema, y ese
+   * rodeo sigue funcionando igual porque el aviso pasa por los mismos padres.
+   */
   const elegir = (o) => {
     oculto.value = o.id;
     texto.value = o.label;
     quitar.hidden = false;
     cerrar();
-    texto.dispatchEvent(new Event('change', { bubbles: true }));
+    oculto.dispatchEvent(new Event('change', { bubbles: true }));
   };
 
   const pintar = (resultados) => {
@@ -8319,6 +8336,9 @@ function initRefBuscador(f, row) {
     texto.value = '';
     quitar.hidden = true;
     texto.focus();
+    // Vaciarlo es un cambio como cualquier otro: sin avisar, lo que dependa de
+    // este campo se queda mostrando lo del que ya no está elegido.
+    oculto.dispatchEvent(new Event('change', { bubbles: true }));
   });
 }
 
@@ -12703,7 +12723,15 @@ function mostrarSaldoOrigen() {
   if (!select) return;
   const marca = document.createElement('div');
   marca.className = 'saldo-origen';
-  select.parentNode.insertBefore(marca, select.nextSibling);
+  /*
+   * Debajo del campo, no dentro de él. Cuando la lista de cuentas es larga el
+   * campo no es un desplegable sino un buscador, y ese buscador es una caja con
+   * el campo oculto adentro: colgando el aviso del campo, el saldo quedaba
+   * ARRIBA de la casilla donde se escribe, metido entre medio de sus partes.
+   * Se cuelga de la caja entera cuando la hay, que es lo que se ve en pantalla.
+   */
+  const caja = select.closest('.refbuscar') || select;
+  caja.parentNode.insertBefore(marca, caja.nextSibling);
 
   const refrescar = async () => {
     if (!select.value) {

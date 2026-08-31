@@ -347,6 +347,51 @@ async function revisarUnMedio(navegador, medio, ancho) {
   conPestanas += pestanasDeConfig.length;
 
   /**
+   * Y que un campo de referencia AVISE cuando se elige algo.
+   *
+   * Cuando la lista es larga, un campo de referencia no es un desplegable sino
+   * un buscador: una caja con un campo de texto a la vista y el dato en uno
+   * oculto. Lo que dependa de ese campo escucha al campo, por su nombre.
+   *
+   * El buscador avisaba sobre la caja de texto, que es la HERMANA del campo
+   * oculto, así que el aviso subía por otra rama y no llegaba nunca. Con pocas
+   * opciones —cuando sí era un desplegable— funcionaba, que es lo que lo hacía
+   * difícil de ver. Costó dos cosas: los selectores dependientes tuvieron que
+   * escuchar el formulario entero para rodearlo, y el saldo de la cuenta de
+   * origen de un traspaso —escrito, completo y con su hueco en pantalla— no
+   * apareció nunca.
+   *
+   * Se comprueba acá y no en el motor porque solo pasa en el navegador: es un
+   * aviso del DOM que sube por unos padres y no por otros.
+   */
+  await revisar('#/m/traspasos/new');
+  const conBuscador = await pagina.$('#rb_cuenta_origen_id .rb-txt');
+  if (conBuscador) {
+    await conBuscador.click();
+    await pagina.waitForTimeout(900);
+    const hayOpcion = await pagina.$('#rb_cuenta_origen_id .rb-lista li[data-id]');
+    if (hayOpcion) {
+      await hayOpcion.click();
+      await pagina.waitForTimeout(1200);
+      const aviso = await pagina.evaluate(() => {
+        const m = document.querySelector('.saldo-origen');
+        const campo = document.querySelector('#rb_cuenta_origen_id .rb-txt');
+        if (!m || !campo) return null;
+        return {
+          dice: m.innerText.trim(),
+          dentro: !!document.querySelector('#rb_cuenta_origen_id .saldo-origen'),
+          debajo: m.getBoundingClientRect().top >= campo.getBoundingClientRect().bottom - 2,
+        };
+      });
+      if (!aviso || !aviso.dice) {
+        pegados.push('el saldo de la cuenta de origen no aparece al elegirla');
+      } else if (aviso.dentro || !aviso.debajo) {
+        pegados.push('el saldo de la cuenta de origen no queda debajo de su campo');
+      }
+    }
+  }
+
+  /**
    * Y el buscador general, que vive en la barra de arriba y no tiene dirección
    * propia. Pregunta en los treinta y dos módulos de una vez: si uno de ellos
    * revienta, no se nota mirando ninguna pantalla.
