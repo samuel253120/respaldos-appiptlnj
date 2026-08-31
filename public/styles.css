@@ -1229,6 +1229,15 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
    hoja y las otras tres quedaban apretadas contra el borde. */
 .print-generic h2.print-h2 { font-size: 15px; margin: 26px 0 4px; }
 .print-generic table.entregas td.k { width: auto; }
+/* La fotografía del templo, o la del pastor, dentro de su celda. Acotada de
+   alto porque una foto de teléfono en su tamaño empujaría el resto de la hoja
+   a la página siguiente; y con `block` para que no arrastre la línea base de
+   la celda. Antes de la 1.235.0 acá salía el nombre con que el sistema archiva
+   el archivo, que no le dice nada a nadie (ver printGenerico). */
+.print-generic img.foto-papel {
+  display: block; max-width: 150px; max-height: 110px;
+  border: 1px solid var(--border); border-radius: 3px;
+}
 
 /* Los mismos recursos de la hoja del acta, para las hojas genéricas que los
    usan: el registro de servicio y la solicitud con su tramitación. Estaban
@@ -1264,6 +1273,17 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
 @media print {
   .print-generic table.tramite tr { break-inside: avoid; }
   .print-generic table.tramite thead { display: table-header-group; }
+  /*
+   * Y que un título de sección no se quede solo al pie de una página.
+   *
+   * Se vio al imprimir por primera vez la hoja de una iglesia, en la 1.235.0:
+   * «Historial» y su línea de resumen —«1 anotación(es), desde el 31-08-2026»—
+   * cerraban la primera página y la tabla empezaba en la segunda. Quien da
+   * vuelta la hoja se encuentra una tabla sin encabezado y no sabe qué está
+   * leyendo, y el que ve el pie de la primera cree que el historial está vacío.
+   */
+  .print-generic h2.print-h2 { break-after: avoid; break-inside: avoid; }
+  .print-generic h2.print-h2 + .sub { break-before: avoid; break-after: avoid; }
 }
 
 @media print {

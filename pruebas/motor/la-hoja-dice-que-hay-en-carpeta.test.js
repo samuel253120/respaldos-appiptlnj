@@ -159,8 +159,14 @@ test('todo lo que sale del registro va escapado', () => {
 });
 
 test('la hoja recibe la carpeta como un dato más, sin cambiarle nada a las otras', () => {
-  assert.match(app, /function printGenerico\(m, row, susAyudas, suHistorial, susDocumentos\)/);
-  assert.match(app, /sheet = printGenerico\(m, row, susAyudas, suHistorial, susDocumentos\);/);
+  /*
+   * Se comprueba que la carpeta esté entre lo que recibe y entre lo que se le
+   * pasa, no que sea el ÚLTIMO de la lista: cuando la 1.235.0 le agregó a la
+   * hoja de una iglesia lo que la congregación tiene, esta prueba se cayó por
+   * un argumento nuevo detrás, sin que nada de la carpeta hubiera cambiado.
+   */
+  assert.match(app, /function printGenerico\([^)]*\bsusDocumentos\b/);
+  assert.match(app, /sheet = printGenerico\(m, row, susAyudas, suHistorial, susDocumentos[,)]/);
   // Las hojas que no son la genérica no la reciben ni la necesitan
   for (const otra of ['printSolicitud', 'printCertificado', 'printActa', 'printServicio', 'printMovimiento']) {
     assert.doesNotMatch(app, new RegExp(`${otra}\\([^)]*susDocumentos`), `${otra} no tiene por qué recibirla`);

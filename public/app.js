@@ -9759,6 +9759,26 @@ async function viewPrint(name, id) {
    * por su propia ruta; si no se puede traer, la hoja sale igual —sin ella— en
    * vez de no salir, que es la regla de las ayudas y del historial.
    */
+  /*
+   * La hoja de una iglesia sale con LO QUE TIENE HOY: cuánta gente, cuántos
+   * cuerpos, cuántos pastores, cuánto hay en sus cajas y cuándo fue la última
+   * actividad.
+   *
+   * Es lo que hace que esta hoja sirva para lo que se pide en papel —entregar
+   * una congregación, presentarla en una visita, acompañar un trámite—: sin
+   * eso es la ficha a secas, cinco datos que ya se sabían. Sale de la MISMA
+   * ruta que pinta el resumen de la pantalla, así que el papel y la ficha no
+   * pueden decir cifras distintas; y esa ruta ya calla lo que esa persona no
+   * puede ver, de modo que la hoja tampoco lo imprime.
+   *
+   * Si no se puede traer, la hoja sale igual sin esta parte, que es la regla
+   * de las ayudas, del historial y de la carpeta.
+   */
+  let loQueTiene = null;
+  if (name === 'iglesias') {
+    loQueTiene = await api('GET', `/iglesias/${id}/resumen`).catch(() => null);
+  }
+
   let clausulaDeposito = null;
   if (name === 'inventarios' && row.regimen === 'En depósito') {
     clausulaDeposito = await api('GET', '/inventarios/clausula-deposito')
@@ -9775,7 +9795,7 @@ async function viewPrint(name, id) {
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
   else if (name === 'tesoreria') sheet = printMovimiento(m, row);
-  else sheet = printGenerico(m, row, susAyudas, suHistorial, susDocumentos);
+  else sheet = printGenerico(m, row, susAyudas, suHistorial, susDocumentos, loQueTiene);
 
   content().innerHTML = `
     <div class="print-actions no-print">
@@ -11263,7 +11283,60 @@ function printMovimiento(m, row) {
     </div>`;
 }
 
-function printGenerico(m, row, susAyudas, suHistorial, susDocumentos) {
+function printGenerico(m, row, susAyudas, suHistorial, susDocumentos, loQueTiene) {
+  /*
+   * Lo que una congregación tiene hoy, arriba de su carpeta y de su historial.
+   *
+   * Va en un cuadro de cifras y no en la tabla de datos porque no son datos de
+   * la ficha —nadie los escribió— sino el estado de la iglesia en el momento
+   * de imprimir, y por eso la hoja dice el día. La plata de sus cuerpos va
+   * aparte de la suya, con la misma regla que en la pantalla y que en el
+   * inventario: son dos dueños distintos.
+   */
+  const cifras = [];
+  if (loQueTiene) {
+    const sumar = (que, cuanto, apunte) =>
+      cifras.push(`<tr><td class="k">${esc(que)}</td><td><b>${esc(cuanto)}</b>${
+        apunte ? ` <i>${esc(apunte)}</i>` : ''}</td></tr>`);
+    const yLosQueSeFueron = (c, palabra) =>
+      c.total > c.activos ? `— y ${fmtNumero(c.total - c.activos)} ${palabra}` : '';
+
+    if (loQueTiene.miembros) {
+      sumar('Miembros', fmtNumero(loQueTiene.miembros.activos),
+        yLosQueSeFueron(loQueTiene.miembros, 'que ya no están'));
+    }
+    if (loQueTiene.cuerpos) {
+      sumar('Cuerpos y grupos', fmtNumero(loQueTiene.cuerpos.activos),
+        yLosQueSeFueron(loQueTiene.cuerpos, 'inactivos'));
+    }
+    if (loQueTiene.pastores) {
+      sumar('Pastores y guías', fmtNumero(loQueTiene.pastores.activos),
+        yLosQueSeFueron(loQueTiene.pastores, 'que ya no sirven acá'));
+    }
+    if (loQueTiene.tesoreria) {
+      const t = loQueTiene.tesoreria;
+      sumar('Cajas propias', `${fmtNumero(t.cuentas)}${t.reservado ? '' : ` · ${fmtMoney(t.saldo)}`}`,
+        t.reservado ? '— los saldos no se le muestran a quien imprimió esta hoja' : '');
+      if (t.cuentas_de_cuerpos) {
+        sumar('Cajas de sus cuerpos', `${fmtNumero(t.cuentas_de_cuerpos)}${
+          t.reservado ? '' : ` · ${fmtMoney(t.saldo_de_cuerpos)}`}`,
+          '— esa plata tiene otro dueño y no se suma a la de la iglesia');
+      }
+    }
+    if (loQueTiene.asistencia) {
+      sumar('Actividades este año', fmtNumero(loQueTiene.asistencia.este_ano),
+        loQueTiene.asistencia.ultima ? `— la última, el ${fechaCorta(loQueTiene.asistencia.ultima)}` : '');
+    }
+    if (loQueTiene.solicitudes && loQueTiene.solicitudes.abiertas) {
+      sumar('Solicitudes en trámite', fmtNumero(loQueTiene.solicitudes.abiertas));
+    }
+  }
+  const loSuyo = cifras.length ? `
+    <h2 class="print-h2">Lo que tiene hoy</h2>
+    <div class="sub">Al ${fechaLarga(new Date().toISOString())}. No son datos escritos en su ficha: es lo que hay
+      anotado en el sistema en el momento de imprimir esta hoja.</div>
+    <table>${cifras.join('')}</table>` : '';
+
   /*
    * Lo que se le ha entregado, debajo de sus datos.
    *
@@ -11397,10 +11470,34 @@ function printGenerico(m, row, susAyudas, suHistorial, susDocumentos) {
             // base, no como se escriben en un documento que alguien firma.
             if (f.type === 'date' && v) v = fechaLarga(v);
             if (v == null || v === '') return '';
+
+            /*
+             * UN ARCHIVO NO SE IMPRIME POR SU NOMBRE GUARDADO.
+             *
+             * Se vio al imprimir por primera vez la hoja de una iglesia, en la
+             * 1.235.0: la primera línea de sus datos, arriba del nombre de la
+             * congregación, decía «Fotografía del templo ·
+             * 1756...-a3f9c2-templo.jpg». Eso es el nombre con que el sistema
+             * lo archiva —fecha, revoltijo y todo— y no le dice nada a nadie:
+             * es ruido interno en una hoja que se entrega y se firma. Le pasaba
+             * a las seis hojas genéricas que llevan un campo de archivo.
+             *
+             * Una fotografía se imprime: la del templo en la hoja de la
+             * iglesia y la del pastor en la suya son justamente para lo que la
+             * hoja se pide. Un documento adjunto no cabe en la hoja, así que se
+             * dice que está y cómo se llama de verdad.
+             */
+            if (f.type === 'file') {
+              const esImagen = /\.(jpe?g|png|gif|webp)$/i.test(v);
+              return `<tr><td class="k">${esc(f.label)}</td><td>${esImagen
+                ? `<img class="foto-papel" src="/uploads/${esc(v)}" alt="" />`
+                : `<i>Adjunto: ${esc(nombreArchivo(v))}</i>`}</td></tr>`;
+            }
             return `<tr><td class="k">${esc(f.label)}</td><td>${esc(v)}</td></tr>`;
           })
           .join('')}
       </table>
+      ${loSuyo}
       ${entregas}
       ${carpeta}
       ${historial}

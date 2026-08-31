@@ -31,6 +31,17 @@ module.exports = {
   icon: '⛪',
   group: 'Organización',
   order: 50,
+  /*
+   * Su hoja se imprime. El código que la arma estaba escrito y completo desde
+   * la 1.202.0 —dos listas de public/app.js nombran a este módulo justamente
+   * para que salga con su historial y con su carpeta, y el historial de
+   * versiones lo daba por hecho: «las hojas de iglesia y pastor salen con su
+   * historial y su carpeta»— y no salía ninguna, porque sin esta línea el botón
+   * de imprimir no aparece y ese código no se ejecuta jamás. Quince módulos se
+   * imprimían; éste, que es de los que se piden en papel —para entregar una
+   * congregación, para una visita, para un trámite—, había que copiarlo a mano.
+   */
+  printable: true,
   display: '{nombre}',
   /*
    * Lo que esta iglesia ofrece cuando otro módulo la referencia en un

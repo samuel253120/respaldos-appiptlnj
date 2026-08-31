@@ -63,12 +63,29 @@ module.exports = {
   icon: '🧑‍💼',
   group: 'Organización',
   order: 51,
+  /*
+   * Su hoja se imprime, por lo mismo que la de la iglesia: el código estaba
+   * escrito desde la 1.202.0 y sin esta línea no se ejecutaba nunca (ver
+   * server/modules/iglesias.js). La hoja de un pastor se pide en papel al
+   * presentarlo en otra congregación y al entregar o recibir un ministerio.
+   */
+  printable: true,
   display: '{nombres:primero} {apellidos}',
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono'],
   listFields: ['foto', 'rut', 'nombres', 'apellidos', 'cargo', 'iglesia_id', 'ficha_miembro', 'estado'],
   computed: [
     {
       name: 'ficha_miembro', label: 'Ficha de miembro', type: 'badge',
+      /*
+       * En la pantalla dice de un vistazo si esta ficha está enlazada con la
+       * de su miembro, que es lo que hay que arreglar cuando no lo está. En el
+       * papel sobra: dos líneas más arriba la hoja ya dice «Su ficha de
+       * miembro: Elena Díaz Díaz», que es el mismo dato mejor dicho. Se vio al
+       * imprimir por primera vez esta hoja, en la 1.235.0: salían las dos
+       * seguidas, y en un papel que alguien firma el mismo dato dicho dos veces
+       * hace dudar de cuál manda.
+       */
+      enElPapel: false,
       calc: (r, { db }) => {
         const { texto, nivel } = estadoFichaMiembro(r, db);
         return { texto, nivel };

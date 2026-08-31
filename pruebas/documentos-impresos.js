@@ -87,6 +87,15 @@ const RADIOGRAFIA = `(() => {
  */
 const DOCUMENTOS = [
   { nombre: 'la ficha de un miembro', modulo: 'miembros' },
+  /*
+   * Las dos hojas que la 1.235.0 destapó: su código estaba escrito y completo
+   * desde la 1.202.0 y no salía ninguna, porque los módulos no estaban marcados
+   * como imprimibles y el botón no aparecía nunca. Entran acá por lo mismo que
+   * las demás —el membrete, la fecha, quién la emitió— y además con lo suyo,
+   * más abajo.
+   */
+  { nombre: 'la hoja de una iglesia', modulo: 'iglesias' },
+  { nombre: 'la hoja de un pastor', modulo: 'pastores' },
   { nombre: 'un acta de reunión', modulo: 'actas_reuniones' },
   { nombre: 'el informe de asistencia', ruta: '#/asistencia/informes' },
   /*
@@ -170,6 +179,38 @@ async function primerRegistro(pagina, modulo) {
       r.emojis.length ? `salieron: ${[...new Set(r.emojis)].join(' ')} — cada impresora los dibuja distinto, o los deja en blanco` : '');
     revisar('no lleva sombras de pantalla', r.conSombra === 0,
       r.conSombra ? `${r.conSombra} recuadro(s) con sombra` : '');
+
+    /*
+     * NINGUNA HOJA IMPRIME EL NOMBRE CON QUE EL SISTEMA ARCHIVA UN ARCHIVO.
+     *
+     * Se destapó al imprimir por primera vez la hoja de una iglesia: la primera
+     * línea de sus datos, arriba del nombre de la congregación, decía
+     * «Fotografía del templo · 1756…-a3f9c2-templo.jpg». Eso es ruido interno
+     * en un papel que se entrega y se firma, y le pasaba a las seis hojas
+     * genéricas que llevan un campo de archivo. Ahora una fotografía se imprime
+     * como fotografía y un documento adjunto se nombra como se llama de verdad.
+     */
+    const guardados = (r.texto.match(/\b\d{13}-[0-9a-f]{6,}-\S+/g) || []);
+    revisar('no imprime el nombre interno de ningún archivo', guardados.length === 0,
+      guardados.length ? `salió: ${guardados.slice(0, 2).join(', ')}` : '');
+
+    /*
+     * Y la hoja de una iglesia dice lo que la congregación TIENE, que es lo que
+     * hace que sirva para lo que se pide en papel: entregarla, presentarla en
+     * una visita, acompañar un trámite. Sin eso es la ficha a secas —cinco
+     * datos que ya se sabían—.
+     */
+    if (doc.modulo === 'iglesias') {
+      revisar('la hoja de una iglesia dice lo que tiene hoy',
+        /Lo que tiene hoy/.test(r.texto) && /Miembros/.test(r.texto) && /Cuerpos y grupos/.test(r.texto),
+        'una hoja de entrega que no dice cuánta gente ni cuántos cuerpos hay no sirve para entregar nada');
+      revisar('y avisa que esas cifras no son datos escritos en la ficha',
+        /es lo que hay anotado en el sistema en el momento de imprimir/.test(r.texto),
+        'quien la firme tiene que saber que son de hoy y no de cuando se llenó la ficha');
+      revisar('y no suma la plata de sus cuerpos a la suya',
+        !/Cajas de sus cuerpos/.test(r.texto) || /otro dueño/.test(r.texto),
+        'son dos dueños distintos, como en el inventario');
+    }
   }
 
   await navegador.close();
