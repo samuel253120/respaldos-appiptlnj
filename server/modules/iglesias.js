@@ -296,7 +296,7 @@ module.exports = {
   },
 
   hooks: {
-    beforeSave(data, { id, existing, db }) {
+    beforeSave(data, { id, existing, db, confirmado }) {
       /*
        * EL CÓDIGO SE AJUSTA SOLO, porque ya no es un dato de adorno.
        *
@@ -337,7 +337,18 @@ module.exports = {
             'Cámbiele el tipo a esa antes de designar otra.';
         }
       }
-      return null;
+
+      /*
+       * Y el pastor principal que le están poniendo, si es de otra iglesia.
+       *
+       * Va AL FINAL: se frena antes lo que no se puede guardar de ninguna
+       * manera —el código, la matriz repetida— y recién después se pregunta lo
+       * que sí se puede. El motor deja pasar UNA pregunta por guardado, así que
+       * el orden decide cuál se ve, y una pregunta que se contesta «está bien»
+       * sobre una ficha que igual va a ser rechazada es una pregunta perdida.
+       */
+      return require('../pastor-de-la-iglesia')
+        .avisoSiElPastorEsDeOtraIglesia(db, id, { data, existing, confirmado });
     },
 
     afterSave(fila, { isNew, existing, user, db }) {

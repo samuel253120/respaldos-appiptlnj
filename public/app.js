@@ -7406,6 +7406,22 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y corregirla',
       seguir: 'Fue esa gente, guardar',
     },
+    /*
+     * Las dos caras de lo mismo: la ficha de la iglesia y la del pastor
+     * diciendo cosas distintas. Se ven desde los dos lados —al ponerle a una
+     * iglesia el pastor de otra, y al trasladar a un pastor que su iglesia
+     * sigue nombrando—, así que cada una lleva su encabezado y sus botones.
+     */
+    pastor_de_otra_iglesia: {
+      titulo: '🧑‍💼 Ese pastor es de otra iglesia',
+      volver: 'Volver y elegir otro',
+      seguir: 'Atiende las dos, guardar',
+    },
+    deja_su_iglesia_sin_pastor: {
+      titulo: '⛪ Su iglesia queda sin pastor principal',
+      volver: 'Volver y dejarlo como estaba',
+      seguir: 'Trasladarlo igual',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',

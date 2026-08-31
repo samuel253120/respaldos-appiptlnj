@@ -305,7 +305,7 @@ module.exports = {
   },
 
   hooks: {
-    beforeSave(data, { id, existing, db }) {
+    beforeSave(data, { id, existing, db, confirmado }) {
       // Un solo Pastor Presidente en toda la organización
       const cargo = data.cargo !== undefined ? data.cargo : existing ? existing.cargo : null;
       if (cargo === CARGO_UNICO) {
@@ -368,7 +368,14 @@ module.exports = {
             'Corrija el que esté equivocado, o enlace la ficha que corresponda.';
         }
       }
-      return null;
+
+      /*
+       * Y si al cambiarlo de iglesia deja a la anterior nombrándolo como su
+       * pastor principal. Va al final por lo mismo que en la ficha de la
+       * iglesia: primero lo que se rechaza, después lo que se pregunta.
+       */
+      return require('../pastor-de-la-iglesia')
+        .avisoSiDejaSuIglesiaSinPastor(db, id, { data, existing, confirmado });
     },
 
     /**
@@ -376,7 +383,29 @@ module.exports = {
      * el vínculo queda también entre la ficha de miembro del pastor y la de
      * su cónyuge, en los dos sentidos.
      */
-    afterSave(fila, { db }) {
+    afterSave(fila, { existing, user, db }) {
+      /*
+       * Ya confirmado el traslado, se le quita a la iglesia anterior: es
+       * exactamente lo que la pregunta dijo que iba a pasar. Dejarlo puesto
+       * sería el defecto —la ficha de esa iglesia diciendo que su pastor es
+       * alguien que ya es de otra— y quitarlo sin avisar sería peor.
+       *
+       * Solo cuando la iglesia CAMBIA en este guardado: si no, corregirle el
+       * teléfono a un pastor le sacaría el pastor principal a su iglesia.
+       */
+      if (existing && String(existing.iglesia_id || '') !== String(fila.iglesia_id || '')) {
+        const suIglesia = require('../pastor-de-la-iglesia');
+        const sueltas = suIglesia.soltarLasQueLoNombraban(db, fila.id, fila.iglesia_id);
+        for (const iglesia of sueltas) {
+          require('../bitacora').anotarIglesia(iglesia.id, {
+            tipo: 'Otro',
+            descripcion: `${fila.nombres} ${fila.apellidos} dejó de figurar como pastor(a) principal: `
+              + 'su ficha pasó a otra iglesia. Queda por designar quién queda a cargo.',
+            usuario: user,
+          });
+        }
+      }
+
       const conyugeId = fila.conyuge_id || null;
       if (!conyugeId) return;
 
