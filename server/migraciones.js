@@ -2752,6 +2752,58 @@ function cuentasAbiertasSinFechaDeCierre() {
 }
 
 /**
+ * El nivel de cada artículo de inventario que ya estaba anotado.
+ *
+ * Hasta la 1.228 el nivel no era un campo: se deducía de si «Cuerpo / Grupo»
+ * venía vacío o lleno. Desde la 1.229 se elige, con las mismas tres opciones
+ * que una cuenta de tesorería, y eso permite por fin anotar un bien de la
+ * corporación —antes «Iglesia» era obligatorio y no había cómo—.
+ *
+ * Lo que ya estaba anotado no se arregla solo: la columna nace vacía, y un
+ * artículo sin nivel no se puede guardar ni aparece con el filtro puesto. Así
+ * que se le pone el que tenía de hecho, que está escrito en sus propias
+ * columnas y no hay que adivinarlo:
+ *
+ *   tiene cuerpo ......... es del cuerpo
+ *   solo iglesia ......... es de la iglesia
+ *   ninguna de las dos ... es de la corporación
+ *
+ * Ese último caso no debería existir —«Iglesia» era obligatorio—, pero una
+ * fila puede haber entrado por la pantalla de Importar o de un respaldo viejo,
+ * y dejarla sin nivel sería dejarla sin poder abrirse.
+ */
+function elNivelDeCadaArticuloDeInventario(conexion = db) {
+  const NOMBRE = 'el nivel de cada artículo de inventario';
+  const yaEsta = () => !!conexion.prepare('SELECT nombre FROM migraciones WHERE nombre = ?').get(NOMBRE);
+  const marcar = () => conexion.prepare('INSERT OR IGNORE INTO migraciones (nombre) VALUES (?)').run(NOMBRE);
+  if (yaEsta()) return;
+
+  const hayTabla = (t) =>
+    !!conexion.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('inventarios')) return marcar();
+  const columnas = conexion.prepare('PRAGMA table_info(inventarios)').all().map((c) => c.name);
+  // La columna se crea al arrancar; si aún no está, se intenta de nuevo
+  if (!columnas.includes('ambito')) return;
+
+  const [CORPORACION, IGLESIA, CUERPO] = require('./modules/inventarios').NIVELES;
+  const poner = (nivel, donde) => conexion
+    .prepare(`UPDATE inventarios SET ambito = ? WHERE (ambito IS NULL OR ambito = '') AND ${donde}`)
+    .run(nivel).changes;
+
+  const deCuerpo = poner(CUERPO, 'cuerpo_id IS NOT NULL');
+  const deIglesia = poner(IGLESIA, 'iglesia_id IS NOT NULL');
+  const deLaCorporacion = poner(CORPORACION, '1 = 1');
+
+  if (deCuerpo || deIglesia || deLaCorporacion) {
+    console.log(
+      `📦 Inventarios: ${deCuerpo + deIglesia + deLaCorporacion} artículo(s) estrenaron su nivel · ` +
+        `${deLaCorporacion} de la corporación, ${deIglesia} de una iglesia, ${deCuerpo} de un cuerpo.`
+    );
+  }
+  marcar();
+}
+
+/**
  * Lo que se quedó en la iglesia anterior cuando un cuerpo se cambió de iglesia.
  *
  * La iglesia de una cuenta, de una ficha de integrante y de un movimiento se
@@ -2865,6 +2917,7 @@ function ejecutarMigraciones() {
     ['los traslados entre cuentas quedan marcados', losTrasladosQuedanMarcados],
     ['las cuentas abiertas no llevan fecha de cierre', cuentasAbiertasSinFechaDeCierre],
     ['lo del cuerpo sigue al cuerpo cuando cambia de iglesia', loQueSeQuedoEnLaIglesiaAnterior],
+    ['el nivel de cada artículo de inventario', elNivelDeCadaArticuloDeInventario],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -3121,4 +3174,5 @@ module.exports = {
   formatosDeCertificadoQueTraiaElSistema, documentosALaOficinaDePartes,
   fichasDeIntegranteConSuNombre, marcasDeAsistenciaConSuRegistro,
   hojasDePresentacionYMatrimonio, certificadosApaisados,
+  elNivelDeCadaArticuloDeInventario,
 };
