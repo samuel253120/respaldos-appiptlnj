@@ -2321,6 +2321,34 @@ ul.pasar-lista .pl-just input { flex: 1; }
 .informe-stats { margin-bottom: 18px; }
 .informe-tit { margin: 0 0 14px; font-size: 17px; color: var(--marca-azul); }
 .informe-tit .mut { font-weight: 500; font-size: 13px; color: var(--muted); margin-left: 8px; }
+.informe-sub {
+  margin: 22px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); font-weight: 700;
+}
+/*
+ * LOS TOTALES DE UN INVENTARIO, con lo propio y lo ajeno separados.
+ *
+ * Son tres o cuatro líneas de «etiqueta · cuántos · cuánto vale», no cifras
+ * grandes: acá lo que importa es poder comparar las líneas entre sí —cuánto es
+ * de la iglesia y cuánto está cuidando de otros—, y eso se lee mejor en filas
+ * alineadas que en tarjetas separadas. La última, la de lo ajeno, va marcada
+ * porque es la que contesta la pregunta que nadie podía hacer.
+ */
+.inv-totales { padding: 4px 0 8px; }
+.inv-totales .ln {
+  display: flex; gap: 12px; align-items: baseline; padding: 7px 16px;
+  border-bottom: 1px dotted var(--border); font-size: 14px;
+}
+.inv-totales .ln:last-child { border-bottom: 0; }
+.inv-totales .ln.total { border-top: 1px solid var(--border); font-weight: 600; }
+.inv-totales .q { flex: 0 1 auto; }
+.inv-totales .mut { flex: 1 1 auto; font-size: 12.5px; }
+.inv-totales .v { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; }
+@media (max-width: 700px) {
+  .inv-totales .ln { flex-wrap: wrap; gap: 2px 10px; }
+  .inv-totales .q { flex: 1 1 100%; font-weight: 600; }
+  .inv-totales .mut { flex: 1 1 auto; }
+}
 table.grid.informe th, table.grid.informe td { font-size: 13px; white-space: nowrap; }
 table.grid.informe td:first-child { white-space: normal; }
 .barra { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: #e2e8f0; }

@@ -951,6 +951,11 @@ function route() {
     if (sl) marcarActivo(sl);
     return viewBalanceTesoreria(precarga);
   }
+  if (parts[0] === 'inventarios' && parts[1] === 'hoja' && parts[2] && MOD['inventarios']) {
+    const sl = document.querySelector('.side-link[data-mod="inventarios"]');
+    if (sl) marcarActivo(sl);
+    return viewHojaDeInventario(parts[2], parts[3]);
+  }
   if (parts[0] === 'cuentas_tesoreria' && parts[1] === 'cartola' && parts[2] && MOD['cuentas_tesoreria']) {
     const sl = document.querySelector('.side-link[data-mod="cuentas_tesoreria"]');
     if (sl) marcarActivo(sl);
@@ -3077,6 +3082,109 @@ async function viewBalanceTesoreria(precarga) {
 }
 
 /* =====================================================================
+ * LA HOJA DEL INVENTARIO DE UN NIVEL
+ *
+ * Lo que se lleva a una revisión y lo que se firma al entregar un cargo:
+ * artículo por artículo, con lo propio y lo ajeno separados y sus totales.
+ * Antes no existía —el módulo no se podía imprimir— y el inventario de un
+ * cuerpo había que copiarlo a mano del listado general.
+ *
+ * Es su propia pantalla y no una pestaña, por la misma razón que la cartola:
+ * imprimir una pestaña de la ficha imprimiría la ficha entera. Acá se llega
+ * desde esa pestaña, y de vuelta también.
+ * ===================================================================== */
+async function viewHojaDeInventario(tipo, id) {
+  if (!MOD['inventarios']) return (location.hash = '#/');
+  const DE = {
+    cuerpo: { ambito: 'Cuerpo / Grupo', modulo: 'cuerpos', param: 'cuerpo_id' },
+    iglesia: { ambito: 'Iglesia local', modulo: 'iglesias', param: 'iglesia_id' },
+    corporacion: { ambito: 'Corporación', modulo: null, param: null },
+  };
+  const cual = DE[tipo];
+  if (!cual || (cual.param && !id)) return (location.hash = '#/m/inventarios');
+
+  content().innerHTML = `
+    <div class="page-head no-print">
+      <h2>📦 Hoja del inventario</h2>
+      <div class="actions">
+        ${cual.modulo ? `<button class="btn secondary" id="invVolver">↩ Volver a la ficha</button>` : ''}
+        <button class="btn secondary" data-imprimir>🖨️ PDF</button>
+      </div>
+    </div>
+    <div id="invCuerpo"><p style="padding:18px">Cargando…</p></div>`;
+  const volver = document.getElementById('invVolver');
+  if (volver) {
+    volver.addEventListener('click', () => (location.hash = `#/m/${cual.modulo}/ficha/${id}/inventario`));
+  }
+
+  const q = new URLSearchParams({ ambito: cual.ambito });
+  if (cual.param) q.set(cual.param, id);
+  const caja = document.getElementById('invCuerpo');
+  const [d, duenio] = await Promise.all([
+    api('GET', '/inventarios/de-nivel?' + q.toString()).catch((e) => ({ error: e.message })),
+    cual.modulo ? api('GET', `/${cual.modulo}/${id}`).catch(() => null) : Promise.resolve(null),
+  ]);
+  if (!d || d.error) {
+    caja.innerHTML = `<div class="card"><p style="padding:18px">${esc((d && d.error) || 'No se pudo traer el inventario.')}</p></div>`;
+    return;
+  }
+
+  const nombre = duenio ? (duenio.nombre || `#${id}`) : 'la corporación';
+  // Los títulos nombran el nivel, igual que los totales: una hoja de la
+  // corporación encabezada «De la iglesia» hace dudar de lo que está contando
+  const suyoEs = DUENO_DEL_NIVEL[d.ambito] || 'de la organización';
+  const enPie = d.filas.filter((f) => !f.fecha_devuelto);
+  const devueltos = d.filas.filter((f) => f.fecha_devuelto);
+
+  const tabla = (filas, titulo) => (!filas.length ? '' : `
+    <h4 class="informe-sub">${esc(titulo)}</h4>
+    <div style="overflow-x:auto">
+    <table class="grid informe grid-lista">
+      <thead><tr>
+        <th>Artículo</th><th>Categoría</th><th>Cantidad</th><th>Estado</th>
+        <th>Ubicación</th><th>De quién es</th><th>Valor</th>
+      </tr></thead>
+      <tbody>
+        ${filas.map((f) => `
+          <tr data-ir="#/m/inventarios/ficha/${f.id}">
+            <td class="col-primera col-titular" data-label="Artículo">${esc(f.articulo)}</td>
+            <td data-label="Categoría">${esc(f.categoria || '')}</td>
+            <td class="num" data-label="Cantidad">${fmtNumero(f.cantidad)}</td>
+            <td data-label="Estado">${esc(f.estado || '')}</td>
+            <td data-label="Ubicación">${esc(f.ubicacion || '')}</td>
+            <td data-label="De quién es">${f.regimen === 'Propio'
+              ? `<span class="mut">Propio, ${esc(suyoEs)}</span>`
+              : `${esc(f.regimen)}${f.dueno ? ` · ${esc(f.dueno)}` : ''}${f.fecha_devolucion
+                  // Sin <br>: en el teléfono cada celda es «rótulo … valor» en una
+                  // línea, y el salto le comía el rótulo hasta dejarlo en una letra
+                  ? ` <span class="mut">· devolver el ${esc(fechaCorta(f.fecha_devolucion))}</span>` : ''}`}</td>
+            <td class="num" data-label="Valor">${f.valor_estimado ? fmtMoney(f.cantidad * f.valor_estimado) : ''}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`);
+
+  caja.innerHTML = `
+    <div class="informe-hoja">
+      <div class="print-only">${membreteDelDocumento()}</div>
+      <h3 class="informe-tit">
+        Inventario de ${esc(nombre)}
+        <span class="mut">${esc(d.ambito)} · ${fmtNumero(enPie.length)} artículo(s) al ${fechaLarga(new Date().toISOString())}</span>
+      </h3>
+      ${totalesDelInventario(d.totales, d.ambito)}
+      ${enPie.length
+        ? tabla(enPie.filter((f) => f.regimen === 'Propio'), `Lo propio, ${suyoEs}`)
+          + tabla(enPie.filter((f) => f.regimen !== 'Propio'), `Lo que no es ${suyoEs}`)
+        : '<div class="empty-state" style="padding:26px">Todavía no hay nada inventariado acá.</div>'}
+      ${tabla(devueltos, 'Ya devuelto a su dueño')}
+      <div class="doc-pie print-only">${pieDelDocumento()}</div>
+    </div>`;
+
+  caja.querySelectorAll('tr[data-ir]').forEach((tr) => {
+    tr.addEventListener('click', () => (location.hash = tr.dataset.ir));
+  });
+}
+
+/* =====================================================================
  * La cartola de una cuenta
  *
  * Movimiento a movimiento, con el saldo corriendo fila a fila: es lo que se
@@ -4320,6 +4428,22 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
     if (MOD['cuentas_tesoreria'] && tieneLlave('tesoreria_cuerpo')) sumar('tesoreria', 'Tesorería', '💰', (c) => renderTesoreriaCuerpo(id, c));
     if (MOD['directivas']) sumar('directivas', 'Directivas', '🏅', (c) => renderDirectivasCuerpo(id, c));
     if (MOD['actas_reuniones']) sumar('actas', 'Actas', '📝', (c) => renderActasCuerpo(id, c));
+    /*
+     * El inventario del cuerpo era lo único suyo que no se veía desde su ficha:
+     * tenía integrantes, cuotas, tesorería, directivas y actas, y sus cosas
+     * había que ir a buscarlas al listado general, que además no se dejaba
+     * filtrar por cuerpo.
+     */
+    if (MOD['inventarios']) {
+      sumar('inventario', 'Inventario', '📦', (c) => renderInventarioDeNivel(
+        { ambito: 'Cuerpo / Grupo', cuerpoId: id, titulo: 'Inventario del cuerpo' }, c));
+    }
+  }
+  if (name === 'iglesias' && MOD['inventarios']) {
+    // Lo de la iglesia, sin lo de sus cuerpos: cada cuerpo tiene lo suyo en su
+    // propia ficha, y mezclarlos haría que un mismo artículo se contara dos veces
+    sumar('inventario', 'Inventario', '📦', (c) => renderInventarioDeNivel(
+      { ambito: 'Iglesia local', iglesiaId: id, titulo: 'Inventario de la iglesia' }, c));
   }
   if (name === 'miembros' && MOD['cuerpos']) sumar('cuerpos', 'Cuerpos', '👥', (c) => renderCuerposDelMiembro(id, c));
   /*
@@ -15414,6 +15538,99 @@ async function renderTesoreriaCuerpo(cuerpoId, caja) {
                 ${m.tipo === 'Ingreso' ? '+' : '−'} ${fmtMoney(m.monto)}</span>
             </li>`).join('')}
         </ul>` : ''}
+    </div>`;
+}
+
+/**
+ * EL INVENTARIO DE UN NIVEL, en la ficha de su cuerpo o de su iglesia.
+ *
+ * «El inventario de este cuerpo» no se podía pedir: la ficha del cuerpo tenía
+ * pestaña de integrantes, cuotas, tesorería, directivas y actas, y el
+ * inventario era lo único suyo que se quedaba fuera. La de la iglesia tampoco
+ * lo mostraba, y el listado no se dejaba filtrar por cuerpo. Había que ir al
+ * listado general y buscarlo a ojo.
+ *
+ * LOS TOTALES VAN SEPARADOS, que es de lo que se trata: lo de la iglesia por un
+ * lado y lo ajeno —prestado y en depósito— por otro. Sumarlos juntos no sirve
+ * para ninguna de las dos preguntas: ni «cuánto tiene» ni «cuánto está
+ * cuidando de otros». Los cuenta el servidor, en la misma ruta que arma la
+ * hoja, para que la pantalla y el papel no puedan discrepar.
+ */
+async function renderInventarioDeNivel({ ambito, cuerpoId, iglesiaId, titulo }, caja) {
+  if (!MOD['inventarios']) return;
+  const q = new URLSearchParams({ ambito });
+  if (cuerpoId) q.set('cuerpo_id', cuerpoId);
+  if (iglesiaId) q.set('iglesia_id', iglesiaId);
+  const d = await api('GET', '/inventarios/de-nivel?' + q.toString()).catch(() => null);
+  if (!d) return;
+
+  const nuevo = new URLSearchParams({ ambito });
+  if (cuerpoId) nuevo.set('cuerpo_id', cuerpoId);
+  if (iglesiaId) nuevo.set('iglesia_id', iglesiaId);
+  const enPie = d.filas.filter((f) => !f.fecha_devuelto);
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>📦 ${esc(titulo)}</b>
+        <span style="color:var(--muted);font-size:13px">${fmtNumero(enPie.length)} artículo(s)</span>
+        <span class="spacer"></span>
+        <a class="btn secondary sm" href="#/inventarios/hoja/${cuerpoId ? `cuerpo/${cuerpoId}` : iglesiaId ? `iglesia/${iglesiaId}` : 'corporacion'}">🖨️ Hoja del inventario</a>
+        ${MOD['inventarios'].perms.create
+          ? `<a class="btn sm" href="#/m/inventarios/new?${nuevo.toString()}">➕ Nuevo artículo</a>`
+          : ''}
+      </div>
+      ${totalesDelInventario(d.totales, d.ambito)}
+      ${enPie.length ? `<ul class="mini-list">
+        ${enPie.map((f) => `
+          <li data-ir="#/m/inventarios/ficha/${f.id}">
+            <span>${esc(f.articulo)}
+              ${f.cantidad > 1 ? `<span class="mut">× ${fmtNumero(f.cantidad)}</span>` : ''}
+              ${f.regimen !== 'Propio' ? `<span class="badge">${esc(f.regimen)}${f.dueno ? ` · ${esc(f.dueno)}` : ''}</span>` : ''}</span>
+            <span class="mut cifra">${f.valor_estimado ? fmtMoney(f.cantidad * f.valor_estimado) : ''}</span>
+          </li>`).join('')}
+      </ul>` : '<div class="empty-state" style="padding:22px">Todavía no hay nada inventariado acá.</div>'}
+      ${d.totales.devueltos.articulos ? `
+        <div class="toolbar" style="border-top:1px solid var(--border)">
+          <span class="mut" style="font-size:13px">Además, ${fmtNumero(d.totales.devueltos.articulos)}
+            artículo(s) que estuvieron acá y ya se devolvieron a su dueño.</span>
+        </div>` : ''}
+    </div>`;
+}
+
+/**
+ * Los totales de un inventario, con lo propio y lo ajeno por separado.
+ *
+ * Se usa igual en la pestaña de la ficha y en la hoja que se imprime: es la
+ * misma pregunta y tiene que dar la misma respuesta en los dos lugares. Las
+ * filas que valen cero no se dibujan —una iglesia sin nada prestado no necesita
+ * una línea que diga «$ 0 prestado»—, salvo la de lo propio, que es la razón
+ * de que exista la tabla.
+ */
+/** De quién es lo propio, según el nivel que se está mirando. */
+const DUENO_DEL_NIVEL = {
+  'Corporación': 'de la corporación',
+  'Iglesia local': 'de la iglesia',
+  'Cuerpo / Grupo': 'del cuerpo o grupo',
+};
+
+function totalesDelInventario(t, ambito) {
+  // Nombrar el nivel importa: la hoja de la corporación decía «De la iglesia»
+  // sobre la camioneta de la organización, y la de un cuerpo sobre su teclado
+  const suyo = DUENO_DEL_NIVEL[ambito] || 'de la organización';
+  const fila = (etiqueta, cual, { siempre = false, clase = '' } = {}) =>
+    (!cual.articulos && !siempre ? '' : `
+    <div class="ln${clase ? ` ${clase}` : ''}">
+      <span class="q">${esc(etiqueta)}</span>
+      <span class="mut">${fmtNumero(cual.articulos)} artículo(s) · ${fmtNumero(cual.unidades)} unidad(es)</span>
+      <span class="v cifra">${cual.valor ? fmtMoney(cual.valor) : '—'}</span>
+    </div>`);
+  return `
+    <div class="inv-totales">
+      ${fila(`Propio, ${suyo}`, t.propio, { siempre: true })}
+      ${fila('Prestado, hay que devolverlo', t.prestado)}
+      ${fila('En depósito, de su dueño', t.deposito)}
+      ${fila(`No es ${suyo}, en total`, t.ajeno, { clase: 'total' })}
     </div>`;
 }
 

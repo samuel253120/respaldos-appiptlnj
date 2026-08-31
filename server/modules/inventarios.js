@@ -89,7 +89,7 @@ module.exports = {
   display: '{articulo}',
   searchFields: ['articulo', 'categoria', 'ubicacion', 'notas', 'dueno'],
   listFields: ['articulo', 'regimen', 'categoria', 'cantidad', 'estado', 'ambito', 'iglesia_id', 'cuerpo_id'],
-  filterFields: ['regimen', 'ambito', 'categoria', 'estado'],
+  filterFields: ['regimen', 'ambito', 'cuerpo_id', 'categoria', 'estado'],
   printable: true,
   defaultSort: { field: 'articulo', dir: 'asc' },
   fields: [
@@ -250,6 +250,82 @@ module.exports = {
      */
     router.get('/inventarios/clausula-deposito', requirePerm('inventarios', 'view'), (req, res) => {
       res.json({ texto: require('../ajustes').obtener('inventario_clausula_deposito') || '' });
+    });
+
+    /*
+     * EL INVENTARIO DE UN NIVEL, con lo suyo y sus totales.
+     *
+     * «El inventario de este cuerpo» no se podía pedir: la ficha del cuerpo no
+     * tenía esa pestaña —sí las de integrantes, cuotas, tesorería, directivas y
+     * actas—, la de la iglesia tampoco, y el listado no se dejaba filtrar por
+     * cuerpo. Había que ir al listado general y buscarlo a ojo.
+     *
+     * LOS TOTALES VAN SEPARADOS POR RÉGIMEN, y ésa es la razón de que esta ruta
+     * exista en vez de sumar las filas en la pantalla. Un inventario que suma en
+     * un mismo total la batería que un hermano dejó en depósito y las bancas que
+     * la iglesia compró no sirve para ninguna de las dos cosas: ni dice cuánto
+     * tiene la iglesia, ni cuánto está cuidando de otros. Se cuenta cantidad por
+     * valor unitario, que es lo que vale lo que hay, no lo que costó una unidad.
+     *
+     * Lo devuelto no entra: el artículo ya se fue. Queda anotado, y su ficha lo
+     * cuenta, pero no es parte de lo que hay hoy.
+     *
+     * El alcance es el mismo del listado, pedido a `condiciones`: acá no se
+     * escribe ninguna comprobación a mano, que es de donde salían las diez rutas
+     * propias que encontró la auditoría de aislamiento.
+     */
+    router.get('/inventarios/de-nivel', requirePerm('inventarios', 'view'), (req, res) => {
+      const ambito = String(req.query.ambito || '');
+      if (!NIVELES.includes(ambito)) {
+        return res.status(400).json({ error: `El nivel tiene que ser uno de estos tres: ${NIVELES.join(', ')}` });
+      }
+
+      const params = [];
+      const where = ['ambito = ?'];
+      params.push(ambito);
+      if (ambito === 'Cuerpo / Grupo') {
+        if (!req.query.cuerpo_id) return res.status(400).json({ error: 'Indique de qué cuerpo o grupo' });
+        where.push('cuerpo_id = ?');
+        params.push(Number(req.query.cuerpo_id));
+      } else if (ambito === 'Iglesia local') {
+        if (!req.query.iglesia_id) return res.status(400).json({ error: 'Indique de qué iglesia' });
+        where.push('iglesia_id = ?');
+        params.push(Number(req.query.iglesia_id));
+      }
+      const suyo = require('../alcance').condiciones(module.exports, req.user, params);
+      if (suyo) where.push(suyo);
+
+      const filas = require('../db').db
+        .prepare(
+          `SELECT id, articulo, categoria, cantidad, estado, valor_estimado, ubicacion,
+                  regimen, dueno, fecha_devolucion, fecha_devuelto
+             FROM inventarios
+            WHERE ${where.join(' AND ')}
+            ORDER BY regimen, articulo LIMIT 1000`
+        )
+        .all(...params);
+
+      const enPie = filas.filter((f) => !f.fecha_devuelto);
+      const cuenta = (cuales) => cuales.reduce(
+        (t, f) => ({
+          articulos: t.articulos + 1,
+          unidades: t.unidades + (Number(f.cantidad) || 0),
+          valor: t.valor + (Number(f.cantidad) || 0) * (Number(f.valor_estimado) || 0),
+        }),
+        { articulos: 0, unidades: 0, valor: 0 }
+      );
+
+      res.json({
+        ambito,
+        filas,
+        totales: {
+          propio: cuenta(enPie.filter((f) => !ajenos.esAjeno(f.regimen))),
+          prestado: cuenta(enPie.filter((f) => f.regimen === 'Prestado')),
+          deposito: cuenta(enPie.filter((f) => f.regimen === 'En depósito')),
+          ajeno: cuenta(enPie.filter((f) => ajenos.esAjeno(f.regimen))),
+          devueltos: cuenta(filas.filter((f) => f.fecha_devuelto)),
+        },
+      });
     });
   },
 
