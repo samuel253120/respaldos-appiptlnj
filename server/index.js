@@ -582,7 +582,23 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     ? getModule('credenciales').porVencer(req.user)
     : [];
 
-  res.json({ counts, finanzas, cumpleanos, solicitudesRecientes, credencialesPorVencer });
+  /*
+   * Y las credenciales vigentes de quienes ya NO ejercen (1.241.0).
+   *
+   * Desde esa versión, marcar a un pastor jubilado o fallecido pregunta y le
+   * revoca las suyas. Las que quedaron de ANTES no se tocan al arrancar a
+   * propósito: revocar es un acto con fecha y con motivo, y hacerlo solo le
+   * estamparía a todas la fecha de hoy y un motivo que nadie escribió. Se
+   * ponen acá y las revoca una persona, que es de quien tiene que ser la firma.
+   */
+  const credencialesSinTitular = can(req.user, 'credenciales', 'view')
+    ? getModule('credenciales').deQuienesYaNoEjercen(req.user)
+    : [];
+
+  res.json({
+    counts, finanzas, cumpleanos, solicitudesRecientes,
+    credencialesPorVencer, credencialesSinTitular,
+  });
 });
 
 

@@ -2021,10 +2021,40 @@ async function viewDashboard() {
       </div>`
     : '';
 
+  /*
+   * Las credenciales vigentes de quienes ya no ejercen. Van arriba de las que
+   * están por vencer porque son peores: una vencida ya no vale y se nota; ésta
+   * le sigue contestando «vigente» a quien escanea su QR.
+   */
+  const sinTitular = d.credencialesSinTitular || [];
+  const avisoSinTitular = sinTitular.length
+    ? `
+      <div class="card aviso-credenciales">
+        <h3>🪪 Credenciales de quienes ya no ejercen</h3>
+        <p class="mut">
+          Hay <b>${sinTitular.length}</b> credencial${sinTitular.length === 1 ? '' : 'es'} vigente${sinTitular.length === 1 ? '' : 's'}
+          cuyo titular figura como jubilado, trasladado o fallecido. Su código QR sigue contestando
+          <b>«vigente»</b> a quien la verifica. Revóquela desde su ficha, con el motivo: no se borra,
+          queda con su motivo anotado.
+        </p>
+        <ul class="mini-list">
+          ${sinTitular.slice(0, CUANTAS_SE_MUESTRAN).map((c) => `
+            <li data-ir="#/m/credenciales/ficha/${c.id}">
+              <span>${esc(c.titular)} <span class="mut mono">— N.º ${esc(c.serie)}</span></span>
+              <span class="badge red">${esc(c.estadoPastor)}</span>
+            </li>`).join('')}
+          ${sinTitular.length > CUANTAS_SE_MUESTRAN
+            ? `<li class="mut" data-ir="#/m/credenciales">y ${sinTitular.length - CUANTAS_SE_MUESTRAN} más — ver todas</li>`
+            : ''}
+        </ul>
+      </div>`
+    : '';
+
   content().innerHTML = `
     <div class="page-head">
       <h2>📊 Panel de control</h2>
     </div>
+    ${avisoSinTitular}
     ${avisoCredenciales}
     <div class="stats">
       ${statDefs.map(([name, ic, lbl, num, alerta, adonde, nota]) => `
@@ -7428,7 +7458,7 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       seguir: 'Atiende las dos, guardar',
     },
     deja_de_ejercer_y_esta_a_cargo: {
-      titulo: '⛪ Su iglesia queda sin pastor principal',
+      titulo: '🪪 Queda algo suyo colgando',
       volver: 'Volver y dejarlo como estaba',
       seguir: 'Ya no ejerce, guardar',
     },

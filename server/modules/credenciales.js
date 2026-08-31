@@ -507,21 +507,7 @@ module.exports = {
       }
       if (fila.estado === 'Revocada') return res.status(400).json({ error: 'Esta credencial ya estaba revocada' });
 
-      db.prepare(
-        `UPDATE credenciales SET estado = 'Revocada', motivo_revocacion = ?,
-           updated_at = datetime('now','localtime'), updated_by = ?, version = version + 1 WHERE id = ?`
-      ).run(motivo, req.user.id, fila.id);
-
-      const quedo = db.prepare('SELECT * FROM credenciales WHERE id = ?').get(fila.id);
-      bitacora.anotarCambio({
-        def: module.exports, accion: 'Revocación', fila: quedo, usuario: req.user,
-        detalle: `Se revocó la credencial N.º ${serieDe.conDigito(quedo.serie, quedo.serie_dv)}. Motivo: ${motivo}`,
-      });
-      bitacora.anotarCredencial({
-        pastorId: quedo.pastor_id, usuario: req.user,
-        texto: `Se le revocó la credencial N.º ${serieDe.conDigito(quedo.serie, quedo.serie_dv)}. Motivo: ${motivo}`,
-      });
-      res.json({ ok: true, credencial: quedo });
+      res.json({ ok: true, credencial: revocarLa(fila, { motivo, usuario: req.user }) });
     });
 
     /**
@@ -596,8 +582,93 @@ module.exports = {
 
   situacionDe,
   porVencer,
+  revocarLa,
+  lasVigentesDe,
+  deQuienesYaNoEjercen,
   diasPorVencer,
 };
+
+/**
+ * Revocar una credencial: dejarla sin valor, conservándola.
+ *
+ * Vive acá y no dentro de la ruta porque la usan DOS: quien la revoca a mano
+ * desde la pantalla, y el gancho que la revoca sola cuando su titular deja de
+ * ejercer (ver server/pastor-que-ejerce.js). Escrita dos veces, un día una de
+ * las dos se olvidaría de anotarlo en el historial del pastor, y una
+ * credencial dejaría de valer sin que quede dicho dónde se ve.
+ *
+ * NUNCA SE BORRA: una credencial emitida es un documento, y lo que hace que
+ * revocarla sirva de algo es que quede, con su motivo y su fecha, para poder
+ * mostrarla después. Devuelve la fila como quedó.
+ */
+function revocarLa(fila, { motivo, usuario }) {
+  const { db } = require('../db');
+  const bitacora = require('../bitacora');
+  const serieDe = require('../credenciales/serie');
+
+  db.prepare(
+    `UPDATE credenciales SET estado = 'Revocada', motivo_revocacion = ?,
+       updated_at = datetime('now','localtime'), updated_by = ?, version = version + 1 WHERE id = ?`
+  ).run(motivo, usuario ? usuario.id : null, fila.id);
+
+  const quedo = db.prepare('SELECT * FROM credenciales WHERE id = ?').get(fila.id);
+  const numero = serieDe.conDigito(quedo.serie, quedo.serie_dv);
+  bitacora.anotarCambio({
+    def: module.exports, accion: 'Revocación', fila: quedo, usuario,
+    detalle: `Se revocó la credencial N.º ${numero}. Motivo: ${motivo}`,
+  });
+  bitacora.anotarCredencial({
+    pastorId: quedo.pastor_id, usuario,
+    texto: `Se le revocó la credencial N.º ${numero}. Motivo: ${motivo}`,
+  });
+  return quedo;
+}
+
+/**
+ * Las credenciales VIGENTES de un pastor: las que hoy contestarían «vigente»
+ * a quien escanee su QR. Un borrador no cuenta —no salió en papel— y una
+ * revocada o reemplazada ya no vale.
+ */
+function lasVigentesDe(pastorId) {
+  const { db } = require('../db');
+  if (!pastorId) return [];
+  return db
+    .prepare("SELECT * FROM credenciales WHERE pastor_id = ? AND estado = 'Vigente' ORDER BY id")
+    .all(pastorId);
+}
+
+/**
+ * Las credenciales vigentes cuyo titular ya NO ejerce, para el aviso del panel.
+ *
+ * Existen porque revocar es un acto con fecha y con motivo, y hacerlo al
+ * arrancar el servidor le estamparía a todas la fecha de hoy y un motivo que
+ * nadie escribió. Las que quedaron de antes se ponen a la vista y las revoca
+ * una persona, que es de quien tiene que ser la firma.
+ */
+function deQuienesYaNoEjercen(usuario) {
+  const { db } = require('../db');
+  const alcance = require('../alcance');
+  const serieDe = require('../credenciales/serie');
+  const ejercen = require('../pastor-que-ejerce');
+
+  const params = [];
+  const donde = alcance.condiciones(module.exports, usuario, params);
+  return db
+    .prepare(
+      `SELECT c.*, p.estado AS estado_pastor
+         FROM credenciales c JOIN pastores p ON p.id = c.pastor_id
+        WHERE c.estado = 'Vigente' AND NOT ${ejercen.condicionDeQuienesEjercen('p')}
+              ${donde ? 'AND ' + donde.replace(/(^|[^.\w])(iglesia_id)/g, '$1c.$2') : ''}
+        ORDER BY c.fecha_emision DESC`
+    )
+    .all(...params)
+    .map((f) => ({
+      id: f.id,
+      serie: serieDe.conDigito(f.serie, f.serie_dv),
+      titular: `${f.snap_apellidos} ${f.snap_nombres}`.trim(),
+      estadoPastor: f.estado_pastor,
+    }));
+}
 
 /**
  * Las credenciales que hay que renovar: las que están por vencer y las vencidas.

@@ -29,9 +29,22 @@
  * no de pasada al guardar otra cosa.
  *
  * PERO SÍ SE PREGUNTA al revés: cuando alguien lo jubila o lo marca fallecido y
- * una iglesia lo está nombrando. Ahí no hay nada que corregir —la persona dejó
- * de ejercer y eso es un hecho— y lo que hay que decidir es qué pasa con esa
- * congregación. Es la misma puerta que la 1.237.0 cerró para el traslado.
+ * queda algo suyo colgando. Ahí no hay nada que corregir —la persona dejó de
+ * ejercer y eso es un hecho— y lo que hay que decidir es qué pasa con lo que
+ * dependía de él. Es la misma puerta que la 1.237.0 cerró para el traslado.
+ *
+ * Y ESA PREGUNTA ES UNA SOLA, aunque las consecuencias sean dos. El motor deja
+ * pasar una pregunta por guardado, así que preguntar «¿y su iglesia?» y
+ * después «¿y su credencial?» significaría que la primera se guarda y la
+ * segunda aparece recién al guardar de nuevo. Se nombran juntas las dos cosas
+ * que van a pasar, que además es como uno lo diría en voz alta.
+ *
+ * LA CREDENCIAL SE REVOCA, NO SE BORRA. Una credencial emitida es un documento
+ * y su QR lleva a una página pública que dice si vale. Medido antes de esto:
+ * marcada FALLECIDA la titular de la credencial 0012026, esa página seguía
+ * contestando «VIGENTE · Credencial vigente y emitida por la institución».
+ * Revocarla la deja sin valor conservándola, con su motivo y su fecha, que es
+ * lo que hay que poder mostrar después.
  */
 
 const suIglesia = require('./pastor-de-la-iglesia');
@@ -115,35 +128,100 @@ function avisoSiElPastorYaNoEjerce(db, def, { data, existing, isNew }) {
   return null;
 }
 
+/** ¿Este guardado le está poniendo un estado en que ya no ejerce? */
+function estaDejandoDeEjercer({ data, existing }) {
+  if (!existing) return false;                       // una ficha nueva no deja nada atrás
+  if (data.estado === undefined) return false;
+  if (!YA_NO_EJERCEN.includes(data.estado)) return false;
+  return String(existing.estado || '') !== String(data.estado || '');
+}
+
+/**
+ * Lo que queda colgando si deja de ejercer: las iglesias que lo nombran como
+ * su pastor principal y las credenciales suyas que hoy siguen valiendo.
+ *
+ * Sale de acá y no de cada lugar que lo necesita porque lo usan DOS: la
+ * pregunta, para decir qué va a pasar, y el gancho de después, para hacerlo.
+ * Escrito dos veces, un día la pregunta anunciaría una cosa y pasaría otra.
+ */
+function loQueQuedaColgando(db, pastorId) {
+  return {
+    iglesias: suIglesia.lasQueLoSiguenNombrando(db, pastorId, null),
+    credenciales: require('./modules/credenciales').lasVigentesDe(pastorId),
+  };
+}
+
 /**
  * Al guardar un PASTOR al que se le está poniendo un estado en que ya no
- * ejerce: el aviso de que hay una iglesia nombrándolo, o null.
+ * ejerce: el aviso de lo que va a pasar con lo suyo, o null.
  *
  * Dice lo que va a pasar si confirma, porque va a pasar: la designación se
- * suelta. Es la misma forma del aviso del traslado (1.237.0), y por el mismo
- * motivo: dejarla puesta sería que la ficha de esa iglesia dijera que su
- * pastor es alguien que ya no ejerce, y quitarla sin avisar sería peor.
+ * suelta y las credenciales se revocan. Es la misma forma del aviso del
+ * traslado (1.237.0) y por el mismo motivo: dejarlas como están sería que la
+ * ficha de esa iglesia dijera que su pastor es alguien que ya no ejerce, y que
+ * su credencial siguiera diciéndole «vigente» a quien la verifica; hacerlo sin
+ * avisar sería peor.
  */
-function avisoSiDejaDeEjercerYEstaACargo(db, pastorId, { data, existing, confirmado }) {
+function avisoSiDejaDeEjercer(db, pastorId, { data, existing, confirmado }) {
   if (confirmado) return null;
-  if (!pastorId || !existing) return null;          // una ficha nueva no deja nada atrás
-  if (data.estado === undefined) return null;
-  if (!YA_NO_EJERCEN.includes(data.estado)) return null;
-  if (String(existing.estado || '') === String(data.estado || '')) return null;
+  if (!pastorId || !estaDejandoDeEjercer({ data, existing })) return null;
 
-  const suyas = suIglesia.lasQueLoSiguenNombrando(db, pastorId, null);
-  if (!suyas.length) return null;
+  const { iglesias, credenciales } = loQueQuedaColgando(db, pastorId);
+  if (!iglesias.length && !credenciales.length) return null;
 
-  const cuales = suyas.map((i) => `«${i.nombre}»`).join(' y ');
-  const plural = suyas.length > 1;
+  const partes = [];
+  if (iglesias.length) {
+    const cuales = iglesias.map((i) => `«${i.nombre}»`).join(' y ');
+    partes.push(
+      `${iglesias.length > 1 ? 'esas iglesias quedan' : `${cuales} queda`} sin pastor principal `
+      + 'anotado y hay que designarle otro: de ese campo sale «A cargo de la iglesia», que es lo que '
+      + 'se lee para saber quién responde por esa congregación'
+    );
+  }
+  if (credenciales.length) {
+    const serie = require('./credenciales/serie');
+    const numeros = credenciales.map((c) => `N.º ${serie.conDigito(c.serie, c.serie_dv)}`).join(' y ');
+    partes.push(
+      `${credenciales.length > 1 ? `sus ${credenciales.length} credenciales vigentes` : `su credencial ${numeros}`} `
+      + `${credenciales.length > 1 ? `(${numeros}) quedan revocadas` : 'queda revocada'}: hoy su código QR `
+      + 'lleva a una página pública que contesta «vigente» a quien la verifica. No se borra —una '
+      + 'credencial emitida es un documento— y queda con el motivo anotado'
+    );
+  }
+
+  const donde = iglesias.length
+    ? `figura como pastor(a) principal de ${iglesias.map((i) => `«${i.nombre}»`).join(' y ')}`
+    : 'tiene credenciales vigentes';
   return {
     error:
-      `${comoSeLlama(existing)} figura como pastor(a) principal de ${cuales}, y lo está marcando `
-      + `como «${data.estado}». Si confirma, ${plural ? 'esas iglesias quedan' : 'esa iglesia queda'} `
-      + 'sin pastor principal anotado y hay que designarle otro: de ese campo sale «A cargo de la '
-      + 'iglesia», que es lo que se lee para saber quién responde por esa congregación.',
+      `${comoSeLlama(existing)} ${donde}, y lo está marcando como «${data.estado}». `
+      + `Si confirma, ${partes.join('; y ')}.`,
     confirmar: 'deja_de_ejercer_y_esta_a_cargo',
   };
+}
+
+/**
+ * Y, ya confirmado, se hace: es lo que la pregunta dijo que iba a pasar.
+ * Devuelve lo que se soltó y lo que se revocó, para poder anotarlo.
+ */
+function soltarLoSuyo(db, pastor, usuario) {
+  const credenciales = require('./modules/credenciales');
+  const sueltas = suIglesia.soltarLasQueLoNombraban(db, pastor.id, null);
+  /*
+   * El motivo va NEUTRO a propósito. Se muestra en la página pública que abre
+   * cualquiera con un teléfono, y ahí lo que hace falta saber es que quien
+   * tiene esa tarjeta ya no representa a la institución; que la persona
+   * falleció, se jubiló o se trasladó es asunto de adentro. El estado exacto
+   * queda en el historial del pastor, que en ese mismo momento estrena su
+   * línea «Estado: Activo → Fallecido» al lado de ésta.
+   */
+  const revocadas = credenciales.lasVigentesDe(pastor.id).map((c) =>
+    credenciales.revocarLa(c, {
+      motivo: 'El titular ya no ejerce en el ministerio.',
+      usuario,
+    })
+  );
+  return { sueltas, revocadas };
 }
 
 module.exports = {
@@ -152,5 +230,8 @@ module.exports = {
   condicionDeQuienesEjercen,
   elQueNoEjerce,
   avisoSiElPastorYaNoEjerce,
-  avisoSiDejaDeEjercerYEstaACargo,
+  estaDejandoDeEjercer,
+  loQueQuedaColgando,
+  avisoSiDejaDeEjercer,
+  soltarLoSuyo,
 };

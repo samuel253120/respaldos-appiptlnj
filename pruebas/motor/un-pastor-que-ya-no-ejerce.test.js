@@ -126,7 +126,7 @@ test('y un certificado también: registra un hecho con SU fecha', () => {
 // ------------------------------------- dejar de ejercer estando a cargo ----
 
 const alDejarDeEjercer = (pastorId, data, existing, confirmado = false) =>
-  ejercen.avisoSiDejaDeEjercerYEstaACargo(db, pastorId, { data, existing, confirmado });
+  ejercen.avisoSiDejaDeEjercer(db, pastorId, { data, existing, confirmado });
 
 test('marcarlo fallecido cuando una iglesia lo nombra, pregunta', () => {
   const p = pastor('Activo');

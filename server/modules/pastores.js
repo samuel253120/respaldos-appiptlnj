@@ -395,13 +395,14 @@ module.exports = {
        * iglesia: primero lo que se rechaza, después lo que se pregunta.
        */
       /*
-       * ¿Se está jubilando, trasladando o falleciendo mientras una iglesia lo
-       * nombra? Va ANTES que la del traslado porque el motor deja pasar UNA
-       * pregunta por guardado y ésta es la más grave: la del traslado dice que
-       * cambió de congregación; ésta, que dejó de ejercer.
+       * ¿Se está jubilando, trasladando o falleciendo dejando algo suyo
+       * colgando —su iglesia, sus credenciales—? Va ANTES que la del traslado
+       * porque el motor deja pasar UNA pregunta por guardado y ésta es la más
+       * grave: la del traslado dice que cambió de congregación; ésta, que dejó
+       * de ejercer, y de ella cuelga que una credencial deje de valer.
        */
       const dejaDeEjercer = require('../pastor-que-ejerce')
-        .avisoSiDejaDeEjercerYEstaACargo(db, id, { data, existing, confirmado });
+        .avisoSiDejaDeEjercer(db, id, { data, existing, confirmado });
       if (dejaDeEjercer) return dejaDeEjercer;
 
       return require('../pastor-de-la-iglesia')
@@ -437,16 +438,16 @@ module.exports = {
       }
 
       /*
-       * Y lo mismo cuando deja de ejercer, que es lo que la pregunta dijo que
-       * iba a pasar. Va aparte del traslado y no junto con él porque son dos
-       * hechos distintos y la línea del historial tiene que decir cuál fue:
-       * quien la lea el año que viene necesita saber si se fue o si murió.
+       * Y cuando deja de ejercer se suelta su iglesia y se revocan sus
+       * credenciales, que es lo que la pregunta dijo que iba a pasar. Va
+       * aparte del traslado y no junto con él porque son dos hechos distintos
+       * y la línea del historial tiene que decir cuál fue: quien la lea el año
+       * que viene necesita saber si se fue o si dejó de ejercer.
        */
       const ejercen = require('../pastor-que-ejerce');
-      if (existing && String(existing.estado || '') !== String(fila.estado || '')
-          && ejercen.YA_NO_EJERCEN.includes(fila.estado)) {
-        const suIglesia = require('../pastor-de-la-iglesia');
-        for (const iglesia of suIglesia.soltarLasQueLoNombraban(db, fila.id, null)) {
+      if (ejercen.estaDejandoDeEjercer({ data: fila, existing })) {
+        const { sueltas } = ejercen.soltarLoSuyo(db, fila, user);
+        for (const iglesia of sueltas) {
           require('../bitacora').anotarIglesia(iglesia.id, {
             tipo: 'Otro',
             descripcion: `${fila.nombres} ${fila.apellidos} dejó de figurar como pastor(a) principal: `

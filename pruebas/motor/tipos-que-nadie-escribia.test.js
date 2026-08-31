@@ -176,12 +176,28 @@ test('se anotan la emisión y la revocación, no los cuatro actos', () => {
   const cuantas = (src.match(/anotarCredencial\(/g) || []).length;
   assert.equal(cuantas, 2, `se llama ${cuantas} veces, y tienen que ser dos`);
 
-  const emision = src.slice(src.indexOf("accion: 'Emisión'"), src.indexOf("accion: 'Reemplazo'"));
-  assert.match(emision, /anotarCredencial\(/, 'la emisión sí');
-  const reemplazo = src.slice(src.indexOf("accion: 'Reemplazo'"), src.indexOf("accion: 'Revocación'"));
-  assert.doesNotMatch(reemplazo, /anotarCredencial\(/, 'el reemplazo no');
-  const impresion = src.slice(src.indexOf("accion: 'Impresión'"));
-  assert.doesNotMatch(impresion, /anotarCredencial\(/, 'la impresión tampoco');
+  /*
+   * Cada acto se mira desde su propia marca hasta la SIGUIENTE que aparezca en
+   * el archivo, sea cual sea. Antes se recortaba nombrando la que venía
+   * después —de «Emisión» a «Reemplazo», de «Impresión» al final— y eso
+   * amarraba la prueba al ORDEN en que están escritas: mover una función de
+   * sitio la hacía caer sin que nada hubiera cambiado de comportamiento, que
+   * es justo lo que pasó al sacar la revocación de su ruta a una función
+   * propia.
+   */
+  const marcas = [...src.matchAll(/accion: '([^']+)'/g)];
+  const loQueAnota = (acto) => {
+    const i = marcas.findIndex((m) => m[1] === acto);
+    assert.notEqual(i, -1, `tendría que existir el acto «${acto}»`);
+    const desde = marcas[i].index;
+    const hasta = i + 1 < marcas.length ? marcas[i + 1].index : src.length;
+    return src.slice(desde, hasta);
+  };
+
+  assert.match(loQueAnota('Emisión'), /anotarCredencial\(/, 'la emisión sí');
+  assert.match(loQueAnota('Revocación'), /anotarCredencial\(/, 'y la revocación también');
+  assert.doesNotMatch(loQueAnota('Reemplazo'), /anotarCredencial\(/, 'el reemplazo no');
+  assert.doesNotMatch(loQueAnota('Impresión'), /anotarCredencial\(/, 'la impresión tampoco');
 });
 
 /* ------------------------------- el vocabulario, al día */
