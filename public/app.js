@@ -658,7 +658,17 @@ async function opcionesDelCampo(modulo, campo) {
 /** Campos de los que depende el selector de otro campo. */
 function camposDeLaRuta(f) {
   const ruta = f.optionsRoute || '';
-  return [...ruta.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+  return [...ruta.matchAll(/\{(\w+)\}/g)]
+    .map((m) => m[1])
+    /*
+     * El PROPIO campo no es una dependencia. Una ruta como
+     * `/pastores/con-conyuge?ademas={pastor_id}` en el campo `pastor_id`
+     * quiere decir «los que corresponden, y además el que esta ficha ya
+     * tenía», y ese valor está vacío con toda razón en una ficha nueva. Sin
+     * esta línea el desplegable se declara a la espera de otro campo y dice
+     * «elija primero…», que es una instrucción imposible de cumplir.
+     */
+    .filter((campo) => campo !== f.name);
 }
 
 /** Lo que el formulario tiene escrito ahora mismo, para resolver esas rutas. */
@@ -7416,6 +7426,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       titulo: '🧑‍💼 Ese pastor es de otra iglesia',
       volver: 'Volver y elegir otro',
       seguir: 'Atiende las dos, guardar',
+    },
+    deja_de_ejercer_y_esta_a_cargo: {
+      titulo: '⛪ Su iglesia queda sin pastor principal',
+      volver: 'Volver y dejarlo como estaba',
+      seguir: 'Ya no ejerce, guardar',
     },
     deja_su_iglesia_sin_pastor: {
       titulo: '⛪ Su iglesia queda sin pastor principal',

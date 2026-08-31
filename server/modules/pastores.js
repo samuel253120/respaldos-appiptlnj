@@ -73,6 +73,14 @@ module.exports = {
   display: '{nombres:primero} {apellidos}',
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono'],
   listFields: ['foto', 'rut', 'nombres', 'apellidos', 'cargo', 'iglesia_id', 'ficha_miembro', 'estado'],
+  /*
+   * Lo que este módulo ofrece cuando otro lo referencia en un formulario: los
+   * que ejercen, más el que ese campo ya tuviera. Vale para el titular de una
+   * credencial igual que para el pastor principal de una iglesia; los filtros
+   * de un listado siguen ofreciéndolos a todos, que es como se consulta lo de
+   * un pastor jubilado (lo distingue el propio programa de la pantalla).
+   */
+  opcionesPorDefecto: '/pastores/con-conyuge?ademas={pastor_id}',
   computed: [
     {
       name: 'ficha_miembro', label: 'Ficha de miembro', type: 'badge',
@@ -150,10 +158,21 @@ module.exports = {
     router.get('/pastores/con-conyuge', requirePerm('pastores', 'view'), (req, res) => {
       const trato = require('../tratamiento');
       const nombres = require('../nombres');
+      const ejercen = require('../pastor-que-ejerce');
       const params = [];
       const donde = require('../alcance').condiciones(module.exports, req.user, params);
+      /*
+       * Solo los que ejercen, MÁS el que este campo ya tuviera. Ese «además»
+       * es lo que evita que abrir la ficha de una iglesia cuyo pastor falleció
+       * le borre el dato al guardar: el desplegable no lo ofrecería y el
+       * formulario mandaría el campo vacío. Es el mismo arreglo que la
+       * 1.232.0 le hizo a las iglesias inactivas.
+       */
+      const ademas = Number(req.query.ademas) || 0;
+      const suyos = [...(donde ? [donde] : []), `(${ejercen.condicionDeQuienesEjercen()}${ademas ? ' OR id = ?' : ''})`];
+      if (ademas) params.push(ademas);
       const filas = db
-        .prepare(`SELECT * FROM pastores ${donde ? 'WHERE ' + donde : ''} ORDER BY apellidos, nombres`)
+        .prepare(`SELECT * FROM pastores WHERE ${suyos.join(' AND ')} ORDER BY apellidos, nombres`)
         .all(...params);
       res.json(
         filas.map((p) => {
@@ -310,7 +329,8 @@ module.exports = {
       const cargo = data.cargo !== undefined ? data.cargo : existing ? existing.cargo : null;
       if (cargo === CARGO_UNICO) {
         const otro = db
-          .prepare(`SELECT nombres, apellidos FROM pastores WHERE cargo = ? AND id != ? AND (estado IS NULL OR estado = 'Activo')`)
+          .prepare(`SELECT nombres, apellidos FROM pastores
+                     WHERE cargo = ? AND id != ? AND ${require('../pastor-que-ejerce').condicionDeQuienesEjercen()}`)
           .get(CARGO_UNICO, id || 0);
         if (otro) {
           return `Ya hay un ${CARGO_UNICO}: ${otro.nombres} ${otro.apellidos}. ` +
@@ -374,6 +394,16 @@ module.exports = {
        * pastor principal. Va al final por lo mismo que en la ficha de la
        * iglesia: primero lo que se rechaza, después lo que se pregunta.
        */
+      /*
+       * ¿Se está jubilando, trasladando o falleciendo mientras una iglesia lo
+       * nombra? Va ANTES que la del traslado porque el motor deja pasar UNA
+       * pregunta por guardado y ésta es la más grave: la del traslado dice que
+       * cambió de congregación; ésta, que dejó de ejercer.
+       */
+      const dejaDeEjercer = require('../pastor-que-ejerce')
+        .avisoSiDejaDeEjercerYEstaACargo(db, id, { data, existing, confirmado });
+      if (dejaDeEjercer) return dejaDeEjercer;
+
       return require('../pastor-de-la-iglesia')
         .avisoSiDejaSuIglesiaSinPastor(db, id, { data, existing, confirmado });
     },
@@ -401,6 +431,26 @@ module.exports = {
             tipo: 'Otro',
             descripcion: `${fila.nombres} ${fila.apellidos} dejó de figurar como pastor(a) principal: `
               + 'su ficha pasó a otra iglesia. Queda por designar quién queda a cargo.',
+            usuario: user,
+          });
+        }
+      }
+
+      /*
+       * Y lo mismo cuando deja de ejercer, que es lo que la pregunta dijo que
+       * iba a pasar. Va aparte del traslado y no junto con él porque son dos
+       * hechos distintos y la línea del historial tiene que decir cuál fue:
+       * quien la lea el año que viene necesita saber si se fue o si murió.
+       */
+      const ejercen = require('../pastor-que-ejerce');
+      if (existing && String(existing.estado || '') !== String(fila.estado || '')
+          && ejercen.YA_NO_EJERCEN.includes(fila.estado)) {
+        const suIglesia = require('../pastor-de-la-iglesia');
+        for (const iglesia of suIglesia.soltarLasQueLoNombraban(db, fila.id, null)) {
+          require('../bitacora').anotarIglesia(iglesia.id, {
+            tipo: 'Otro',
+            descripcion: `${fila.nombres} ${fila.apellidos} dejó de figurar como pastor(a) principal: `
+              + `su ficha pasó a «${fila.estado}». Queda por designar quién queda a cargo.`,
             usuario: user,
           });
         }

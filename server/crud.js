@@ -1479,6 +1479,18 @@ function buildRouter() {
             .avisoSiLaIglesiaEstaInactiva(db, def, { data, existing, isNew });
           if (iglesiaCerrada) throw new ErrorDeDatos(iglesiaCerrada);
 
+          /*
+           * Y a un pastor que ya no ejerce no se le designa de nuevo (ver
+           * server/pastor-que-ejerce.js). Acá y no en cada módulo porque son
+           * varios los campos que apuntan a Pastores / Guías —el pastor
+           * principal de una iglesia, el titular de una credencial— y la regla
+           * es una sola: escrita módulo por módulo, se olvidaría en el que
+           * venga después.
+           */
+          const yaNoEjerce = require('./pastor-que-ejerce')
+            .avisoSiElPastorYaNoEjerce(db, def, { data, existing, isNew });
+          if (yaNoEjerce) throw new ErrorDeDatos(yaNoEjerce);
+
           const keys = Object.keys(data);
           let row;
           if (isNew) {

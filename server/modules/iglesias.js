@@ -177,8 +177,13 @@ module.exports = {
     { name: 'fecha_fundacion', label: 'Fecha de fundación', type: 'date' },
     {
       name: 'pastor_id', label: 'Pastor principal', type: 'ref', ref: 'pastores',
-      // Al elegirlo se ve también a su cónyuge: de una iglesia responden los dos
-      optionsRoute: '/pastores/con-conyuge',
+      /*
+       * Al elegirlo se ve también a su cónyuge: de una iglesia responden los
+       * dos. Y solo se ofrecen los que ejercen, más el que esta ficha ya
+       * tuviera: sin ese «además», abrir la iglesia de un pastor fallecido y
+       * guardar le borraría el dato, porque el desplegable no lo traería.
+       */
+      optionsRoute: '/pastores/con-conyuge?ademas={pastor_id}',
       help: 'Al buscarlo aparece junto a su cónyuge, que es con quien está a cargo de la iglesia.',
     },
     {
