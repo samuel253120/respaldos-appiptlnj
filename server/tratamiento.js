@@ -67,22 +67,65 @@ function fichaPastoral(miembro, db) {
   return null;
 }
 
+/**
+ * El camino de vuelta: la ficha de miembro de quien está en Pastores / Guías.
+ *
+ * Se reconoce por el enlace y, si aún no lo tiene, por el RUT —igual que
+ * `fichaPastoral` en el sentido contrario—. Vive acá y no en el módulo de
+ * pastores para que haya una sola versión de «cuál es la ficha del otro».
+ */
+function fichaDeMiembro(pastor, db) {
+  if (!pastor) return null;
+  if (pastor.miembro_id) {
+    const m = db.prepare('SELECT * FROM miembros WHERE id = ?').get(pastor.miembro_id);
+    if (m) return m;
+  }
+  if (pastor.rut) return db.prepare('SELECT * FROM miembros WHERE rut = ?').get(pastor.rut) || null;
+  return null;
+}
+
 /** ¿Esta persona está registrada en Pastores / Guías? */
 function estaEnPastores(miembro, db) {
   return !!fichaPastoral(miembro, db);
 }
 
 /**
- * El trato que le da su propia ficha ministerial: 'Guía de Obra' o 'Pastora'
- * cuando el cargo mismo lo dice, y si no 'Pastor' o 'Pastora' según el
- * género. Devuelve '' si no tiene ficha.
+ * El trato que impone un cargo del ministerio, sin mirar ninguna ficha.
+ *
+ * Los dos primeros lo dicen en su propio nombre: al guía de obra se le dice
+ * guía de obra, y a quien tiene el cargo de Pastora se le dice Pastora. Del
+ * de Pastor Probando hacia arriba, los cargos son las gradas de la escala y
+ * se escriben en masculino porque así se llama la grada, no la persona: ahí
+ * el trato lo decide el sexo de quien la ocupa, y una mujer presbítera es
+ * Pastora. Sin sexo registrado se usa el masculino, que es como se lee el
+ * nombre del cargo.
+ *
+ * Ese último caso vale también para los cargos de la lista anterior: la
+ * migración de los cargos conserva como estaban las fichas que traían uno que
+ * ya no existe —«Pastor», «Anciano»— y pide que alguien las abra y elija el
+ * de la escala nueva. Hasta que eso pase siguen siendo fichas de pastor y se
+ * les sigue diciendo Pastor o Pastora, que es lo que hacía el sistema antes.
+ *
+ * Devuelve '' solo si la ficha no dice ningún cargo.
+ */
+function tratoDelCargo(cargo, genero) {
+  if (!cargo) return '';
+  if (cargo === CARGO_GUIA) return CARGO_GUIA;
+  if (cargo === CARGO_PASTORA) return CARGO_PASTORA;
+  return esMujer(genero) ? CARGO_PASTORA : 'Pastor';
+}
+
+/**
+ * El trato que le da su propia ficha ministerial. Devuelve '' si no tiene
+ * ficha en Pastores / Guías.
+ *
+ * El sexo sale de la ficha de miembro —es la ficha de la persona— y, cuando
+ * ésa no lo tiene anotado, de la ficha de pastor.
  */
 function tratoDeLaFicha(miembro, db) {
   const ficha = fichaPastoral(miembro, db);
   if (!ficha) return '';
-  if (ficha.cargo === CARGO_GUIA) return CARGO_GUIA;
-  if (ficha.cargo === CARGO_PASTORA) return CARGO_PASTORA; // el cargo ya lo dice, no hace falta el género
-  return esMujer(miembro.genero) ? CARGO_PASTORA : 'Pastor';
+  return tratoDelCargo(ficha.cargo, miembro.genero || ficha.genero);
 }
 
 /** ¿Es guía de obra? */
@@ -159,9 +202,27 @@ function conTratamiento(miembro, db) {
   return trato ? `${trato} ${nombre}` : nombre;
 }
 
+/**
+ * "Pastora Rosa Soto" a partir de la ficha de Pastores / Guías, tenga o no
+ * ficha de miembro.
+ *
+ * Con ficha de miembro el trato sale de allá, porque es la ficha de la
+ * persona y puede llevar además un trato fijado a mano. Sin ella, del cargo:
+ * el módulo mismo cuenta con que muchos no la tengan —tiene una columna que
+ * marca a quién le falta— y hasta entonces el nombre salía pelado.
+ */
+function conTratamientoDePastor(pastor, db) {
+  if (!pastor) return '';
+  const suya = fichaDeMiembro(pastor, db);
+  if (suya) return conTratamiento(suya, db);
+  const nombre = require('./nombres').paraMostrar(pastor.nombres, pastor.apellidos);
+  const trato = tratoDelCargo(pastor.cargo, pastor.genero);
+  return trato ? `${trato} ${nombre}` : nombre;
+}
+
 module.exports = {
   CARGO_GUIA, CARGO_PASTORA, CARGOS_MINISTERIO, CARGO_UNICO,
   TRATAMIENTOS, tratamientoDe, conTratamiento, estaEnPastores, leCorrespondePastor,
   tratamientoPropio, esPastorPorSiMismo, fichaPastoral, tratoDeLaFicha, esGuiaDeObra,
-  esPastorRegistrado, tratoMinisterial,
+  esPastorRegistrado, tratoMinisterial, tratoDelCargo, fichaDeMiembro, conTratamientoDePastor,
 };

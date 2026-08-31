@@ -7,9 +7,10 @@
  * sola por el RUT— y quien todavía no la tenga aparece marcado, con un botón
  * para crearla con sus mismos datos.
  *
- * De ese enlace depende, además, el trato: a quien tiene cargo pastoral se
- * le dice Pastor o Pastora en todo el sistema, y a su cónyuge también; al
- * guía de obra se le dice guía de obra.
+ * El trato sale del cargo: a quien tiene cargo pastoral se le dice Pastor o
+ * Pastora en todo el sistema, y a su cónyuge también; al guía de obra se le
+ * dice guía de obra. Entre Pastor y Pastora decide el sexo, que se lee de la
+ * ficha de miembro cuando la hay y, si no, del campo que esta ficha lleva.
  *
  * Matrimonio: el pastor y la pastora se vinculan entre sí; el vínculo queda
  * en las dos fichas. Si el cónyuge no está en este módulo sino en Miembros,
@@ -24,7 +25,9 @@
  * ministerio. El guía de obra es el primer cargo y todavía no es pastoral: se
  * le dice guía de obra, y su cónyuge no pasa a ser Pastor ni Pastora.
  */
-const { CARGO_GUIA, CARGOS_MINISTERIO: CARGOS, CARGO_UNICO } = require('../tratamiento');
+const {
+  CARGO_GUIA, CARGOS_MINISTERIO: CARGOS, CARGO_UNICO, fichaDeMiembro,
+} = require('../tratamiento');
 
 /** ¿Este cargo es pastoral? El de guía de obra todavía no lo es. */
 const esCargoPastoral = (cargo) => !!cargo && cargo !== CARGO_GUIA;
@@ -51,17 +54,6 @@ function estadoFichaMiembro(pastor, db) {
   if (pastor.rut && !miembro.rut) return { texto: 'Falta el RUT en su ficha', nivel: 'medio', miembro };
   if (!pastor.rut && miembro.rut) return { texto: 'Falta el RUT aquí', nivel: 'medio', miembro };
   return { texto: 'Registrado', nivel: 'ok', miembro };
-}
-
-/** La ficha de miembro de un pastor: la enlazada, o la que tenga su mismo RUT. */
-function fichaDeMiembro(pastor, db) {
-  if (!pastor) return null;
-  if (pastor.miembro_id) {
-    const m = db.prepare('SELECT * FROM miembros WHERE id = ?').get(pastor.miembro_id);
-    if (m) return m;
-  }
-  if (pastor.rut) return db.prepare('SELECT * FROM miembros WHERE rut = ?').get(pastor.rut) || null;
-  return null;
 }
 
 module.exports = {
@@ -131,6 +123,21 @@ module.exports = {
         'no se imprime esa línea y su espacio se reparte entre los demás datos.',
     },
     { name: 'fecha_nacimiento', label: 'Fecha de nacimiento', type: 'date', reservado: 'miembros_identidad' },
+    {
+      /*
+       * Opcional, y solo para el trato: de Pastor Probando hacia arriba los
+       * cargos son gradas de la escala y se escriben en masculino, así que el
+       * trato lo decide el sexo de quien la ocupa. Antes ese dato vivía nada
+       * más que en la ficha de miembro, y quien no la tuviera —el módulo mismo
+       * cuenta con que muchos no la tengan— salía con el nombre pelado.
+       *
+       * Manda la ficha de miembro cuando existe y lo tiene anotado: es la
+       * ficha de la persona. Este campo es el que queda mientras tanto, y el
+       * que se copia al crearla desde acá.
+       */
+      name: 'genero', label: 'Sexo', type: 'select', options: ['Femenino', 'Masculino'],
+      help: 'Decide entre «Pastor» y «Pastora». Si tiene ficha de miembro, manda lo que diga allá.',
+    },
     // Reservados igual que en la ficha de miembro (ver server/sensibles.js)
     { name: 'telefono', label: 'Teléfono', type: 'tel', reservado: 'miembros_contacto' },
     { name: 'email', label: 'Correo electrónico', type: 'email', reservado: 'miembros_contacto' },
@@ -165,7 +172,6 @@ module.exports = {
      */
     router.get('/pastores/con-conyuge', requirePerm('pastores', 'view'), (req, res) => {
       const trato = require('../tratamiento');
-      const nombres = require('../nombres');
       const ejercen = require('../pastor-que-ejerce');
       const params = [];
       const donde = require('../alcance').condiciones(module.exports, req.user, params);
@@ -184,8 +190,7 @@ module.exports = {
         .all(...params);
       res.json(
         filas.map((p) => {
-          const suyo = p.miembro_id ? db.prepare('SELECT * FROM miembros WHERE id = ?').get(p.miembro_id) : null;
-          const el = suyo ? trato.conTratamiento(suyo, db) : nombres.paraMostrar(p.nombres, p.apellidos);
+          const el = trato.conTratamientoDePastor(p, db);
           const ella = p.conyuge_id ? db.prepare('SELECT * FROM miembros WHERE id = ?').get(p.conyuge_id) : null;
           return { id: p.id, label: ella ? `${el} y ${trato.conTratamiento(ella, db)}` : el };
         })
@@ -221,13 +226,14 @@ module.exports = {
 
       const info = db
         .prepare(
-          `INSERT INTO miembros (nombres, apellidos, rut, iglesia_id, fecha_nacimiento, telefono, email,
+          `INSERT INTO miembros (nombres, apellidos, rut, iglesia_id, fecha_nacimiento, genero, telefono, email,
                                  direccion, foto, estado, notas, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', ?, ?)`
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', ?, ?)`
         )
         .run(
           pastor.nombres, pastor.apellidos, pastor.rut || null, pastor.iglesia_id,
-          pastor.fecha_nacimiento || null, pastor.telefono || null, pastor.email || null,
+          pastor.fecha_nacimiento || null, pastor.genero || null,
+          pastor.telefono || null, pastor.email || null,
           pastor.direccion || null, pastor.foto || null,
           'Ficha creada desde Pastores / Guías: es también miembro de su iglesia.', req.user.id
         );
@@ -250,7 +256,9 @@ module.exports = {
         ? db.prepare('SELECT * FROM pastores WHERE id = ?').get(Number(req.query.pastor_id))
         : null;
       const suya = pastor ? fichaDeMiembro(pastor, db) : null;
-      const suGenero = suya ? suya.genero : null;
+      // El de su ficha de miembro y, si no lo tiene, el de la suya de pastor:
+      // sin ficha de miembro se ofrecían los dos sexos.
+      const suGenero = (suya && suya.genero) || (pastor && pastor.genero) || null;
 
       const cond = ["genero IS NOT NULL", "genero != ''", "(estado IS NULL OR estado != 'Fallecido')"];
       const params = [];

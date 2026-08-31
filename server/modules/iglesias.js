@@ -201,13 +201,7 @@ module.exports = {
         const pastor = db.prepare('SELECT * FROM pastores WHERE id = ?').get(fila.pastor_id);
         if (!pastor) return '';
         const trato = require('../tratamiento');
-        const nombres = require('../nombres');
-        const suyo = pastor.miembro_id
-          ? db.prepare('SELECT * FROM miembros WHERE id = ?').get(pastor.miembro_id)
-          : null;
-        const el = suyo
-          ? trato.conTratamiento(suyo, db)
-          : nombres.paraMostrar(pastor.nombres, pastor.apellidos);
+        const el = trato.conTratamientoDePastor(pastor, db);
         if (!pastor.conyuge_id) return el;
         const ella = db.prepare('SELECT * FROM miembros WHERE id = ?').get(pastor.conyuge_id);
         return ella ? `${el} y ${trato.conTratamiento(ella, db)}` : el;
