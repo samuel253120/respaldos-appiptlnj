@@ -44,6 +44,12 @@ const pastor = (nombres, { miembroId = null, rut = null } = {}) => db
   .prepare("INSERT INTO pastores (nombres, apellidos, cargo, estado, miembro_id, rut) VALUES (?, ?, 'Pastor Presbítero', 'Activo', ?, ?)")
   .run(nombres, `Enlace ${marca()}`, miembroId, rut).lastInsertRowid;
 
+// Por su nombre y no por su posición: el módulo puede estrenar otro calculado
+// —lo hizo en la 1.246.0— y esto no tiene por qué enterarse.
+const FICHA_MIEMBRO = PASTORES.computed.find((c) => c.name === 'ficha_miembro');
+const comoEstaLaFicha = (id) =>
+  FICHA_MIEMBRO.calc(db.prepare('SELECT * FROM pastores WHERE id = ?').get(id), { db });
+
 const alGuardar = (id, data, existing = null) =>
   PASTORES.hooks.beforeSave(data, { id, existing, db, confirmado: false });
 
@@ -139,7 +145,7 @@ test('la columna deja de decir «Registrado» en las dos', () => {
   const m = miembro('Marcos');
   const uno = pastor('Marcos', { miembroId: m });
   const dos = pastor('Tomás', { miembroId: m });
-  const como = (id) => PASTORES.computed[0].calc(db.prepare('SELECT * FROM pastores WHERE id = ?').get(id), { db });
+  const como = comoEstaLaFicha;
   assert.equal(como(uno).texto, 'La comparte con otro');
   assert.equal(como(dos).texto, 'La comparte con otro');
   assert.equal(como(uno).nivel, 'bajo', 'y se pinta como algo que hay que arreglar');
@@ -147,7 +153,7 @@ test('la columna deja de decir «Registrado» en las dos', () => {
 
 test('y el que la tiene para él sigue diciendo «Registrado»', () => {
   const uno = pastor('Marcos', { miembroId: miembro('Marcos') });
-  const como = PASTORES.computed[0].calc(db.prepare('SELECT * FROM pastores WHERE id = ?').get(uno), { db });
+  const como = comoEstaLaFicha(uno);
   assert.equal(como.texto, 'Registrado');
 });
 

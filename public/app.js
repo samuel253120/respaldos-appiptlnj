@@ -4211,6 +4211,17 @@ async function viewFicha(name, id, pestana) {
     if (v == null || v === '') continue;
     if (f.type === 'select') insignias.push(`<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`);
     else if (f.computed && typeof v !== 'object') insignias.push(`<span class="badge">${esc(v)}</span>`);
+    /*
+     * Un dato calculado puede llevar a donde salió: «A cargo de · Iglesia
+     * Central» es un enlace a la ficha de esa congregación. Va con su ETIQUETA
+     * delante porque en la cabecera no hay nada más que diga qué es —al lado
+     * está el subtítulo, que nombra la iglesia a la que PERTENECE, y las dos
+     * cosas se parecen demasiado para dejar el nombre suelto—.
+     */
+    else if (f.computed && v && v.ir) {
+      insignias.push(`<a class="badge ${nivelClase(v.nivel)}" href="${esc(v.ir)}"
+        >${esc(f.label)} · ${esc(v.texto)}</a>`);
+    }
     else if (f.type === 'ref') subtitulo.push(etiquetaDeRef(f, row[f.name + '_label']));
   }
 

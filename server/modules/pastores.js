@@ -72,7 +72,7 @@ module.exports = {
   printable: true,
   display: '{nombres:primero} {apellidos}',
   searchFields: ['nombres', 'apellidos', 'rut', 'telefono'],
-  listFields: ['foto', 'rut', 'nombres', 'apellidos', 'cargo', 'iglesia_id', 'ficha_miembro', 'estado'],
+  listFields: ['foto', 'rut', 'nombres', 'apellidos', 'cargo', 'iglesia_id', 'a_cargo_de', 'ficha_miembro', 'estado'],
   /*
    * Lo que este módulo ofrece cuando otro lo referencia en un formulario: los
    * que ejercen, más el que ese campo ya tuviera. Vale para el titular de una
@@ -82,6 +82,36 @@ module.exports = {
    */
   opcionesPorDefecto: '/pastores/con-conyuge?ademas={pastor_id}',
   computed: [
+    {
+      /*
+       * De qué congregación está A CARGO, que es otra cosa que la iglesia a la
+       * que pertenece.
+       *
+       * La relación está escrita en la ficha de la IGLESIA —su campo «Pastor
+       * principal»— y desde acá no se veía por ninguna parte: la ficha mostraba
+       * su «Iglesia», que es a la que pertenece, y quien la abría no tenía cómo
+       * saber que una congregación dependía de él. Importa porque es la
+       * relación de la que cuelgan las dos preguntas que este módulo hace al
+       * jubilarlo y al borrarlo: quien va a hacer cualquiera de las dos mira
+       * esta ficha, y ahí tenía que estar dicho.
+       *
+       * Lleva a dónde salió: el distintivo de la cabecera es un enlace a la
+       * ficha de esa congregación.
+       */
+      name: 'a_cargo_de', label: 'A cargo de', type: 'badge',
+      help: 'La congregación que lo tiene como pastor principal. No es lo mismo que «Iglesia»: '
+        + 'ésa es a la que pertenece, y de ésta responde. Sale del campo «Pastor principal» de la ficha de la iglesia.',
+      calc: (fila, { db }) => {
+        const suyas = require('../pastor-de-la-iglesia').lasQueLoSiguenNombrando(db, fila.id, null);
+        if (!suyas.length) return null;
+        return {
+          texto: suyas.map((i) => i.nombre).join(' y '),
+          // Con dos congregaciones no hay una sola adónde ir, así que lleva al
+          // listado de iglesias en vez de elegir una de las dos por su cuenta.
+          ir: suyas.length === 1 ? `#/m/iglesias/ficha/${suyas[0].id}` : '#/m/iglesias',
+        };
+      },
+    },
     {
       name: 'ficha_miembro', label: 'Ficha de miembro', type: 'badge',
       /*
