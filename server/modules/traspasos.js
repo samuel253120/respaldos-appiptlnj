@@ -55,6 +55,68 @@ function elQueYaEstaba(db, { fecha, origenId, destinoId, monto, concepto }) {
   return candidatos.find((c) => repetido.comoSeCompara(c.concepto) === suyo) || null;
 }
 
+/** Lo de un traspaso que ES la plata: cuándo, cuánto y entre qué cuentas. */
+const LO_QUE_ES_LA_PLATA = ['fecha', 'monto', 'cuenta_origen_id', 'cuenta_destino_id'];
+
+/**
+ * Lo que no se mueve en un traspaso que toca una cuenta cerrada, o null.
+ *
+ * «Cerrada» congelaba el traspaso ENTERO, y eso es demasiado. Medido sobre uno
+ * anotado con «Diezmo de mazo» cuya cuenta de origen se cerró después:
+ *
+ *   corregir «mazo» → «marzo» .................. 400
+ *   anotar el n.º de la transferencia .......... 400
+ *   dejar una nota ............................. 400
+ *   adjuntar el comprobante que faltaba ........ 400
+ *   pero ELIMINARLO entero ..................... 200
+ *
+ * O sea: se impedía corregir una falta de ortografía y se permitía borrar el
+ * registro completo, que es lo único de los cinco que mueve plata. Y no había
+ * salida: para corregir el concepto habría que borrarlo y volver a anotarlo,
+ * pero volver a anotarlo también está bloqueado por la cuenta cerrada. El dato
+ * se perdía o se quedaba mal escrito para siempre.
+ *
+ * Es la misma distinción que la 1.216.0 hizo en la ficha de una cuenta cerrada:
+ * se congela lo que mueve plata —ahí el saldo inicial, acá la fecha, el monto y
+ * las dos cuentas— y lo demás se sigue corrigiendo, porque es historia y la
+ * historia se escribe bien. La forma del traspaso también: cambiar «Efectivo»
+ * por «Transferencia» corrige cómo se pagó, no cuánto ni cuándo.
+ *
+ * Se miran las cuentas de ANTES y las de DESPUÉS: sacarle a una cuenta cerrada
+ * su traspaso cambiándole el origen es sacarle la plata por otro camino.
+ *
+ * Se frena y no se pregunta, igual que en la ficha de la cuenta: es la misma
+ * regla que rechaza el movimiento de $ 1, dicha del mismo modo. Y la salida
+ * está escrita.
+ */
+function loQueNoSeMueveConUnaCuentaCerrada(db, { data, existing }) {
+  if (!existing) return null;
+  const cambia = LO_QUE_ES_LA_PLATA.some(
+    (campo) => data[campo] !== undefined && String(data[campo]) !== String(existing[campo])
+  );
+  if (!cambia) return null;
+
+  const cerrada = require('../cuenta-cerrada');
+  const de = (id) => (id ? db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(id) : null);
+  const enJuego = new Map();
+  for (const campo of ['cuenta_origen_id', 'cuenta_destino_id']) {
+    for (const id of [existing[campo], data[campo]]) {
+      const cuenta = de(id);
+      if (cuenta && !cerrada.admitePlataNueva(cuenta)) enJuego.set(cuenta.id, cuenta);
+    }
+  }
+  if (!enJuego.size) return null;
+
+  const cuales = cerrada.nombradas([...enJuego.values()]);
+  return (
+    `${enJuego.size === 1 ? `La cuenta ${cuales} está cerrada` : `Las cuentas ${cuales} están cerradas`}: `
+    + 'de este traspaso ya no se pueden mover la fecha, el monto ni las cuentas. Lo que sí se sigue '
+    + 'corrigiendo es el concepto, el número de operación, la forma, el comprobante y las notas: eso '
+    + 'es cómo quedó escrito, y se escribe bien. Si de verdad hay que cambiar la plata, vuelva a '
+    + 'abrir la cuenta, corríjalo y ciérrela de nuevo.'
+  );
+}
+
 /**
  * El aviso de que borrar este traspaso le cambia el saldo a una cuenta cerrada,
  * o null si ninguna de las dos lo está.
@@ -193,13 +255,27 @@ module.exports = {
           + 'iglesia a la corporación—: hacia otra congregación o hacia otro cuerpo hay que pedirlo '
           + 'a quien administre las dos cuentas.';
       }
-      // La misma regla que en las otras cuatro puertas (server/cuenta-cerrada.js),
-      // dicha por el lado que corresponde: de un traspaso se sale y se entra
+      /*
+       * Una cuenta cerrada no admite un traspaso NUEVO, por ninguno de sus dos
+       * lados. Es la misma regla que en las otras cuatro puertas
+       * (server/cuenta-cerrada.js), dicha por el lado que corresponde: de un
+       * traspaso se sale y se entra.
+       */
       const cerrada = require('../cuenta-cerrada');
-      const noSale = cerrada.avisoSiEstaCerrada(origen, 'sale');
-      if (noSale) return noSale;
-      const noEntra = cerrada.avisoSiEstaCerrada(destino, 'entra');
-      if (noEntra) return noEntra;
+      if (!existing) {
+        const noSale = cerrada.avisoSiEstaCerrada(origen, 'sale');
+        if (noSale) return noSale;
+        const noEntra = cerrada.avisoSiEstaCerrada(destino, 'entra');
+        if (noEntra) return noEntra;
+      } else {
+        /*
+         * Y a uno que YA ESTÁ ANOTADO se le congela lo que es la plata, no la
+         * ficha entera: se seguía sin poder corregir una falta de ortografía y
+         * sí se podía borrar el registro completo.
+         */
+        const congelado = loQueNoSeMueveConUnaCuentaCerrada(db, { data, existing });
+        if (congelado) return congelado;
+      }
 
       data.iglesia_id = origen.iglesia_id || null;
 
