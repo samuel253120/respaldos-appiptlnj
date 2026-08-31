@@ -516,8 +516,44 @@ module.exports = {
       require('../el-conyuge-del-pastor').anotarElVinculo(db, fila, fichaDeMiembro(fila, db));
     },
 
-    beforeDelete(fila, { db }) {
+    /**
+     * Borrar la ficha de un pastor es la OTRA puerta por la que una iglesia se
+     * queda sin pastor principal, y era la única de las dos que no decía nada:
+     * el motor le suelta el enlace a la iglesia —es una referencia opcional— y
+     * ahí se acababa, sin pregunta y sin una línea en ningún historial. Es peor
+     * que el traslado, que sí avisa: trasladado, el pastor sigue existiendo y
+     * se puede ir a mirar; borrado, no queda de dónde deducir qué pasó.
+     *
+     * Las credenciales emitidas no llegan hasta acá: server/dependencias.js
+     * FRENA el borrado de quien tenga alguna, porque una credencial emitida es
+     * un documento y no se borra.
+     */
+    beforeDelete(fila, { db, user, confirmado }) {
+      const suIglesia = require('../pastor-de-la-iglesia');
+      const aviso = suIglesia.avisoSiBorrarloDejaSuIglesiaSinPastor(db, fila, { confirmado });
+      if (aviso) return aviso;
+
       db.prepare('UPDATE pastores SET conyuge_id = NULL WHERE conyuge_id = ?').run(fila.id);
+
+      /*
+       * Y la constancia, que es lo que la pregunta prometió. La escribe el
+       * historial de la IGLESIA y no el del pastor: el suyo se va con él —lo
+       * arrastra el motor, porque no significa nada sin su ficha— y la
+       * congregación es la que queda para leerla. Va con las mismas palabras
+       * que la del traslado, cambiando el motivo, para que quien las lea el año
+       * que viene sepa cuál de los dos hechos fue.
+       *
+       * Se anota antes de borrar y dentro de la misma transacción: si algo de
+       * lo que cuelga frena el borrado, esta línea se deshace con él.
+       */
+      for (const iglesia of suIglesia.lasQueLoSiguenNombrando(db, fila.id, null)) {
+        require('../bitacora').anotarIglesia(iglesia.id, {
+          tipo: 'Otro',
+          descripcion: `${fila.nombres} ${fila.apellidos} dejó de figurar como pastor(a) principal: `
+            + 'se eliminó su ficha de Pastores / Guías. Queda por designar quién queda a cargo.',
+          usuario: user,
+        });
+      }
       return null;
     },
   },

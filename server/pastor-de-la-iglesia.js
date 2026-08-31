@@ -131,6 +131,39 @@ function avisoSiDejaSuIglesiaSinPastor(db, pastorId, { data, existing, confirmad
 }
 
 /**
+ * Al BORRAR un pastor: el mismo aviso, por la otra puerta.
+ *
+ * La 1.237.0 cerró la del traslado y ésta quedó abierta, y es la más grave de
+ * las dos: trasladarlo deja su ficha en pie y la congregación anterior se
+ * entera por su historial; borrarla no deja nada. Medido antes de la 1.245.0,
+ * con un pastor puesto a cargo de una iglesia:
+ *
+ *   borrarlo ....................... 200, sin preguntar nada
+ *   la iglesia, después ............ pastor principal vacío
+ *   su historial ................... ni una línea
+ *
+ * Acá no hace falta mirar si el guardado cambia algo —borrar es siempre el
+ * cambio— así que basta con que alguna iglesia lo siga nombrando.
+ */
+function avisoSiBorrarloDejaSuIglesiaSinPastor(db, pastor, { confirmado } = {}) {
+  if (confirmado) return null;
+  if (!pastor || !pastor.id) return null;
+
+  const huerfanas = lasQueLoSiguenNombrando(db, pastor.id, null);
+  if (!huerfanas.length) return null;
+
+  const cuales = huerfanas.map((i) => `«${i.nombre}»`).join(' y ');
+  return {
+    error:
+      `${comoSeLlama(pastor)} figura como pastor(a) principal de ${cuales}. Si elimina su ficha, `
+      + `${huerfanas.length > 1 ? 'esas iglesias quedan' : 'esa iglesia queda'} sin pastor principal `
+      + 'anotado y hay que designarle otro: de ese campo sale «A cargo de la iglesia», que es lo que '
+      + 'se lee para saber quién responde por esa congregación. Queda la constancia en su historial.',
+    confirmar: 'borrarlo_deja_su_iglesia_sin_pastor',
+  };
+}
+
+/**
  * Y, ya confirmado, se le quita: es lo que la pregunta dijo que iba a pasar.
  * Devuelve las iglesias que quedaron sin pastor anotado, para poder decirlo.
  */
@@ -145,6 +178,7 @@ function soltarLasQueLoNombraban(db, pastorId, iglesiaNueva) {
 module.exports = {
   avisoSiElPastorEsDeOtraIglesia,
   avisoSiDejaSuIglesiaSinPastor,
+  avisoSiBorrarloDejaSuIglesiaSinPastor,
   lasQueLoSiguenNombrando,
   soltarLasQueLoNombraban,
 };
