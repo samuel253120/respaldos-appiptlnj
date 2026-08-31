@@ -7,7 +7,12 @@
  * El caso corriente: cada iglesia aparta en su «Fondo para la corporación» el
  * porcentaje de las ofrendas que le corresponde a la corporación, y cuando
  * llega el momento traspasa ese fondo a la tesorería general de la
- * corporación.
+ * corporación. Un cuerpo hace lo mismo un nivel más abajo: junta las cuotas de
+ * sus integrantes y le entrega a su iglesia.
+ *
+ * La plata se entrega HACIA ARRIBA, y por eso la cuenta de destino puede ser
+ * una que quien anota el traspaso no administra. Nunca hacia el lado ni hacia
+ * abajo: la regla entera está en server/entregar-hacia-arriba.js.
  *
  * Cada traspaso genera sus dos movimientos en Tesorería —un egreso en la
  * cuenta de origen y un ingreso en la de destino—, que se mantienen
@@ -74,7 +79,12 @@ module.exports = {
     {
       name: 'cuenta_destino_id', label: 'Hacia la cuenta', type: 'ref', ref: 'cuentas_tesoreria', required: true,
       optionsRoute: '/cuentas_tesoreria/destinos',
-      help: 'A dónde entra el dinero, incluidas las cuentas de la corporación.',
+      help: 'A dónde entra el dinero: las suyas y las de más arriba —su iglesia, la corporación—.',
+      // El destino es, a propósito, algo que quien anota el traspaso no
+      // administra: la plata se entrega hacia arriba. La comprobación general
+      // del motor lo rechazaría; la que corresponde está abajo, en beforeSave
+      // (ver server/entregar-hacia-arriba.js).
+      alcanceLoDecideElModulo: true,
     },
     { name: 'monto', label: 'Monto', type: 'money', required: true, min: 1, reservado: 'tesoreria_montos' },
     {
@@ -119,9 +129,33 @@ module.exports = {
       if (!origen) return 'La cuenta de origen indicada no existe';
       if (!destino) return 'La cuenta de destino indicada no existe';
 
-      // Se traspasa desde una cuenta propia; el destino puede ser de otro nivel
-      if (!require('../alcance').alcanzaIglesia(user, origen.iglesia_id)) {
-        return `La cuenta "${origen.nombre}" no está entre las iglesias que administra`;
+      /*
+       * Se traspasa DESDE una cuenta propia. Esa sigue siendo la condición, y
+       * es la que decide de quién es el traspaso: su iglesia y su nivel se
+       * toman de ella.
+       */
+      if (!require('../alcance').alcanza(
+        require('../registry').getModule('cuentas_tesoreria'), origen, user)) {
+        return `La cuenta "${origen.nombre}" no está entre las que administra`;
+      }
+
+      /*
+       * Y HACIA una que alcance, o una de más arriba.
+       *
+       * El destino de un traspaso es a propósito algo que quien lo anota no
+       * administra: así es como un cuerpo le entrega a su iglesia y una iglesia
+       * a la corporación, que es el trabajo de este módulo. La regla —hacia
+       * arriba, misma iglesia, nunca al lado ni hacia abajo— y lo que se midió
+       * antes de tenerla están en server/entregar-hacia-arriba.js.
+       */
+      const arriba = require('../entregar-hacia-arriba');
+      const alcanzaDestino = require('../alcance').alcanza(
+        require('../registry').getModule('cuentas_tesoreria'), destino, user);
+      if (!alcanzaDestino && !arriba.admiteComoDestino(origen, destino)) {
+        return `La cuenta "${destino.nombre}" no está entre las que administra, y tampoco es de las `
+          + 'de más arriba. Un traspaso entrega hacia arriba —de un cuerpo a su iglesia, de una '
+          + 'iglesia a la corporación—: hacia otra congregación o hacia otro cuerpo hay que pedirlo '
+          + 'a quien administre las dos cuentas.';
       }
       // La misma regla que en las otras cuatro puertas (server/cuenta-cerrada.js),
       // dicha por el lado que corresponde: de un traspaso se sale y se entra

@@ -46,7 +46,15 @@ const LIBROS = {
   cuentas_tesoreria: { columna: 'cuerpo_id' },
   tesoreria: { columna: 'cuerpo_id', cuentas: ['cuenta_id'] },
   cuotas_cuerpo: { siempre: CUERPO },
-  traspasos: { cuentas: ['cuenta_origen_id', 'cuenta_destino_id'] },
+  /*
+   * Un traspaso es de quien lo SACA, y por eso el nivel lo decide su cuenta de
+   * origen y no las dos. Miraba las dos, y con eso la tesorera de un cuerpo que
+   * le entregaba a su iglesia anotaba un traspaso que después no veía: el
+   * destino era de nivel general, el listado se lo escondía y la entrega
+   * desaparecía de su vista. Entregar hacia arriba no es alcanzar lo de arriba
+   * (ver server/entregar-hacia-arriba.js).
+   */
+  traspasos: { cuentas: ['cuenta_origen_id'] },
 };
 
 /** ¿Este módulo lleva plata? */

@@ -475,23 +475,45 @@ module.exports = {
   },
 
   extraRoutes(router, { db, requirePerm, scopeClause }) {
-    // Destinos posibles de un traspaso: las cuentas de la corporación —una
-    // iglesia le traspasa lo que apartó— y las de la propia iglesia. Las de
-    // otras congregaciones no se ofrecen ni se muestran.
+    /*
+     * Destinos posibles de un traspaso: LAS SUYAS Y LAS DE MÁS ARRIBA.
+     *
+     * Este desplegable y el guardado no aplicaban el mismo filtro, y la
+     * diferencia se veía mejor contándola: se le ofreció a cada persona su
+     * lista completa y se intentó, una por una, un traspaso de $ 1 a cada
+     * opción.
+     *
+     *   tesorera de una iglesia ............ 36 de 38 servían
+     *   tesorera de un cuerpo ..............  1 de 26 servían
+     *
+     * Veinticuatro rechazos de veintiséis: se le ofrecía la cuenta de cada
+     * cuerpo de su iglesia, elegía una, llenaba el formulario entero y recibía
+     * «cuenta de tesorería n.º 25 está fuera de lo que tiene asignado». Un
+     * desplegable que promete lo que el guardado rechaza es peor que uno corto:
+     * hace perder el trabajo ya hecho y no explica por qué.
+     *
+     * Así que las dos preguntas salen ahora del mismo lugar: lo que esa persona
+     * alcanza —con su iglesia, su cuerpo y su nivel, que es la condición
+     * completa del listado y no una copia— más lo que la regla de entregar
+     * hacia arriba le admite como destino (ver server/entregar-hacia-arriba.js).
+     */
     router.get('/cuentas_tesoreria/destinos', requirePerm('traspasos', 'view'), (req, res) => {
       const params = [];
-      let where = "estado = 'Activa'";
-      const suyas = require('../alcance').iglesiasDe(req.user);
-      if (suyas.length) {
-        where += ` AND (iglesia_id IS NULL OR iglesia_id IN (${suyas.map(() => '?').join(',')}))`;
-        params.push(...suyas);
-      }
-      // Y del nivel que alcance: no se ofrece como destino una cuenta que
-      // después no va a poder ver (ver server/tesorerias.js)
-      const porNivel = require('../tesorerias').condicion(module.exports, req.user);
-      if (porNivel) where += ` AND ${porNivel}`;
+      const suyas = require('../alcance').condiciones(module.exports, req.user, params);
+      const haciaArriba = require('../entregar-hacia-arriba')
+        .condicionDeDestinos(req.user, db, params);
+
+      /*
+       * Sin condición de alcance no se agrega ninguna: `condiciones` devuelve
+       * null cuando esa persona no está acotada a nada, y ahí «lo suyo» es
+       * todo. Pegar solo la de hacia arriba la dejaría con la cuenta de la
+       * corporación como único destino, que es lo contrario de lo que se quiere.
+       */
+      const where = ["estado = 'Activa'"];
+      if (suyas) where.push(haciaArriba ? `(${suyas} OR ${haciaArriba})` : `(${suyas})`);
+
       const filas = db
-        .prepare(`SELECT id, nombre, ambito FROM cuentas_tesoreria WHERE ${where} ORDER BY ambito, nombre`)
+        .prepare(`SELECT id, nombre, ambito FROM cuentas_tesoreria WHERE ${where.join(' AND ')} ORDER BY ambito, nombre`)
         .all(...params);
       res.json(filas.map((c) => ({ id: c.id, label: `${c.nombre} · ${c.ambito}` })));
     });

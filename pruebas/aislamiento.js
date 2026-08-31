@@ -777,6 +777,62 @@ async function loPropioSigueAbierto(E, admin) {
   if (actaPropia.json && actaPropia.json.id) await admin('DELETE', `/api/actas_reuniones/${actaPropia.json.id}`);
 
   /*
+   * Y la plata que se entrega HACIA ARRIBA, que es la excepción del sistema:
+   * el destino de un traspaso puede ser una cuenta que quien lo anota no
+   * administra —así una iglesia le entrega a la corporación y un cuerpo a su
+   * iglesia—. Es la única excepción al «no se referencia lo que no se ve», y
+   * por eso se comprueba acá y por sus dos lados: que sirva, y que no se haya
+   * abierto de más.
+   *
+   * Se comprueba contra el servidor y no solo en el motor porque el defecto que
+   * la trajo era justamente ese: el desplegable ofrecía una cosa y el guardado
+   * aceptaba otra. Medido antes de arreglarlo, al administrador de una iglesia
+   * el desplegable «Hacia» le ofrecía 38 cuentas y le servían 36; a una
+   * tesorera de cuerpo le ofrecía 26 y le servía 1.
+   */
+  const suyas = (await norte('GET', '/api/cuentas_tesoreria?limit=200')).json.rows || [];
+  const propia = suyas.find((c) => String(c.iglesia_id) === String(E.norte.id) && !c.cuerpo_id);
+  const destinos = (await norte('GET', '/api/cuentas_tesoreria/destinos')).json || [];
+  const deLaCorporacion = destinos.find((d) => / · Corporación$/.test(d.label));
+  revisar('el desplegable «Hacia» le ofrece la cuenta de la corporación',
+    !!deLaCorporacion, `ofreció ${destinos.length}: ${destinos.slice(0, 4).map((d) => d.label).join(' | ')}`);
+
+  if (propia && deLaCorporacion) {
+    const entrega = await norte('POST', '/api/traspasos', {
+      fecha: '2026-02-02', cuenta_origen_id: propia.id, cuenta_destino_id: deLaCorporacion.id,
+      monto: 1000, forma: 'Transferencia', concepto: `Entrega hacia arriba ${MARCA}`, igual_asi: true,
+    });
+    revisar('y le entrega de verdad: el caso que el módulo se pone de ejemplo',
+      [200, 201].includes(entrega.estado),
+      `respondió ${entrega.estado}: ${entrega.texto.slice(0, 170).replace(/\s+/g, ' ')}`);
+    if (entrega.json && entrega.json.id) {
+      const suyo = (await norte('GET', `/api/traspasos/${entrega.json.id}`)).estado;
+      revisar('y después lo ve: anotar una entrega que no se puede ver no sirve de nada', suyo === 200,
+        `la ficha respondió ${suyo}`);
+      await admin('DELETE', `/api/traspasos/${entrega.json.id}`);
+    }
+
+    // Y no se abrió de más: entregar no es administrar
+    const abrirla = await norte('GET', `/api/cuentas_tesoreria/${deLaCorporacion.id}`);
+    revisar('pero no puede abrir esa cuenta: entregar no es administrar', abrirla.estado === 403,
+      `la ficha respondió ${abrirla.estado}`);
+    const alReves = await norte('POST', '/api/traspasos', {
+      fecha: '2026-02-03', cuenta_origen_id: deLaCorporacion.id, cuenta_destino_id: propia.id,
+      monto: 1000, forma: 'Efectivo', concepto: `Al revés ${MARCA}`, igual_asi: true,
+    });
+    revisar('ni sacar plata DE ella', ![200, 201].includes(alReves.estado),
+      `respondió ${alReves.estado}`);
+    const alLado = await norte('POST', '/api/traspasos', {
+      fecha: '2026-02-04', cuenta_origen_id: propia.id, cuenta_destino_id: E.cuentaSur.id,
+      monto: 1000, forma: 'Efectivo', concepto: `Al lado ${MARCA}`, igual_asi: true,
+    });
+    revisar('ni entregarle a otra congregación, que es hacia el lado',
+      ![200, 201].includes(alLado.estado), `respondió ${alLado.estado}`);
+    revisar('y la cuenta de la otra iglesia no figura entre los destinos que se le ofrecen',
+      !destinos.some((d) => d.id === E.cuentaSur.id), 'estaba en la lista');
+  }
+
+  /*
    * El control que más importa de los tres. El administrador general no tiene
    * ninguna iglesia asignada, y eso significa «todas». Si el aislamiento lo
    * acotara sin querer, el sistema se quedaría sin quien lo administre entero

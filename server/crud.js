@@ -255,6 +255,18 @@ function referenciasFueraDeAlcance(def, data, usuario) {
   const fuera = [];
   for (const f of def.fields) {
     if ((f.type !== 'ref' && f.type !== 'multiref') || !f.ref) continue;
+    /*
+     * Salvo que el módulo diga que ESA referencia la juzga él.
+     *
+     * Hay una y está bien acotada: la cuenta de DESTINO de un traspaso, donde
+     * la plata se entrega hacia arriba —de un cuerpo a su iglesia, de una
+     * iglesia a la corporación— y por eso el destino es, a propósito, algo que
+     * quien lo anota no administra. La regla completa, con lo que se midió,
+     * está en server/entregar-hacia-arriba.js, y el módulo la aplica en su
+     * `beforeSave`: no es que ahí no se compruebe nada, es que se comprueba
+     * otra cosa. El registro exige que quien lo declare escriba dónde.
+     */
+    if (f.alcanceLoDecideElModulo) continue;
     const valor = data[f.name];
     if (valor === undefined || valor === null || valor === '') continue; // no se está tocando
     const destino = getModule(f.ref);

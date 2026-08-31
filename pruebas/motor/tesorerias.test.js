@@ -112,10 +112,25 @@ test('quien no alcanza ninguna no ve ni una fila de ningún libro', () => {
 
 // ----------------------------------------------------------------- traspasos ----
 
-test('un traspaso se mide por las dos cuentas que toca', () => {
-  // Uno que saca plata de un cuerpo es del cuerpo, aunque el otro lado sea de
-  // la iglesia: si no se mirara, sería la puerta por donde el movimiento se
-  // vería igual, contado desde el otro lado.
+test('un traspaso es de la cuenta de la que SALE', () => {
+  /*
+   * Hasta la 1.223 se medía por las dos cuentas que toca, y la razón escrita
+   * era buena: uno que saca plata de un cuerpo es del cuerpo aunque el otro
+   * lado sea de la iglesia, y mirar una sola punta habría sido la puerta por
+   * donde el movimiento se veía igual, contado desde el otro lado.
+   *
+   * Lo que cambió no es el cuidado, es la regla que hay debajo: desde que la
+   * plata SE ENTREGA HACIA ARRIBA (ver server/entregar-hacia-arriba.js), el
+   * destino de un traspaso es a propósito una cuenta que quien lo anota no
+   * administra —así un cuerpo le entrega a su iglesia y una iglesia a la
+   * corporación—. Midiendo por las dos puntas, la tesorera del cuerpo anotaba
+   * una entrega que después NO VEÍA: el destino era de nivel general y el
+   * listado se la escondía. Se comprobó que pasaba.
+   *
+   * Así que el nivel lo decide el ORIGEN, que es de quien es el traspaso —su
+   * iglesia ya se tomaba de ahí—, y la puerta de atrás sigue cerrada por donde
+   * corresponde: para SACAR de una cuenta hay que alcanzarla entera.
+   */
   const conCuentas = (deCuerpo) => ({
     prepare: () => ({ get: (id) => ({ cuerpo_id: deCuerpo.includes(id) ? 9 : null }) }),
   });
@@ -123,23 +138,27 @@ test('un traspaso se mide por las dos cuentas que toca', () => {
   const fila = { id: 1, cuenta_origen_id: 10, cuenta_destino_id: 20 };
   const soloGeneral = sinNivel(CUERPO);
 
-  // Las dos generales: la ve
-  assert.equal(tesorerias.alcanza(TRASPASOS, fila, soloGeneral, conCuentas([])), true);
-  // Una del cuerpo: no la ve
-  assert.equal(tesorerias.alcanza(TRASPASOS, fila, soloGeneral, conCuentas([20])), false);
-  assert.equal(tesorerias.alcanza(TRASPASOS, fila, soloGeneral, conCuentas([10])), false);
+  assert.equal(tesorerias.alcanza(TRASPASOS, fila, soloGeneral, conCuentas([])), true,
+    'las dos generales: la ve');
+  assert.equal(tesorerias.alcanza(TRASPASOS, fila, soloGeneral, conCuentas([10])), false,
+    'sale de un cuerpo, y ella no lleva la plata de los cuerpos');
+  assert.equal(tesorerias.alcanza(TRASPASOS, fila, soloGeneral, conCuentas([20])), true,
+    'sale de una general suya; que entre a un cuerpo no se lo quita');
 
-  // Y a quien solo lleva los cuerpos le pasa lo mismo del otro lado
+  // Y el caso que trajo el cambio: la entrega del cuerpo a su iglesia
   const soloCuerpos = sinNivel(GENERAL);
   assert.equal(tesorerias.alcanza(TRASPASOS, fila, soloCuerpos, conCuentas([10, 20])), true);
-  assert.equal(tesorerias.alcanza(TRASPASOS, fila, soloCuerpos, conCuentas([10])), false,
-    'la otra punta es de la iglesia y no la alcanza');
+  assert.equal(tesorerias.alcanza(TRASPASOS, fila, soloCuerpos, conCuentas([10])), true,
+    'ANTES ERA false: anotaba la entrega a su iglesia y no la veía');
+  assert.equal(tesorerias.alcanza(TRASPASOS, fila, soloCuerpos, conCuentas([20])), false,
+    'pero uno que sale de la caja de la iglesia no es suyo, entre donde entre');
 });
 
-test('la condición de un traspaso mira las dos cuentas', () => {
+test('la condición de un traspaso mira la cuenta de origen', () => {
   const c = tesorerias.condicion(TRASPASOS, sinNivel(CUERPO));
   assert.match(c, /cuenta_origen_id/);
-  assert.match(c, /cuenta_destino_id/);
+  assert.doesNotMatch(c, /cuenta_destino_id/,
+    'el destino es a propósito de otro nivel: mirarlo escondía la entrega de quien la hizo');
   assert.match(c, /cuerpo_id IS NOT NULL/);
 });
 

@@ -79,24 +79,38 @@ const importar = (def, fila, quien) => prepararFila(def, fila, quien).errores;
 test('por planilla no entra un traspaso hacia la cuenta de otra iglesia', () => {
   const errores = importar(TRASPASOS, traspaso(suya, ajena), deLaCentral);
   assert.ok(errores.length, 'antes esta fila entraba con un «1 correcta, 0 con error»');
-  assert.ok(errores.some((e) => /Hacia la cuenta/.test(e) && /fuera de lo que tiene asignado/.test(e)),
+  assert.ok(errores.some((e) => /no está entre las que administra/.test(e)),
     `y con el mismo aviso del formulario; dijo: ${JSON.stringify(errores)}`);
 });
 
 test('ni sacándola de una cuenta de otra iglesia', () => {
+  /*
+   * El origen y el destino los atajan comprobaciones distintas, y por eso los
+   * avisos no son iguales: el ORIGEN es una referencia como cualquier otra y lo
+   * ataja el motor —«Desde la cuenta: … está fuera de lo que tiene asignado»—,
+   * mientras que el DESTINO se lo reserva el módulo, porque ahí la regla es
+   * otra: se entrega hacia arriba.
+   */
   const errores = importar(TRASPASOS, traspaso(ajena, suya), deLaCentral);
   assert.ok(errores.some((e) => /Desde la cuenta/.test(e)), JSON.stringify(errores));
 });
 
-test('ni hacia la cuenta de la corporación, que no es de ninguna iglesia', () => {
+test('y hacia la corporación entra, porque el formulario también la deja', () => {
   /*
-   * Que hoy se rechace es lo correcto para esta puerta —la planilla no puede
-   * ser más permisiva que el formulario—, aunque el rechazo en sí sea un
-   * problema aparte del módulo de Traspasos: es el caso que ese módulo se pone
-   * de ejemplo. Lo que se fija acá es que las dos puertas contesten LO MISMO.
+   * Lo que esta prueba fija no es «que se rechace» sino que LAS DOS PUERTAS
+   * CONTESTEN LO MISMO. Cuando se escribió, las dos rechazaban; desde que la
+   * plata se entrega hacia arriba (ver server/entregar-hacia-arriba.js), las
+   * dos aceptan. Se comprueba contra el formulario en vez de contra un
+   * resultado escrito a mano, para que siga valiendo si la regla vuelve a
+   * cambiar.
    */
-  const porPlanilla = importar(TRASPASOS, traspaso(suya, deLaCorp), deLaCentral);
-  assert.ok(porPlanilla.length, 'la planilla lo dejaba entrar y el formulario no');
+  const fila = traspaso(suya, deLaCorp);
+  const porPlanilla = importar(TRASPASOS, { ...fila }, deLaCentral);
+  const porFormulario = TRASPASOS.hooks.beforeSave({ ...fila },
+    { user: deLaCentral, existing: null, db, confirmado: true });
+  assert.equal(porPlanilla.length > 0, porFormulario !== null,
+    `la planilla dijo ${JSON.stringify(porPlanilla)} y el formulario ${JSON.stringify(porFormulario)}`);
+  assert.deepEqual(porPlanilla, [], 'y hoy las dos la dejan pasar: es el caso principal del módulo');
 });
 
 test('lo suyo sigue entrando: la comprobación no cierra ningún camino legítimo', () => {
