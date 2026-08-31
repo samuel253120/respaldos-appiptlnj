@@ -405,8 +405,19 @@ module.exports = {
         .avisoSiDejaDeEjercer(db, id, { data, existing, confirmado });
       if (dejaDeEjercer) return dejaDeEjercer;
 
-      return require('../pastor-de-la-iglesia')
+      const dejaSuIglesia = require('../pastor-de-la-iglesia')
         .avisoSiDejaSuIglesiaSinPastor(db, id, { data, existing, confirmado });
+      if (dejaSuIglesia) return dejaSuIglesia;
+
+      /*
+       * Y la última: ¿la persona que le están poniendo de cónyuge ya figura
+       * casada con otro? Va al final porque el motor deja pasar UNA pregunta
+       * por guardado y las tres están ordenadas por lo que cuesta deshacer:
+       * revocarle una credencial, dejar una congregación sin pastor anotado, y
+       * soltar un vínculo que se vuelve a escribir eligiendo de nuevo.
+       */
+      return require('../el-conyuge-del-pastor')
+        .avisoSiYaEstaCasada(db, id, { data, existing, confirmado });
     },
 
     /**
@@ -457,21 +468,14 @@ module.exports = {
         }
       }
 
-      const conyugeId = fila.conyuge_id || null;
-      if (!conyugeId) return;
-
-      const suyaDeMiembro = fichaDeMiembro(fila, db);
-      if (!suyaDeMiembro || Number(suyaDeMiembro.id) === Number(conyugeId)) return;
-
-      // Se sueltan los vínculos anteriores que quedaran colgando
-      db.prepare('UPDATE miembros SET conyuge_id = NULL WHERE conyuge_id = ? AND id != ?')
-        .run(suyaDeMiembro.id, conyugeId);
-      const otro = db.prepare('SELECT conyuge_id FROM miembros WHERE id = ?').get(conyugeId);
-      if (otro && otro.conyuge_id && Number(otro.conyuge_id) !== Number(suyaDeMiembro.id)) {
-        db.prepare('UPDATE miembros SET conyuge_id = NULL WHERE id = ?').run(otro.conyuge_id);
-      }
-      db.prepare('UPDATE miembros SET conyuge_id = ? WHERE id = ?').run(conyugeId, suyaDeMiembro.id);
-      db.prepare('UPDATE miembros SET conyuge_id = ? WHERE id = ?').run(suyaDeMiembro.id, conyugeId);
+      /*
+       * Y el vínculo del matrimonio, en las dos fichas y soltando el anterior.
+       * Vive entero en server/el-conyuge-del-pastor.js: acá estaba solo la
+       * mitad —soltaba lo viejo del lado de las fichas de MIEMBRO y se
+       * olvidaba del de Pastores / Guías, que es justo donde quedaban dos
+       * pastores apuntando a la misma esposa—.
+       */
+      require('../el-conyuge-del-pastor').anotarElVinculo(db, fila, fichaDeMiembro(fila, db));
     },
 
     beforeDelete(fila, { db }) {

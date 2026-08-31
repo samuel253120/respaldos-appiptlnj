@@ -7457,6 +7457,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y elegir otro',
       seguir: 'Atiende las dos, guardar',
     },
+    conyuge_ya_casada: {
+      titulo: '💍 Esa persona ya figura casada',
+      volver: 'Volver y revisar a quién elegí',
+      seguir: 'Es correcto, guardar',
+    },
     deja_de_ejercer_y_esta_a_cargo: {
       titulo: '🪪 Queda algo suyo colgando',
       volver: 'Volver y dejarlo como estaba',
