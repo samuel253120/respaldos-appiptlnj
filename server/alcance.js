@@ -194,7 +194,30 @@ function condiciones(def, usuario, params) {
     } else if (def.name === 'usuarios') {
       partes.push(usuariosAlAlcance(usuario, iglesias, params));
     } else if (tieneCampo('iglesia_id')) {
-      partes.push(enLista('iglesia_id', iglesias, params));
+      /*
+       * «…o por aquello a lo que apunta», cuando el módulo lo declara.
+       *
+       * La columna `iglesia_id` de un registro dice de UNA iglesia, y hay
+       * registros que tocan dos. Un traspaso entre cuentas es el caso: su
+       * iglesia se toma de la cuenta de origen —de ahí sale la plata y de ahí
+       * es el traspaso—, y con eso la iglesia que RECIBE veía el ingreso en su
+       * cuenta y al abrir el traspaso que lo explica recibía un 403. Se quedaba
+       * con un ingreso de $ 300.000 y sin el comprobante, el número de
+       * operación ni quién lo anotó, que es justo lo que necesita para cuadrar
+       * contra la cartola de su banco.
+       *
+       * Se alcanza también por la otra punta, y «alcanzar la otra punta» es
+       * alcanzar esa cuenta con las reglas de siempre —su iglesia, su cuerpo y
+       * su nivel—: no se abre nada nuevo, se admite lo que ya se podía ver.
+       */
+      const suya = enLista('iglesia_id', iglesias, params);
+      const otras = (suAlcance.tambienPor || []).map((cual) => {
+        const destino = require('./registry').getModule(cual.modulo);
+        if (!destino) return null;
+        const suyas = condiciones(destino, usuario, params);
+        return `"${cual.campo}" IN (SELECT id FROM "${cual.modulo}"${suyas ? ` WHERE ${suyas}` : ''})`;
+      }).filter(Boolean);
+      partes.push(otras.length ? `(${[suya, ...otras].join(' OR ')})` : suya);
     }
   }
 
@@ -285,7 +308,18 @@ function alcanza(def, fila, usuario) {
       // Un registro de un módulo que sí lleva iglesia pero lo tiene en blanco
       // no es de nadie en particular: queda fuera del alcance de quien está
       // acotado a las suyas.
-      if (!suya || !iglesias.includes(Number(suya))) return false;
+      //
+      // Salvo que el módulo declare que también se alcanza por aquello a lo
+      // que apunta: la misma regla que el listado, fila por fila. Si acá
+      // dijera otra cosa, se vería en la lista algo que después no se deja
+      // abrir (ver `tambienPor` en condiciones).
+      const porLaOtraPunta = (suyoEs.tambienPor || []).some((cual) => {
+        const destino = require('./registry').getModule(cual.modulo);
+        if (!destino || !fila[cual.campo]) return false;
+        const apuntada = db.prepare(`SELECT * FROM "${cual.modulo}" WHERE id = ?`).get(fila[cual.campo]);
+        return !!apuntada && alcanza(destino, apuntada, usuario);
+      });
+      if (!porLaOtraPunta && (!suya || !iglesias.includes(Number(suya)))) return false;
     }
   }
 

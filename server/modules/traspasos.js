@@ -162,6 +162,22 @@ module.exports = {
   order: 42,
   display: '{fecha} — {concepto}',
   dateField: 'fecha',
+  /*
+   * Un traspaso toca DOS cuentas, y se alcanza por cualquiera de las dos.
+   *
+   * Su columna `iglesia_id` se toma de la cuenta de origen —de ahí sale la
+   * plata y de ahí es el traspaso—, y con eso la iglesia que RECIBE veía el
+   * ingreso en su cuenta y al abrir el traspaso que lo explica recibía un 403:
+   * se quedaba con un ingreso de $ 300.000 y sin el comprobante, el número de
+   * operación ni quién lo anotó, que es justo lo que necesita para cuadrar
+   * contra la cartola de su banco.
+   *
+   * «Alcanzar la otra punta» es alcanzar esa cuenta con las reglas de siempre
+   * —su iglesia, su cuerpo y su nivel—: no se abre nada nuevo, se admite lo que
+   * ya se podía ver. El NIVEL del traspaso lo sigue decidiendo su origen, que
+   * es de quien es (ver LIBROS en server/tesorerias.js).
+   */
+  alcance: { tambienPor: [{ campo: 'cuenta_destino_id', modulo: 'cuentas_tesoreria' }] },
   printable: true,
   searchFields: ['concepto', 'referencia', 'notas'],
   listFields: ['fecha', 'cuenta_origen_id', 'cuenta_destino_id', 'monto', 'forma', 'concepto'],
