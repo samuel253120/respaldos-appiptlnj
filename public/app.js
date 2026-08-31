@@ -4261,6 +4261,7 @@ async function viewFicha(name, id, pestana) {
       </div>
     </div>
 
+    <div id="fichaResumen"></div>
     <div id="fichaPestanas"></div>
     <div id="fichaPaneles"></div>`;
 
@@ -4287,6 +4288,13 @@ async function viewFicha(name, id, pestana) {
    * ficha que ya nadie mira, y esa entrega desaparece de la vista de la
    * persona. Va arriba, junto al nombre, con el enlace a la ficha que sí vive.
    */
+  /*
+   * Lo que la iglesia ES, arriba de todo y sin abrir ninguna pestaña: cuánta
+   * gente, cuántos cuerpos, cuánto en caja, cuándo fue la última actividad. Se
+   * pide aparte y llega después; si no llega, la ficha se ve igual que siempre.
+   */
+  if (name === 'iglesias') renderResumenDeIglesia(id, document.getElementById('fichaResumen'));
+
   if (name === 'no_miembros' && row.miembro_id && MOD['miembros']) {
     const caja = document.getElementById('fcInsignias');
     if (caja) {
@@ -4460,11 +4468,60 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
         { ambito: 'Cuerpo / Grupo', cuerpoId: id, titulo: 'Inventario del cuerpo' }, c));
     }
   }
-  if (name === 'iglesias' && MOD['inventarios']) {
-    // Lo de la iglesia, sin lo de sus cuerpos: cada cuerpo tiene lo suyo en su
-    // propia ficha, y mezclarlos haría que un mismo artículo se contara dos veces
-    sumar('inventario', 'Inventario', '📦', (c) => renderInventarioDeNivel(
-      { ambito: 'Iglesia local', iglesiaId: id, titulo: 'Inventario de la iglesia' }, c));
+  /*
+   * Lo que cuelga de una iglesia, en su propia ficha.
+   *
+   * Tenía cuatro pestañas —Datos, Inventario, Documentos, Historial— contra las
+   * siete del cuerpo más chico de la organización, así que la ficha de la
+   * congregación entera decía menos de sí misma que la de cualquiera de sus
+   * grupos. Para saber cuánta gente tiene había que ir a Miembros y filtrar.
+   *
+   * El orden es el de las preguntas que se hacen: primero la gente, después
+   * cómo está organizada, después quién la pastorea, después la plata.
+   */
+  if (name === 'iglesias') {
+    if (MOD['miembros']) {
+      sumar('miembros', 'Miembros', '🧍', (c) => renderLoDeLaIglesia({
+        modulo: 'miembros', id, icono: '🧍', titulo: 'Miembros de la iglesia', sort: 'apellidos',
+        comoSeLee: (f) => ({
+          texto: nombreDelRegistro(MOD['miembros'], f),
+          apunte: f.cargo || '',
+          estado: f.estado && f.estado !== 'Activo' ? f.estado : '',
+        }),
+        vacio: 'Esta iglesia todavía no tiene miembros inscritos.',
+      }, c));
+    }
+    if (MOD['cuerpos']) {
+      sumar('cuerpos', 'Cuerpos', '👥', (c) => renderLoDeLaIglesia({
+        modulo: 'cuerpos', id, icono: '👥', titulo: 'Cuerpos y grupos', cuantos: 50, sort: 'nombre',
+        comoSeLee: (f) => ({
+          texto: f.nombre,
+          apunte: f.tipo || '',
+          estado: f.estado && f.estado !== 'Activo' ? f.estado : '',
+        }),
+        vacio: 'Esta iglesia todavía no tiene cuerpos ni grupos.',
+      }, c));
+    }
+    if (MOD['pastores']) {
+      sumar('pastores', 'Pastores', '🧑‍💼', (c) => renderLoDeLaIglesia({
+        modulo: 'pastores', id, icono: '🧑‍💼', titulo: 'Pastores y guías', cuantos: 30, sort: 'apellidos',
+        comoSeLee: (f) => ({
+          texto: nombreDelRegistro(MOD['pastores'], f),
+          apunte: f.cargo || '',
+          estado: f.estado && f.estado !== 'Activo' ? f.estado : '',
+        }),
+        vacio: 'Esta iglesia todavía no tiene pastores ni guías anotados.',
+      }, c));
+    }
+    if (MOD['cuentas_tesoreria']) {
+      sumar('tesoreria', 'Tesorería', '💰', (c) => renderTesoreriaDeLaIglesia(id, c));
+    }
+    if (MOD['inventarios']) {
+      // Lo de la iglesia, sin lo de sus cuerpos: cada cuerpo tiene lo suyo en su
+      // propia ficha, y mezclarlos haría que un mismo artículo se contara dos veces
+      sumar('inventario', 'Inventario', '📦', (c) => renderInventarioDeNivel(
+        { ambito: 'Iglesia local', iglesiaId: id, titulo: 'Inventario de la iglesia' }, c));
+    }
   }
   if (name === 'miembros' && MOD['cuerpos']) sumar('cuerpos', 'Cuerpos', '👥', (c) => renderCuerposDelMiembro(id, c));
   /*
@@ -15550,6 +15607,202 @@ async function renderTesoreriaCuerpo(cuerpoId, caja) {
           <b style="font-size:13.5px">Últimos movimientos</b>
           <span class="spacer"></span>
           <a class="btn secondary sm" href="#/m/tesoreria?f_cuerpo_id=${cuerpoId}">Ver todos</a>
+        </div>
+        <ul class="mov-list">
+          ${movimientos.rows.map((m) => `
+            <li data-ir="#/m/tesoreria/edit/${m.id}">
+              <span>${esc(fechaCorta(m.fecha))} · ${esc(m.concepto)}</span>
+              <span class="${m.tipo === 'Ingreso' ? 'monto-ingreso' : 'monto-egreso'}">
+                ${m.tipo === 'Ingreso' ? '+' : '−'} ${fmtMoney(m.monto)}</span>
+            </li>`).join('')}
+        </ul>` : ''}
+    </div>`;
+}
+
+/**
+ * LO QUE LA IGLESIA ES, arriba de su ficha y sin abrir nada.
+ *
+ * La ficha de una iglesia mostraba cinco datos —nombre, tipo, código, ciudad,
+ * estado— y nueve campos en blanco. Mientras tanto el sistema sabía de ella
+ * 600 miembros, 13 cuerpos, 28 cuentas, 3.001 movimientos y 150 actividades, y
+ * no decía ninguna de esas cifras: para saber cuánta gente tiene una
+ * congregación había que ir a Miembros y filtrar; para saber cuánto tiene en
+ * caja, a Cuentas de Tesorería y filtrar. La ficha del cuerpo más chico de la
+ * organización decía más de sí mismo que la de la congregación entera.
+ *
+ * VA ARRIBA Y NO EN UNA PESTAÑA. Es lo que se mira ANTES de decidir algo, y lo
+ * que está detrás de una pestaña no se mira: quien abre la ficha de una
+ * iglesia a resolver algo no va a ir a buscarlo.
+ *
+ * Se pide aparte y llega después: la ficha no se queda esperando por esto, y si
+ * no llega se ve igual que siempre. Cada cifra la manda el servidor solo si esa
+ * persona puede verla, así que acá no se decide nada de permisos: lo que no
+ * viene, no se dibuja.
+ */
+async function renderResumenDeIglesia(id, caja) {
+  const d = await api('GET', `/iglesias/${id}/resumen`).catch(() => null);
+  if (!d || !caja) return;
+
+  const fichas = [];
+  const suma = (ic, num, lbl, adonde, apunte) =>
+    fichas.push(`<div class="stat"${adonde ? ` data-ir="${esc(adonde)}"` : ''}>
+        <div class="num">${esc(num)}</div><div class="lbl">${esc(lbl)}</div><div class="ic">${ic}</div>
+        ${apunte ? `<div class="apunte">${esc(apunte)}</div>` : ''}
+      </div>`);
+
+  /*
+   * El número grande es el de los que SIGUEN AHÍ, y el apunte dice cuántos se
+   * fueron. Al revés —el total arriba— la cifra que se lee de un vistazo sería
+   * la que incluye a los trasladados y a los fallecidos, que no es la que nadie
+   * pregunta al abrir la ficha de una congregación.
+   */
+  const losQueSeFueron = (c, palabra) =>
+    c.total > c.activos ? `y ${fmtNumero(c.total - c.activos)} ${palabra}` : '';
+
+  if (d.miembros) {
+    suma('🧍', fmtNumero(d.miembros.activos), 'Miembros', `#/m/miembros?f_iglesia_id=${id}`,
+      losQueSeFueron(d.miembros, 'que ya no están'));
+  }
+  if (d.cuerpos) {
+    suma('👥', fmtNumero(d.cuerpos.activos), 'Cuerpos y grupos', `#/m/cuerpos?f_iglesia_id=${id}`,
+      losQueSeFueron(d.cuerpos, 'inactivos'));
+  }
+  if (d.pastores) {
+    suma('🧑‍💼', fmtNumero(d.pastores.activos), 'Pastores / guías', `#/m/pastores?f_iglesia_id=${id}`,
+      losQueSeFueron(d.pastores, 'que ya no sirven acá'));
+  }
+  if (d.tesoreria) {
+    /*
+     * Lo suyo y lo de sus cuerpos van separados, con la misma regla que el
+     * inventario: la caja de la iglesia y las cajas de sus cuerpos son plata
+     * de dos dueños distintos, y una sola cifra que las sume no contesta
+     * ninguna de las dos preguntas.
+     */
+    const t = d.tesoreria;
+    const enCuerpos = t.cuentas_de_cuerpos
+      ? `y ${fmtNumero(t.cuentas_de_cuerpos)} de sus cuerpos${
+          t.reservado ? '' : `, con ${fmtMoney(t.saldo_de_cuerpos)}`}`
+      : '';
+    suma('💰', t.reservado ? '🔒' : fmtMoney(t.saldo),
+      t.reservado ? `${fmtNumero(t.cuentas)} caja(s) · saldos reservados` : 'En sus propias cajas',
+      `#/m/cuentas_tesoreria?f_iglesia_id=${id}`, enCuerpos);
+  }
+  if (d.asistencia) {
+    suma('✅', fmtNumero(d.asistencia.este_ano), 'Actividades este año',
+      `#/m/asistencias?f_iglesia_id=${id}`,
+      d.asistencia.ultima ? `la última, el ${fechaCorta(d.asistencia.ultima)}` : 'ninguna todavía');
+  }
+  // Las solicitudes solo cuando hay: un cero permanente ocupa el lugar de algo
+  // que sí importa, y esta fila se lee de un vistazo o no se lee
+  if (d.solicitudes && d.solicitudes.abiertas) {
+    suma('📨', fmtNumero(d.solicitudes.abiertas), 'Solicitudes en trámite',
+      `#/m/solicitudes?f_iglesia_id=${id}`);
+  }
+
+  if (!fichas.length) return;
+  caja.innerHTML = `<div class="stats">${fichas.join('')}</div>`;
+}
+
+/**
+ * Un listado corto de lo que cuelga de la iglesia, con el enlace al completo.
+ *
+ * Los tres paneles nuevos —Miembros, Cuerpos, Pastores— son la misma cosa con
+ * otro módulo adentro, así que se escriben una vez. Piden el listado de siempre
+ * con el filtro de la iglesia puesto, y eso importa: el alcance, los permisos y
+ * los datos reservados los aplica el motor en esa ruta como en cualquier otra,
+ * y no hay una segunda consulta escrita a mano que pueda quedarse atrás.
+ */
+async function renderLoDeLaIglesia({ modulo, id, icono, titulo, cuantos = 12, sort, comoSeLee, vacio }, caja) {
+  if (!MOD[modulo]) return;
+  const q = new URLSearchParams({ f_iglesia_id: String(id), limit: String(cuantos) });
+  if (sort) { q.set('sort', sort); q.set('dir', 'asc'); }
+  const d = await api('GET', `/${modulo}?${q.toString()}`).catch(() => null);
+  if (!d) return;
+
+  const hay = d.rows.length;
+  const faltan = (d.total || 0) - hay;
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>${icono} ${esc(titulo)}</b>
+        <span style="color:var(--muted);font-size:13px">${fmtNumero(d.total || 0)}</span>
+        <span class="spacer"></span>
+        ${MOD[modulo].perms.create
+          ? `<a class="btn sm" href="#/m/${modulo}/new?iglesia_id=${id}">➕ ${esc(nuevoDe(MOD[modulo]))}</a>` : ''}
+        <a class="btn secondary sm" href="#/m/${modulo}?f_iglesia_id=${id}">Ver todos</a>
+      </div>
+      ${hay ? `<ul class="mini-list">
+        ${d.rows.map((f) => {
+          const { texto, apunte, estado } = comoSeLee(f);
+          return `<li data-ir="#/m/${modulo}/${CON_FICHA.includes(modulo) ? 'ficha' : 'edit'}/${f.id}">
+            <span>${esc(texto)}${estado ? ` <span class="badge ${badgeClass(estado)}">${esc(estado)}</span>` : ''}</span>
+            <span class="mut">${esc(apunte || '')}</span>
+          </li>`;
+        }).join('')}
+      </ul>` : `<div class="empty-state" style="padding:22px">${esc(vacio)}</div>`}
+      ${faltan > 0
+        ? `<div class="card-body" style="color:var(--muted);font-size:13px;border-top:1px solid var(--border)">
+             y ${fmtNumero(faltan)} más — <a href="#/m/${modulo}?f_iglesia_id=${id}">verlos todos</a></div>` : ''}
+    </div>`;
+}
+
+/**
+ * La tesorería de la iglesia, en su ficha.
+ *
+ * SUS PROPIAS CAJAS, no las de sus cuerpos: cada cuerpo tiene la suya en su
+ * ficha desde la 1.113.0, y mezclarlas acá haría que un mismo peso se contara
+ * en dos lugares. Es la misma separación que el inventario de la 1.231.0.
+ */
+async function renderTesoreriaDeLaIglesia(iglesiaId, caja) {
+  if (!MOD['cuentas_tesoreria']) return;
+  const [cuentas, movimientos] = await Promise.all([
+    api('GET', `/cuentas_tesoreria?f_iglesia_id=${iglesiaId}&limit=100`).catch(() => null),
+    MOD['tesoreria']
+      ? api('GET', `/tesoreria?f_iglesia_id=${iglesiaId}&sort=fecha&dir=desc&limit=8`).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+  if (!cuentas) return;
+
+  const propias = cuentas.rows.filter((c) => !c.cuerpo_id);
+  const deCuerpos = cuentas.rows.length - propias.length;
+  /*
+   * El saldo viene recortado de la fila para quien no alcanza la llave de los
+   * montos —no llega en cero, no llega—, así que sumarlo daría «saldo total
+   * $ 0»: un cero inventado, y de los peores, porque se lee como que la
+   * iglesia no tiene un peso (ver server/sensibles.js).
+   */
+  const reservado = propias.some((c) => (c.reservado_oculto || []).includes('tesoreria_montos'));
+  const saldo = propias.reduce((t, c) => t + (Number(c.saldo) || 0), 0);
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>💰 Tesorería de la iglesia</b>
+        <span style="color:var(--muted);font-size:13px">${
+          reservado ? '🔒 saldos reservados' : `saldo total ${fmtMoney(saldo)}`}</span>
+        <span class="spacer"></span>
+        ${MOD['cuentas_tesoreria'].perms.create
+          ? `<a class="btn sm" href="#/m/cuentas_tesoreria/new?iglesia_id=${iglesiaId}">➕ Nueva cuenta</a>` : ''}
+      </div>
+      ${propias.length ? `<ul class="mini-list">
+        ${propias.map((c) => `
+          <li data-ir="#/cuentas_tesoreria/cartola/${c.id}" title="Ver la cartola de esta cuenta">
+            <span>${esc(c.nombre)}
+              <span class="badge ${c.tipo === 'General' ? 'blue' : ''}">${esc(c.tipo)}</span>
+              ${c.estado === 'Cerrada' ? '<span class="badge">Cerrada</span>' : ''}</span>
+            <span class="mut cifra">${reservado ? '—' : fmtMoney(c.saldo)}</span>
+          </li>`).join('')}
+      </ul>` : '<div class="empty-state" style="padding:22px">Esta iglesia todavía no tiene cajas propias.</div>'}
+      ${deCuerpos ? `
+        <div class="card-body" style="color:var(--muted);font-size:13px;border-top:1px solid var(--border)">
+          Sus cuerpos y grupos tienen además ${fmtNumero(deCuerpos)} caja(s) propia(s), que se ven
+          en la ficha de cada uno: esa plata tiene otro dueño y no se suma acá.
+        </div>` : ''}
+      ${movimientos && movimientos.rows.length ? `
+        <div class="toolbar" style="border-top:1px solid var(--border)">
+          <b style="font-size:13.5px">Últimos movimientos</b>
+          <span class="spacer"></span>
+          <a class="btn secondary sm" href="#/m/tesoreria?f_iglesia_id=${iglesiaId}">Ver todos</a>
         </div>
         <ul class="mov-list">
           ${movimientos.rows.map((m) => `

@@ -197,8 +197,18 @@ test('la ficha del cuerpo y la de la iglesia tienen su pestaña de inventario', 
 
   assert.match(trozo, /sumar\('inventario', 'Inventario'[\s\S]{0,220}ambito: 'Cuerpo \/ Grupo'/,
     'era lo único del cuerpo que no se veía desde su ficha');
-  assert.match(trozo, /name === 'iglesias' && MOD\['inventarios'\]/);
-  assert.match(trozo, /ambito: 'Iglesia local'/);
+
+  /*
+   * Y en la de la iglesia, colgada de que el módulo esté a la vista. Se busca
+   * el guardia y el nivel por separado y no la línea entera: cuando la 1.234.0
+   * le agregó a la iglesia sus pestañas de Miembros, Cuerpos, Pastores y
+   * Tesorería, esta prueba se cayó por el sangrado —la condición pasó a estar
+   * anidada— sin que nada del inventario hubiera cambiado. Una prueba que se
+   * rompe cuando se mueve una llave no está cuidando lo que dice cuidar.
+   */
+  const deLaIglesia = trozo.slice(trozo.indexOf("if (name === 'iglesias')"));
+  assert.match(deLaIglesia, /MOD\['inventarios'\]/, 'sin el módulo a la vista, no hay pestaña');
+  assert.match(deLaIglesia, /sumar\('inventario', 'Inventario'[\s\S]{0,260}ambito: 'Iglesia local'/);
 });
 
 test('y el listado se puede filtrar por cuerpo', () => {

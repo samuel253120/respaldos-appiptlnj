@@ -364,7 +364,16 @@ const MIRAR = `
       if (id) {
         const nombre = ruta.replace('#/m/', '');
         await pg.goto(`${B}/#/m/${nombre}/ficha/${id}`);
-        await pg.waitForTimeout(900);
+        /*
+         * Una ficha no termina de pintarse cuando termina de cargar: sus
+         * paneles se piden aparte y llegan después —el resumen de una iglesia,
+         * las entregas de una persona, los cuerpos de un miembro—. Mirando a
+         * los 900 ms se medía la pantalla a medio armar, y lo que llegaba
+         * tarde no lo revisaba nadie. Se espera a que el servidor deje de
+         * contestar, con un tope por si algo queda pidiendo para siempre.
+         */
+        await pg.waitForLoadState('networkidle', { timeout: 6000 }).catch(() => {});
+        await pg.waitForTimeout(500);
         sumar(`${ruta}/ficha`, await pg.evaluate(MIRAR));
         const pestanas = await pg.evaluate(() =>
           [...document.querySelectorAll('.pestanas [data-pestana]')].map((b) => b.dataset.pestana));

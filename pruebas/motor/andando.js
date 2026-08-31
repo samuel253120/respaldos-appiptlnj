@@ -21,6 +21,11 @@
  *   const api = await elSistemaAndando();
  *   const r = await api('POST', '/miembros', { ... });   // { estado, texto, json }
  *
+ * `comoOtroUsuario(fila)` devuelve lo mismo para una cuenta cualquiera de la
+ * base, que es lo que hace falta para comprobar el alcance y los permisos: una
+ * regla que solo se prueba con el administrador general no se prueba, porque él
+ * lo alcanza todo y nunca choca con ninguna.
+ *
  * Cada archivo de prueba corre en su propio proceso, así que cada uno levanta
  * el suyo en un puerto libre y con su propia cuenta de administrador.
  */
@@ -34,6 +39,26 @@ const { digitoVerificador } = require('../../server/rut');
 
 let servidor = null;
 let pedir = null;
+let puertoDelSistema = 0;
+
+/** Una sesión abierta para una cuenta cualquiera, en el mismo sistema andando. */
+function comoOtroUsuario(usuarioId) {
+  if (!puertoDelSistema) throw new Error('llame antes a elSistemaAndando()');
+  const fila = db.prepare('SELECT id, rol FROM usuarios WHERE id = ?').get(usuarioId);
+  if (!fila) throw new Error(`no hay ninguna cuenta con el id ${usuarioId}`);
+  const pase = jwt.sign({ id: fila.id, rol: fila.rol }, JWT_SECRET, { expiresIn: '1h' });
+  return async (metodo, ruta, cuerpo) => {
+    const r = await fetch(`http://127.0.0.1:${puertoDelSistema}/api${ruta}`, {
+      method: metodo,
+      headers: { Authorization: `Bearer ${pase}`, 'Content-Type': 'application/json' },
+      body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+    });
+    const texto = await r.text();
+    let json = null;
+    try { json = JSON.parse(texto); } catch (e) { /* no era JSON */ }
+    return { estado: r.status, texto, json };
+  };
+}
 
 /** El sistema andando, con una sesión de administrador general ya abierta. */
 async function elSistemaAndando() {
@@ -45,6 +70,7 @@ async function elSistemaAndando() {
   servidor = app.listen(0, '127.0.0.1');
   await new Promise((listo) => servidor.once('listening', listo));
   const puerto = servidor.address().port;
+  puertoDelSistema = puerto;
 
   // Un RUT propio de este proceso: los archivos del motor corren en paralelo
   // sobre una misma base y el RUT no se repite.
@@ -72,6 +98,7 @@ async function elSistemaAndando() {
 function cerrarElSistema() {
   if (servidor) servidor.close();
   servidor = null;
+  puertoDelSistema = 0;
 }
 
-module.exports = { elSistemaAndando, cerrarElSistema };
+module.exports = { elSistemaAndando, comoOtroUsuario, cerrarElSistema };

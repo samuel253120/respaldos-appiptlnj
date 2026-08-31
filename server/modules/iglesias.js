@@ -106,7 +106,7 @@ module.exports = {
       },
     },
   ],
-  extraRoutes(router, { db, requirePerm, scopeClause }) {
+  extraRoutes(router, { db, requirePerm, scopeClause, can }) {
     /*
      * Las iglesias que reciben cosas nuevas, para los desplegables.
      *
@@ -137,6 +137,150 @@ module.exports = {
         .prepare(`SELECT id, nombre FROM iglesias${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY nombre`)
         .all(...params);
       res.json(filas.map((i) => ({ id: i.id, label: i.nombre })));
+    });
+
+    /**
+     * La iglesia cuyo resumen se está pidiendo, comprobando que sea suya.
+     *
+     * El alcance se comprueba acá y no se da por supuesto: la ruta se pide
+     * desde una ficha que la persona ya está mirando, pero escribiendo la
+     * dirección a mano se llegaría a la de al lado. Es la misma comprobación
+     * que hace la ficha de un cuerpo (ver server/modules/cuerpos.js).
+     */
+    const iglesiaDelUsuario = (req, res) => {
+      const fila = db.prepare('SELECT id, nombre FROM iglesias WHERE id = ?').get(req.params.id);
+      if (!fila) {
+        res.status(404).json({ error: 'Esa iglesia no se encontró' });
+        return null;
+      }
+      if (!require('../alcance').alcanzaIglesia(req.user, fila.id)) {
+        res.status(403).json({ error: 'Esa iglesia está fuera de lo que tiene asignado' });
+        return null;
+      }
+      return fila;
+    };
+
+    /**
+     * EL RESUMEN DE UNA IGLESIA: cuánta gente, cuántos cuerpos, cuánto en caja.
+     *
+     * La ficha de una iglesia mostraba cinco datos —nombre, tipo, código,
+     * ciudad, estado— y nueve campos en blanco, mientras el sistema sabía de
+     * ella 600 miembros, 13 cuerpos, 28 cuentas, 3.001 movimientos y 150
+     * actividades. Para saber cuánta gente tiene una congregación había que ir
+     * a Miembros y filtrar; para saber cuánto tiene en caja, a Cuentas de
+     * Tesorería y filtrar. La ficha del cuerpo más chico decía más de sí mismo
+     * que la de la congregación entera.
+     *
+     * CADA CIFRA PIDE SU PROPIO PERMISO, y la que no se puede ver no viaja.
+     * Es la misma corrección que se le hizo a los paneles del cuerpo: pintarlos
+     * dentro de una ficha que la persona ya puede abrir no convierte lo de
+     * adentro en algo que también pueda ver. Un resumen es más peligroso que un
+     * listado, no menos: entrega la cifra sin que haya que abrir nada.
+     *
+     * Y LO DE SUS CUERPOS VA APARTE de lo suyo, con la misma regla que el
+     * inventario de la 1.231.0: la caja de la iglesia y las cajas de sus
+     * cuerpos son plata de dos dueños distintos, y una sola cifra que las sume
+     * no contesta ninguna de las dos preguntas.
+     */
+    router.get('/iglesias/:id(\\d+)/resumen', requirePerm('iglesias', 'view'), (req, res) => {
+      const iglesia = iglesiaDelUsuario(req, res);
+      if (!iglesia) return;
+      const { YA_OCURRIO } = require('../saldos');
+      const id = iglesia.id;
+      const resumen = {};
+
+      const cuantos = (sql, ...params) => db.prepare(sql).get(id, ...params).n;
+
+      /*
+       * QUIÉN SIGUE SIENDO PARTE DE ESTA IGLESIA.
+       *
+       * No es «los que dicen Activo», y la diferencia importa en las dos
+       * puntas. Por un lado, alguien «En disciplina» sigue siendo miembro de
+       * la congregación: contarlo fuera diría que la iglesia tiene menos gente
+       * de la que tiene. Por el otro, un pastor «Jubilado» ya no la pastorea,
+       * aunque su ficha no diga «Inactivo».
+       *
+       * Y un estado EN BLANCO no es una salida: es un dato que nadie llenó. El
+       * resto del sistema ya lo lee así —«(estado IS NULL OR estado != …)» en
+       * los cumpleaños, en la directiva y en los pastores—, y contarlo al revés
+       * se vio en la primera versión de esta ruta: sobre una iglesia con trece
+       * cuerpos, el resumen decía «1 activo» porque doce tenían el estado sin
+       * escribir, mientras el listado de al lado los mostraba a los trece sin
+       * una sola marca de retirados. Dos cifras de lo mismo que se contradecían
+       * en la misma pantalla.
+       */
+      const YA_NO_ESTAN = {
+        miembros: ['Inactivo', 'Trasladado', 'Fallecido'],
+        cuerpos: ['Inactivo'],
+        pastores: ['Inactivo', 'Jubilado', 'Trasladado', 'Fallecido'],
+      };
+      const siguenAhi = (tabla) => {
+        const fuera = YA_NO_ESTAN[tabla];
+        const marcas = fuera.map(() => '?').join(', ');
+        return {
+          activos: db
+            .prepare(`SELECT COUNT(*) AS n FROM "${tabla}"
+                       WHERE iglesia_id = ? AND (estado IS NULL OR estado NOT IN (${marcas}))`)
+            .get(id, ...fuera).n,
+          total: cuantos(`SELECT COUNT(*) AS n FROM "${tabla}" WHERE iglesia_id = ?`),
+        };
+      };
+
+      if (can(req.user, 'miembros', 'view')) resumen.miembros = siguenAhi('miembros');
+      if (can(req.user, 'cuerpos', 'view')) resumen.cuerpos = siguenAhi('cuerpos');
+      if (can(req.user, 'pastores', 'view')) resumen.pastores = siguenAhi('pastores');
+
+      if (can(req.user, 'cuentas_tesoreria', 'view')) {
+        /*
+         * El saldo de una cuenta es su punto de partida más lo que ya entró
+         * menos lo que ya salió —«ya», no lo agendado más adelante: eso todavía
+         * no está en la caja—. Se suma acá con la misma condición con que lo
+         * calcula cada cuenta por su lado, para que la cifra del resumen y la
+         * de la cartola no puedan discrepar.
+         */
+        const caja = (deCuerpos) => db.prepare(
+          `SELECT COUNT(*) AS cuentas,
+                  COALESCE(SUM(c.saldo_inicial), 0)
+                  + COALESCE((SELECT SUM(CASE WHEN t.tipo = 'Ingreso' THEN t.monto ELSE -t.monto END)
+                              FROM tesoreria t
+                             WHERE t.cuenta_id IN (SELECT id FROM cuentas_tesoreria
+                                                    WHERE iglesia_id = ? AND cuerpo_id IS ${deCuerpos ? 'NOT NULL' : 'NULL'})
+                               AND ${YA_OCURRIO}), 0) AS saldo
+             FROM cuentas_tesoreria c
+            WHERE c.iglesia_id = ? AND c.cuerpo_id IS ${deCuerpos ? 'NOT NULL' : 'NULL'}`
+        ).get(id, id);
+
+        const suya = caja(false);
+        const deSusCuerpos = caja(true);
+        // La llave de los montos es aparte de la de ver las cuentas: quien no
+        // la tenga ve cuántas cajas hay y no cuánto hay en ellas. Un cero
+        // inventado sería peor que no decir nada (ver server/sensibles.js).
+        const montos = can(req.user, 'tesoreria_montos', 'view');
+        resumen.tesoreria = {
+          cuentas: suya.cuentas,
+          cuentas_de_cuerpos: deSusCuerpos.cuentas,
+          saldo: montos ? suya.saldo : null,
+          saldo_de_cuerpos: montos ? deSusCuerpos.saldo : null,
+          reservado: !montos,
+        };
+      }
+
+      if (can(req.user, 'asistencias', 'view')) {
+        const ultima = db
+          .prepare(`SELECT fecha FROM asistencias WHERE iglesia_id = ? AND ${YA_OCURRIO} ORDER BY fecha DESC LIMIT 1`)
+          .get(id);
+        resumen.asistencia = {
+          este_ano: cuantos("SELECT COUNT(*) AS n FROM asistencias WHERE iglesia_id = ? AND fecha >= date('now','localtime','start of year')"),
+          ultima: ultima ? ultima.fecha : null,
+        };
+      }
+      if (can(req.user, 'solicitudes', 'view')) {
+        resumen.solicitudes = {
+          abiertas: cuantos("SELECT COUNT(*) AS n FROM solicitudes WHERE iglesia_id = ? AND estado NOT IN ('Cerrada', 'Rechazada')"),
+        };
+      }
+
+      res.json(resumen);
     });
   },
 
