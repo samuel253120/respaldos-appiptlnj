@@ -26,6 +26,84 @@
  *
  * Se ven y se crean desde la ficha del propio cuerpo, que es donde se buscan.
  */
+const { enLista } = require('../formato');
+const { hoy, comoSeLee } = require('../fechas');
+
+/** El único estado que significa algo fuera del sistema: hay un papel firmado. */
+const FIRMADA = 'Firmada';
+
+/**
+ * Qué está cambiando este guardado, con los nombres que se ven en la pantalla.
+ *
+ * Los campos salen del propio módulo y no de una lista escrita a mano, para que
+ * uno que se agregue mañana entre solo: una lista aparte se olvida, y el olvido
+ * acá no se nota —se nota como un acta firmada que un día se dejó cambiar sin
+ * preguntar—.
+ *
+ * Quedan fuera dos clases. Los de SOLO LECTURA, porque los escribe el sistema y
+ * no la persona: preguntar por ellos sería preguntar por uno mismo. Y los
+ * OCULTOS, entre los que está «Asistentes (escritos a mano)», el campo retirado
+ * que la pantalla sigue mandando como lista vacía aunque en la base esté en
+ * blanco: contarlo habría hecho que TODO guardado de un acta firmada
+ * preguntara, incluso uno que no cambia absolutamente nada.
+ */
+function loQueCambia(data, existing) {
+  const def = require('../registry').getModule('actas_reuniones'); // tardío: evita ciclo con el registro
+  const cambia = [];
+  for (const f of def.fields) {
+    if (f.readonly || f.oculto) continue;
+    if (!(f.name in data)) continue;
+    if (String(existing[f.name] ?? '') === String(data[f.name] ?? '')) continue;
+    cambia.push(f.label);
+  }
+  return cambia;
+}
+
+/**
+ * El aviso, que tiene que decir tres cosas: que está firmada, quién y cuándo la
+ * firmó, y qué es exactamente lo que este guardado va a cambiar. Sin la tercera
+ * la pregunta no se puede contestar: «¿está seguro?» a secas no es información.
+ */
+function avisoDeActaFirmada(existing, data, cambia) {
+  const quien = existing.firmada_por ? ` por ${existing.firmada_por}` : '';
+  const cuando = existing.fecha_firma ? ` el ${comoSeLee(existing.fecha_firma)}` : '';
+  const cual = existing.numero_acta ? ` n.º ${existing.numero_acta}` : '';
+  const firmada = `El acta${cual} está firmada${quien}${cuando}.`;
+
+  // Dejar de estar firmada es lo más grave que puede pasarle, así que va
+  // adelante y el resto de los cambios queda como añadidura.
+  const nuevoEstado = data.estado !== undefined ? data.estado : existing.estado;
+  if (nuevoEstado !== FIRMADA) {
+    const otros = cambia.filter((c) => c !== 'Estado');
+    return `${firmada} Va a dejar de estarlo: pasa a «${nuevoEstado}», y con eso se borra la constancia `
+      + `de quién la firmó y cuándo.${otros.length ? ` Además cambia ${enLista(otros)}.` : ''} `
+      + 'Si lo que quiere es corregirla, hágalo sin sacarle la firma.';
+  }
+  return `${firmada} Va a cambiar ${enLista(cambia)}. Desde ahora el papel que se firmó dirá una cosa `
+    + 'y el sistema otra, y quien tenga una copia impresa no va a saberlo. El cambio queda anotado en el '
+    + 'Registro de Cambios.';
+}
+
+/**
+ * La firma se anota sola, y se borra sola.
+ *
+ * Solo cuando el estado CAMBIA: así, editar un acta que ya estaba firmada
+ * conserva la fecha y el nombre de cuando se firmó de verdad, en vez de
+ * correrlos al día de la última corrección.
+ */
+function anotarLaFirma(data, existing, user) {
+  const antes = existing ? existing.estado : null;
+  const despues = data.estado !== undefined ? data.estado : antes;
+  if (despues === antes) return;
+  if (despues === FIRMADA) {
+    data.firmada_por = (user && user.nombre) || null;
+    data.fecha_firma = hoy();
+  } else if (antes === FIRMADA) {
+    data.firmada_por = null;
+    data.fecha_firma = null;
+  }
+}
+
 module.exports = {
   name: 'actas_reuniones',
   label: 'Actas de Reuniones',
@@ -115,7 +193,25 @@ module.exports = {
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Borrador',
       options: ['Borrador', 'Aprobada', 'Firmada'],
+      help: 'Al pasarla a «Firmada» queda anotado quién la firmó y qué día. Después, cambiarle algo pregunta.',
     },
+    /*
+     * QUIÉN LA FIRMÓ Y CUÁNDO. No los escribe nadie: los pone el sistema en el
+     * guardado que lleva el acta a «Firmada», y los borra en el que la saca de
+     * ahí. Firmar es un acto con fecha y con responsable, y hasta acá lo único
+     * que quedaba de él era una palabra en un desplegable, que cualquiera podía
+     * poner y sacar sin dejar más rastro que una línea del Registro de Cambios
+     * —donde nadie va a mirar por un acta que se ve normal—.
+     *
+     * Se borran al dejar de estar firmada, a propósito: un acta en «Borrador»
+     * que siguiera diciendo «la firmó Fulana el 25 de agosto» estaría mintiendo,
+     * y de las dos mentiras posibles ésa es la peligrosa.
+     */
+    // Sin `seccion`: van dentro de «Documento y estado», que abrió el adjunto.
+    // Repetirla acá no los mete ahí, abre una segunda sección con el mismo
+    // título, y la ficha salía con el encabezado dos veces. Se vio en pantalla.
+    { name: 'firmada_por', label: 'Firmada por', type: 'text', readonly: true },
+    { name: 'fecha_firma', label: 'Fecha de la firma', type: 'date', readonly: true },
   ],
 
   extraRoutes(router, { db, requirePerm }) {
@@ -243,13 +339,43 @@ module.exports = {
      * mismo motivo y con la misma lección: lo que se copió hay que volver a
      * mirarlo.
      */
-    beforeSave(data, { db, existing }) {
+    beforeSave(data, { db, user, existing, confirmado }) {
       const cuerpoId = data.cuerpo_id !== undefined ? data.cuerpo_id : existing && existing.cuerpo_id;
-      if (!cuerpoId) return null;
-      // El cuerpo ya se comprobó antes de llegar acá: que exista (referenciasRotas)
-      // y que sea de los suyos (referenciasFueraDeAlcance). Acá solo se lee.
-      const suCuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
-      if (suCuerpo) data.iglesia_id = suCuerpo.iglesia_id;
+      if (cuerpoId) {
+        // El cuerpo ya se comprobó antes de llegar acá: que exista (referenciasRotas)
+        // y que sea de los suyos (referenciasFueraDeAlcance). Acá solo se lee.
+        const suCuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
+        if (suCuerpo) data.iglesia_id = suCuerpo.iglesia_id;
+      }
+
+      /*
+       * UN ACTA FIRMADA NO SE CAMBIA SIN QUE ALGUIEN LO DIGA.
+       *
+       * «Firmada» era una palabra que se elegía de una lista, como se elegiría
+       * un color, y no significaba nada. Medido en la v1.270.0: un acta nacía
+       * Firmada (201), se le cambiaban los acuerdos de $2.000.000 a $9.000.000
+       * ya firmada (200), y volvía a Borrador (200), todo sin una pregunta.
+       *
+       * Un acta firmada es un documento que existe en papel, con las firmas de
+       * quien presidió y de quien la redactó. Que el registro diga una cosa y
+       * el papel diga otra es el problema entero de llevar un libro de actas
+       * digital, y por eso lo que falta no es la huella —el Registro de Cambios
+       * ya anota la edición, con el texto del antes y el después— sino la
+       * PUERTA: nadie avisaba que se estaba modificando algo ya firmado, y
+       * nadie tiene por qué ir a mirar el historial de un acta que se ve normal.
+       *
+       * Pregunta, no impide: es lo que se decidió y es lo que hace el resto del
+       * sistema. Una coma mal puesta en un acta firmada se arregla; lo que no
+       * puede pasar es que se arregle sin que quien lo hace sepa qué está
+       * tocando. Crear un acta ya firmada tampoco se pregunta: así es como se
+       * carga el libro viejo, que está firmado hace años.
+       */
+      if (existing && existing.estado === FIRMADA && !confirmado) {
+        const cambia = loQueCambia(data, existing);
+        if (cambia.length) return { error: avisoDeActaFirmada(existing, data, cambia), confirmar: 'acta_firmada' };
+      }
+
+      anotarLaFirma(data, existing, user);
       return null;
     },
   },

@@ -138,12 +138,12 @@ function avisoDeCargosRepetidos(db, despues, antes) {
   };
 }
 
-/** «uno», «uno y otro», «uno, otro y el de más allá». */
-function enLista(cosas) {
-  if (!cosas.length) return '';
-  if (cosas.length === 1) return cosas[0];
-  return `${cosas.slice(0, -1).join(', ')} y ${cosas[cosas.length - 1]}`;
-}
+/*
+ * «uno», «uno y otro», «uno, otro y el de más allá». Se mudó a
+ * server/formato.js —no es de los cargos de una directiva, es de cualquiera— y
+ * se sigue re-exportando desde acá para no mover a quienes ya la piden así.
+ */
+const { enLista } = require('./formato');
 
 /**
  * El aviso de que la directiva queda sin quien la encabece.

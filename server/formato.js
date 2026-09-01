@@ -14,4 +14,18 @@ function fechaLarga(iso) {
   return `${dia} de ${MESES[mes - 1]} de ${anio}`;
 }
 
-module.exports = { fechaLarga, MESES };
+/**
+ * «uno», «uno y otro», «uno, otro y el de más allá».
+ *
+ * Vivía en server/cargos-de-la-directiva.js, que es de donde ya la pedían
+ * prestada los cuerpos y las directivas. Con las actas serían cuatro módulos
+ * pidiéndole un formateador de texto al módulo de los cargos de una directiva,
+ * que no tiene nada que ver: se muda acá, que es su lugar.
+ */
+function enLista(cosas) {
+  if (!cosas.length) return '';
+  if (cosas.length === 1) return cosas[0];
+  return `${cosas.slice(0, -1).join(', ')} y ${cosas[cosas.length - 1]}`;
+}
+
+module.exports = { fechaLarga, enLista, MESES };
