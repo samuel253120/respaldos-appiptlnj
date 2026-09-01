@@ -84,10 +84,34 @@ function totalesDe(db, whereSql, params) {
   const todo = suma(null);
   const movido = suma(completosDentro(whereSql));
 
+  /*
+   * Y lo que nació de una DEUDA sale también de las dos cifras corrientes: un
+   * préstamo no es un ingreso de la iglesia, y devolverlo no es un gasto suyo.
+   * Se dice aparte, en sus propias líneas (ver server/lo-prestado.js).
+   *
+   * Se excluye lo que la resta de arriba ya sacó, para no restar dos veces la
+   * misma plata: un préstamo entre dos cajas de la casa, con sus dos lados a la
+   * vista, ya se fue como traslado.
+   */
+  const prestado = require('./lo-prestado')
+    .deLoQueSeMira(db, whereSql, params, completosDentro(whereSql));
+  const entraron = todo.ingresos - movido.ingresos - prestado.recibido - prestado.cobrado;
+  const salieron = todo.egresos - movido.egresos - prestado.entregado - prestado.devuelto;
+
   return {
-    ingresos: todo.ingresos - movido.ingresos,
-    egresos: todo.egresos - movido.egresos,
-    balance: todo.ingresos - movido.ingresos - (todo.egresos - movido.egresos),
+    ingresos: entraron,
+    egresos: salieron,
+    balance: entraron - salieron,
+    /*
+     * Las cuatro de lo prestado, cada una por su nombre. Van acá y no en otra
+     * consulta para que el balance impreso y la pantalla salgan del mismo
+     * lugar y no puedan discrepar.
+     */
+    prestado_recibido: prestado.recibido,
+    prestado_devuelto: prestado.devuelto,
+    prestado_entregado: prestado.entregado,
+    prestado_cobrado: prestado.cobrado,
+    movimientos_de_deudas: prestado.movimientos,
     /*
      * Lo movido se dice UNA vez, no dos: los dos lados de un traslado son el
      * mismo dinero. Se toma el lado que entró, que es idéntico al que salió.

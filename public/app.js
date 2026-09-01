@@ -2976,6 +2976,12 @@ async function viewList(name, filtrosIniciales) {
             ${Number(c.agendado) ? `
               <span class="badge agendado" title="Ya anotado con fecha de más adelante: todavía no está en la caja">
                 agendado ${fmtMoney(c.agendado)}</span>` : ''}
+            <!-- Cuánto de ese saldo hay que devolver. La caja de un cuerpo con un
+                 préstamo de $ 150.000 decía tener $ 150.000, teniendo cero y
+                 debiendo todo: es la diferencia entre tener con qué y no tenerlo. -->
+            ${Number(c.prestado) > 0 ? `
+              <span class="badge red" title="Parte de este saldo es plata prestada que hay que devolver">
+                de eso, ${fmtMoney(c.prestado)} prestados</span>` : ''}
           </span>
           <b class="${Number(c.saldo) < 0 ? 'saldo-negativo' : ''}">${fmtMoney(c.saldo)}</b>
         </li>`;
@@ -2992,6 +2998,26 @@ async function viewList(name, filtrosIniciales) {
             <div class="lbl">Movido entre cuentas</div>
             <div class="num">${fmtMoney(r.movido)}</div>
           </div>` : ''}
+        <!-- La plata prestada, aparte. Un préstamo entra a la caja y se leía como
+             si la iglesia lo hubiera reunido: medido, un préstamo de $ 400.000 que
+             entra y sale hacía decir «entraron $ 1.400.000, salieron $ 1.400.000»
+             donde la iglesia reunió y gastó un millón. Y «lo que se debe hoy» no
+             lleva el período: esa pregunta se contesta hoy, no en agosto. -->
+        ${Number(r.prestado_recibido) > 0 ? `
+          <div class="fin amber"><div class="lbl">Préstamos recibidos</div>
+            <div class="num">${fmtMoney(r.prestado_recibido)}</div></div>` : ''}
+        ${Number(r.prestado_devuelto) > 0 ? `
+          <div class="fin amber"><div class="lbl">Devuelto de préstamos</div>
+            <div class="num">${fmtMoney(r.prestado_devuelto)}</div></div>` : ''}
+        ${Number(r.prestado_entregado) > 0 ? `
+          <div class="fin amber"><div class="lbl">Préstamos entregados</div>
+            <div class="num">${fmtMoney(r.prestado_entregado)}</div></div>` : ''}
+        ${Number(r.se_debe) > 0 ? `
+          <div class="fin red"><div class="lbl">Se debe hoy</div>
+            <div class="num">${fmtMoney(r.se_debe)}</div></div>` : ''}
+        ${Number(r.le_deben) > 0 ? `
+          <div class="fin green"><div class="lbl">Le deben hoy</div>
+            <div class="num">${fmtMoney(r.le_deben)}</div></div>` : ''}
         <div class="fin slate"><div class="lbl">Movimientos</div><div class="num">${esc(fmtNumero(r.movimientos))}</div></div>
         ${cuentas.length ? `
           <details class="saldos-cuentas" ${enPantallaChica() ? '' : 'open'}>
@@ -3218,6 +3244,16 @@ async function viewBalanceTesoreria(precarga) {
           <div class="fin slate"><div class="lbl">Movimientos</div><div class="num">${esc(fmtNumero(r.movimientos))}</div></div>
           ${Number(r.movido) > 0 ? `
             <div class="fin slate"><div class="lbl">Movido entre cuentas</div><div class="num">${fmtMoney(r.movido)}</div></div>` : ''}
+          ${Number(r.prestado_recibido) > 0 ? `
+            <div class="fin amber"><div class="lbl">Préstamos recibidos</div><div class="num">${fmtMoney(r.prestado_recibido)}</div></div>` : ''}
+          ${Number(r.prestado_devuelto) > 0 ? `
+            <div class="fin amber"><div class="lbl">Devuelto de préstamos</div><div class="num">${fmtMoney(r.prestado_devuelto)}</div></div>` : ''}
+          ${Number(r.prestado_entregado) > 0 ? `
+            <div class="fin amber"><div class="lbl">Préstamos entregados</div><div class="num">${fmtMoney(r.prestado_entregado)}</div></div>` : ''}
+          ${d.deuda && Number(d.deuda.se_debe) > 0 ? `
+            <div class="fin red"><div class="lbl">Lo que se debe hoy</div><div class="num">${fmtMoney(d.deuda.se_debe)}</div></div>` : ''}
+          ${d.deuda && Number(d.deuda.le_deben) > 0 ? `
+            <div class="fin green"><div class="lbl">Lo que le deben hoy</div><div class="num">${fmtMoney(d.deuda.le_deben)}</div></div>` : ''}
         </div>
         ${tabla('Mes por mes', d.porMes, 'Mes', (f) => mesLargo(f.mes))}
         ${porCategoria('En qué entró', entradas, r.ingresos)}
@@ -3230,6 +3266,13 @@ async function viewBalanceTesoreria(precarga) {
           estos filtros. ${Number(r.movido) > 0
             ? `Acá son ${fmtMoney(r.movido)}, que van aparte.`
             : 'Acá no hubo ninguno.'}
+          ${Number(r.prestado_recibido) || Number(r.prestado_devuelto) || Number(r.prestado_entregado)
+            ? 'Lo prestado tampoco: un préstamo no es un ingreso de la iglesia y devolverlo no es un '
+              + 'gasto suyo, así que va en sus propias líneas.'
+            : ''}
+          ${d.deuda && Number(d.deuda.se_debe)
+            ? ` «Lo que se debe hoy» es el estado de las deudas al ${fechaCorta(hoyISO())}, no del período.`
+            : ''}
         </div>
       </div>`;
   }

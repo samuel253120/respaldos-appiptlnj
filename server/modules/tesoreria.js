@@ -459,10 +459,29 @@ module.exports = {
        * hay, cuántos son entre cuentas—: eso es el «QUÉ se movió» que la llave
        * promete dejar a la vista. Se van los pesos.
        */
+      /*
+       * Y cuánto de esto es plata prestada.
+       *
+       * `loQueSeDebeHoy` NO lleva el rango de fechas del resumen a propósito:
+       * «¿cuánto debe la iglesia?» se contesta hoy, no en agosto. Y a cada caja
+       * se le pega cuánto de su saldo hay que devolver, para poder decir
+       * «$ 150.000 · de eso, $ 150.000 son prestados» en vez de dejar creer que
+       * el cuerpo tiene con qué (ver server/lo-prestado.js).
+       */
+      const loPrestado = require('../lo-prestado');
+      const suFiltro = {
+        iglesia_id: req.query.f_iglesia_id, cuerpo_id: req.query.f_cuerpo_id,
+        cuenta_id: req.query.f_cuenta_id,
+      };
+      const deuda = loPrestado.loQueSeDebeHoy(db, req.user, suFiltro);
+      const porCaja = loPrestado.loPrestadoPorCaja(db, req.user, suFiltro);
+      const cuentasConLoSuyo = porCuenta.map((c) => ({ ...c, prestado: porCaja.get(c.id) || 0 }));
+
       res.json(require('../sensibles').sinLasCifras(req.user, 'tesoreria_montos',
-        { ...cuentas, porCategoria, porCuenta },
+        { ...cuentas, ...deuda, porCategoria, porCuenta: cuentasConLoSuyo },
         ['ingresos', 'egresos', 'balance', 'movido', 'total', 'monto', 'saldo', 'agendado',
-         'porCategoria', 'porCuenta']));
+         'prestado_recibido', 'prestado_devuelto', 'prestado_entregado', 'prestado_cobrado',
+         'se_debe', 'le_deben', 'prestado', 'porCategoria', 'porCuenta']));
     });
 
     /*
@@ -488,11 +507,18 @@ module.exports = {
         desde: req.query.desde || null,
         hasta: req.query.hasta || null,
         resumen: entreCuentas.totalesDe(db, whereSql, params),
+        // Lo que se debe HOY, sin el rango de fechas: es el estado de las
+        // deudas en este momento, no lo que pasó en el período.
+        deuda: require('../lo-prestado').loQueSeDebeHoy(db, req.user, {
+          iglesia_id: req.query.f_iglesia_id, cuerpo_id: req.query.f_cuerpo_id,
+          cuenta_id: req.query.f_cuenta_id,
+        }),
         porMes: entreCuentas.porMesDe(db, whereSql, params),
         porCategoria: entreCuentas.porCategoriaDe(db, whereSql, params),
         porCuenta: entreCuentas.porCuentaDe(db, whereSql, params),
-      }, ['resumen', 'ingresos', 'egresos', 'balance', 'movido', 'total', 'monto', 'saldo',
-          'agendado', 'porMes', 'porCategoria', 'porCuenta']));
+      }, ['resumen', 'deuda', 'ingresos', 'egresos', 'balance', 'movido', 'total', 'monto', 'saldo',
+          'agendado', 'prestado_recibido', 'prestado_devuelto', 'prestado_entregado',
+          'prestado_cobrado', 'se_debe', 'le_deben', 'porMes', 'porCategoria', 'porCuenta']));
     });
   },
 };
