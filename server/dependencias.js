@@ -65,24 +65,6 @@ const SUELTA = 'suelta';
 const TOPE_DE_CASCADA = 10000;
 
 /**
- * Módulos de los que no se arrastra nada.
- *
- * Una iglesia no se lleva por delante lo que cuelga de ella. Tiene treinta y
- * tres referencias apuntándole —su gente, su dinero, sus actas, sus
- * documentos— y no existe un caso legítimo en que borrarla deba llevárselos:
- * si algo hay dentro, se frena y se dice qué es.
- *
- * La única excepción es el RASTRO DE HABERLA CREADO —sus cuentas recién
- * abiertas y sin un peso, sus anotaciones automáticas de historial, sus líneas
- * de auditoría—, que lo escribió el sistema y no una persona. Eso no la
- * protege de nada: la protegía de ser borrada por errores propios. Qué cuenta
- * como rastro y qué no está en server/iglesia-vacia.js, y desde ahí lo leen
- * los dos que tienen que estar de acuerdo: este archivo, que arma el plan del
- * borrado, y el gancho del módulo, que hace la pregunta.
- */
-const NO_SE_ARRASTRA_NADA = ['iglesias'];
-
-/**
  * Las excepciones a la regla por defecto. Cada una dice qué son las filas que
  * cuelgan, en palabras, para poder escribir el aviso.
  */
@@ -195,38 +177,90 @@ function comoSeLlama(def, fila) {
 }
 
 /**
- * Qué cuelga de una iglesia, separado en lo que ella TIENE y lo que el sistema
- * ESCRIBIÓ sobre ella. El porqué de la distinción está en
- * server/iglesia-vacia.js, que es de donde sale.
+ * Módulos de los que no se arrastra nada.
+ *
+ * Son DOS, y por la misma razón: de una iglesia y de un cuerpo cuelga la gente
+ * y la historia de una parte de la organización, y no existe un caso legítimo
+ * en que borrarlos deba llevárselas por delante. La del cuerpo es de la
+ * 1.250.0 y está explicada en server/cuerpo-vacio.js; medido antes, borrar un
+ * cuerpo con seis integrantes desde 2019 y su directiva vigente contestaba 200
+ * sin preguntar nada y se llevaba las seis fichas, la directiva y sus dos
+ * cajas.
+ *
+ * Una iglesia no se lleva por delante lo que cuelga de ella. Tiene treinta y
+ * tres referencias apuntándole —su gente, su dinero, sus actas, sus
+ * documentos— y no existe un caso legítimo en que borrarla deba llevárselos:
+ * si algo hay dentro, se frena y se dice qué es.
+ *
+ * La única excepción es el RASTRO DE HABERLA CREADO —sus cuentas recién
+ * abiertas y sin un peso, sus anotaciones automáticas de historial, sus líneas
+ * de auditoría—, que lo escribió el sistema y no una persona. Eso no la
+ * protege de nada: la protegía de ser borrada por errores propios. Qué cuenta
+ * como rastro y qué no está en server/iglesia-vacia.js, y desde ahí lo leen
+ * los dos que tienen que estar de acuerdo: este archivo, que arma el plan del
+ * borrado, y el gancho del módulo, que hace la pregunta.
+ *
+ * Con el cuerpo pasa lo mismo y su rastro son sus dos cajas recién abiertas,
+ * que el módulo le crea al guardarlo.
  */
-function loQueCuelgaDeLaIglesia(db, fila) {
-  return require('./iglesia-vacia')
-    .loQueCuelga(db, fila.id, referenciasHacia('iglesias'), cuantasApuntan);
+
+/*
+ * ── Y DÓNDE ESTÁ ESCRITA LA REGLA DE CADA UNO ──
+ *
+ * Las dos contestan lo mismo —`loQueCuelga`, `avisoDeQueNoSeBorra`,
+ * `preguntaDeBorrado`— así que este archivo y el gancho de cada módulo las
+ * piden por acá y no eligen a mano. Y ésta es además LA LISTA: quién no
+ * arrastra nada se sabe por estar acá, para que no haya una segunda lista con
+ * los mismos nombres que un día diga otra cosa.
+ */
+const SIN_ARRASTRE = {
+  iglesias: () => require('./iglesia-vacia'),
+  cuerpos: () => require('./cuerpo-vacio'),
+};
+
+/** ¿Este módulo es de los que no se llevan nada consigo? */
+const noArrastraNada = (nombre) => Object.prototype.hasOwnProperty.call(SIN_ARRASTRE, nombre);
+
+/**
+ * Qué cuelga de una iglesia o de un cuerpo, separado en lo que ÉL TIENE y lo
+ * que el sistema ESCRIBIÓ al crearlo. El porqué de la distinción está en
+ * server/iglesia-vacia.js y en server/cuerpo-vacio.js, que es de donde sale.
+ */
+function loQueCuelgaDe(db, nombreDelModulo, fila) {
+  return SIN_ARRASTRE[nombreDelModulo]()
+    .loQueCuelga(db, fila.id, referenciasHacia(nombreDelModulo), cuantasApuntan);
 }
 
 /**
- * El plan del borrado de una iglesia.
+ * El plan del borrado de una iglesia o de un cuerpo.
  *
  * Devuelve `{ freno }` si tiene algo dentro —y ahí se cuentan TODOS sus
- * módulos y no solo el primero que aparezca, porque quien va a borrar una
- * iglesia necesita ver el tamaño de lo que estaba por hacer—, o el rastro que
- * se va con ella y los enlaces que hay que soltar.
+ * módulos y no solo el primero que aparezca, porque quien va a borrarlo
+ * necesita ver el tamaño de lo que estaba por hacer—, o el rastro que se va
+ * con él y los enlaces que hay que soltar.
  *
  * No pregunta nada: la pregunta la hace el gancho del módulo, que es el que
- * sabe si la persona ya contestó (ver server/modules/iglesias.js). Acá se
- * llega cuando esa pregunta ya está contestada.
+ * sabe si la persona ya contestó (ver server/modules/iglesias.js y
+ * server/modules/cuerpos.js). Acá se llega cuando esa pregunta ya está
+ * contestada.
  */
-function frenoDeIglesia(db, def, fila) {
-  const vacia = require('./iglesia-vacia');
-  const { contenido, rastro } = loQueCuelgaDeLaIglesia(db, fila);
+function frenoDelQueNoArrastra(db, def, fila) {
+  const regla = SIN_ARRASTRE[def.name]();
+  const { contenido, rastro } = loQueCuelgaDe(db, def.name, fila);
   if (contenido.length) {
-    return { freno: vacia.avisoDeQueNoSeBorra(comoSeLlama(def, fila), contenido) };
+    /*
+     * El aviso lo escribe cada regla con sus propias palabras: la iglesia
+     * recibe su nombre ya armado y el cuerpo la fila entera, porque necesita
+     * el tipo para decir «el cuerpo» o «el grupo».
+     */
+    const como = def.name === 'cuerpos' ? fila : comoSeLlama(def, fila);
+    return { freno: regla.avisoDeQueNoSeBorra(como, contenido) };
   }
 
   const arrastrar = [];
   const soltar = [];
   for (const r of rastro) {
-    if (r.que === vacia.SE_QUEDA) {
+    if (r.que === regla.SE_QUEDA) {
       soltar.push({ campo: r.campo, id: fila.id });
       continue;
     }
@@ -257,10 +291,10 @@ function planDe(db, def, fila) {
   while (cola.length) {
     const actual = cola.shift();
 
-    // Una iglesia no se lleva nada consigo: si algo cuelga de ella, no se
-    // borra, y el aviso los cuenta todos de una vez.
-    if (NO_SE_ARRASTRA_NADA.includes(actual.def.name)) {
-      const suyo = frenoDeIglesia(db, actual.def, actual.fila);
+    // Una iglesia y un cuerpo no se llevan nada consigo: si algo cuelga de
+    // ellos, no se borran, y el aviso los cuenta todos de una vez.
+    if (noArrastraNada(actual.def.name)) {
+      const suyo = frenoDelQueNoArrastra(db, actual.def, actual.fila);
       if (suyo.freno) return { freno: suyo.freno };
       soltar.push(...suyo.soltar);
       // Lo que se va con ella entra a la cola como cualquier otra cosa que se

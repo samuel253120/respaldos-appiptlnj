@@ -85,14 +85,30 @@ test('un miembro que además es usuario del sistema no se borra', () => {
   assert.match(r.freno, /usuario/);
 });
 
-test('el freno de una cuota llega aunque cuelgue a dos saltos del cuerpo', () => {
-  // cuerpo → su ficha de integrante → la cuota que esa ficha tiene pagada
-  const r = plan('cuerpos', { id: 4, nombre: 'Coro' }, {
+test('el freno de una cuota llega aunque cuelgue a dos saltos de la persona', () => {
+  // miembro → su ficha de integrante → la cuota que esa ficha tiene pagada
+  const r = plan('miembros', { id: 3, nombres: 'Ana', apellidos: 'Díaz' }, {
     integrantes_cuerpo: [{ id: 50, cuerpo_id: 4, miembro_id: 3 }],
     cuotas_cuerpo: [{ id: 80, integrante_id: 50 }],
   });
   assert.match(r.freno, /cuota/);
   assert.match(r.freno, /Integrantes de Cuerpos/, 'tiene que decir por dónde llegó');
+});
+
+test('y desde el CUERPO ni siquiera hace falta llegar tan lejos', () => {
+  /*
+   * El ejemplo de este archivo era el cuerpo, y dejó de servir en la 1.250.0:
+   * un cuerpo ya no arrastra sus fichas de integrante, así que el freno llega
+   * en el primer salto y no en el segundo. Se conserva la prueba de los dos
+   * saltos con el miembro —que sí las arrastra— y acá queda dicho por qué el
+   * cuerpo ya no sirve de ejemplo.
+   */
+  const r = plan('cuerpos', { id: 4, nombre: 'Coro' }, {
+    integrantes_cuerpo: [{ id: 50, cuerpo_id: 4, miembro_id: 3 }],
+    cuotas_cuerpo: [{ id: 80, integrante_id: 50 }],
+  });
+  assert.match(r.freno, /1 en Integrantes de Cuerpos/);
+  assert.doesNotMatch(r.freno, /a través de/, 'no llegó a dos saltos: frena en el primero');
 });
 
 test('una iglesia con cualquier cosa adentro no se borra, y se cuentan todas', () => {
@@ -118,23 +134,40 @@ test('un miembro se lleva su bitácora, sus marcas y sus documentos', () => {
   assert.deepEqual(tablas, ['asistencia_detalle', 'bitacora', 'bitacora', 'documentos_miembros']);
 });
 
-test('un cuerpo se lleva sus integrantes, y cada integrante sus evaluaciones', () => {
-  const r = plan('cuerpos', { id: 4, nombre: 'Coro' }, {
-    integrantes_cuerpo: [{ id: 50, cuerpo_id: 4 }],
+test('una persona se lleva sus fichas de integrante, y cada una sus evaluaciones', () => {
+  const r = plan('miembros', { id: 3, nombres: 'Ana', apellidos: 'Díaz' }, {
+    integrantes_cuerpo: [{ id: 50, miembro_id: 3 }],
     evaluaciones_integrantes: [{ id: 90, integrante_id: 50 }],
   });
   assert.equal(r.freno, null);
-  assert.deepEqual(r.arrastrar.map((x) => x.def.name), ['evaluaciones_integrantes', 'integrantes_cuerpo']);
+  const tablas = r.arrastrar.map((x) => x.def.name);
+  assert.ok(tablas.includes('evaluaciones_integrantes') && tablas.includes('integrantes_cuerpo'));
 });
 
 test('lo que se arrastra viene de las hojas hacia arriba', () => {
   // Si se borrara primero el integrante, su evaluación quedaría apuntando a
   // algo que ya no está durante el rato que dura el borrado.
+  const r = plan('miembros', { id: 3, nombres: 'Ana', apellidos: 'Díaz' }, {
+    integrantes_cuerpo: [{ id: 50, miembro_id: 3 }],
+    evaluaciones_integrantes: [{ id: 90, integrante_id: 50 }],
+  });
+  const cuales = r.arrastrar.map((x) => x.def.name);
+  assert.ok(cuales.indexOf('evaluaciones_integrantes') < cuales.indexOf('integrantes_cuerpo'));
+});
+
+test('pero un CUERPO no se lleva a su gente: se frena (1.250.0)', () => {
+  /*
+   * Éste era el ejemplo de ARRASTRA en cadena de este archivo, y era también
+   * el defecto: borrar un cuerpo con seis integrantes desde 2019 contestaba
+   * 200 sin preguntar y las seis fichas dejaban de existir. Ahora el cuerpo
+   * está entre los que no arrastran nada (ver server/cuerpo-vacio.js).
+   */
   const r = plan('cuerpos', { id: 4, nombre: 'Coro' }, {
     integrantes_cuerpo: [{ id: 50, cuerpo_id: 4 }],
     evaluaciones_integrantes: [{ id: 90, integrante_id: 50 }],
   });
-  assert.equal(r.arrastrar[0].def.name, 'evaluaciones_integrantes');
+  assert.match(String(r.freno), /No se puede eliminar el cuerpo/);
+  assert.equal(r.arrastrar, undefined, 'frenado, no hay nada que arrastrar');
 });
 
 // --------------------------------------------------------------- SUELTA ----
@@ -156,13 +189,31 @@ test('la directiva donde era tesorero se queda, sin tesorero', () => {
   assert.ok(r.soltar.some((s) => s.campo.clave === 'directivas.tesorero_id'));
 });
 
-test('una actividad que convocaba a varios cuerpos no se borra con uno de ellos', () => {
+test('un acta que nombraba a varios asistentes no se borra con uno de ellos', () => {
+  /*
+   * Que uno de los ids de una lista desaparezca nunca puede borrar la fila
+   * entera: se saca de la lista y se deja el resto.
+   */
+  const r = plan('miembros', { id: 3, nombres: 'Ana', apellidos: 'Díaz' }, {
+    actas_reuniones: [{ id: 11, asistentes: '[3,5]' }],
+  });
+  assert.equal(r.freno, null);
+  assert.equal(r.arrastrar.length, 0, 'el acta sigue: todavía nombra al otro');
+  assert.ok(r.soltar.some((s) => s.campo.clave === 'actas_reuniones.asistentes'));
+});
+
+test('y un cuerpo que fue convocado a una actividad no se borra', () => {
+  /*
+   * Con el cuerpo el ejemplo cambió de sentido en la 1.250.0: la actividad ya
+   * no pierde el enlace, porque el cuerpo no llega a borrarse. Haber sido
+   * convocado a una reunión es parte de lo que ese cuerpo hizo, y soltarle el
+   * enlace dejaría la actividad diciendo que convocó a menos cuerpos de los
+   * que convocó.
+   */
   const r = plan('cuerpos', { id: 4, nombre: 'Coro' }, {
     asistencias: [{ id: 11, cuerpos: '[4,5]' }],
   });
-  assert.equal(r.freno, null);
-  assert.equal(r.arrastrar.length, 0, 'la actividad sigue: todavía convoca al otro cuerpo');
-  assert.ok(r.soltar.some((s) => s.campo.clave === 'asistencias.cuerpos'));
+  assert.match(String(r.freno), /No se puede eliminar el cuerpo/);
 });
 
 // ------------------------------------------------------------- LA REGLA ----

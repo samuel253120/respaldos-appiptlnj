@@ -328,6 +328,45 @@ module.exports = {
       const seAcabaDeMarcar = fila.reune_lideres && (isNew || !(existing && existing.reune_lideres));
       if (seAcabaDeMarcar) require('../directiva').alMarcarUnCuerpo(db, fila, user);
     },
+
+    /**
+     * Borrar un cuerpo con gente adentro no se pregunta: se frena.
+     *
+     * Medido antes de esto, sobre uno con seis integrantes desde 2019 y una
+     * directiva vigente, sin confirmar nada: 200, borrado, y se fueron las seis
+     * fichas, la directiva y sus dos cajas. Sin una palabra.
+     *
+     * Lo único que se borra preguntando es el que TODAVÍA NO FUE NADA: el que
+     * se creó hace un minuto con el nombre mal tecleado, cuyo único contenido
+     * son las dos cajas vacías que el propio sistema le abrió al guardarlo. El
+     * porqué de la distinción está en server/cuerpo-vacio.js.
+     *
+     * Lo que frena lo escribe el motor con las mismas palabras al armar el
+     * plan; acá se sale sin decir nada y se deja que lo diga él, para que no
+     * haya dos avisos distintos para lo mismo. Es como está resuelto el mismo
+     * gancho en Iglesias.
+     */
+    beforeDelete(fila, { db, confirmado }) {
+      const vacio = require('../cuerpo-vacio');
+      const dependencias = require('../dependencias');
+      const { contenido, rastro } = vacio.loQueCuelga(
+        db, fila.id, dependencias.referenciasHacia('cuerpos'), dependencias.cuantasApuntan
+      );
+
+      if (contenido.length) return null;
+      if (confirmado) return null;
+
+      /*
+       * Se pregunta aunque no cuelgue absolutamente nada. Borrar no se
+       * deshace, y el mismo botón apretado sobre el cuerpo de al lado es
+       * irreparable: en un listado de dieciséis, todos con el mismo icono,
+       * eso no es una hipótesis.
+       */
+      return {
+        error: vacio.preguntaDeBorrado(fila, rastro),
+        confirmar: 'cuerpo_sin_nada',
+      };
+    },
   },
 
   extraRoutes(router, { db, requirePerm, can, scopeClause }) {

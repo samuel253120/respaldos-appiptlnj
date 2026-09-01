@@ -43,11 +43,15 @@ const SE_QUEDA = 'suelta';
 /**
  * Una cuenta que nunca tuvo un peso adentro.
  *
- * No se pregunta si la abrió el sistema, se pregunta si tiene algo: sin
- * movimientos, sin traspasos por ninguno de sus dos lados y sin saldo con que
- * empezar, la cuenta es un casillero vacío. Si UNA sola de las cuentas de la
- * iglesia tiene algo, ninguna es rastro: ahí hay plata anotada, y la plata
- * frena el borrado como en cualquier otra parte del sistema.
+ * Si UNA sola de las cuentas de la iglesia tiene algo, ninguna es rastro: ahí
+ * hay plata anotada, y la plata frena el borrado como en cualquier otra parte
+ * del sistema.
+ *
+ * Qué cuenta como «vacía» no se decide acá: lo contesta
+ * server/caja-vacia.js, que es de donde lo lee también la regla del cuerpo
+ * recién creado. Estaba escrito acá dentro y contaba una cosa de menos —las
+ * deudas, que son posteriores—, así que se sacó a un solo lugar para que las
+ * dos preguntas no vuelvan a separarse.
  */
 function lasCuentasEstanVacias(db, iglesiaId) {
   const cuentas = db
@@ -55,13 +59,7 @@ function lasCuentasEstanVacias(db, iglesiaId) {
     .all(iglesiaId);
   return cuentas.every((c) => {
     if (c.cuerpo_id) return false;               // la de un cuerpo es del cuerpo, no de la iglesia
-    if (Number(c.saldo_inicial || 0) !== 0) return false;
-    const movimientos = db.prepare('SELECT COUNT(*) AS n FROM tesoreria WHERE cuenta_id = ?').get(c.id).n;
-    if (movimientos) return false;
-    const traspasos = db
-      .prepare('SELECT COUNT(*) AS n FROM traspasos WHERE cuenta_origen_id = ? OR cuenta_destino_id = ?')
-      .get(c.id, c.id).n;
-    return !traspasos;
+    return require('./caja-vacia').estaVacia(db, c);
   });
 }
 
