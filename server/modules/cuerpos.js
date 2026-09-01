@@ -114,6 +114,7 @@ function evaluarCumplimiento(fila, db) {
         if (!directiva) return false;
         const cargos = require('../cargos-de-la-directiva');
         return cargos.losQueFaltan(directiva).length === 0
+          && cargos.losQueYaNoPertenecen(db, directiva).length === 0
           && cargos.quienesSeRepiten(directiva, cargos.LOS_QUE_CUENTAN).length === 0;
       })(),
       detalle: (() => {
@@ -121,6 +122,18 @@ function evaluarCumplimiento(fila, db) {
         const cargos = require('../cargos-de-la-directiva');
         const faltan = cargos.losQueFaltan(directiva);
         if (faltan.length) return `Falta${faltan.length === 1 ? '' : 'n'}: ${cargos.enLista(faltan)}`;
+        /*
+         * Un cargo ocupado por alguien que ya se fue del cuerpo es un cargo
+         * vacante con un nombre encima, y por eso se dice antes que un cargo
+         * repetido: ahí falta una persona, acá sobra un sombrero.
+         */
+        const fuera = cargos.losQueYaNoPertenecen(db, directiva);
+        if (fuera.length) {
+          return fuera
+            .map((f) => `${cargos.comoSeLlama(db, f.persona)} figura de ${f.cargo.corto} y ya no `
+              + 'pertenece al cuerpo')
+            .join('; ');
+        }
         const repetidos = cargos.quienesSeRepiten(directiva, cargos.LOS_QUE_CUENTAN);
         if (repetidos.length) {
           return repetidos

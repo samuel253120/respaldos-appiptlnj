@@ -146,10 +146,30 @@ module.exports = {
   ],
 
   hooks: {
-    beforeSave(data, { existing, id, db }) {
+    beforeSave(data, { existing, id, db, confirmado }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
       const cuerpoId = Number(dato('cuerpo_id'));
       const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
+
+      /*
+       * QUIEN SALE DEL CUERPO PUEDE ESTAR DEJANDO UN CARGO VACANTE.
+       *
+       * Medido antes de esto: retirar del cuerpo al tesorero de la directiva
+       * vigente contestaba 200 sin decir nada, la directiva seguía nombrándolo,
+       * y su cumplimiento no lo mencionaba. El sistema lo sabía —las dos tablas
+       * están ahí— y no lo decía en ninguna parte.
+       *
+       * Va al principio del gancho porque es lo que se pierde: lo de más abajo
+       * son datos mal puestos que se corrigen escribiendo otra cosa, y esto es
+       * un cargo que queda sin nadie. Se pregunta y no se prohíbe —la persona
+       * se va, y eso el sistema no lo puede discutir— pero quien lo anota tiene
+       * que enterarse ahora, que es cuando puede hacer algo.
+       */
+      if (!confirmado && existing && existing.estado !== 'Retirado' && dato('estado') === 'Retirado') {
+        const aviso = require('../cargos-de-la-directiva')
+          .avisoDeQueOcupaUnCargo(db, { cuerpoId, miembroId: existing.miembro_id, comoSale: 'se retira del cuerpo' });
+        if (aviso) return aviso;
+      }
 
       /**
        * De qué registro sale la persona, y solo de uno.
@@ -248,7 +268,18 @@ module.exports = {
      * verdad y su registro tiene que quedar. Para eso está el estado
      * "Retirado", que conserva el recorrido completo de la persona.
      */
-    beforeDelete(fila, { db }) {
+    beforeDelete(fila, { db, confirmado }) {
+      /*
+       * La otra puerta: borrar la ficha en vez de retirarla deja el mismo cargo
+       * sin nadie, y por acá no pasaba ninguna comprobación. Cerrar una sola de
+       * las dos puertas es lo mismo que no cerrar ninguna, que es la lección de
+       * la 1.249.0 con la planilla de cuotas.
+       */
+      if (!confirmado) {
+        const aviso = require('../cargos-de-la-directiva')
+          .avisoDeQueOcupaUnCargo(db, { cuerpoId: fila.cuerpo_id, miembroId: fila.miembro_id, comoSale: 'sale del cuerpo' });
+        if (aviso) return aviso;
+      }
       const cuotas = db.prepare('SELECT COUNT(*) c FROM cuotas_cuerpo WHERE integrante_id = ?').get(fila.id).c;
       if (cuotas) {
         return `No se puede eliminar: tiene ${cuotas} cuota(s) pagada(s) registrada(s). ` +

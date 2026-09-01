@@ -227,6 +227,68 @@ function avisoSiNoEsOficial(db, { supervisorId, existing, confirmado }) {
   };
 }
 
+/* --------------------------- quien deja el cuerpo y se queda en el cargo ---- */
+
+/**
+ * Los cargos que esta persona ocupa en la directiva que dirige el cuerpo HOY.
+ *
+ * Medido antes de esto: se retiraba del cuerpo al tesorero de la directiva
+ * vigente y contestaba 200 sin decir nada; la directiva seguía diciendo
+ * «Tesorero(a): Elena Díaz Díaz»; volver a guardarla tampoco decía nada; y su
+ * cumplimiento no lo mencionaba. El sistema LO SABE —las dos tablas están ahí—
+ * y no lo decía en ninguna parte.
+ *
+ * Se mira solo la directiva EN EJERCICIO. En una de 2019 no es un problema que
+ * su gente ya no esté: se fueron después, y esa directiva es el registro de
+ * quiénes eran entonces. Es la misma razón por la que el guardado de una
+ * directiva revisa solo los cargos que cambian.
+ */
+function losCargosQueOcupa(db, cuerpoId, miembroId) {
+  if (!cuerpoId || !miembroId) return [];
+  const dirige = require('./directiva-en-ejercicio').laQueEjerce(db, cuerpoId);
+  if (!dirige) return [];
+  return CARGOS.filter((c) => Number(dirige[c.campo]) === Number(miembroId));
+}
+
+/**
+ * Quiénes ocupan un cargo de esta directiva sin pertenecer ya al cuerpo.
+ *
+ * El oficial supervisor queda fuera A PROPÓSITO: viene del cuerpo de oficiales
+ * y no de los integrantes del cuerpo supervisado, así que no pertenecer a éste
+ * es su situación normal, no un problema.
+ */
+function losQueYaNoPertenecen(db, directiva) {
+  if (!directiva || !directiva.cuerpo_id) return [];
+  const dentro = new Set(require('./integrantes').idsDeIntegrantes(db, directiva.cuerpo_id));
+  return LOS_DEL_CUERPO
+    .filter((c) => puesto(directiva, c.campo) && !dentro.has(Number(directiva[c.campo])))
+    .map((c) => ({ cargo: c, persona: Number(directiva[c.campo]) }));
+}
+
+/**
+ * El aviso al sacar del cuerpo a quien ocupa un cargo.
+ *
+ * Se pregunta y no se prohíbe: la persona se va, y eso es un hecho que el
+ * sistema no puede discutir. Lo que hace falta es que quien lo anota se entere
+ * de que además hay un cargo que queda vacante, en el momento en que puede
+ * hacer algo al respecto —después nadie vuelve a mirar esa directiva—.
+ */
+function avisoDeQueOcupaUnCargo(db, { cuerpoId, miembroId, comoSale = 'sale del cuerpo' }) {
+  const suyos = losCargosQueOcupa(db, cuerpoId, miembroId);
+  if (!suyos.length) return null;
+  const dirige = require('./directiva-en-ejercicio').laQueEjerce(db, cuerpoId);
+  const nombre = comoSeLlama(db, miembroId);
+  return {
+    error:
+      `${nombre} ${comoSale}, y es ${enLista(suyos.map((c) => c.corto))} de la directiva que dirige `
+      + `hoy${dirige && dirige.periodo ? ` (${dirige.periodo})` : ''}. Si sigue, ese cargo queda `
+      + 'ocupado por alguien que ya no pertenece al cuerpo, y el estado de cumplimiento lo va a '
+      + 'decir hasta que se releve. Designe a otra persona en la directiva, o confirme para dejarlo '
+      + 'anotado así por ahora.',
+    confirmar: 'deja_un_cargo_vacante',
+  };
+}
+
 /** Los que cuentan para el requisito del cumplimiento: los cuatro del cuerpo. */
 const LOS_QUE_CUENTAN = CARGOS.filter((c) => c.cuenta);
 
@@ -234,4 +296,5 @@ module.exports = {
   CARGOS, LOS_DEL_CUERPO, LOS_QUE_CUENTAN, QUIEN_ENCABEZA,
   puesto, tieneQuienLaEncabece, cuantosPuestos, losQueFaltan, enLista, avisoSinQuienLaEncabece,
   avisoSiNoEsOficial, quienesSeRepiten, comoSeLlama, avisoDeCargosRepetidos,
+  losCargosQueOcupa, losQueYaNoPertenecen, avisoDeQueOcupaUnCargo,
 };
