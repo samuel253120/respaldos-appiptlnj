@@ -2090,12 +2090,66 @@ async function viewDashboard() {
       </div>`
     : '';
 
+  /*
+   * Los cuerpos que se quedan sin quién los dirija.
+   *
+   * Medido antes de esto: los diecisiete cuerpos de la base estaban sin
+   * directiva en ejercicio y el panel no lo decía en ninguna parte. Va ARRIBA
+   * de la cuota sin monto y debajo de las credenciales: una cuota sin monto se
+   * queda esperando a que alguien la escriba, pero una directiva se vence sola
+   * —pasa un día y el cuerpo amanece sin quién responda por él— y eso es lo
+   * único de las tres que empeora sin que nadie haga nada.
+   *
+   * Cada línea dice QUÉ le pasa a ese cuerpo y no solo que algo le pasa: sin
+   * eso, la lista repite diecisiete veces lo mismo y no hay por dónde empezar.
+   */
+  const sinDirectiva = d.cuerposSinDirectiva || [];
+  const yaSin = sinDirectiva.filter((c) => c.nivel === 'sin');
+  const porVencer = sinDirectiva.filter((c) => c.nivel !== 'sin');
+  const genteSinDirectiva = yaSin.reduce((t, c) => t + (Number(c.integrantes) || 0), 0);
+  const avisoDirectivas = sinDirectiva.length
+    ? `
+      <div class="card aviso-credenciales">
+        <h3>🏅 Cuerpos sin quién los dirija</h3>
+        <p class="mut">
+          ${yaSin.length
+            ? `Hay <b>${yaSin.length}</b> cuerpo${yaSin.length === 1 ? '' : 's'} sin directiva en ejercicio${genteSinDirectiva
+                ? `, y alcanza${yaSin.length === 1 ? '' : 'n'} a <b>${fmtNumero(genteSinDirectiva)}</b> persona${genteSinDirectiva === 1 ? '' : 's'}`
+                : ''}.`
+            : ''}
+          ${porVencer.length
+            ? (yaSin.length
+                ? (porVencer.length === 1
+                    ? 'Y otro está por quedarse sin la suya.'
+                    : `Y otros <b>${porVencer.length}</b> están por quedarse sin la suya.`)
+                : (porVencer.length === 1
+                    ? 'Hay <b>1</b> cuerpo cuya directiva está por terminar su período.'
+                    : `Hay <b>${porVencer.length}</b> cuerpos cuyas directivas están por terminar su período.`))
+            : ''}
+          Elegir directiva toma semanas —convocar, elegir y levantar el acta— así que conviene
+          empezar antes y no el día. La directiva se registra desde la ficha del cuerpo.
+        </p>
+        <ul class="mini-list">
+          ${sinDirectiva.slice(0, CUANTAS_SE_MUESTRAN).map((c) => `
+            <li data-ir="#/m/cuerpos/ficha/${c.id}">
+              <span>${esc(c.nombre)}${c.iglesia ? ` <span class="mut">— ${esc(iglesiaDeTrabajo(c.iglesia) || c.iglesia)}</span>` : ''}
+                <span class="mut">· ${esc(c.situacion)}</span></span>
+              <span class="badge ${c.nivel === 'sin' ? 'red' : 'amber'}">${c.nivel === 'sin' ? 'sin directiva' : 'por vencer'}</span>
+            </li>`).join('')}
+          ${sinDirectiva.length > CUANTAS_SE_MUESTRAN
+            ? `<li class="mut" data-ir="#/m/cuerpos">y ${sinDirectiva.length - CUANTAS_SE_MUESTRAN} más — ver todos</li>`
+            : ''}
+        </ul>
+      </div>`
+    : '';
+
   content().innerHTML = `
     <div class="page-head">
       <h2>📊 Panel de control</h2>
     </div>
     ${avisoSinTitular}
     ${avisoCredenciales}
+    ${avisoDirectivas}
     ${avisoCuota}
     <div class="stats">
       ${statDefs.map(([name, ic, lbl, num, alerta, adonde, nota]) => `

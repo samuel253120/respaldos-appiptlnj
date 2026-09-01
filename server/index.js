@@ -615,9 +615,28 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     ? require('./cuota-sin-monto').losQueCobranSinMonto(db, req.user)
     : [];
 
+  /*
+   * Los cuerpos que no tienen quién los dirija, o están por quedarse sin.
+   *
+   * Medido antes de esto: los DIECISIETE cuerpos de la base estaban sin
+   * directiva en ejercicio y el panel no decía una palabra —ni de éstos, ni de
+   * las que están por vencer—, aunque sí avisara de credenciales por vencer y
+   * de cuotas sin monto. Había que abrir los diecisiete para saberlo.
+   *
+   * Es el aviso del panel que MÁS se justifica de los tres, porque es el único
+   * que se vence solo: un cuerpo que ayer estaba en regla amanece sin quién lo
+   * dirija porque pasó un día (ver server/cuerpo-sin-quien-lo-dirija.js).
+   *
+   * Pide ver Cuerpos y no ver Directivas: lo que la línea abre es la ficha del
+   * cuerpo, que es donde se mira y desde donde se le registra la suya.
+   */
+  const cuerposSinDirectiva = can(req.user, 'cuerpos', 'view')
+    ? require('./cuerpo-sin-quien-lo-dirija').losQueSeQuedanSinDirectiva(db, req.user)
+    : [];
+
   res.json({
     counts, finanzas, cumpleanos, solicitudesRecientes,
-    credencialesPorVencer, credencialesSinTitular, cuerposSinCuota,
+    credencialesPorVencer, credencialesSinTitular, cuerposSinCuota, cuerposSinDirectiva,
   });
 });
 
