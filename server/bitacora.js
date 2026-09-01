@@ -555,20 +555,46 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
     return;
   }
 
-  // 6. Directivas: se anota a cada miembro el cargo que asume
+  /*
+   * 6. Directivas: el cargo que alguien asume, Y EL QUE ALGUIEN DEJA.
+   *
+   * Hasta la 1.264.0 solo se anotaba la mitad de arriba. Medido: cambiándole
+   * el tesorero a una directiva, al que entraba le quedaba su «Asume como
+   * Tesorero(a)» y al que salía no le quedaba nada —tres líneas antes, tres
+   * después—, así que su historial seguía diciendo que asumió un cargo que
+   * hoy tiene otra persona, sin nada que lo explicara. Y lo mismo al VACIAR
+   * un cargo: la directiva se quedaba sin tesorero y en el historial de quien
+   * lo era no pasaba nada. Es el mismo defecto que tenían las cuatro carpetas
+   * hasta la 1.209.0 —el alta dejaba línea y la baja ninguna— y se arregla
+   * igual: cada hecho tiene dos mitades y las dos se anotan.
+   */
   if (def.name === 'directivas') {
     const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(despues.cuerpo_id);
     const nombreCuerpo = cuerpo ? cuerpo.nombre : 'un cuerpo';
+    const periodo = despues.periodo || '';
     // La lista vive en un solo lugar: escrita también acá, el cargo que se
     // agregara mañana entraría al sistema sin quedarle anotado a nadie
     for (const { campo, label: cargo } of require('./cargos-de-la-directiva').CARGOS) {
       const nuevo = despues[campo];
       const previo = isNew ? null : antes[campo];
-      if (nuevo && nuevo !== previo) {
+      if (nuevo === previo) continue;
+      if (nuevo) {
         anotar({
           miembroId: nuevo, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
           fecha: despues.fecha_inicio,   // se asume el cargo cuando empieza el período
-          descripcion: `Asume como ${cargo} de "${nombreCuerpo}" — período ${despues.periodo || ''}.`.trim(),
+          descripcion: `Asume como ${cargo} de "${nombreCuerpo}" — período ${periodo}.`.trim(),
+        });
+      }
+      if (previo) {
+        /*
+         * La fecha es la de HOY y no la de inicio del período, al revés que la
+         * de arriba: el cargo se asume cuando el período empieza, pero se deja
+         * el día en que alguien lo cambia. Poner ahí `fecha_inicio` haría que
+         * el historial dijera que lo dejó el mismo día que lo asumió.
+         */
+        anotar({
+          miembroId: previo, tipo: 'Anotación', iglesiaId: iglesia, usuario: user,
+          descripcion: `Deja el cargo de ${cargo} de "${nombreCuerpo}" — período ${periodo}.`.trim(),
         });
       }
     }
@@ -612,6 +638,20 @@ function registrarEliminado(def, fila, user, arrastre) {
   if (arrastre && arrastre.arrastradas) {
     const lista = (arrastre.detalle || []).join(', ');
     detalle += `${detalle ? ' — ' : ''}Se llevó consigo ${arrastre.arrastradas} registro(s)${lista ? `: ${lista}` : ''}.`;
+  }
+  /*
+   * Y lo que NO se llevó pero dejó a medias: los enlaces que quedaron vacíos.
+   *
+   * Es la otra mitad de la misma frase. Borrar a quien era tesorero de una
+   * directiva no borra la directiva —así está decidido en server/dependencias.js
+   * y así debe ser—, pero la deja sin tesorero, y hasta la 1.264.0 eso no se
+   * anotaba en ninguna parte: la directiva amanecía con un cargo vacío que nadie
+   * había quitado. El registro del borrado es el único lugar donde puede quedar,
+   * porque la ficha de la que se soltó no se toca a propósito.
+   */
+  if (arrastre && arrastre.sueltas) {
+    const cuales = (arrastre.detalleSueltas || []).join(', ');
+    detalle += `${detalle ? ' — ' : ''}Dejó vacío(s) ${arrastre.sueltas} enlace(s) que lo nombraban${cuales ? `: ${cuales}` : ''}.`;
   }
   anotarCambio({ def, accion: 'Eliminación', fila, usuario: user, detalle });
 

@@ -365,5 +365,66 @@ module.exports = {
       }
       return null;
     },
+
+    /*
+     * BORRAR UNA DIRECTIVA PREGUNTA.
+     *
+     * Medido antes de esto: DELETE de la directiva EN EJERCICIO de un cuerpo,
+     * sin confirmar nada, 200 y borrada. Se fue con ella el período, los seis
+     * cargos y el acta de elección adjunta, y el cuerpo pasó de tener directiva
+     * a no tener ninguna sin que nadie contestara una pregunta. Guardarla
+     * pregunta tres cosas distintas —el traslape, la que queda sin jefe, la
+     * persona repetida— y borrarla entera, que es lo único que no se deshace,
+     * no preguntaba nada.
+     *
+     * SE PREGUNTA SIEMPRE, tenga o no tenga cargos. Lo que se borra no es un
+     * dato: es la constancia de quiénes dirigieron el cuerpo en un período, y
+     * en un listado de directivas —todas del mismo cuerpo, todas con el mismo
+     * icono, distinguidas por un rango de años— el mismo botón apretado una
+     * fila más abajo es irreparable. Es la misma razón por la que se pregunta
+     * al borrar un cuerpo recién creado (ver server/cuerpo-vacio.js).
+     *
+     * Y EL AVISO DICE CUÁL DE LAS DOS ES. Borrar el histórico de 2019 y borrar
+     * la que está gobernando hoy no son el mismo acto: la segunda deja al
+     * cuerpo sin directiva en ejercicio desde este momento —y con eso, sin su
+     * requisito de cumplimiento y sin quién responda por él—, así que lo dice
+     * con todas las letras y ofrece lo que casi siempre se quería hacer en
+     * realidad, que es cerrarle el período con su fecha de término.
+     *
+     * Lo que NO dice es «esto no se deshace»: eso ya lo dijo la caja anterior,
+     * que es la de siempre —se pregunta dos veces porque el navegador no puede
+     * saber de antemano que el servidor va a preguntar algo más—, y repetirlo
+     * gasta la única frase que la persona va a leer entera.
+     */
+    beforeDelete(fila, { db, confirmado }) {
+      if (confirmado) return null;
+      const enEjercicio = require('../directiva-en-ejercicio');
+      const cargos = require('../cargos-de-la-directiva');
+
+      const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(fila.cuerpo_id);
+      const deQuien = cuerpo ? ` de "${cuerpo.nombre}"` : '';
+      const cual = fila.periodo ? `del período ${fila.periodo}` : 'sin período escrito';
+
+      // Qué se lleva consigo, en palabras: no es lo mismo una recién creada en
+      // blanco que una con sus seis cargos y el acta de la elección adjunta.
+      const cuantos = cargos.cuantosPuestos(fila);
+      const trae = [];
+      if (cuantos) trae.push(`${cuantos} cargo${cuantos === 1 ? '' : 's'} anotado${cuantos === 1 ? '' : 's'}`);
+      if (fila.acta_eleccion) trae.push('el acta de elección adjunta');
+      const conQue = trae.length ? `, con ${cargos.enLista(trae)}` : ', que no tiene cargos ni acta';
+
+      const laQueEjerce = enEjercicio.laQueEjerce(db, fila.cuerpo_id);
+      const gobierna = !!laQueEjerce && laQueEjerce.id === fila.id;
+      const consecuencia = gobierna
+        ? 'Es la que dirige el cuerpo HOY: al borrarla el cuerpo queda sin directiva en ejercicio, '
+          + 'sin quién responda por él y sin ese requisito de cumplimiento. Si el período ya terminó, '
+          + 'lo que corresponde es ponerle su fecha de término, no eliminarla.'
+        : 'Es la constancia de quiénes dirigieron el cuerpo en ese período: borrada, no queda dónde ir a mirarlo.';
+
+      return {
+        error: `Va a eliminar la directiva ${cual}${deQuien}${conQue}. ${consecuencia}`,
+        confirmar: 'directiva_que_se_borra',
+      };
+    },
   },
 };

@@ -423,13 +423,37 @@ function resolver(db, def, fila, { alBorrarFila } = {}) {
     resumen.set(hijaDef.label, (resumen.get(hijaDef.label) || 0) + 1);
   }
 
+  /*
+   * Y qué enlaces quedaron vacíos, en palabras y no solo contados.
+   *
+   * `sueltas` se venía calculando y nadie lo miraba: la entrada del Registro de
+   * Cambios decía lo que el borrado se llevó consigo y callaba lo que dejó a
+   * medias. Medido: eliminando a la persona que era consejera de una directiva,
+   * la directiva quedó sin consejera y ni su ficha ni el registro lo decían en
+   * ninguna parte. SUELTA es la respuesta correcta —la directiva es una cosa por
+   * derecho propio y no se borra porque se borre uno de sus nombres, y así está
+   * escrito arriba—, pero silenciosa no: quien mañana mire esa directiva tiene
+   * que poder saber por qué le falta un cargo que nadie quitó a mano.
+   *
+   * Se dice el módulo Y el campo, que es lo que hace útil la línea: «1 en
+   * Directivas de Cuerpos (Tesorero(a))» responde la pregunta, «1 en Directivas
+   * de Cuerpos» obliga a ir a mirar cuál de los seis.
+   */
   let sueltas = 0;
-  for (const { campo, id } of plan.soltar) sueltas += soltarEnlace(db, campo, id);
+  const vaciados = new Map();
+  for (const { campo, id } of plan.soltar) {
+    const cuantas = soltarEnlace(db, campo, id);
+    if (!cuantas) continue;
+    sueltas += cuantas;
+    const donde = `${campo.def.label}${campo.etiqueta ? ` (${campo.etiqueta})` : ''}`;
+    vaciados.set(donde, (vaciados.get(donde) || 0) + cuantas);
+  }
 
   return {
     arrastradas: plan.arrastrar.length,
     sueltas,
     detalle: [...resumen.entries()].map(([label, n]) => `${n} en ${label}`),
+    detalleSueltas: [...vaciados.entries()].map(([donde, n]) => `${n} en ${donde}`),
   };
 }
 
