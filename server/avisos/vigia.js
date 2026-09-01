@@ -606,9 +606,75 @@ function cumplieronLaMayoria(usuario, dejar) {
   });
 }
 
+/**
+ * El cuerpo de oficiales, cuando está configurado y no existe.
+ *
+ * De ese cuerpo salen los oficiales supervisores de las directivas, y también
+ * a quién el sistema trata de «Oficial». Mientras no exista o no tenga
+ * integrantes, la propia configuración dice que «se puede elegir a cualquier
+ * miembro»: el selector ofrece la membresía entera y la comprobación del
+ * supervisor no puede correr, porque no hay contra qué comprobar.
+ *
+ * Eso no es un defecto —es el respaldo que evita bloquear a una organización
+ * que todavía no armó su cuerpo de oficiales— pero SÍ ES UNA REGLA APAGADA, y
+ * una regla apagada en silencio es la que nadie enciende. Es lo mismo que pasa
+ * con un tipo de miembro que ya no corresponde, más abajo: la configuración
+ * decide si una regla corre, y cuando no corre hay que decirlo.
+ *
+ * Se avisa una vez al día y solo a quien puede arreglarlo, que es quien entra a
+ * Configuración. Corregirlo solo no se puede: el sistema no sabe cuál de los
+ * cuerpos de la organización es el de oficiales, y adivinarlo por el nombre es
+ * justamente lo que este ajuste existe para no hacer.
+ */
+function cuerpoDeOficialesSinArmar(usuario, dejar) {
+  // Atajo, no guardia: quien decide a quién le llega es la `llave` del tipo de
+  // aviso (ver avisos.js). Esto solo evita consultar la base por alguien que no
+  // podría hacer nada con la respuesta
+  if (!require('../permissions').can(usuario, 'sistema_configuracion', 'view')) return;
+
+  let estado;
+  try {
+    estado = require('../oficiales').comoEsta(db);
+  } catch (e) {
+    return;   // una base a medio migrar no puede tumbar la pasada del día
+  }
+  if (estado.sinNombre) return;                // sin nombre puesto no hay nada que reclamar
+  if (estado.armado) return;                   // armado: no hay nada que avisar
+  dejar(avisoDeOficialesSinArmar(estado));
+}
+
+/**
+ * El aviso, armado aparte de lo que decide si sale.
+ *
+ * Separado para poder comprobar LO QUE DICE sin tener que dejar la base sin
+ * cuerpo de oficiales: ese nombre es un ajuste para toda la base y las pruebas
+ * corren en paralelo, así que cambiarlo un instante se lo cambiaría también a
+ * quien esté guardando una directiva en ese momento.
+ */
+function avisoDeOficialesSinArmar({ nombre, cuerpo }) {
+  return {
+    tipo: 'cuerpo_oficiales_sin_armar',
+    // La clave lleva el día y el estado: si mañana sigue igual vuelve a salir,
+    // y en cuanto se arme deja de salir sin que nadie cierre nada
+    clave: `oficiales:${cuerpo ? 'vacio' : 'no-existe'}:${hoy()}`,
+    titulo: cuerpo
+      ? `El cuerpo de oficiales "${nombre}" no tiene integrantes`
+      : `No hay ningún cuerpo llamado "${nombre}"`,
+    cuerpo:
+      (cuerpo
+        ? `"${nombre}" existe pero no tiene a nadie adentro. `
+        : `Configuración espera un cuerpo llamado "${nombre}" y no hay ninguno con ese nombre. `)
+      + 'De ahí salen los oficiales supervisores de las directivas, así que mientras tanto se puede '
+      + 'elegir a cualquier miembro y el sistema no puede comprobar ese cargo. '
+      + 'Arme ese cuerpo con sus integrantes, o cambie el nombre en Configuración → Organización.',
+    enlace: '#/config/organizacion',
+  };
+}
+
 const REVISIONES = [credencialesPorVencer, documentosPorVencer, prestamosPorDevolver,
   solicitudesSinRespuesta, solicitudesSinResponsableActivo, ayudasSinEntregar, cumpleanosDeHoy,
-  respaldoYDisco, cuotasAtrasadas, faltasSeguidas, cumplieronLaMayoria];
+  respaldoYDisco, cuotasAtrasadas, faltasSeguidas, cumplieronLaMayoria,
+  cuerpoDeOficialesSinArmar];
 
 // ------------------------------------------------------------- la pasada ----
 
@@ -699,5 +765,5 @@ function empezar() {
 module.exports = {
   empezar, mirar, pasada, leToca, REVISIONES,
   solicitudesSinRespuesta, solicitudesSinResponsableActivo, cumplieronLaMayoria,
-  ayudasSinEntregar,
+  ayudasSinEntregar, cuerpoDeOficialesSinArmar, avisoDeOficialesSinArmar,
 };

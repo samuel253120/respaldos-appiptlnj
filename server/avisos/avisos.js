@@ -99,6 +99,17 @@ const TIPOS = {
     llave: 'sistema_respaldo',
     ayuda: 'Hace demasiado que nadie se baja el respaldo completo, o queda poco espacio en el disco.',
   },
+  cuerpo_oficiales_sin_armar: {
+    label: 'El cuerpo de oficiales no está armado',
+    urgente: false,
+    // A quien entra a Configuración, que es donde se arregla: para el resto es
+    // un aviso sobre algo que no está en sus manos
+    llave: 'sistema_configuracion',
+    ayuda:
+      'Configuración espera un cuerpo de oficiales y no existe, o existe y no tiene integrantes. '
+      + 'De ahí salen los oficiales supervisores de las directivas, así que mientras tanto se puede '
+      + 'elegir a cualquier miembro y ese cargo no se puede comprobar.',
+  },
   cumpleanos_hoy: {
     label: 'Cumpleaños del día',
     urgente: false,

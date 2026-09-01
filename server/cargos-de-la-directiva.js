@@ -100,7 +100,71 @@ function avisoSinQuienLaEncabece(fila) {
   );
 }
 
+/* ------------------------------------------ el oficial supervisor(a) ---- */
+
+/**
+ * El sexto cargo era el único que no se comprobaba en ninguna parte.
+ *
+ * Los cinco que salen del cuerpo se comprueban al guardar contra sus
+ * integrantes, con un aviso que dice qué hacer. El oficial supervisor es la
+ * excepción POR DISEÑO —viene del cuerpo de oficiales, porque supervisa desde
+ * fuera— y esa excepción se había quedado a medias: el selector filtraba por el
+ * cuerpo de oficiales y el servidor no comprobaba nada. Medido: poner de oficial
+ * supervisor a un miembro cualquiera contestaba 200, y a uno de otra iglesia
+ * también.
+ *
+ * QUÉ SE EXIGE, Y QUÉ NO. Lo que el sistema promete de este cargo está escrito
+ * en Configuración → Organización, y es una sola cosa: es «el cuerpo cuyos
+ * integrantes pueden ser designados oficial supervisor(a) de LOS DEMÁS
+ * CUERPOS». O sea, ser integrante de ese cuerpo. La iglesia NO se exige, y no
+ * es un olvido: los oficiales son un cuerpo de la organización que supervisa a
+ * los demás desde fuera —el sistema busca uno solo, por su nombre, sin mirar de
+ * qué iglesia es— así que exigirle la congregación del cuerpo supervisado sería
+ * romper justamente lo que este cargo es. Es la diferencia con el líder de un
+ * cuerpo (ver server/quien-dirige-el-cuerpo.js), que sí es de los suyos y a
+ * quien la iglesia sí se le frena.
+ *
+ * SE PREGUNTA Y NO SE PROHÍBE, como el ser integrante del líder y por lo mismo:
+ * hay un caso legítimo y corriente —a alguien se lo designa oficial y su ficha
+ * de integrante del cuerpo de oficiales se anota después— y frenarlo obligaría
+ * a hacer las cosas en un orden que la organización no siempre puede seguir.
+ *
+ * Y SOLO CUANDO ESE CUERPO EXISTE Y TIENE GENTE. Mientras no lo tenga, la propia
+ * configuración dice que «se puede elegir a cualquier miembro»: preguntar ahí
+ * sería preguntar por una regla que el sistema declara apagada. Que esté apagada
+ * lo avisa el vigía, que es donde se avisa de una configuración que deja una
+ * comprobación sin correr.
+ */
+function avisoSiNoEsOficial(db, { supervisorId, existing, confirmado }) {
+  if (confirmado) return null;
+  if (!supervisorId) return null;
+
+  // ¿Este guardado es el que lo está poniendo? Corregirle una nota a una
+  // directiva vieja no puede volver a preguntar por un cargo que no se tocó
+  if (existing && String(existing.oficial_supervisor_id || '') === String(supervisorId)) return null;
+
+  const oficiales = require('./oficiales');
+  const armado = oficiales.comoEsta(db);
+  if (!armado.armado) return null;               // sin cuerpo de oficiales, la regla está apagada
+  const suyos = oficiales.idsDeOficiales(db);
+  if (suyos.includes(Number(supervisorId))) return null;
+  const cuerpo = armado.cuerpo;
+  const suCuenta = armado.cuantos;
+
+  const ficha = db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(supervisorId);
+  const nombre = ficha ? `${ficha.nombres || ''} ${ficha.apellidos || ''}`.trim() : 'Esa persona';
+  return {
+    error:
+      `${nombre} no figura entre los integrantes de "${cuerpo.nombre}", que hoy tiene ${suCuenta}. `
+      + 'El oficial supervisor(a) sale de ese cuerpo, porque supervisa a los demás desde fuera. '
+      + 'Si se lo acaba de designar y todavía no se le anota su ficha de integrante ahí, confirme; '
+      + `si no, agréguelo primero a "${cuerpo.nombre}".`,
+    confirmar: 'supervisor_que_no_es_oficial',
+  };
+}
+
 module.exports = {
   CARGOS, LOS_DEL_CUERPO, QUIEN_ENCABEZA,
   puesto, tieneQuienLaEncabece, cuantosPuestos, losQueFaltan, enLista, avisoSinQuienLaEncabece,
+  avisoSiNoEsOficial,
 };

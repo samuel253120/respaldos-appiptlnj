@@ -294,6 +294,27 @@ module.exports = {
        * monto no se pregunta al crear un cuerpo—.
        */
       const cargos = require('../cargos-de-la-directiva');
+
+      /*
+       * EL OFICIAL SUPERVISOR, que era el único cargo sin comprobar en el
+       * servidor. Va antes que la pregunta del jefe porque son dos clases de
+       * problema distintas: acá hay un dato PUESTO MAL —alguien que no es
+       * oficial figurando como supervisor, y eso se ve bien en la pantalla— y
+       * más abajo hay un dato QUE FALTA, que el cumplimiento del cuerpo deja
+       * dicho todo el tiempo sin que nadie conteste nada. Lo que se ve bien y
+       * está mal pesa más que lo que se ve mal y está a la vista.
+       */
+      /*
+       * Lo que ESTE guardado trae, sin respaldo en la ficha anterior: como la
+       * pregunta solo sale cuando el supervisor CAMBIA, tomarlo de la ficha
+       * anterior cuando no viene daba siempre el mismo valor que ya tenía, y se
+       * salía por esa comparación igual. Quitar aquel respaldo no cambiaba nada,
+       * que es la definición de una línea que no decide.
+       */
+      const noEsOficial = cargos.avisoSiNoEsOficial(db,
+        { supervisorId: data.oficial_supervisor_id, existing, confirmado });
+      if (noEsOficial) return noEsOficial;
+
       const conCargos = { ...(existing || {}), ...data };
       const loPierdeAhora = isNew || cargos.tieneQuienLaEncabece(existing);
       if (!cargos.tieneQuienLaEncabece(conCargos) && loPierdeAhora && !confirmado) {
