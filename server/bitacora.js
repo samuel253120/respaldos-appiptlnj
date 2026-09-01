@@ -559,15 +559,9 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
   if (def.name === 'directivas') {
     const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(despues.cuerpo_id);
     const nombreCuerpo = cuerpo ? cuerpo.nombre : 'un cuerpo';
-    const cargos = [
-      ['oficial_supervisor_id', 'Oficial supervisor(a)'],
-      ['primer_jefe_id', 'Primer jefe / Primera jefa'],
-      ['segundo_jefe_id', 'Segundo jefe / Segunda jefa'],
-      ['secretario_id', 'Secretario(a)'],
-      ['tesorero_id', 'Tesorero(a)'],
-      ['consejero_id', 'Consejero(a)'],
-    ];
-    for (const [campo, cargo] of cargos) {
+    // La lista vive en un solo lugar: escrita también acá, el cargo que se
+    // agregara mañana entraría al sistema sin quedarle anotado a nadie
+    for (const { campo, label: cargo } of require('./cargos-de-la-directiva').CARGOS) {
       const nuevo = despues[campo];
       const previo = isNew ? null : antes[campo];
       if (nuevo && nuevo !== previo) {

@@ -86,13 +86,13 @@ function idsDeIntegrantes(db, cuerpoId) {
   return new Set(integrantesDeCuerpo(db, cuerpoId).map((o) => o.id));
 }
 
-const CARGOS_DEL_CUERPO = [
-  ['primer_jefe_id', 'Primer jefe / Primera jefa'],
-  ['segundo_jefe_id', 'Segundo jefe / Segunda jefa'],
-  ['secretario_id', 'Secretario(a)'],
-  ['tesorero_id', 'Tesorero(a)'],
-  ['consejero_id', 'Consejero(a)'],
-];
+/*
+ * Los cargos se leen de server/cargos-de-la-directiva.js y no se escriben acá.
+ * Estaban en tres lugares —este módulo, la bitácora y el panel de la ficha, este
+ * último con las etiquetas escritas distinto— y el cargo que se agregue mañana
+ * habría quedado fuera de dos de ellos sin que nada lo dijera.
+ */
+const { LOS_DEL_CUERPO } = require('../cargos-de-la-directiva');
 
 module.exports = {
   name: 'directivas',
@@ -214,7 +214,7 @@ module.exports = {
     });
   },
   hooks: {
-    beforeSave(data, { db, id, existing, confirmado }) {
+    beforeSave(data, { db, id, existing, isNew, confirmado }) {
       const cuerpoId = data.cuerpo_id !== undefined ? data.cuerpo_id : existing && existing.cuerpo_id;
       if (!cuerpoId) return null;
 
@@ -228,7 +228,7 @@ module.exports = {
       // que se está cambiando ahora: si alguien salió del cuerpo después de
       // haber sido electo, su directiva anterior se puede seguir corrigiendo.
       const permitidos = idsDeIntegrantes(db, cuerpoId);
-      for (const [campo, cargo] of CARGOS_DEL_CUERPO) {
+      for (const { campo, label: cargo } of LOS_DEL_CUERPO) {
         const valor = data[campo];
         if (valor === undefined || valor === null || valor === '') continue;
         const cambia = !existing || String(existing[campo] || '') !== String(valor);
@@ -269,6 +269,35 @@ module.exports = {
       const sePisan = enEjercicio.lasQueSePisan(db, comoQueda, id);
       if (sePisan.length && !confirmado) {
         return { error: enEjercicio.avisoDeTraslape(comoQueda, sePisan), confirmar: 'directiva_que_se_pisa' };
+      }
+
+      /*
+       * Y QUE NO QUEDE SIN QUIEN LA ENCABECE.
+       *
+       * Los seis cargos eran opcionales, así que una directiva con el cuerpo, el
+       * período y la fecha, y nadie adentro, entraba con 201 y dejaba al cuerpo
+       * cumpliendo su requisito de tener directiva.
+       *
+       * Se pregunta y no se prohíbe: anotar el período antes que los nombres es
+       * corriente —el acta llega después—, y prohibirlo obligaría a inventar un
+       * jefe para poder guardar, que es peor. Va DESPUÉS del traslape porque el
+       * «igual así» es uno solo para todo el guardado: quién dirige el cuerpo
+       * cuesta más de deshacer que un cargo que se completa mañana.
+       *
+       * SOLO CUANDO ESTE GUARDADO LA DEJA ASÍ: al crearla, o al quitarle el jefe
+       * a una que lo tenía. Corregirle una nota a una directiva vieja que ya
+       * estaba sin jefe NO vuelve a preguntar, y no es una omisión: el estado de
+       * cumplimiento del cuerpo lo dice todo el tiempo, en su ficha y en el
+       * listado, sin que nadie tenga que contestar nada. Un aviso que sale en
+       * cada guardado enseña a apretar «Está bien» sin leer, y entonces deja de
+       * avisar de lo que importa —es la misma razón por la que la cuota sin
+       * monto no se pregunta al crear un cuerpo—.
+       */
+      const cargos = require('../cargos-de-la-directiva');
+      const conCargos = { ...(existing || {}), ...data };
+      const loPierdeAhora = isNew || cargos.tieneQuienLaEncabece(existing);
+      if (!cargos.tieneQuienLaEncabece(conCargos) && loPierdeAhora && !confirmado) {
+        return { error: cargos.avisoSinQuienLaEncabece(conCargos), confirmar: 'directiva_sin_jefe' };
       }
       return null;
     },

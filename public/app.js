@@ -16465,6 +16465,15 @@ async function renderDirectivasCuerpo(cuerpoId, caja) {
   const directivas = await api('GET', `/directivas?f_cuerpo_id=${cuerpoId}&sort=fecha_inicio&dir=desc&limit=50`)
     .catch(() => null);
   if (!directivas) return;
+  /*
+   * Los cargos y sus etiquetas salen de la definición del módulo y no de una
+   * lista escrita acá: era la tercera copia de las mismas seis líneas, y encima
+   * con las etiquetas puestas distinto —«Primer jefe/a» donde el resto del
+   * sistema dice «Primer jefe / Primera jefa»—. Son los campos de la directiva
+   * que apuntan a una ficha de miembro, que es exactamente lo que un cargo es.
+   */
+  const losCargos = (MOD['directivas'].fields || [])
+    .filter((f) => f.type === 'ref' && f.ref === 'miembros');
   const cargo = (d, campo, etiqueta) =>
     d[campo + '_label'] ? `<span class="cargo"><i>${etiqueta}:</i> ${esc(d[campo + '_label'])}</span>` : '';
 
@@ -16487,13 +16496,11 @@ async function renderDirectivasCuerpo(cuerpoId, caja) {
             </div>
             <div class="df">${fechaCorta(d.fecha_inicio)}${d.fecha_termino ? ' — ' + fechaCorta(d.fecha_termino) : ''}</div>
             <div class="dc">
-              ${cargo(d, 'oficial_supervisor_id', 'Oficial supervisor(a)')}
-              ${cargo(d, 'primer_jefe_id', 'Primer jefe/a')}
-              ${cargo(d, 'segundo_jefe_id', 'Segundo jefe/a')}
-              ${cargo(d, 'secretario_id', 'Secretario(a)')}
-              ${cargo(d, 'tesorero_id', 'Tesorero(a)')}
-              ${cargo(d, 'consejero_id', 'Consejero(a)')}
+              ${losCargos.map((f) => cargo(d, f.name, f.label)).join('')}
               ${d.otros_cargos ? `<span class="cargo">${esc(d.otros_cargos)}</span>` : ''}
+              ${losCargos.every((f) => !d[f.name + '_label'])
+                ? '<span class="cargo" style="color:var(--muted)"><i>Sin ningún cargo anotado todavía</i></span>'
+                : ''}
             </div>
           </li>`).join('')}
       </ul>` : '<div class="empty-state" style="padding:26px">Todavía no hay directivas registradas.</div>'}

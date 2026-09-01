@@ -88,6 +88,32 @@ function evaluarCumplimiento(fila, db) {
     },
     {
       /*
+       * TENER DIRECTIVA Y TENER QUIÉN LA COMPONGA SON DOS COSAS.
+       *
+       * Los seis cargos son opcionales, así que una directiva con el cuerpo, el
+       * período y la fecha, y NADIE adentro, cumplía el requisito de más arriba:
+       * un cuerpo con la directiva en blanco se veía en el listado igual que uno
+       * con la suya completa y electa en asamblea.
+       *
+       * Se cuentan los cuatro que salen del propio cuerpo. Quedan fuera el
+       * consejero —«cargo adicional, no siempre se designa», lo dice el módulo—
+       * y el oficial supervisor, que lo nombra el cuerpo de oficiales desde
+       * fuera: reprocharle a un cuerpo un nombramiento que no está en sus manos
+       * sería un reproche que no puede resolver.
+       */
+      texto: 'Directiva con sus cargos',
+      ok: !!directiva && require('../cargos-de-la-directiva').losQueFaltan(directiva).length === 0,
+      detalle: (() => {
+        if (!directiva) return 'Sin directiva en ejercicio';
+        const cargos = require('../cargos-de-la-directiva');
+        const faltan = cargos.losQueFaltan(directiva);
+        return faltan.length
+          ? `Falta${faltan.length === 1 ? '' : 'n'}: ${cargos.enLista(faltan)}`
+          : 'Los cuatro cargos del cuerpo están designados';
+      })(),
+    },
+    {
+      /*
        * Un estado en BLANCO cuenta como activo, que es lo que significa (ver
        * server/cuerpo-inactivo.js). Antes se exigía la palabra escrita, y como
        * el valor de fábrica solo se aplica al abrir el formulario, los cuerpos
