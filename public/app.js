@@ -4275,11 +4275,13 @@ async function viewFicha(name, id, pestana) {
     }
     /*
      * Y un calculado que trae COLOR pero no lleva a ninguna parte tampoco se
-     * pintaba: se caía por todas las ramas y desaparecía de la cabecera. Eran
-     * seis fichas —el cumplimiento de un cuerpo, el porcentaje de una
-     * actividad, el respaldo de un movimiento, la próxima cuota de una deuda,
-     * la ficha de miembro de un pastor y la situación de una credencial—, y
-     * son justamente el dato que dice si algo está bien o mal. Va con su
+     * pintaba: se caía por todas las ramas y desaparecía de la cabecera. Son
+     * CINCO fichas —el cumplimiento de un cuerpo, el porcentaje de una
+     * actividad, el respaldo de un movimiento, la próxima cuota de una deuda y
+     * la ficha de miembro de un pastor—, y son justamente el dato que dice si
+     * algo está bien o mal. (La 1.256.0 contó seis, sumando la situación de una
+     * credencial: ésa devuelve TEXTO SUELTO, así que ya se pintaba por la rama
+     * de más arriba, sin color y sin rótulo. Son cinco.) Va con su
      * ETIQUETA delante, por lo mismo que el enlace de arriba: «Al día» suelto
      * en una cabecera no dice de qué.
      */
@@ -16207,12 +16209,12 @@ async function renderResumenDeCuerpo(id, caja) {
   }
   if (d.directiva) {
     /*
-     * Sin directiva vigente el número no es un cero: es que no hay ninguna, y
+     * Sin directiva en ejercicio el número no es un cero: es que no hay ninguna, y
      * decirlo con palabras se lee mejor que un «0» que hay que interpretar. Es
      * además uno de los requisitos que su propio cumplimiento evalúa.
      */
     suma('🗳️', d.directiva.periodo || '—',
-      d.directiva.periodo ? 'Directiva vigente' : 'Sin directiva vigente',
+      d.directiva.periodo ? 'Directiva en ejercicio' : 'Sin directiva en ejercicio',
       `#/m/directivas?f_cuerpo_id=${id}`,
       d.directiva.periodo && d.directiva.vence
         ? `hasta el ${fechaCorta(d.directiva.vence)}`
@@ -16444,6 +16446,19 @@ function totalesDelInventario(t, ambito) {
     </div>`;
 }
 
+/**
+ * La situación que trae la directiva, o la casilla guardada si no viniera.
+ *
+ * La calcula el servidor y llega en la fila —de las fechas, no de lo que
+ * alguien marcó (ver server/directiva-en-ejercicio.js)—. El respaldo es para
+ * que este panel siga dibujándose si un día el calculado no llegara: mejor la
+ * palabra vieja que un hueco.
+ */
+function situacionDeDirectiva(d) {
+  if (d.situacion && d.situacion.texto) return d.situacion;
+  return { texto: d.estado || '', nivel: '' };
+}
+
 /** Las directivas del cuerpo, período por período. */
 async function renderDirectivasCuerpo(cuerpoId, caja) {
   if (!MOD['directivas']) return;
@@ -16465,10 +16480,10 @@ async function renderDirectivasCuerpo(cuerpoId, caja) {
       </div>
       ${directivas.rows.length ? `<ul class="directivas">
         ${directivas.rows.map((d) => `
-          <li class="${d.estado === 'Vigente' ? 'vigente' : ''}" data-ir="#/m/directivas/edit/${d.id}">
+          <li class="${situacionDeDirectiva(d).texto === 'En ejercicio' ? 'vigente' : ''}" data-ir="#/m/directivas/edit/${d.id}">
             <div class="dp">
               <b>${esc(d.periodo)}</b>
-              <span class="badge ${d.estado === 'Vigente' ? 'green' : ''}">${esc(d.estado)}</span>
+              <span class="badge ${nivelClase(situacionDeDirectiva(d).nivel)}">${esc(situacionDeDirectiva(d).texto)}</span>
             </div>
             <div class="df">${fechaCorta(d.fecha_inicio)}${d.fecha_termino ? ' — ' + fechaCorta(d.fecha_termino) : ''}</div>
             <div class="dc">

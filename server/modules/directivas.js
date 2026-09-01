@@ -17,8 +17,12 @@
  * demás cuerpos desde fuera. Mientras ese cuerpo no exista, ofrece a todos
  * los miembros para no bloquear.
  *
- * Regla: un cuerpo tiene como máximo UNA directiva vigente. Al marcar una
- * como vigente, las demás de ese cuerpo pasan a "Finalizada" automáticamente.
+ * Regla: un cuerpo tiene como máximo UNA directiva EN EJERCICIO, y cuál es se
+ * calcula de las fechas —no se marca a mano—. Ver server/directiva-en-ejercicio.js:
+ * ahí está la única definición, y de ahí leen el estado de cumplimiento del
+ * cuerpo, el resumen de su ficha, su panel de directivas y el informe de la
+ * importación. Guardar una cuyo período se pise con otro del mismo cuerpo
+ * PREGUNTA y dice qué fecha poner; antes finalizaba a las demás en silencio.
  */
 const { cuerpoDeOficiales } = require('../oficiales');
 const { idsDeIntegrantes: idsDelCuerpo } = require('../integrantes');
@@ -101,14 +105,49 @@ module.exports = {
   dateField: 'fecha_inicio',
   printable: true,
   searchFields: ['periodo', 'otros_cargos', 'notas'],
-  listFields: ['cuerpo_id', 'periodo', 'primer_jefe_id', 'secretario_id', 'fecha_inicio', 'fecha_termino', 'estado'],
+  /*
+   * En el listado va `situacion` y no `estado`: el guardado dice lo que alguien
+   * escribió alguna vez y la situación dice lo que pasa hoy. El campo sigue
+   * existiendo —y sigue sirviendo para filtrar— pero mostrarlo acá era lo que
+   * hacía que una directiva vencida en 2019 se leyera «Vigente» de un vistazo.
+   */
+  listFields: ['cuerpo_id', 'periodo', 'primer_jefe_id', 'secretario_id', 'fecha_inicio', 'fecha_termino', 'situacion'],
   defaultSort: { field: 'fecha_inicio', dir: 'desc' },
+  computed: [
+    {
+      /*
+       * ELECTA mientras no asume · EN EJERCICIO entre sus dos fechas ·
+       * TERMINADA después · REEMPLAZADA cuando su período sigue abierto pero
+       * otra posterior ya asumió · FINALIZADA si alguien la cerró a mano.
+       *
+       * SÍ SALE EN EL PAPEL, y es el campo guardado el que deja de salir. La
+       * hoja imprimía «Estado: Vigente» en la hoja de una directiva terminada
+       * en 2019, que es el mismo defecto de la pantalla trasladado a algo que
+       * se firma y se archiva. Lo que se calcula vale para el día en que se
+       * imprime, y la hoja dice ese día al pie —«Emitido el …»—, igual que las
+       * cifras de la hoja de una iglesia.
+       */
+      name: 'situacion', label: 'Situación', type: 'badge',
+      help: 'Sale de las fechas del período, no de una casilla: una directiva empieza a ejercer y deja de hacerlo sin que nadie guarde nada.',
+      calc: (fila, opciones) => require('../directiva-en-ejercicio').insigniaDeSituacion(fila, opciones),
+    },
+  ],
   fields: [
     { name: 'cuerpo_id', label: 'Cuerpo', type: 'ref', ref: 'cuerpos', required: true },
     { name: 'periodo', label: 'Período', type: 'text', required: true, help: 'Ej: 2026 – 2027' },
     // Una directiva puede quedar electa para asumir más adelante.
     { name: 'fecha_inicio', label: 'Fecha de inicio', type: 'date', required: true, futuro: true },
-    { name: 'fecha_termino', label: 'Fecha de término', type: 'date', futuro: true, noAntesDe: 'fecha_inicio', help: 'Al llegar esta fecha, la directiva figura como vencida en el estado de cumplimiento.' },
+    {
+      /*
+       * SE EDITA, y es a propósito: los períodos se extienden y se acortan a
+       * cada rato —una directiva sigue medio año más porque la elección se
+       * atrasó, otra termina antes porque se disolvió— y correr esta fecha es
+       * exactamente lo que pasó. Cerrar una directiva es ponerle el día en que
+       * terminó, no marcar una casilla que no dice cuándo.
+       */
+      name: 'fecha_termino', label: 'Fecha de término', type: 'date', futuro: true, noAntesDe: 'fecha_inicio',
+      help: 'Hasta cuándo dirige. De acá sale que la directiva esté en ejercicio, así que extender o acortar el período se hace corriendo esta fecha. En blanco, no vence nunca.',
+    },
     // --- Integrantes de la directiva ---
     {
       name: 'oficial_supervisor_id', label: 'Oficial supervisor(a)', type: 'ref', ref: 'miembros',
@@ -132,8 +171,20 @@ module.exports = {
     { name: 'acta_eleccion', label: 'Acta de elección', type: 'file' },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias' },
     {
-      name: 'estado', label: 'Estado', type: 'select', required: true, default: 'Vigente',
+      /*
+       * CIERRA, PERO NO ABRE. «Finalizada» da por cerrada la directiva aunque
+       * su período siga corriendo —una elección anulada, una directiva
+       * disuelta—; «Vigente» no la pone en ejercicio si sus fechas dicen otra
+       * cosa. Esa mitad es la que faltaba: una marcada «Vigente» cuyo término
+       * pasó en 2019 seguía diciendo que mandaba.
+       *
+       * Se conserva con sus dos valores de siempre —ninguna fila hubo que
+       * tocar— y sigue sirviendo de filtro en el listado. En el papel no sale:
+       * ahí va la situación, que es la que dice algo. Ver «Situación», arriba.
+       */
+      name: 'estado', label: 'Estado', type: 'select', required: true, default: 'Vigente', enElPapel: false,
       options: ['Vigente', 'Finalizada'],
+      help: 'Normalmente no se toca. La situación real —electa, en ejercicio o terminada— sale de las fechas; esto solo sirve para cerrar una directiva antes de tiempo cuando no se le quiere poner fecha.',
     },
     { name: 'notas', label: 'Notas', type: 'textarea' },
   ],
@@ -163,7 +214,7 @@ module.exports = {
     });
   },
   hooks: {
-    beforeSave(data, { db, id, existing }) {
+    beforeSave(data, { db, id, existing, confirmado }) {
       const cuerpoId = data.cuerpo_id !== undefined ? data.cuerpo_id : existing && existing.cuerpo_id;
       if (!cuerpoId) return null;
 
@@ -190,12 +241,34 @@ module.exports = {
         }
       }
 
-      // Una sola directiva vigente por cuerpo
-      const estado = data.estado !== undefined ? data.estado : existing && existing.estado;
-      if (estado === 'Vigente') {
-        db.prepare(
-          `UPDATE directivas SET estado = 'Finalizada' WHERE cuerpo_id = ? AND id != ? AND estado = 'Vigente'`
-        ).run(cuerpoId, id || 0);
+      /*
+       * UNA SOLA EN EJERCICIO POR CUERPO, preguntando en vez de reescribir.
+       *
+       * Acá había un UPDATE que marcaba «Finalizada» a las demás del cuerpo, en
+       * silencio, cada vez que se guardaba una como vigente. Sobre el papel
+       * cumplía la regla; en la práctica, registrar la directiva ELECTA para
+       * asumir el año siguiente destituía a la que estaba gobernando, y la
+       * organización quedaba sin directiva en ejercicio por haber anotado bien
+       * su próxima elección.
+       *
+       * Ahora quién ejerce se calcula de las fechas, así que no hay nada que
+       * reescribir: lo que puede pasar es que dos períodos se PISEN, y eso se
+       * pregunta. El aviso dice qué fecha poner —el día antes de que la nueva
+       * asuma— y deja seguir, porque puede ser a propósito mientras se hace la
+       * entrega. Lo que no hace es correrle la fecha a nadie por su cuenta: de
+       * esa fecha depende desde cuándo un cuerpo tiene otra directiva.
+       */
+      const enEjercicio = require('../directiva-en-ejercicio');
+      const comoQueda = {
+        cuerpo_id: cuerpoId,
+        estado: data.estado !== undefined ? data.estado : existing && existing.estado,
+        fecha_inicio: data.fecha_inicio !== undefined ? data.fecha_inicio : existing && existing.fecha_inicio,
+        fecha_termino: data.fecha_termino !== undefined ? data.fecha_termino : existing && existing.fecha_termino,
+        periodo: data.periodo !== undefined ? data.periodo : existing && existing.periodo,
+      };
+      const sePisan = enEjercicio.lasQueSePisan(db, comoQueda, id);
+      if (sePisan.length && !confirmado) {
+        return { error: enEjercicio.avisoDeTraslape(comoQueda, sePisan), confirmar: 'directiva_que_se_pisa' };
       }
       return null;
     },

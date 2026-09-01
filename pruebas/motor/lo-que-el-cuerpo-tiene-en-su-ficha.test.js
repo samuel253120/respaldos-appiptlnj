@@ -387,16 +387,37 @@ test('un calculado con color y sin enlace se pinta', () => {
     'va DESPUÉS de la del enlace, o «Quién lo dirige» —que trae las dos cosas— dejaría de ser un enlace');
 });
 
-test('y son seis fichas las que estrenan su insignia', () => {
+test('y son cinco fichas las que estrenan su insignia', () => {
   /*
    * Se cuentan acá para que el día que alguien quite la rama se vea de cuántas
    * pantallas se trata, y no de una.
+   *
+   * CINCO Y NO SEIS. La 1.256.0 contó también la situación de una credencial y
+   * está mal: ese calculado devuelve TEXTO SUELTO, así que caía —y sigue
+   * cayendo— por la rama de más arriba, la que pinta cualquier calculado que no
+   * sea un objeto. Se pintaba desde antes, sin color y sin rótulo.
+   *
+   * La diferencia se comprueba LLAMANDO a los dos calculados, no leyendo su
+   * código: un primer intento miraba si la palabra «texto» aparecía escrita en
+   * la función, y daba por texto suelto a los tres que arman su respuesta en un
+   * ayudante aparte. Lo que decide la rama es lo que se DEVUELVE.
    */
-  const conColorYSinEnlace = allModules().flatMap((m) =>
-    (m.computed || []).filter((c) => c.type === 'badge').map((c) => `${m.name}.${c.name}`));
+  const deCredencial = (getModule('credenciales').computed || []).find((c) => c.name === 'situacion');
+  const suRespuesta = deCredencial.calc({ estado: 'Vigente', fecha_vencimiento: '2099-01-01' });
+  assert.equal(typeof suRespuesta, 'string',
+    'si algún día devolviera un objeto, pasaría a ser una de las de la rama nueva y serían seis');
+
+  const c = unCuerpoConVida();
+  const suCumplimiento = (getModule('cuerpos').computed || []).find((x) => x.name === 'cumplimiento');
+  const cumple = suCumplimiento.calc({ id: c.id, tipo: 'Cuerpo', estado: 'Activo' }, { db });
+  assert.equal(typeof cumple, 'object');
+  assert.ok(cumple.texto && !cumple.ir, 'trae texto y no lleva a ninguna parte: es de la rama nueva');
+
+  const insignias = allModules().flatMap((m) =>
+    (m.computed || []).filter((x) => x.type === 'badge').map((x) => `${m.name}.${x.name}`));
   for (const cual of ['cuerpos.cumplimiento', 'asistencias.porcentaje', 'tesoreria.respaldo',
-                      'deudas.proxima', 'pastores.ficha_miembro', 'credenciales.situacion']) {
-    assert.ok(conColorYSinEnlace.includes(cual), `falta ${cual}`);
+                      'deudas.proxima', 'pastores.ficha_miembro']) {
+    assert.ok(insignias.includes(cual), `falta ${cual}`);
   }
 });
 

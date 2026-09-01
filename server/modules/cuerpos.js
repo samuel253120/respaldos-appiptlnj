@@ -14,7 +14,8 @@
  *
  * La directiva de cada cuerpo se registra por períodos en el módulo
  * "directivas" (histórico). Aquí se calcula el ESTADO DE CUMPLIMIENTO a
- * partir de esos datos: reglamento adjunto, directiva vigente y no vencida,
+ * partir de esos datos: reglamento adjunto, directiva en ejercicio con su período
+ * cerrado por una fecha de término,
  * y cuerpo activo.
  *
  * De la ficha del cuerpo cuelgan además sus integrantes —cada uno con su
@@ -40,10 +41,14 @@ const { REGISTROS } = require('../integrantes');
 function evaluarCumplimiento(fila, db) {
   if (fila.tipo !== 'Cuerpo') return { nivel: 'No aplica', texto: 'No aplica', items: [] };
 
-  const hoy = new Date().toISOString().slice(0, 10);
-  const directiva = db
-    .prepare(`SELECT * FROM directivas WHERE cuerpo_id = ? AND estado = 'Vigente' ORDER BY fecha_inicio DESC LIMIT 1`)
-    .get(fila.id);
+  /*
+   * La directiva que dirige HOY, calculada de las fechas y no de la casilla que
+   * alguien marcó (ver server/directiva-en-ejercicio.js). Antes esto preguntaba
+   * por `estado = 'Vigente'`, así que un cuerpo cuya directiva venció en 2019
+   * cumplía «tiene directiva vigente» y una que todavía no asume contaba como
+   * la del cuerpo.
+   */
+  const directiva = require('../directiva-en-ejercicio').laQueEjerce(db, fila.id);
 
   const items = [
     {
@@ -52,20 +57,34 @@ function evaluarCumplimiento(fila, db) {
       detalle: fila.reglamento ? 'Documento cargado' : 'Falta adjuntar el reglamento vigente',
     },
     {
-      texto: 'Directiva vigente registrada',
+      texto: 'Directiva en ejercicio',
       ok: !!directiva,
-      detalle: directiva ? `Período ${directiva.periodo}` : 'No hay una directiva vigente registrada',
+      detalle: directiva
+        ? `Período ${directiva.periodo}`
+        : 'Ninguna directiva registrada está dirigiendo hoy',
     },
     {
-      texto: 'Directiva dentro de su período',
-      ok: !!directiva && (!directiva.fecha_termino || directiva.fecha_termino >= hoy),
+      /*
+       * Antes este requisito decía «Directiva dentro de su período» y comprobaba
+       * que su fecha de término no hubiera pasado. Desde que la directiva en
+       * ejercicio se calcula de las fechas, eso no puede fallar nunca: la que se
+       * trae YA está dentro de su período, o no se trae ninguna. Un requisito
+       * que no puede fallar no está comprobando nada, así que pasa a pedir lo
+       * que de verdad falta en su lugar.
+       *
+       * UNA DIRECTIVA SIN FECHA DE TÉRMINO NO VENCE NUNCA, y ese es el hueco:
+       * nadie se entera de que toca elegir de nuevo, porque no hay día en que
+       * el sistema pueda decirlo. La importación del sistema anterior las deja
+       * así todas, con la nota «complétela cuando se defina el período», y sin
+       * esto ninguna de ellas se completaría jamás.
+       */
+      texto: 'Período con fecha de término',
+      ok: !!directiva && !!directiva.fecha_termino,
       detalle: !directiva
-        ? 'Sin directiva vigente'
-        : !directiva.fecha_termino
-          ? 'Sin fecha de término definida'
-          : directiva.fecha_termino >= hoy
-            ? `Vigente hasta el ${directiva.fecha_termino}`
-            : `Venció el ${directiva.fecha_termino}`,
+        ? 'Sin directiva en ejercicio'
+        : directiva.fecha_termino
+          ? `Dirige hasta el ${directiva.fecha_termino}`
+          : 'Su directiva no tiene fecha de término: no vence nunca y nadie va a saber cuándo toca elegir de nuevo',
     },
     {
       /*
@@ -204,7 +223,7 @@ module.exports = {
     },
     {
       name: 'cumplimiento', label: 'Cumplimiento', type: 'badge',
-      help: 'Se calcula con el reglamento, la directiva vigente y el estado del cuerpo.',
+      help: 'Se calcula con el reglamento, la directiva que está en ejercicio hoy —que sale de las fechas de su período— y el estado del cuerpo.',
       calc: (fila, { db }) => evaluarCumplimiento(fila, db),
     },
   ],
@@ -668,15 +687,13 @@ module.exports = {
       }
 
       /*
-       * Su directiva vigente, que es de lo primero que se pregunta al abrir un
+       * Su directiva en ejercicio, que es de lo primero que se pregunta al abrir un
        * cuerpo: es uno de los requisitos que su propio cumplimiento evalúa.
        */
       if (can(req.user, 'directivas', 'view')) {
-        const vigente = db
-          .prepare(`SELECT periodo, fecha_termino FROM directivas
-                     WHERE cuerpo_id = ? AND estado = 'Vigente'
-                     ORDER BY fecha_inicio DESC LIMIT 1`)
-          .get(id);
+        // La misma definición que el cumplimiento, leída del mismo archivo: el
+        // resumen y la insignia de la ficha no pueden decir cosas distintas
+        const vigente = require('../directiva-en-ejercicio').laQueEjerce(db, id);
         resumen.directiva = {
           periodo: vigente ? vigente.periodo : null,
           vence: vigente ? vigente.fecha_termino : null,

@@ -64,7 +64,7 @@ function informe(origen, descartadas) {
   fila('Directivas vigentes', new Set((origen.memberships || [])
     .filter((m) => m.status === 'active' && gruposDelOrigen.has(m.groupId))
     .filter((m) => m.role && !['member', 'leader'].includes(m.role))
-    .map((m) => m.groupId)).size, cuantos('directivas', "estado = 'Vigente'"));
+    .map((m) => m.groupId)).size, cuantos('directivas', require('../directiva-en-ejercicio').noCerrada()));
 
   fila('Actividades', (origen.activities || []).length, cuantos('asistencias'));
 
@@ -115,11 +115,12 @@ function informe(origen, descartadas) {
       .all(cuerpo.id)
       .map((f) => f.miembro_id);
     const existen = ids.filter((id) => uno('SELECT id FROM miembros WHERE id = ?', id)).length;
-    const dir = uno("SELECT * FROM directivas WHERE cuerpo_id = ? AND estado = 'Vigente'", cuerpo.id);
+    // La que dirige hoy, con la misma definición que el resto del sistema
+    const dir = require('../directiva-en-ejercicio').laQueEjerce(db, cuerpo.id);
     const jefe = dir && dir.primer_jefe_id ? uno('SELECT nombres, apellidos FROM miembros WHERE id = ?', dir.primer_jefe_id) : null;
     linea(`  ${marca(existen === ids.length)} Abrir un cuerpo y ver a su gente:`);
     linea(`      "${cuerpo.nombre}" tiene ${ids.length} integrantes y los ${existen} existen en Miembros.`);
-    if (jefe) linea(`      Su directiva vigente (${dir.periodo}) tiene de primer jefe/a a ${jefe.nombres} ${jefe.apellidos}.`);
+    if (jefe) linea(`      Su directiva en ejercicio (${dir.periodo}) tiene de primer jefe/a a ${jefe.nombres} ${jefe.apellidos}.`);
     if (existen !== ids.length) todoCuadra = false;
   }
 
