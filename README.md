@@ -49,6 +49,25 @@ Al primer arranque se crean automáticamente:
 | `PORT` | `3000` | Puerto del servidor |
 | `DATA_DIR` | `./data` | Carpeta de la base de datos SQLite y archivos subidos |
 | `JWT_SECRET` | (insegura) | **Definir en producción**: clave para firmar sesiones |
+| `CREDENCIAL_SECRETO` | usa `JWT_SECRET` | **Definir en producción, UNA SOLA VEZ**: clave con que se firma el código de autenticidad del QR de las credenciales. Cambiarla invalida todas las credenciales ya impresas |
+
+> ⚠️ **`CREDENCIAL_SECRETO` se define una vez y no se vuelve a tocar.** El código de siete
+> caracteres del QR se calcula con los datos de la credencial *más esta clave*, así que la página
+> pública de verificación lo recalcula con ella para decir si una credencial es auténtica. Si la
+> clave cambia, **ninguna credencial ya impresa vuelve a verificar**: los códigos que llevan
+> impresos dejan de calzar y todas contestan que no son válidas. No hay manera de recuperarlas sin
+> reponer la clave anterior. Para generar una:
+>
+> ```bash
+> node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+> ```
+>
+> Si falta, el servidor usa `JWT_SECRET`; si tampoco está, una clave de reserva escrita en el
+> código —que conoce cualquiera que haya visto el repositorio— y lo avisa al arrancar. Con esa
+> última, cualquiera puede fabricar una credencial que la página pública dé por auténtica. Y ojo
+> con el respaldo: si se define `JWT_SECRET` pero no `CREDENCIAL_SECRETO`, cambiar la de las
+> sesiones —algo que sí se hace de vez en cuando— invalida de paso todas las credenciales
+> impresas. Por eso conviene definir las dos, cada una por su cuenta.
 
 La base de datos es un único archivo SQLite (`data/iglesias.db`); para respaldar el sistema basta copiar la carpeta `data/`.
 
