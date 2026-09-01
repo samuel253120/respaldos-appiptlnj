@@ -96,6 +96,12 @@ const DOCUMENTOS = [
    */
   { nombre: 'la hoja de una iglesia', modulo: 'iglesias' },
   { nombre: 'la hoja de un pastor', modulo: 'pastores' },
+  /*
+   * Y la tercera, que la 1.255.0 destapó por lo mismo: dieciocho módulos se
+   * imprimían y Cuerpos / Grupos no, teniendo impresos tres de sus propios
+   * hijos —su directiva, sus actas y las evaluaciones de su gente—.
+   */
+  { nombre: 'la hoja de un cuerpo', modulo: 'cuerpos' },
   { nombre: 'un acta de reunión', modulo: 'actas_reuniones' },
   { nombre: 'el informe de asistencia', ruta: '#/asistencia/informes' },
   /*
@@ -210,6 +216,29 @@ async function primerRegistro(pagina, modulo) {
       revisar('y no suma la plata de sus cuerpos a la suya',
         !/Cajas de sus cuerpos/.test(r.texto) || /otro dueño/.test(r.texto),
         'son dos dueños distintos, como en el inventario');
+    }
+
+    /*
+     * Y la de un CUERPO dice QUIÉNES LO COMPONEN, que es la pregunta con la
+     * que se pide en papel: para entregarlo, para llevarlo a una reunión o
+     * para presentarlo. Sin eso es la ficha a secas, igual que la de la
+     * iglesia antes de la 1.235.0.
+     */
+    /*
+     * `!doc.rutaCon` distingue la HOJA del cuerpo de la planilla mensual, que
+     * también dice `modulo: 'cuerpos'` —lo usa solo para elegir de cuál— y es
+     * otra pantalla. Sin esa mitad, estas tres comprobaciones se le hacían
+     * también a la planilla y salían en rojo por pedirle algo que no le toca.
+     */
+    if (doc.modulo === 'cuerpos' && !doc.rutaCon) {
+      revisar('la hoja de un cuerpo dice quiénes lo componen',
+        /Quiénes lo componen/.test(r.texto),
+        'una hoja de entrega que no dice quiénes son no sirve para entregar nada');
+      revisar('y cuánta gente tiene hoy, con su cuota',
+        /Lo que tiene hoy/.test(r.texto) && /Integrantes/.test(r.texto) && /Cuota mensual/.test(r.texto));
+      revisar('y no imprime el RUT de su gente',
+        !/\b\d{7,8}-[\dkK]\b/.test(r.texto.replace(/RUT[^\n]*/g, '')),
+        'el RUT tiene su propia llave, y una hoja impresa es por donde se escapa');
     }
   }
 

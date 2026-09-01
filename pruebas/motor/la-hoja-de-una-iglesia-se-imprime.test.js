@@ -74,10 +74,11 @@ test('la hoja de una iglesia pide lo que la congregación tiene hoy', () => {
    * comprobación pasaba en verde con la llamada rota: quitarle el argumento al
    * llamador no rompía nada.
    */
-  assert.match(app, /sheet = printGenerico\(m, row, susAyudas, suHistorial, susDocumentos, loQueTiene\)/,
+  assert.match(app, /sheet = printGenerico\(m, row, \{[^}]*\bloQueTiene\b[^}]*\}\)/,
     'y llega hasta la hoja');
   const desde = app.indexOf('function printGenerico(');
-  const trozo = app.slice(desde, desde + 3200);
+  // El recorte creció con la sección de la gente de un cuerpo (1.255.0)
+  const trozo = app.slice(desde, desde + 4600);
   assert.match(trozo, /Lo que tiene hoy/);
   assert.match(trozo, /es lo que hay\s*\n?\s*anotado en el sistema en el momento de imprimir/,
     'quien firme la hoja tiene que saber que son cifras de hoy, no datos de la ficha');

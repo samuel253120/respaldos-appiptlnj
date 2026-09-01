@@ -45,7 +45,7 @@ const laHoja = app.slice(app.indexOf('function printGenerico'), app.indexOf('Imp
 const laRuta = app.slice(app.indexOf('let susDocumentos = null;'), app.indexOf('const bajarPdf ='));
 
 test('los dos trozos que se revisan son los que se creen', () => {
-  assert.ok(laHoja.length > 3000 && laHoja.length < 12000, `la hoja mide ${laHoja.length}`);
+  assert.ok(laHoja.length > 3000 && laHoja.length < 16000, `la hoja mide ${laHoja.length}`);
   assert.match(laHoja, /print-sheet print-generic/);
   assert.ok(laRuta.length > 400 && laRuta.length < 4000, `la ruta mide ${laRuta.length}`);
   assert.match(laRuta, /printGenerico/);
@@ -165,8 +165,16 @@ test('la hoja recibe la carpeta como un dato más, sin cambiarle nada a las otra
    * hoja de una iglesia lo que la congregación tiene, esta prueba se cayó por
    * un argumento nuevo detrás, sin que nada de la carpeta hubiera cambiado.
    */
-  assert.match(app, /function printGenerico\([^)]*\bsusDocumentos\b/);
-  assert.match(app, /sheet = printGenerico\(m, row, susAyudas, suHistorial, susDocumentos[,)]/);
+  /*
+   * Desde la 1.255.0 lo que la hoja lleva de más llega CON NOMBRE y no por
+   * posición: eran cinco cosas en fila y la sexta —la gente de un cuerpo—
+   * habría dejado una llamada de siete argumentos. Lo que esta prueba mide
+   * sigue siendo lo mismo: que la carpeta esté entre lo que recibe y entre lo
+   * que se le pasa.
+   */
+  assert.match(app, /function printGenerico\(m, row, extras = \{\}\)/);
+  assert.match(app, /const \{[^}]*\bsusDocumentos\b[^}]*\} = extras;/);
+  assert.match(app, /sheet = printGenerico\(m, row, \{[^}]*\bsusDocumentos\b/);
   // Las hojas que no son la genérica no la reciben ni la necesitan
   for (const otra of ['printSolicitud', 'printCertificado', 'printActa', 'printServicio', 'printMovimiento']) {
     assert.doesNotMatch(app, new RegExp(`${otra}\\([^)]*susDocumentos`), `${otra} no tiene por qué recibirla`);

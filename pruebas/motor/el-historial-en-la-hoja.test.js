@@ -38,7 +38,12 @@ const css = fs.readFileSync(path.join(__dirname, '../../public/styles.css'), 'ut
 const laHoja = app.slice(app.indexOf('function printGenerico'), app.indexOf('Importación de datos desde archivos CSV'));
 
 test('el trozo que se revisa es el de la hoja genérica', () => {
-  assert.ok(laHoja.length > 1000 && laHoja.length < 12000, `el recorte mide ${laHoja.length}`);
+  /*
+    * El techo subió en la 1.255.0: la hoja genérica estrenó la sección de la
+    * gente de un cuerpo. Es una guardia de que el recorte SEA la función y no
+    * medio archivo, no una medida de cuánto puede crecer.
+    */
+  assert.ok(laHoja.length > 1000 && laHoja.length < 16000, `el recorte mide ${laHoja.length}`);
   assert.match(laHoja, /print-sheet print-generic/);
 });
 

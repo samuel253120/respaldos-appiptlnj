@@ -9920,6 +9920,23 @@ async function viewPrint(name, id) {
     loQueTiene = await api('GET', `/iglesias/${id}/resumen`).catch(() => null);
   }
 
+  /*
+   * Y la hoja de un CUERPO sale con su gente: quiénes lo componen, con su
+   * estado y desde cuándo. Es lo mismo que hace la de la iglesia con sus
+   * cifras, y por lo mismo: un cuerpo se pide en papel para entregarlo, para
+   * llevarlo a una reunión o para presentarlo, y ahí la pregunta es quiénes lo
+   * componen. Sin eso es la ficha a secas.
+   *
+   * Sale de la MISMA ruta que pinta el panel de su ficha, así que el papel y la
+   * pantalla no pueden decir cosas distintas; y esa ruta ya pide el permiso de
+   * Integrantes de Cuerpos, así que a quien no lo tenga la hoja le sale igual,
+   * sin esta parte. Es la regla de las ayudas, del historial y de la carpeta.
+   */
+  let suGente = null;
+  if (name === 'cuerpos') {
+    suGente = await api('GET', `/cuerpos/${id}/integrantes`).catch(() => null);
+  }
+
   let clausulaDeposito = null;
   if (name === 'inventarios' && row.regimen === 'En depósito') {
     clausulaDeposito = await api('GET', '/inventarios/clausula-deposito')
@@ -9936,7 +9953,7 @@ async function viewPrint(name, id) {
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
   else if (name === 'tesoreria') sheet = printMovimiento(m, row);
-  else sheet = printGenerico(m, row, susAyudas, suHistorial, susDocumentos, loQueTiene);
+  else sheet = printGenerico(m, row, { susAyudas, suHistorial, susDocumentos, loQueTiene, suGente });
 
   content().innerHTML = `
     <div class="print-actions no-print">
@@ -11424,7 +11441,13 @@ function printMovimiento(m, row) {
     </div>`;
 }
 
-function printGenerico(m, row, susAyudas, suHistorial, susDocumentos, loQueTiene) {
+/*
+ * Lo que la hoja lleva además de los datos llega con nombre y no por posición:
+ * eran cinco cosas distintas en fila y la sexta —la gente de un cuerpo— habría
+ * dejado una llamada de siete argumentos donde nadie puede ver cuál es cuál.
+ */
+function printGenerico(m, row, extras = {}) {
+  const { susAyudas, suHistorial, susDocumentos, loQueTiene, suGente } = extras;
   /*
    * Lo que una congregación tiene hoy, arriba de su carpeta y de su historial.
    *
@@ -11472,6 +11495,32 @@ function printGenerico(m, row, susAyudas, suHistorial, susDocumentos, loQueTiene
       sumar('Solicitudes en trámite', fmtNumero(loQueTiene.solicitudes.abiertas));
     }
   }
+
+  /*
+   * Y lo que tiene hoy un CUERPO son las mismas cifras de su panel: su gente
+   * repartida por estado, y su cuota. Van en este mismo cuadro y no en otro,
+   * porque contestan la misma pregunta que las de la iglesia —qué hay hoy, al
+   * momento de imprimir— y esta hoja ya dice el día arriba.
+   */
+  if (suGente && suGente.resumen) {
+    const r = suGente.resumen;
+    const sumar = (que, cuanto, apunte) =>
+      cifras.push(`<tr><td class="k">${esc(que)}</td><td><b>${esc(cuanto)}</b>${
+        apunte ? ` <i>${esc(apunte)}</i>` : ''}</td></tr>`);
+    sumar('Integrantes', fmtNumero(r.activos + r.en_prueba),
+      `— ${fmtNumero(r.activos)} activo(s)${r.en_prueba ? ` y ${fmtNumero(r.en_prueba)} en prueba` : ''}${
+        r.retirados ? `; ${fmtNumero(r.retirados)} retirado(s)` : ''}`);
+    if (r.prueba_vencida) {
+      sumar('Períodos de prueba vencidos', fmtNumero(r.prueba_vencida), '— hay que evaluar su informe');
+    }
+    if (r.no_inscritos) {
+      sumar('De ellos, no inscritos en la membresía', fmtNumero(r.no_inscritos));
+    }
+    const c = suGente.cuerpo || {};
+    sumar('Cuota mensual', c.cobra_cuota
+      ? (Number(c.cuota_mensual) > 0 ? fmtMoney(c.cuota_mensual) : 'sin monto definido')
+      : 'no cobra');
+  }
   const loSuyo = cifras.length ? `
     <h2 class="print-h2">Lo que tiene hoy</h2>
     <div class="sub">Al ${fechaLarga(new Date().toISOString())}. No son datos escritos en su ficha: es lo que hay
@@ -11498,6 +11547,40 @@ function printGenerico(m, row, susAyudas, suHistorial, susDocumentos, loQueTiene
           <td>${esc(a.estado || '')}</td>
         </tr>`).join('')}
     </table>` : '';
+
+  /*
+   * Su gente, con el detalle y no solo con el total.
+   *
+   * Es lo que hace que esta hoja sirva para lo que se pide en papel: quien
+   * entrega un cuerpo, o quien lo lleva a una reunión, tiene que poder leer
+   * quiénes lo componen y desde cuándo. Un «49 integrantes» a secas no sirve
+   * para eso, igual que un «3 entregas» no servía en la ficha de una persona.
+   *
+   * Los RETIRADOS no salen: la hoja dice quiénes componen el cuerpo hoy, y su
+   * número ya está dicho arriba. Y el RUT tampoco, aunque la ruta lo traiga:
+   * es un dato reservado que tiene su propia llave, y una hoja impresa es
+   * justamente por donde se escapa.
+   */
+  const gente = ((suGente && suGente.integrantes) || []).filter((g) => g.estado !== 'Retirado');
+  const susIntegrantes = suGente ? `
+    <h2 class="print-h2">Quiénes lo componen</h2>
+    <div class="sub">${gente.length
+      ? `${fmtNumero(gente.length)} persona(s) que pertenecen hoy al cuerpo. Los retirados no salen en esta hoja.`
+      : 'Todavía no tiene integrantes anotados.'}</div>
+    ${gente.length ? `
+      <table class="grid tramite">
+        <thead><tr><th>Nombre</th><th>Estado</th><th>Desde</th><th>Oficial desde</th></tr></thead>
+        <tbody>
+          ${gente.map((g) => `
+            <tr>
+              <td>${esc(g.nombre || '')}${g.lidera ? ' <b>— dirige el cuerpo</b>' : ''}${
+                g.persona_tipo === 'No miembro' ? ' <i>— no inscrito(a) en la membresía</i>' : ''}</td>
+              <td class="nowrap">${esc(g.estado || '')}${g.prueba_vencida ? ' <b>(prueba vencida)</b>' : ''}</td>
+              <td class="nowrap">${esc(g.fecha_ingreso ? fechaCorta(g.fecha_ingreso) : '')}</td>
+              <td class="nowrap">${esc(g.fecha_oficial ? fechaCorta(g.fecha_oficial) : '—')}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : ''}` : '';
 
   /*
    * Lo que hay en su carpeta, antes del historial.
@@ -11639,6 +11722,7 @@ function printGenerico(m, row, susAyudas, suHistorial, susDocumentos, loQueTiene
           .join('')}
       </table>
       ${loSuyo}
+      ${susIntegrantes}
       ${entregas}
       ${carpeta}
       ${historial}

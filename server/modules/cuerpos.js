@@ -116,6 +116,22 @@ module.exports = {
   icon: '👥',
   group: 'Organización',
   order: 52,
+  /*
+   * Su hoja se imprime.
+   *
+   * Dieciocho módulos se imprimían y éste no, teniendo impresos TRES de sus
+   * propios hijos: su directiva, sus actas de reunión y las evaluaciones de su
+   * gente. Es el mismo hallazgo de la 1.235.0, que destapó que la hoja de la
+   * iglesia y la del pastor estaban escritas y no salían porque sus módulos no
+   * llevaban esta línea, así que el botón no aparecía y ese código no se
+   * ejecutaba jamás.
+   *
+   * Y como la de la iglesia, sale con LO QUE TIENE HOY —su gente, con su
+   * estado y desde cuándo— y no con sus datos a secas: un cuerpo se pide en
+   * papel para entregarlo, para llevarlo a una reunión o para presentarlo, y
+   * para eso la pregunta es quiénes lo componen.
+   */
+  printable: true,
   display: '{nombre}',
   /*
    * Lo que este cuerpo ofrece cuando otro módulo lo referencia en un
