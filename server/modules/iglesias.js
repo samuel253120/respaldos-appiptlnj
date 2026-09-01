@@ -43,12 +43,13 @@ const TIPO_UNICO = 'Iglesia Matriz';
  * congregación con un nombre propio.
  */
 
-/** Dos nombres se comparan sin tildes, sin mayúsculas y sin espacios de más. */
-const comoSeCompara = (nombre) => String(nombre || '')
-  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  .toLowerCase()
-  .replace(/\s+/g, ' ')
-  .trim();
+/*
+ * Cuándo dos nombres son el mismo nombre. Está en server/mismo-nombre.js, que
+ * es de donde lo lee también la regla del cuerpo repetido: si uno ignorara las
+ * tildes y el otro no, «Jóvenes» y «Jovenes» se avisarían en una lista y no en
+ * la otra.
+ */
+const { comoSeCompara } = require('../mismo-nombre');
 
 /**
  * Las otras iglesias que se llaman igual que ésta. Se traen todas y se comparan

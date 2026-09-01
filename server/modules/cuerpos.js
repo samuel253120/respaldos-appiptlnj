@@ -125,6 +125,15 @@ module.exports = {
    * mismo arreglo que la 1.232.0 le hizo a las iglesias inactivas.
    */
   opcionesPorDefecto: '/cuerpos/activos?ademas={cuerpo_id}',
+  /*
+   * Y a los que se llaman igual se les agrega lo que los distingue (ver
+   * server/el-nombre-del-cuerpo.js). Esta es la lista genérica del motor —la
+   * que piden los filtros del listado—; la otra puerta es la ruta propia de
+   * abajo, y las dos tiran del mismo sitio: mostrar la iglesia en una y no en
+   * la otra dejaría un desplegable con dos opciones idénticas.
+   */
+  comoSeOfrecen: (opciones) =>
+    require('../el-nombre-del-cuerpo').conLoQueLosDistingue(opciones, require('../db').db),
   searchFields: ['nombre', 'descripcion', 'lider'],
   listFields: ['foto', 'nombre', 'tipo', 'iglesia_id', 'lider', 'estado', 'cumplimiento'],
   defaultSort: { field: 'nombre', dir: 'asc' },
@@ -297,14 +306,26 @@ module.exports = {
       }
 
       /*
-       * Y al final, lo único que este gancho PREGUNTA en vez de rechazar:
-       * encender la cuota sin decir de cuánto (ver server/cuota-sin-monto.js).
+       * Y al final, las dos cosas que este gancho PREGUNTA en vez de rechazar.
        *
-       * Va última a propósito. Todo lo de arriba son rechazos —el dato no
+       * Van últimas a propósito. Todo lo de arriba son rechazos —el dato no
        * entra, y no hay manera de contestarlos que sí—, así que tienen que
        * salir antes: preguntar primero haría que alguien contestara «está
        * bien» para toparse enseguida con un no.
+       *
+       * Y entre las dos manda el NOMBRE REPETIDO. El «igual_asi» es UNO solo
+       * para todo el guardado —contestar que sí contesta las dos— así que el
+       * orden decide cuál se llega a ver, y se pone delante la que cuesta más
+       * deshacer: un cuerpo duplicado hay que borrarlo, y un monto sin poner
+       * se pone. Además la de la cuota tiene otros dos lugares donde se dice
+       * —el panel y el estado de cumplimiento— y ésta no tiene ninguno. Es el
+       * mismo criterio con que quedaron ordenadas las tres preguntas de la
+       * ficha de un pastor en la 1.242.0.
        */
+      const repetido = require('../el-nombre-del-cuerpo')
+        .avisoDeCuerpoRepetido(db, data, { existing, confirmado });
+      if (repetido) return repetido;
+
       return require('../cuota-sin-monto')
         .avisoSiCobraSinMonto(data, { existing, confirmado });
     },
@@ -433,7 +454,8 @@ module.exports = {
       const filas = db
         .prepare(`SELECT id, nombre FROM cuerpos WHERE ${where.join(' AND ')} ORDER BY nombre`)
         .all(...params);
-      res.json(filas.map((c) => ({ id: c.id, label: c.nombre })));
+      res.json(require('../el-nombre-del-cuerpo')
+        .conLoQueLosDistingue(filas.map((c) => ({ id: c.id, label: c.nombre })), db));
     });
 
     /**
