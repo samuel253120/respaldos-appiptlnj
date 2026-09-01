@@ -16491,7 +16491,7 @@ async function renderDirectivasCuerpo(cuerpoId, caja) {
         ${directivas.rows.map((d) => `
           <li class="${situacionDeDirectiva(d).texto === 'En ejercicio' ? 'vigente' : ''}" data-ir="#/m/directivas/edit/${d.id}">
             <div class="dp">
-              <b>${esc(d.periodo)}</b>
+              <b>${esc(d.periodo || 'Sin período escrito')}</b>
               <span class="badge ${nivelClase(situacionDeDirectiva(d).nivel)}">${esc(situacionDeDirectiva(d).texto)}</span>
             </div>
             <div class="df">${fechaCorta(d.fecha_inicio)}${d.fecha_termino ? ' — ' + fechaCorta(d.fecha_termino) : ''}</div>

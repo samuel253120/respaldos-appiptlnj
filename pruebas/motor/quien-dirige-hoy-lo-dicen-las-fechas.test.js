@@ -295,16 +295,19 @@ test('extenderlo ENCIMA de otra sí pregunta', async () => {
   assert.equal(r.json.confirmar, 'directiva_que_se_pisa');
 });
 
-test('una cerrada a mano no se pisa con nadie', () => {
+test('una cerrada a mano SÍ se pisa: el histórico también se contradice', () => {
   /*
-   * Ya no está en carrera, así que preguntarlo sería un aviso por algo que no
-   * puede pasar, y este sistema ya aprendió que un aviso que sale siempre
-   * enseña a apretar «Está bien» sin leer.
+   * Acá la 1.257.0 decía lo contrario, y estaba a medias. Su pregunta miraba una
+   * sola cosa —quién dirige hoy— y para eso una directiva cerrada está fuera de
+   * carrera. Pero dos períodos que se pisan son un problema aunque los dos estén
+   * cerrados: el histórico queda diciendo que el cuerpo tuvo dos directivas a la
+   * vez, y eso es lo que se lee años después. Medido en la 1.262.0: dos
+   * finalizadas que se pisaban dos años entraban las dos sin una palabra.
    */
   const c = unCuerpo();
   laDirectiva(c, 'la de ahora', anios(-1), anios(1), 'Vigente');
   const cerrada = { cuerpo_id: c.id, estado: 'Finalizada', fecha_inicio: anios(-1), fecha_termino: anios(1) };
-  assert.equal(enEjercicio.lasQueSePisan(db, cerrada, 0).length, 0);
+  assert.equal(enEjercicio.lasQueSePisan(db, cerrada, 0).length, 1);
 });
 
 // ------------------------ las pantallas contestan todas lo mismo ----

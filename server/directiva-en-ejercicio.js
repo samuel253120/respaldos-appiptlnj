@@ -153,17 +153,30 @@ function elDiaAntes(fecha) {
 
 const comoSeLee = (f) => (f ? f.split('-').reverse().join('-') : '');
 
+/** ¿Estas dos cubren exactamente los mismos días? Entonces son la misma. */
+const elMismoPeriodo = (a, b) =>
+  !!a.fecha_inicio && a.fecha_inicio === b.fecha_inicio
+  && String(a.fecha_termino || '') === String(b.fecha_termino || '');
+
 /**
  * Las otras directivas del mismo cuerpo cuyo período se pisa con ésta.
  *
  * No se mira solo el día de hoy: una directiva electa para marzo que se pisa
  * nueve meses con la que está gobernando es el caso que hay que atajar, y hoy
  * todavía no se pisan.
+ *
+ * SE MIRA TODO EL HISTÓRICO, cerradas incluidas. La 1.257.0 dejaba fuera las
+ * marcadas «Finalizada» porque preguntaba una sola cosa —quién dirige hoy— y
+ * una cerrada está fuera de carrera. Pero dos períodos que se pisan son un
+ * problema aunque los dos estén cerrados: el histórico queda diciendo que el
+ * cuerpo tuvo dos directivas a la vez, y eso es lo que se lee años después.
+ * Medido: dos «2020 – 2022» y «2021 – 2023» finalizadas entraban las dos sin
+ * una palabra, y una tercera idéntica a la primera también.
  */
 function lasQueSePisan(db, fila, id) {
-  if (fila.estado === CERRADA || !fila.fecha_inicio) return [];
+  if (!fila.fecha_inicio) return [];
   return db
-    .prepare(`SELECT * FROM directivas WHERE cuerpo_id = ? AND id <> ? AND ${noCerrada()}`)
+    .prepare('SELECT * FROM directivas WHERE cuerpo_id = ? AND id <> ?')
     .all(fila.cuerpo_id, id || 0)
     .filter((otra) => seTraslapan(fila, otra));
 }
@@ -178,6 +191,27 @@ function lasQueSePisan(db, fila, id) {
  * mientras se hace la entrega.
  */
 function avisoDeTraslape(fila, otras) {
+  /*
+   * EL DUPLICADO EXACTO SE DICE DISTINTO. Cuando las dos cubren los mismos días
+   * no hay ninguna fecha que corregir —proponer «póngale de término el día antes
+   * de que ésta asume» daría un período de menos de un día— y además no es el
+   * mismo problema: acá no son dos directivas que se solapan, es la misma
+   * elección anotada dos veces, que es lo que pasa cuando dos personas cargan el
+   * histórico o cuando alguien guarda dos veces.
+   */
+  const iguales = otras.filter((otra) => elMismoPeriodo(fila, otra));
+  if (iguales.length) {
+    const cual = iguales[0];
+    return (
+      `Este cuerpo ya tiene una directiva con exactamente el mismo período: «${cual.periodo || 'sin período escrito'}», `
+      + `del ${comoSeLee(cual.fecha_inicio)}`
+      + `${cual.fecha_termino ? ` al ${comoSeLee(cual.fecha_termino)}` : ', sin fecha de término'}. `
+      + 'Si es la misma elección, corrija la que ya está en vez de anotar otra; si de verdad hubo dos '
+      + '—una anulada y otra repetida el mismo año, por ejemplo— confirme, y conviene que se distingan '
+      + 'en el período o en las notas para poder decir cuál es cuál.'
+    );
+  }
+
   const cual = otras[0];
   const propuesta = fila.fecha_inicio > (cual.fecha_inicio || '')
     ? `Si «${cual.periodo || 'la anterior'}» termina cuando ésta asume, póngale de fecha de término el ${comoSeLee(elDiaAntes(fila.fecha_inicio))}.`
@@ -186,13 +220,13 @@ function avisoDeTraslape(fila, otras) {
   return (
     `El período de «${cual.periodo || 'otra directiva'}»${cuantas} —del ${comoSeLee(cual.fecha_inicio)} ` +
     `${cual.fecha_termino ? `al ${comoSeLee(cual.fecha_termino)}` : 'y sin fecha de término'}— se pisa con éste. ` +
-    `${propuesta} Si las guarda así, el cuerpo tendrá dos directivas con el período corriendo y la anterior ` +
-    'aparecerá como «Reemplazada» hasta que se le corrija la fecha.'
+    `${propuesta} Si las guarda así, el cuerpo tendrá dos directivas cubriendo los mismos días, y en su ` +
+    'historial no se podrá decir cuál dirigía.'
   );
 }
 
 module.exports = {
   CERRADA, SITUACIONES, NIVEL, noCerrada,
   laQueEjerce, situacionDe, insigniaDeSituacion,
-  seTraslapan, lasQueSePisan, avisoDeTraslape, elDiaAntes,
+  seTraslapan, elMismoPeriodo, lasQueSePisan, avisoDeTraslape, elDiaAntes,
 };

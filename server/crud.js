@@ -1310,7 +1310,16 @@ function buildRouter() {
         for (const f of def.fields) {
           if (!f.required || !aplica(f)) continue;
           const val = isNew ? data[f.name] : data[f.name] !== undefined ? data[f.name] : existing[f.name];
-          if (val === null || val === undefined || val === '') {
+          /*
+           * Puros espacios NO es un campo lleno. Se comprobaba `val === ''`, así
+           * que un «   » pasaba: medido sobre el período de una directiva, que
+           * entraba en blanco y dejaba el histórico con una fila sin nombre. No
+           * es de ese módulo —vale para todos los campos obligatorios de texto
+           * del sistema— y por eso se arregla acá y no allá.
+           */
+          const enBlanco = val === null || val === undefined
+            || (typeof val === 'string' && val.trim() === '');
+          if (enBlanco) {
             if (f.type === 'password' && !isNew) continue; // contraseña solo obligatoria al crear
             return res.status(400).json({ error: `El campo "${f.label}" es obligatorio` });
           }
