@@ -213,17 +213,59 @@ function revisarLoReservado(def) {
  * `numero_acta` no, aunque las dos podrían llamarse parecido. Lo que no sea un
  * campo declarado del módulo —`{persona}` de un enlace, una columna calculada—
  * se pega igual que antes.
+ *
+ * ── UN REGISTRO SE PUEDE NOMBRAR POR AQUELLO DE LO QUE CUELGA ──
+ *
+ * `{cuerpo_id_label}` trae el nombre del cuerpo al que apunta `cuerpo_id`. Hace
+ * falta para los registros que por sí solos no se distinguen: una directiva se
+ * llamaba «2026 – 2027», y dos directivas de dos cuerpos distintos con el mismo
+ * período eran el mismo texto en el listado, en el Registro de Cambios y en la
+ * hoja impresa. Con esto se llama «Damas — 2026 – 2027», que es como la nombra
+ * cualquiera.
+ *
+ * El valor se BUSCA solo si la fila no lo trae ya puesto: las que salen de un
+ * listado vienen con sus etiquetas resueltas de una vez (ver `expandRow`), y
+ * ahí esto no consulta nada. La consulta aparece cuando se nombra una fila
+ * suelta —al anotarla en el Registro de Cambios, por ejemplo— y es una sola,
+ * por clave primaria.
+ *
+ * Se baja UN SOLO NIVEL, a propósito: el nombre del cuerpo sale de la
+ * plantilla del cuerpo, y si esa plantilla pidiera a su vez otra etiqueta, esa
+ * segunda no se resuelve. Alcanza para lo que hace falta y no deja que una
+ * cadena de plantillas se convierta en una cadena de consultas.
  */
-function displayOf(def, row) {
+function displayOf(def, row, sinBajarMas) {
   if (!row) return '';
   const nombres = require('./nombres');
   const { comoSeLee } = require('./fechas');
   const recortes = { primero: nombres.primerNombre, persona: nombres.acortar };
   const tipoDe = {};
-  for (const f of def.fields || []) tipoDe[f.name] = f.type;
+  const refDe = {};
+  for (const f of def.fields || []) {
+    tipoDe[f.name] = f.type;
+    if (f.type === 'ref' && f.ref) refDe[f.name] = f.ref;
+  }
+
+  /** El nombre de aquello a lo que apunta `campo_id`, buscándolo si hace falta. */
+  const etiquetaDeSuReferencia = (campo, hondo) => {
+    const dueno = campo.slice(0, -'_label'.length);
+    if (hondo || !refDe[dueno] || !row[dueno]) return '';
+    const otro = modules[refDe[dueno]];
+    if (!otro) return '';
+    const { db } = require('./db');   // tardío: db.js no sabe de módulos
+    let fila;
+    try {
+      fila = db.prepare(`SELECT * FROM "${otro.name}" WHERE id = ?`).get(row[dueno]);
+    } catch (e) {
+      return '';
+    }
+    return fila ? displayOf(otro, fila, true) : '';
+  };
+
   return def.display
     .replace(/\{(\w+)(?::(\w+))?\}/g, (_, campo, recorte) => {
-      const valor = row[campo] == null ? '' : String(row[campo]);
+      let valor = row[campo] == null ? '' : String(row[campo]);
+      if (!valor && campo.endsWith('_label')) valor = etiquetaDeSuReferencia(campo, sinBajarMas);
       const corta = recorte && recortes[recorte];
       if (corta) return corta(valor);
       if (tipoDe[campo] === 'date' && /^\d{4}-\d{2}-\d{2}/.test(valor)) {
@@ -231,6 +273,13 @@ function displayOf(def, row) {
       }
       return valor;
     })
+    /*
+     * Una etiqueta que no se pudo resolver deja la plantilla con su separador
+     * colgando —«— 2026 – 2027»—, y eso es peor que no ponerla: parece un dato
+     * perdido. Se limpian los guiones y espacios sueltos de las puntas.
+     */
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s—–-]+|[\s—–-]+$/g, '')
     .trim() || `#${row.id}`;
 }
 

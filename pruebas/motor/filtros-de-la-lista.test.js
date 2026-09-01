@@ -89,6 +89,14 @@ const sinFecha = alguien(null, [damas]);
 const retirada = alguien(40, [damas], { como: 'Retirado' });
 const enPrueba = alguien(25, [taller], { como: 'En prueba' });
 
+/*
+ * Quiénes son «los de este escenario». La base del motor la comparten todos
+ * los archivos de prueba, así que cualquier comprobación que cuente filas
+ * tiene que contar las suyas y no las que otro archivo esté sembrando.
+ */
+const DEL_ESCENARIO = new Set([guagua, nina, justo18, casi18, treinta, justo31,
+  abuela, sinFecha, retirada, enPrueba].map(Number));
+
 // -------------------------------- por edad ---------------------------------
 
 test('«los menores de 18» trae a los menores de 18, y a nadie más', () => {
@@ -228,8 +236,19 @@ test('quien no tiene fecha va al final, se pida como se pida', () => {
 });
 
 test('ordenar por un calculado que no sabe por dónde no rompe nada', () => {
-  const porTrato = ids({ sort: 'tratamiento' });
-  assert.equal(porTrato.length, ids({}).length, 'trae lo mismo, en el orden de siempre');
+  /*
+   * Se compara sobre LA GENTE DE ESTE ESCENARIO y no sobre la tabla entera.
+   *
+   * Las dos lecturas eran de todos los miembros de la base, y la base es una
+   * sola para los archivos del motor, que corren en paralelo: otro archivo
+   * insertó una ficha entre la primera lectura y la segunda y salió «571 !== 572».
+   * No es intermitencia, es una comprobación que abarcaba más de lo que este
+   * archivo controla. Es lo mismo que le pasaba a `solicitud-por-iglesia` en la
+   * 1.257.0.
+   */
+  const losMios = new Set(ids({}).filter((id) => DEL_ESCENARIO.has(id)));
+  const porTrato = ids({ sort: 'tratamiento' }).filter((id) => losMios.has(id));
+  assert.equal(porTrato.length, losMios.size, 'trae lo mismo, en el orden de siempre');
 });
 
 // ------------------------------ dónde está puesto --------------------------

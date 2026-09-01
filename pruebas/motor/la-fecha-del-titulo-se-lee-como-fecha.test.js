@@ -77,7 +77,15 @@ test('y un campo de fecha vacío o a medio escribir no se inventa nada', () => {
    * dar vuelta la nada da la nada—.
    */
   const def = getModule('traspasos');
-  assert.equal(displayOf(def, { id: 7, fecha: null, concepto: 'Sin fecha' }), '— Sin fecha');
+  /*
+   * Sin fecha queda «Sin fecha» y no «— Sin fecha». Hasta la 1.265.0 el
+   * separador de la plantilla quedaba colgando adelante, y esta prueba lo daba
+   * por bueno porque medía otra cosa: lo suyo es que una fecha a medio escribir
+   * no se dé vuelta. Desde la 1.266.0 el nombre se limpia de guiones y espacios
+   * sueltos en las puntas —un separador solo parece un dato perdido, y ahora
+   * ese nombre encabeza la hoja impresa—. Cambio a propósito, no un accidente.
+   */
+  assert.equal(displayOf(def, { id: 7, fecha: null, concepto: 'Sin fecha' }), 'Sin fecha');
   assert.equal(displayOf(def, { id: 7, fecha: '2026-06', concepto: 'A medias' }), '2026-06 — A medias');
   assert.equal(displayOf(def, { id: 7, fecha: '2026', concepto: 'Un año' }), '2026 — Un año');
 });

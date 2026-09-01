@@ -4173,6 +4173,14 @@ function nombreDelRegistro(m, row) {
       return valor;
     })
     .replace(/\s+/g, ' ')
+    /*
+     * Una plantilla puede nombrar la etiqueta de una referencia —«{cuerpo_id_label}
+     * — {periodo}», que es como se llama una directiva— y esa etiqueta puede no
+     * venir en la fila. Sin esto el texto quedaba con el separador colgando,
+     * «— 2026 – 2027», que parece un dato perdido. Misma limpieza que hace el
+     * servidor en `displayOf`, para que las dos digan lo mismo.
+     */
+    .replace(/^[\s—–-]+|[\s—–-]+$/g, '')
     .trim();
   return texto || `${m.labelSingular} N.º ${row.id}`;
 }
@@ -11737,11 +11745,43 @@ function printGenerico(m, row, extras = {}) {
         </tbody>
       </table>` : ''}` : '';
 
+  /*
+   * LA HOJA DICE DE QUÉ REGISTRO ES, NO SOLO QUÉ NÚMERO TIENE.
+   *
+   * Medido antes de esto, en las diecinueve hojas genéricas del sistema: todas
+   * se encabezaban «<Tipo>» y debajo «Registro N.º <id>», y el nombre del
+   * registro no aparecía en el encabezado sino más abajo, dentro de la tabla de
+   * datos. La hoja de una congregación decía «Iglesia · Registro N.º 1» y la de
+   * una persona «Miembro · Registro N.º 1». Dos hojas de dos cuerpos distintos
+   * se distinguían entre sí solo por un número que no significa nada fuera del
+   * sistema, en un papel que se firma y se archiva.
+   *
+   * Las cuatro hojas que tienen diseño propio —el comprobante de tesorería, la
+   * solicitud, la constancia de préstamo y el registro de servicio— ya estaban
+   * bien: el título dice QUÉ PAPEL ES y el subtítulo dice CUÁL. La genérica
+   * hacía lo mismo, solo que identificaba el registro por su número interno.
+   * Así que lo que cambia es el subtítulo y no la forma de la hoja.
+   *
+   * El nombre sale de `nombreDelRegistro`, el mismo que titula la ficha en
+   * pantalla y el mismo que arma las etiquetas de las referencias: acá no nace
+   * una segunda manera de llamar a las cosas. Y si un registro no tuviera
+   * nombre, esa función devuelve «<Tipo> N.º <id>», así que ninguna hoja queda
+   * sin encabezado.
+   *
+   * EL NÚMERO NO SE TIRA, SE BAJA: sirve para ir a buscar el registro, y en un
+   * papel archivado eso vale. Dice «en el sistema» para que no se confunda con
+   * un folio de la organización —las solicitudes y los certificados tienen
+   * número propio, y ése es otro—.
+   *
+   * Es la misma corrección que la 1.235.0 le hizo a los datos de la hoja,
+   * cuando la de una iglesia imprimía el nombre con que el sistema archiva la
+   * fotografía: lo interno se queda adentro.
+   */
   return `
     <div class="print-sheet print-generic">
       ${membreteDelDocumento()}
       <h1>${esc(m.labelSingular)}</h1>
-      <div class="sub">Registro N.º ${row.id}</div>
+      <div class="sub">${esc(nombreDelRegistro(m, row))} · N.º ${row.id} en el sistema</div>
       <table>
         ${m.fields
           /*

@@ -101,7 +101,16 @@ module.exports = {
   icon: '🏅',
   group: 'Organización',
   order: 53,
-  display: '{periodo}',
+  /*
+   * SE LLAMA POR SU CUERPO Y SU PERÍODO, no solo por el período.
+   *
+   * «2026 – 2027» a secas no distingue nada: dos directivas de dos cuerpos
+   * distintos elegidas el mismo año son el mismo texto en el listado, en el
+   * Registro de Cambios y en la hoja impresa, que se archiva y se firma. La
+   * plantilla resuelve `{cuerpo_id_label}` aunque la fila venga suelta (ver
+   * `displayOf` en server/registry.js).
+   */
+  display: '{cuerpo_id_label} — {periodo}',
   dateField: 'fecha_inicio',
   printable: true,
   searchFields: ['periodo', 'otros_cargos', 'notas'],

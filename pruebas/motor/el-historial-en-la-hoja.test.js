@@ -43,7 +43,10 @@ test('el trozo que se revisa es el de la hoja genérica', () => {
     * gente de un cuerpo. Es una guardia de que el recorte SEA la función y no
     * medio archivo, no una medida de cuánto puede crecer.
     */
-  assert.ok(laHoja.length > 1000 && laHoja.length < 16000, `el recorte mide ${laHoja.length}`);
+  // El tope es una red por si el corte se corriera y arrastrara código ajeno,
+  // no una medida de cuánto puede crecer la hoja: subió en la 1.266.0 al
+  // explicarse ahí por qué el encabezado dice de qué registro es.
+  assert.ok(laHoja.length > 1000 && laHoja.length < 20000, `el recorte mide ${laHoja.length}`);
   assert.match(laHoja, /print-sheet print-generic/);
 });
 

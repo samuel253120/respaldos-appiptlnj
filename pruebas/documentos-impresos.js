@@ -57,10 +57,15 @@ const RADIOGRAFIA = `(() => {
     const cs = getComputedStyle(e);
     return cs.display !== 'none' && cs.visibility !== 'hidden';
   };
+  const enc = hoja.querySelector('h1');
+  const sub = hoja.querySelector('.sub');
   return {
     hay: true,
     logo: !!hoja.querySelector('.membrete img, .cert-logo'),
     texto,
+    // El encabezado, aparte: es lo primero que se lee y lo que distingue una
+    // hoja de la de al lado en una carpeta
+    encabezado: ((enc ? enc.innerText : '') + ' ' + (sub ? sub.innerText : '')).trim(),
     // Los emoji viven en un rango propio de Unicode: así se los reconoce sin
     // tener que enumerarlos uno por uno.
     emojis: (texto.match(/[\\u{1F300}-\\u{1FAFF}\\u{2600}-\\u{27BF}]/gu) || []),
@@ -115,12 +120,22 @@ const DOCUMENTOS = [
   { nombre: 'la planilla mensual', modulo: 'cuerpos', rutaCon: (id) => `#/asistencia/informes?tipo=planilla&cuerpo_id=${id}` },
 ];
 
-/** El primer registro que exista en ese módulo, o nada si no hay ninguno. */
+/**
+ * El primer registro que exista en ese módulo: su id y cómo se llama.
+ *
+ * El nombre se arma ACÁ, con los datos crudos de la fila, y no con la función
+ * que el sistema usa para titular: si la prueba llamara a esa función estaría
+ * comparando el sistema consigo mismo y pasaría diga lo que diga.
+ */
 async function primerRegistro(pagina, modulo) {
   return pagina.evaluate(async (m) => {
     const r = await api('GET', `/${m}?page=1&pageSize=1`);
     const fila = (r.items || r.data || r.rows || [])[0];
-    return fila ? fila.id : null;
+    if (!fila) return null;
+    const nombre = fila.nombre
+      || `${fila.nombres || ''} ${fila.apellidos || ''}`.trim()
+      || fila.numero_acta || '';
+    return { id: fila.id, nombre };
   }, modulo);
 }
 
@@ -152,14 +167,15 @@ async function primerRegistro(pagina, modulo) {
 
   for (const doc of DOCUMENTOS) {
     console.log(`\n── ${doc.nombre} ──`);
+    let cual = null;
     if (doc.modulo) {
-      const id = await primerRegistro(pagina, doc.modulo);
-      if (!id) {
+      cual = await primerRegistro(pagina, doc.modulo);
+      if (!cual) {
         revisar(`${doc.nombre}: hay alguno para imprimir`, false,
           `no hay ningún registro en ${doc.modulo}`);
         continue;
       }
-      doc.ruta = doc.rutaCon ? doc.rutaCon(id) : `#/print/${doc.modulo}/${id}`;
+      doc.ruta = doc.rutaCon ? doc.rutaCon(cual.id) : `#/print/${doc.modulo}/${cual.id}`;
     }
     await pagina.goto(URL + '/' + doc.ruta);
     await pagina.waitForTimeout(2200);
@@ -185,6 +201,25 @@ async function primerRegistro(pagina, modulo) {
       r.emojis.length ? `salieron: ${[...new Set(r.emojis)].join(' ')} — cada impresora los dibuja distinto, o los deja en blanco` : '');
     revisar('no lleva sombras de pantalla', r.conSombra === 0,
       r.conSombra ? `${r.conSombra} recuadro(s) con sombra` : '');
+
+    /*
+     * EL ENCABEZADO DICE DE QUÉ REGISTRO ES LA HOJA.
+     *
+     * Las diecinueve hojas genéricas se encabezaban «<Tipo>» y debajo
+     * «Registro N.º <id>»: el número que ese registro tiene en la base de
+     * datos, que no significa nada fuera del sistema. El nombre estaba en la
+     * hoja, pero más abajo, dentro de la tabla de datos. Dos hojas de dos
+     * cuerpos distintos se distinguían entre sí solo por ese número, en un
+     * papel que se firma y se archiva.
+     *
+     * Se comprueba con el dato crudo de la fila —su nombre, o el número que
+     * ella misma lleva escrito— y no con la función que arma el título.
+     */
+    if (cual && cual.nombre && !doc.rutaCon) {
+      revisar('el encabezado dice de qué registro es, y no solo qué número tiene',
+        r.encabezado.includes(cual.nombre),
+        `el encabezado decía «${r.encabezado}» y el registro se llama «${cual.nombre}»`);
+    }
 
     /*
      * NINGUNA HOJA IMPRIME EL NOMBRE CON QUE EL SISTEMA ARCHIVA UN ARCHIVO.

@@ -45,7 +45,10 @@ const laHoja = app.slice(app.indexOf('function printGenerico'), app.indexOf('Imp
 const laRuta = app.slice(app.indexOf('let susDocumentos = null;'), app.indexOf('const bajarPdf ='));
 
 test('los dos trozos que se revisan son los que se creen', () => {
-  assert.ok(laHoja.length > 3000 && laHoja.length < 16000, `la hoja mide ${laHoja.length}`);
+  // El tope es una red por si el corte se corriera y arrastrara código ajeno,
+  // no una medida de cuánto puede crecer la hoja: subió en la 1.266.0 al
+  // explicarse ahí por qué el encabezado dice de qué registro es.
+  assert.ok(laHoja.length > 3000 && laHoja.length < 20000, `la hoja mide ${laHoja.length}`);
   assert.match(laHoja, /print-sheet print-generic/);
   assert.ok(laRuta.length > 400 && laRuta.length < 4000, `la ruta mide ${laRuta.length}`);
   assert.match(laRuta, /printGenerico/);
