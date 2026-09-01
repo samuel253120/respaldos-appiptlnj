@@ -233,6 +233,13 @@ module.exports = {
      * lo pagado: no hay un «pagada: sí» en ninguna otra parte.
      */
     { name: 'deuda_id', type: 'number', oculto: true, readonly: true },
+    /*
+     * Las dos filas de un préstamo entre dos cajas de la organización llevan
+     * acá el id del movimiento ORIGINAL: el original se apunta a sí mismo y su
+     * espejo apunta a él. Con una sola columna se sabe quiénes son pareja y
+     * cuál de los dos manda (ver server/deuda-tesoreria.js).
+     */
+    { name: 'espejo_de', type: 'number', oculto: true, readonly: true },
     { name: 'cuota_id', type: 'number', oculto: true, readonly: true },
     { name: 'desembolso', type: 'number', oculto: true, readonly: true, default: 0 },
     /*

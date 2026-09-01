@@ -143,8 +143,14 @@ test('una institución sin nombre tampoco', () => {
 });
 
 test('y sin decir de qué tipo es, menos', () => {
+  /*
+   * El aviso nombra las TRES desde la 1.267.0: una persona, una institución u
+   * otra caja de la organización. Antes decía dos, y esta prueba lo fijaba.
+   * Cambio a propósito, no un accidente: la corporación contestó que las cajas
+   * se prestan entre sí y no había manera de anotarlo.
+   */
   const data = laDeuda({ cuenta_id: caja('A'), contraparte_tipo: null });
-  assert.match(String(alGuardar(data)), /una persona o una institución/);
+  assert.match(String(alGuardar(data)), /una persona, una institución u otra caja/);
 });
 
 test('al pasar de persona a institución se suelta el nombre viejo', () => {

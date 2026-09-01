@@ -55,10 +55,32 @@ const CLASES_POR_PAGAR = ['Préstamo en dinero', 'Compra a crédito', 'Crédito 
 const CLASES_POR_COBRAR = ['Préstamo en dinero'];
 const CLASES = [...new Set([...CLASES_POR_PAGAR, ...CLASES_POR_COBRAR])];
 
-/** Con quién es la deuda. */
+/**
+ * Con quién es la deuda.
+ *
+ * LA TERCERA ES OTRA CAJA DEL PROPIO SISTEMA, y es la que faltaba. La
+ * corporación le adelanta plata a una iglesia, una iglesia le presta a un
+ * cuerpo para comprar sillas, un cuerpo le presta a otro: la corporación
+ * contestó que sí, que las cajas se prestan entre sí, y no había manera de
+ * anotarlo. Lo que se hacía era escribir el nombre de la otra caja en el campo
+ * de «institución», y entonces pasaba lo que se midió antes de esto:
+ *
+ *   la caja que RECIBE, antes ......... $  50.000
+ *   la caja que PRESTA, antes ......... $ 100.000
+ *   se anota el préstamo de $ 400.000
+ *   la caja que RECIBE, después ....... $ 450.000
+ *   la caja que PRESTA, después ....... $ 100.000  ← no se movió
+ *
+ * La que prestó seguía mostrando una plata que ya no tenía, y el total de la
+ * organización subió $ 400.000 que nadie había recibido de nadie. Un préstamo
+ * entre dos partes de la misma organización no hace entrar plata: la cambia de
+ * bolsillo, y el sistema tiene desde hace tiempo el mecanismo para eso (ver
+ * server/entre-cuentas.js). Por eso una deuda con otra caja mueve las DOS.
+ */
 const UNA_PERSONA = 'Una persona';
 const UNA_INSTITUCION = 'Una institución';
-const CONTRAPARTES = [UNA_PERSONA, UNA_INSTITUCION];
+const OTRA_CAJA = 'Otra caja de la organización';
+const CONTRAPARTES = [UNA_PERSONA, UNA_INSTITUCION, OTRA_CAJA];
 
 /** En qué estado está. Cerrarla es lo que pide la llave. */
 const VIGENTE = 'Vigente';
@@ -68,12 +90,22 @@ const ESTADOS = [VIGENTE, ...CERRADAS];
 /** Un monto como se lee acá. */
 const enPesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
 
-/** Con quién es esta deuda, en una línea. */
-function conQuien(fila) {
+/**
+ * Con quién es esta deuda, en una línea.
+ *
+ * La caja se busca por su nombre y no se guarda copiado: una caja que se
+ * renombra tiene que renombrarse en todas partes, que es la razón por la que
+ * una referencia es una referencia y no un texto.
+ */
+function conQuien(fila, db) {
   if (!fila) return '';
-  return fila.contraparte_tipo === UNA_INSTITUCION
-    ? String(fila.institucion || '').trim()
-    : String(fila.contraparte || '').trim();
+  if (fila.contraparte_tipo === UNA_INSTITUCION) return String(fila.institucion || '').trim();
+  if (fila.contraparte_tipo === OTRA_CAJA) {
+    if (!db || !fila.contraparte_cuenta_id) return '';
+    const caja = db.prepare('SELECT nombre FROM cuentas_tesoreria WHERE id = ?').get(fila.contraparte_cuenta_id);
+    return caja ? caja.nombre : '';
+  }
+  return String(fila.contraparte || '').trim();
 }
 
 /**
@@ -84,23 +116,61 @@ function conQuien(fila) {
  * el nombre viejo ahí, apuntando a alguien que no prestó nada. Es la misma
  * regla que usa una ayuda social con su beneficiario.
  */
-function laOtraParte(data, { existing }) {
+function laOtraParte(data, { existing, db, user, cuentaId }) {
   const valor = (campo) => (data[campo] !== undefined ? data[campo] : existing ? existing[campo] : null);
   const tipo = valor('contraparte_tipo');
-  if (!tipo) return 'Indique con quién es esta deuda: una persona o una institución';
+  if (!tipo) return 'Indique con quién es esta deuda: una persona, una institución u otra caja';
 
   if (tipo === UNA_PERSONA) {
     if (!String(valor('contraparte') || '').trim()) {
       return 'Indique con qué persona es esta deuda';
     }
     data.institucion = null;
-  } else {
+    data.contraparte_cuenta_id = null;
+    return null;
+  }
+
+  if (tipo === UNA_INSTITUCION) {
     if (!String(valor('institucion') || '').trim()) {
       return 'Indique con qué institución es esta deuda: el banco, la casa comercial, la empresa';
     }
     data.contraparte = null;
     data.contraparte_id = null;
+    data.contraparte_cuenta_id = null;
+    return null;
   }
+
+  /*
+   * La otra caja. Se comprueba lo mismo que a la caja propia —que exista, que
+   * esté dentro de lo que esta persona administra y que no esté cerrada— y una
+   * cosa más: que no sea la misma. Una caja no se presta a sí misma, y dejarlo
+   * pasar dejaría dos movimientos que se anulan sobre el mismo saldo con una
+   * deuda anotada encima.
+   */
+  const otra = valor('contraparte_cuenta_id');
+  if (!otra) return 'Indique con qué caja de la organización es esta deuda';
+  if (String(otra) === String(cuentaId)) {
+    return 'Una caja no se presta a sí misma: elija la otra caja, la que pone o recibe la plata.';
+  }
+  /*
+   * Que la caja EXISTA no se comprueba acá: el motor rechaza toda referencia
+   * rota antes de llegar al gancho, y con mejor mensaje —«La otra caja: no
+   * existe cuenta de tesorería n.º 99999999»—. Había una línea que lo
+   * comprobaba otra vez; se quitó al ver que romperla no hacía fallar ninguna
+   * prueba, que es como se descubre que una defensa no está defendiendo nada.
+   */
+  const caja = db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(otra);
+  if (!require('../alcance').alcanzaIglesia(user, caja.iglesia_id)) {
+    return `La caja "${caja.nombre}" no está entre las iglesias que administra`;
+  }
+  const cambia = !existing || String(existing.contraparte_cuenta_id || '') !== String(otra);
+  if (cambia) {
+    const cerrada = require('../cuenta-cerrada').avisoSiEstaCerrada(caja);
+    if (cerrada) return cerrada;
+  }
+  data.contraparte = null;
+  data.contraparte_id = null;
+  data.institucion = null;
   return null;
 }
 
@@ -153,7 +223,9 @@ module.exports = {
        * quién?», no «¿de qué tipo es la contraparte?».
        */
       name: 'quien', label: 'Con quién', type: 'texto',
-      calc: (fila) => conQuien(fila),
+      // Sin desarmar el segundo argumento: `conQuien` se llama también desde
+      // fuera del motor —una prueba, la hoja impresa— y ahí no viene ninguno.
+      calc: (fila, opciones) => conQuien(fila, opciones && opciones.db),
     },
     {
       /*
@@ -247,6 +319,17 @@ module.exports = {
       help: 'Si está en la membresía se enlaza a su ficha; si no, se escribe el nombre.',
     },
     {
+      /*
+       * La otra caja de la organización. Es una referencia y no un nombre
+       * escrito: de ella sale el movimiento del otro lado, así que tiene que
+       * apuntar a una caja de verdad y seguirla si la renombran.
+       */
+      name: 'contraparte_cuenta_id', label: 'La otra caja', type: 'ref', ref: 'cuentas_tesoreria',
+      showIf: { field: 'contraparte_tipo', equals: OTRA_CAJA },
+      help: 'La caja que pone la plata, o la que la recibe. El movimiento se anota en las dos: '
+        + 'un préstamo entre dos partes de la organización no hace entrar plata, la cambia de bolsillo.',
+    },
+    {
       name: 'institucion', label: 'Institución', type: 'text',
       showIf: { field: 'contraparte_tipo', equals: UNA_INSTITUCION },
       help: 'El banco, la casa comercial, la empresa.',
@@ -322,7 +405,7 @@ module.exports = {
           + 'vende a plazo. Cambie la clase o la dirección.';
       }
 
-      const falta = laOtraParte(data, { existing });
+      const falta = laOtraParte(data, { existing, db, user, cuentaId });
       if (falta) return falta;
 
       const noPuedeCerrar = loQueImpideCerrarla(data, { existing, user });
@@ -374,8 +457,20 @@ module.exports = {
           + 'tesorería. Retire primero esos pagos desde su plan de cuotas: borrarla ahora haría '
           + 'desaparecer del libro una plata que sí se movió.';
       }
-      const desembolso = require('../deuda-tesoreria').elDesembolsoDe(db, fila.id);
-      if (desembolso) db.prepare('DELETE FROM tesoreria WHERE id = ?').run(desembolso.id);
+      /*
+       * Y con él SU ESPEJO, si la deuda era con otra caja de la organización.
+       * Lo pilló el sondeo en vivo: borrando la deuda se iba el desembolso y el
+       * movimiento del otro lado se quedaba, dejando a la caja que había
+       * prestado en $ -300.000 por una deuda que ya no existía. Un movimiento
+       * de un par no se borra solo: o se van los dos o no se va ninguno.
+       */
+      const deudas = require('../deuda-tesoreria');
+      const desembolso = deudas.elDesembolsoDe(db, fila.id);
+      if (desembolso) {
+        const espejo = deudas.elEspejoDe(db, desembolso.id);
+        if (espejo) db.prepare('DELETE FROM tesoreria WHERE id = ?').run(espejo.id);
+        db.prepare('DELETE FROM tesoreria WHERE id = ?').run(desembolso.id);
+      }
       db.prepare('DELETE FROM cuotas_deuda WHERE deuda_id = ?').run(fila.id);
       return null;
     },
@@ -480,5 +575,5 @@ module.exports = {
 
   // Lo que hace falta afuera: las reglas y los rótulos, en un solo lugar
   POR_PAGAR, POR_COBRAR, DIRECCIONES, CLASES, CLASES_POR_PAGAR, CLASES_POR_COBRAR,
-  UNA_PERSONA, UNA_INSTITUCION, VIGENTE, CERRADAS, ESTADOS, conQuien, enPesos,
+  UNA_PERSONA, UNA_INSTITUCION, OTRA_CAJA, VIGENTE, CERRADAS, ESTADOS, conQuien, enPesos,
 };

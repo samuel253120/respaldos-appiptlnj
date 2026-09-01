@@ -75,8 +75,17 @@ function lasDe(db, deudaId) {
 function loPagadoPorCuota(db, deudaId) {
   const filas = db
     .prepare(
+      /*
+       * Sin los ESPEJOS. Un préstamo entre dos cajas de la organización deja
+       * su movimiento en las dos, y las dos filas llevan la misma deuda y la
+       * misma cuota: sumándolas, cada pago se contaría dos veces y la deuda
+       * se daría por saldada con la mitad. El original es el que se apunta a
+       * sí mismo (ver server/deuda-tesoreria.js).
+       */
       `SELECT cuota_id, COALESCE(SUM(monto), 0) AS pagado, COUNT(*) AS pagos, MAX(fecha) AS ultimo
-         FROM tesoreria WHERE deuda_id = ? AND cuota_id IS NOT NULL GROUP BY cuota_id`
+         FROM tesoreria
+        WHERE deuda_id = ? AND cuota_id IS NOT NULL AND (espejo_de IS NULL OR espejo_de = id)
+        GROUP BY cuota_id`
     )
     .all(deudaId);
   return new Map(filas.map((f) => [f.cuota_id, f]));
@@ -87,7 +96,9 @@ function loAbonadoSinCuota(db, deudaId) {
   const f = db
     .prepare(
       `SELECT COALESCE(SUM(monto), 0) AS pagado, COUNT(*) AS pagos
-         FROM tesoreria WHERE deuda_id = ? AND cuota_id IS NULL AND desembolso = 0`
+         FROM tesoreria
+        WHERE deuda_id = ? AND cuota_id IS NULL AND desembolso = 0
+          AND (espejo_de IS NULL OR espejo_de = id)`
     )
     .get(deudaId);
   return f || { pagado: 0, pagos: 0 };

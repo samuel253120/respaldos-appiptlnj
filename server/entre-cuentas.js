@@ -35,8 +35,16 @@
  * aporte de una ofrenda, su servicio_id. Los ingresos de la ofrenda propiamente
  * tal también llevan servicio_id, así que la marca `entre_cuentas` es la que
  * dice cuáles son los dos lados del traslado y cuáles son plata que entró.
+ *
+ * Y los dos de un préstamo entre dos cajas de la organización comparten su
+ * `espejo_de` —el id del original, que ambos llevan escrito—. Va PRIMERO en el
+ * CASE porque un pago de deuda no tiene ni traspaso ni servicio, y sin esa
+ * rama los dos lados caerían en el mismo cajón «S nulo» junto con todo lo
+ * demás que tampoco los tiene.
  */
-const PAR = `CASE WHEN traspaso_id IS NOT NULL THEN 'T' || traspaso_id ELSE 'S' || servicio_id END`;
+const PAR = `CASE WHEN espejo_de IS NOT NULL THEN 'M' || espejo_de
+                  WHEN traspaso_id IS NOT NULL THEN 'T' || traspaso_id
+                  ELSE 'S' || servicio_id END`;
 
 /**
  * Un movimiento está marcado como traslado.
