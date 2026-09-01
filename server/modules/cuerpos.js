@@ -101,15 +101,34 @@ function evaluarCumplimiento(fila, db) {
        * fuera: reprocharle a un cuerpo un nombramiento que no está en sus manos
        * sería un reproche que no puede resolver.
        */
+      /*
+       * «Con sus cargos» quiere decir CUATRO PERSONAS en los cuatro cargos, no
+       * cuatro casilleros llenos: una directiva donde el primer jefe es también
+       * el tesorero tiene una persona, no cuatro, y decir que está designada
+       * sería decir algo que no es. Que eso pase se pregunta al guardar y no se
+       * prohíbe —un cuerpo chico puede no tener a quién más designar— pero
+       * entonces su cumplimiento lo dice, que es lo que se mira sin abrir nada.
+       */
       texto: 'Directiva con sus cargos',
-      ok: !!directiva && require('../cargos-de-la-directiva').losQueFaltan(directiva).length === 0,
+      ok: (() => {
+        if (!directiva) return false;
+        const cargos = require('../cargos-de-la-directiva');
+        return cargos.losQueFaltan(directiva).length === 0
+          && cargos.quienesSeRepiten(directiva, cargos.LOS_QUE_CUENTAN).length === 0;
+      })(),
       detalle: (() => {
         if (!directiva) return 'Sin directiva en ejercicio';
         const cargos = require('../cargos-de-la-directiva');
         const faltan = cargos.losQueFaltan(directiva);
-        return faltan.length
-          ? `Falta${faltan.length === 1 ? '' : 'n'}: ${cargos.enLista(faltan)}`
-          : 'Los cuatro cargos del cuerpo están designados';
+        if (faltan.length) return `Falta${faltan.length === 1 ? '' : 'n'}: ${cargos.enLista(faltan)}`;
+        const repetidos = cargos.quienesSeRepiten(directiva, cargos.LOS_QUE_CUENTAN);
+        if (repetidos.length) {
+          return repetidos
+            .map((r) => `${cargos.comoSeLlama(db, r.persona)} ocupa ${r.cargos.length} cargos: `
+              + cargos.enLista(r.cargos.map((c) => c.corto)))
+            .join('; ');
+        }
+        return 'Los cuatro cargos del cuerpo están designados, y en cuatro personas';
       })(),
     },
     {

@@ -74,6 +74,70 @@ const cuantosPuestos = (fila) => CARGOS.filter((c) => puesto(fila, c.campo)).len
 const losQueFaltan = (fila) =>
   CARGOS.filter((c) => c.cuenta && !puesto(fila, c.campo)).map((c) => c.corto);
 
+/**
+ * Quién está en más de un cargo a la vez, y en cuáles.
+ *
+ * Medido antes de esto: los cuatro cargos puestos a la misma persona contestaban
+ * 200, y la hoja impresa salía con «Pedro Díaz Díaz» cuatro veces seguidas bajo
+ * el membrete de la institución. En el listado se veía igual, con el mismo
+ * nombre en la columna del primer jefe y en la del secretario.
+ *
+ * NO ES UN DESCUIDO DE ESCRITURA: primer jefe y tesorero en la misma persona
+ * quiere decir que nadie firma contra sí mismo, y ese es justamente el punto de
+ * tener una directiva. Pero tampoco es imposible que pase de verdad —un cuerpo
+ * chico donde una persona lleva dos cargos existe— así que se pregunta y no se
+ * prohíbe, diciendo quién y qué cargos se están juntando.
+ *
+ * Se miran los SEIS, no los cuatro del cuerpo: que el oficial supervisor sea
+ * además tesorero del cuerpo que supervisa es la versión más clara del problema.
+ */
+function quienesSeRepiten(fila, cuales = CARGOS) {
+  const porPersona = new Map();
+  for (const c of cuales) {
+    if (!puesto(fila, c.campo)) continue;
+    const quien = Number(fila[c.campo]);
+    if (!porPersona.has(quien)) porPersona.set(quien, []);
+    porPersona.get(quien).push(c);
+  }
+  return [...porPersona.entries()]
+    .filter(([, suyos]) => suyos.length > 1)
+    .map(([persona, suyos]) => ({ persona, cargos: suyos }));
+}
+
+/** El nombre de esa persona, para poder nombrarla en el aviso. */
+function comoSeLlama(db, id) {
+  const f = db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(id);
+  return f ? `${f.nombres || ''} ${f.apellidos || ''}`.trim() : 'La misma persona';
+}
+
+/**
+ * El aviso de que alguien quedó en dos cargos, si ESTE guardado es el que lo
+ * hizo.
+ *
+ * Comparar el antes con el después es lo que evita que el aviso salga en cada
+ * corrección de una directiva que ya venía así: es la misma regla que la
+ * pregunta del jefe y la del supervisor, y por la misma razón —un aviso que sale
+ * siempre enseña a apretar «Está bien» sin leer—.
+ */
+function avisoDeCargosRepetidos(db, despues, antes) {
+  const ahora = quienesSeRepiten(despues);
+  if (!ahora.length) return null;
+  const yaEstaban = new Set(quienesSeRepiten(antes || {}).map((r) => r.persona));
+  const nuevos = ahora.filter((r) => !yaEstaban.has(r.persona));
+  if (!nuevos.length) return null;
+
+  const enPalabras = nuevos
+    .map((r) => `${comoSeLlama(db, r.persona)} queda de ${enLista(r.cargos.map((c) => c.corto))}`)
+    .join('; ');
+  return {
+    error:
+      `${enPalabras}. Una directiva es de varias personas justamente para que nadie se controle a `
+      + 'sí mismo: el tesorero rinde ante el jefe, y el secretario da fe de lo que los dos acuerdan. '
+      + 'Si el cuerpo es chico y no hay a quién más designar, confirme; si no, reparta los cargos.',
+    confirmar: 'cargos_en_la_misma_persona',
+  };
+}
+
 /** «uno», «uno y otro», «uno, otro y el de más allá». */
 function enLista(cosas) {
   if (!cosas.length) return '';
@@ -163,8 +227,11 @@ function avisoSiNoEsOficial(db, { supervisorId, existing, confirmado }) {
   };
 }
 
+/** Los que cuentan para el requisito del cumplimiento: los cuatro del cuerpo. */
+const LOS_QUE_CUENTAN = CARGOS.filter((c) => c.cuenta);
+
 module.exports = {
-  CARGOS, LOS_DEL_CUERPO, QUIEN_ENCABEZA,
+  CARGOS, LOS_DEL_CUERPO, LOS_QUE_CUENTAN, QUIEN_ENCABEZA,
   puesto, tieneQuienLaEncabece, cuantosPuestos, losQueFaltan, enLista, avisoSinQuienLaEncabece,
-  avisoSiNoEsOficial,
+  avisoSiNoEsOficial, quienesSeRepiten, comoSeLlama, avisoDeCargosRepetidos,
 };

@@ -320,6 +320,17 @@ module.exports = {
       if (!cargos.tieneQuienLaEncabece(conCargos) && loPierdeAhora && !confirmado) {
         return { error: cargos.avisoSinQuienLaEncabece(conCargos), confirmar: 'directiva_sin_jefe' };
       }
+
+      /*
+       * Y QUE NO QUEDE UNA SOLA PERSONA EN VARIOS CARGOS. Va al final de las
+       * tres porque es la que menos cuesta deshacer —se reparte un cargo y
+       * listo— y porque las otras dos hablan de que la directiva no exista o no
+       * tenga cabeza, que es más grave que tenerla mal repartida.
+       */
+      if (!confirmado) {
+        const repetidos = cargos.avisoDeCargosRepetidos(db, conCargos, existing);
+        if (repetidos) return repetidos;
+      }
       return null;
     },
   },
