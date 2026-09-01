@@ -272,12 +272,39 @@ function legible(campo, valor) {
  * nota importante— se deja constancia de que traían algo, pero no de qué:
  * el Registro de Cambios lo leen el pastor y el tesorero, y los datos de
  * salud de una persona no tienen por qué quedar copiados ahí para siempre.
+ *
+ * ── QUÉ CAMPOS ENTRAN ──
+ *
+ * Por omisión, los del LISTADO. Es una elección heredada que para casi todos
+ * los módulos alcanza —lo que identifica una ficha suele ser lo que se ve en
+ * la tabla—, pero es una lista pensada para que quepa en columnas, no para
+ * conservar nada. Medido en un acta de reunión firmada, con su agenda, su
+ * desarrollo, sus acuerdos y el escaneo adjunto: de todo eso, la constancia
+ * del borrado guardaba seis datos de cabecera y ni una palabra de lo acordado.
+ * El acta decía qué se compró y por cuánto, y de eso no quedaba nada en
+ * ninguna parte del sistema.
+ *
+ * Por eso un módulo puede nombrar además, en `camposAlBorrar`, lo que quiere
+ * que se conserve de sus fichas cuando desaparecen. Van después de los del
+ * listado, que es como se lee: primero de qué ficha se trata, después qué
+ * decía. Y lo que el módulo pide expresamente se guarda AUNQUE SEA UN
+ * ARCHIVO: el nombre de un adjunto no dice nada en una tabla —por eso los
+ * archivos no entran solos—, pero cuando el archivo se borró con la ficha, su
+ * nombre es justamente lo único que queda de él.
+ *
+ * SOLO AL BORRAR, y de ahí el nombre. Esta misma función arma también la línea
+ * de la CREACIÓN, y ahí el texto completo del acta sobra: la ficha existe, se
+ * abre y se lee. Copiarlo igual llenaba el registro de párrafos repetidos que
+ * nadie iba a mirar dos veces. Es la única copia lo que hay que guardar, no
+ * cualquier copia.
  */
-function resumenDe(def, fila) {
-  return (def.listFields || [])
+function resumenDe(def, fila, alBorrar) {
+  const pedidos = alBorrar ? (def.camposAlBorrar || []) : [];
+  return [...(def.listFields || []), ...pedidos]
     .map((nombre) => {
       const campo = def.fields.find((f) => f.name === nombre);
-      if (!campo || campo.type === 'password' || campo.type === 'file') return null;
+      if (!campo || campo.type === 'password') return null;
+      if (campo.type === 'file' && !pedidos.includes(nombre)) return null;
       if (campo.sensible) {
         const traia = fila[nombre];
         return traia === null || traia === undefined || traia === '' ? null : `${campo.label}: (tenía dato)`;
@@ -634,7 +661,7 @@ function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
  */
 function registrarEliminado(def, fila, user, arrastre) {
   if (BORRADOS_QUE_NO_SE_ANOTAN.includes(def.name)) return;
-  let detalle = resumenDe(def, fila);
+  let detalle = resumenDe(def, fila, true);
   if (arrastre && arrastre.arrastradas) {
     const lista = (arrastre.detalle || []).join(', ');
     detalle += `${detalle ? ' — ' : ''}Se llevó consigo ${arrastre.arrastradas} registro(s)${lista ? `: ${lista}` : ''}.`;

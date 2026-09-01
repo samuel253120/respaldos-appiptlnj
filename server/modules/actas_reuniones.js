@@ -116,6 +116,22 @@ module.exports = {
   printable: true,
   searchFields: ['numero_acta', 'agenda', 'acuerdos', 'presidida_por'],
   listFields: ['numero_acta', 'fecha', 'cuerpo_id', 'iglesia_id', 'presidida_por', 'estado'],
+  /*
+   * Lo que se conserva de un acta que se borra, además de su cabecera.
+   *
+   * El Registro de Cambios guardaba de una eliminación los campos del LISTADO,
+   * que es una lista pensada para que quepa en columnas. Medido sobre un acta
+   * firmada que decía «Se aprueba comprar sillas por $9.000.000»: quedaron seis
+   * datos de cabecera y ni una palabra de lo acordado. Un libro de actas es
+   * justamente el módulo donde lo que hay que conservar es lo que no cabe en
+   * una columna.
+   *
+   * Va también el nombre del documento adjunto: el archivo se borra del disco
+   * junto con la ficha (server/crud.js), así que su nombre es lo único que
+   * puede quedar de él.
+   */
+  camposAlBorrar: ['lugar', 'hora_inicio', 'hora_fin', 'secretario',
+    'firmada_por', 'fecha_firma', 'agenda', 'desarrollo', 'acuerdos', 'documento'],
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
     {
@@ -377,6 +393,66 @@ module.exports = {
 
       anotarLaFirma(data, existing, user);
       return null;
+    },
+
+    /**
+     * BORRAR UN ACTA PREGUNTA, Y LA PREGUNTA DICE QUÉ SE VA.
+     *
+     * Un acta con su agenda escrita, su desarrollo, sus acuerdos y el escaneo
+     * firmado adentro se borraba con un 200 y sin una palabra del servidor. La
+     * única barrera era el «¿está seguro?» genérico del navegador: el mismo que
+     * aparece al borrar una categoría de tesorería vacía. Y una firmada tampoco
+     * decía nada.
+     *
+     * El escaneo se va con ella —eso está bien hecho: un archivo sin ficha es
+     * basura en el disco—, pero sumado a lo anterior significaba que un clic de
+     * más se llevaba el acta firmada y su escaneo sin decir qué se estaba
+     * llevando. Es la misma pieza que la 1.264.0 le puso a las directivas.
+     */
+    beforeDelete(fila, { db, confirmado }) {
+      if (confirmado) return null;
+
+      const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(fila.cuerpo_id);
+      const cual = fila.numero_acta ? `el acta n.º ${fila.numero_acta}` : 'un acta sin número';
+      const cuando = fila.fecha ? ` del ${comoSeLee(fila.fecha)}` : '';
+      const deQuien = cuerpo ? ` de "${cuerpo.nombre}"` : '';
+
+      // En qué estado se va. Una firmada dice además quién la firmó y cuándo,
+      // que es el dato que hace pensar dos veces antes de confirmar.
+      const firmada = fila.estado === FIRMADA;
+      const porQuien = fila.firmada_por ? ` por ${fila.firmada_por}` : '';
+      const elDia = fila.fecha_firma ? ` el ${comoSeLee(fila.fecha_firma)}` : '';
+      const enQueEstado = firmada
+        ? `, que está FIRMADA${porQuien}${elDia}`
+        : `, en estado ${fila.estado || 'Borrador'}`;
+
+      // Y qué trae adentro: no es lo mismo una ficha recién creada en blanco
+      // que un acta escrita entera con su escaneo.
+      const trae = [];
+      if (fila.agenda) trae.push('su agenda');
+      if (fila.desarrollo) trae.push('el desarrollo escrito');
+      if (fila.acuerdos) trae.push('los acuerdos');
+      if (fila.documento) trae.push('el documento escaneado');
+      const conQue = trae.length
+        ? ` Trae ${enLista(trae)}.`
+        : ' No tiene nada escrito ni adjunto.';
+
+      const elArchivo = fila.documento
+        ? ' El escaneo se borra del servidor junto con ella.'
+        : '';
+
+      return {
+        /*
+         * Lo que se dice al final es DÓNDE cae cada mitad de la pérdida, y no
+         * «esto no se puede deshacer»: eso ya lo dijo el navegador en su
+         * primer «¿Eliminar este registro?», y repetirlo gasta la única frase
+         * que esta pregunta tiene para decir algo que la otra no sabe.
+         */
+        error: `Va a eliminar ${cual}${cuando}${deQuien}${enQueEstado}.${conQue}${elArchivo}`
+          + ' Lo que decía queda copiado en el Registro de Cambios; el libro de ese cuerpo, en'
+          + ' cambio, queda sin ella.',
+        confirmar: 'acta_que_se_borra',
+      };
     },
   },
 };
