@@ -140,7 +140,7 @@ module.exports = {
    * del número, y quien no ve los montos tampoco los busca a tientas.
    */
   buscaTambien: [{ sql: 'CAST(monto AS INTEGER)', reservado: 'tesoreria_montos' }],
-  listFields: ['fecha', 'direccion', 'clase', 'concepto', 'quien', 'monto', 'cuenta_id', 'estado'],
+  listFields: ['fecha', 'direccion', 'clase', 'concepto', 'quien', 'monto', 'falta', 'proxima', 'estado'],
   filterFields: ['direccion', 'clase', 'estado', 'cuenta_id'],
   defaultSort: { field: 'fecha', dir: 'desc' },
 
@@ -154,6 +154,29 @@ module.exports = {
        */
       name: 'quien', label: 'Con quién', type: 'texto',
       calc: (fila) => conQuien(fila),
+    },
+    {
+      /*
+       * Lo que falta pagar, que es la pregunta que trae a alguien a esta
+       * pantalla. Sale de restarle a la deuda lo que suman sus movimientos, y
+       * no de una cifra guardada: una cifra guardada hay que acordarse de
+       * corregirla cada vez que entra un peso, y un día no se corrige.
+       */
+      name: 'falta', label: 'Falta pagar', type: 'money', reservado: 'tesoreria_montos',
+      calc: (fila, { db }) => require('../plan-de-cuotas').planDe(db, fila).resumen.falta,
+    },
+    {
+      name: 'proxima', label: 'Próxima cuota', type: 'badge',
+      calc: (fila, { db }) => {
+        if (CERRADAS.includes(fila.estado)) return null;
+        const { resumen } = require('../plan-de-cuotas').planDe(db, fila);
+        if (!resumen.proxima) return null;
+        const atrasadas = resumen.atrasadas;
+        const cual = `${resumen.proxima.numero} de ${resumen.cuotas}`;
+        return atrasadas
+          ? { texto: `${cual} · atrasada`, nivel: 'vencida' }
+          : { texto: `${cual} · ${require('../fechas').comoSeLee(resumen.proxima.vence || '')}`, nivel: '' };
+      },
     },
   ],
 
@@ -192,6 +215,20 @@ module.exports = {
       // las dos reglas las aplica el motor (ver server/fechas.js)
       futuro: true, noAntesDe: 'fecha',
       help: 'Cuándo se comprometió pagarla. Si no hay plazo —«cuando se pueda»—, se deja en blanco.',
+    },
+    {
+      name: 'cuotas', label: 'En cuántas cuotas', type: 'number', required: true, default: 1,
+      min: 1, max: 120, seccion: 'El plan de pagos',
+      help: 'Una sola cuota es pagarla de una vez. El sistema arma el plan mensual y lo que sobra de '
+        + 'la división va a la última, para que las cuotas sumen exactamente el total.',
+    },
+    {
+      name: 'primera_cuota', label: 'Vence la primera', type: 'date',
+      // Una cuota se pacta hacia adelante: sin esto el motor la rechazaría por
+      // «todavía no llega», que es la regla correcta para el libro de la plata
+      // y la equivocada para un compromiso
+      futuro: true,
+      help: 'Desde ahí se cuentan las demás, mes a mes. Cada cuota se puede corregir después.',
     },
     {
       name: 'cuenta_id', label: 'Caja de esta deuda', type: 'ref', ref: 'cuentas_tesoreria', required: true,
@@ -308,6 +345,40 @@ module.exports = {
 
       return null;
     },
+
+    /**
+     * Ya guardada: su plan de cuotas y el movimiento que le corresponde.
+     *
+     * El plan se arma UNA VEZ y de ahí en adelante solo se agrega o se quita al
+     * final, sin tocar lo que alguien corrigió a mano (ver
+     * server/plan-de-cuotas.js). El desembolso se crea, se corrige o se retira
+     * con la ficha, como el egreso de una ayuda social.
+     */
+    afterSave(fila, { user, db }) {
+      require('../plan-de-cuotas').ponerLasQueFalten(db, fila);
+      require('../deuda-tesoreria').ponerElDesembolso(db, fila, user);
+    },
+
+    /**
+     * Una deuda con pagos anotados no se borra.
+     *
+     * Sus pagos son movimientos de tesorería de verdad —plata que salió de una
+     * caja— y borrarlos con la ficha sería hacer desaparecer del libro un
+     * dinero que se movió. El desembolso sí se va con ella: existe solo porque
+     * la deuda existe, igual que el egreso de una ayuda social.
+     */
+    beforeDelete(fila, { db }) {
+      const pagos = require('../deuda-tesoreria').losPagosDe(db, fila.id);
+      if (pagos.length) {
+        return `Esta deuda tiene ${pagos.length} pago(s) anotado(s), que son movimientos de `
+          + 'tesorería. Retire primero esos pagos desde su plan de cuotas: borrarla ahora haría '
+          + 'desaparecer del libro una plata que sí se movió.';
+      }
+      const desembolso = require('../deuda-tesoreria').elDesembolsoDe(db, fila.id);
+      if (desembolso) db.prepare('DELETE FROM tesoreria WHERE id = ?').run(desembolso.id);
+      db.prepare('DELETE FROM cuotas_deuda WHERE deuda_id = ?').run(fila.id);
+      return null;
+    },
   },
 
   extraRoutes(router, { db, requirePerm }) {
@@ -318,6 +389,92 @@ module.exports = {
     router.get('/deudas/clases', requirePerm('deudas', 'view'), (req, res) => {
       const cuales = req.query.direccion === POR_COBRAR ? CLASES_POR_COBRAR : CLASES_POR_PAGAR;
       res.json(cuales.map((c) => ({ id: c, label: c })));
+    });
+
+    /** La deuda pedida, comprobando que sea de las que esta persona alcanza. */
+    const laSuya = (req, res) =>
+      require('../alcance').registroSuyo(req, res, 'deudas', req.params.id, 'Esa deuda');
+
+    /**
+     * El plan de cuotas de una deuda: una fila por cuota con lo que se pactó,
+     * lo que se lleva pagado y en qué está. Es lo que pinta la planilla.
+     */
+    router.get('/deudas/:id(\\d+)/plan', requirePerm('deudas', 'view'), (req, res) => {
+      const deuda = laSuya(req, res);
+      if (!deuda) return undefined;
+      const plan = require('../plan-de-cuotas').planDe(db, deuda);
+      const puente = require('../deuda-tesoreria');
+      return res.json(require('../sensibles').sinLasCifras(req.user, 'tesoreria_montos', {
+        ...plan,
+        pagos: puente.losPagosDe(db, deuda.id).map((m) => ({
+          id: m.id, fecha: m.fecha, monto: m.monto, metodo: m.metodo,
+          cuota_id: m.cuota_id, concepto: m.concepto,
+        })),
+        desembolso: puente.elDesembolsoDe(db, deuda.id),
+        puede_pagar: require('../permissions').can(req.user, 'deudas', 'edit'),
+      }, ['cuotas', 'resumen', 'a_cuenta', 'pagos', 'desembolso', 'monto', 'montos', 'pagado',
+          'falta', 'total', 'pactado', 'proxima']));
+    });
+
+    /**
+     * Anotar un pago. Deja su movimiento en la caja de la deuda, enlazado, y
+     * de sumarlos sale cuánto falta.
+     *
+     * Pide el permiso de EDITAR la deuda y no el de cerrarla: pagar una cuota
+     * es llevar la deuda al día, no darla por saldada. La llave de cerrar se
+     * pide cuando alguien declara que ya no se debe.
+     */
+    router.post('/deudas/:id(\\d+)/pagos', requirePerm('deudas', 'edit'), (req, res) => {
+      const deuda = laSuya(req, res);
+      if (!deuda) return undefined;
+
+      const monto = Math.round(Number(req.body.monto) || 0);
+      if (monto <= 0) return res.status(400).json({ error: 'Indique cuánto se pagó' });
+      // Un pago es un hecho, así que la fecha se revisa como la de cualquier
+      // movimiento: sin `futuro`, porque no se paga mañana, se paga y se anota
+      const fecha = String(req.body.fecha || require('../fechas').hoy()).slice(0, 10);
+      const problema = require('../fechas').revisar({ label: 'Fecha del pago' }, fecha);
+      if (problema) return res.status(400).json({ error: problema });
+
+      const cuotaId = req.body.cuota_id ? Number(req.body.cuota_id) : null;
+      if (cuotaId && !db.prepare('SELECT id FROM cuotas_deuda WHERE id = ? AND deuda_id = ?').get(cuotaId, deuda.id)) {
+        return res.status(400).json({ error: 'Esa cuota no es de esta deuda' });
+      }
+
+      const cerrada = require('../cuenta-cerrada')
+        .avisoSiEstaCerrada(db.prepare('SELECT * FROM cuentas_tesoreria WHERE id = ?').get(deuda.cuenta_id));
+      if (cerrada) return res.status(400).json({ error: `${cerrada}, así que este pago no quedaría anotado en ninguna parte.` });
+
+      /*
+       * Y la misma pregunta que hace cualquier egreso que deja la caja en rojo.
+       * Esta ruta escribe el movimiento derecho, sin pasar por el guardado de
+       * Tesorería, así que la regla hay que pedirla acá: si no, pagar desde el
+       * plan sería la manera de saltarse lo que el formulario frena. Es la
+       * misma puerta de atrás que se cerró en el botón «Crear su ficha de
+       * miembro» de Pastores.
+       */
+      const confirmado = req.body.igual_asi === true || req.body.igual_asi === 'true' || req.body.igual_asi === 1;
+      if (!confirmado) {
+        const enRojo = require('../saldos').avisoSiQuedaEnRojo(deuda.cuenta_id, {
+          tipo: require('../deuda-tesoreria').losSignosDe(deuda).pago,
+          monto, fecha, queEs: 'Este pago',
+        });
+        if (enRojo) return res.status(400).json(enRojo);
+      }
+
+      const movimiento = require('../deuda-tesoreria').anotarUnPago(db, deuda, {
+        cuotaId, fecha, monto, metodo: req.body.metodo, notas: req.body.notas,
+      }, req.user);
+      return res.status(201).json({ ok: true, movimiento_id: movimiento.id });
+    });
+
+    /** Retirar un pago mal anotado: se va él y se va su movimiento. */
+    router.delete('/deudas/:id(\\d+)/pagos/:mov(\\d+)', requirePerm('deudas', 'edit'), (req, res) => {
+      const deuda = laSuya(req, res);
+      if (!deuda) return undefined;
+      const quitado = require('../deuda-tesoreria').retirarUnPago(db, deuda.id, Number(req.params.mov));
+      if (!quitado) return res.status(404).json({ error: 'Ese pago no es de esta deuda' });
+      return res.json({ ok: true });
     });
   },
 

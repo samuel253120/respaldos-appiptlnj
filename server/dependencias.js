@@ -96,6 +96,9 @@ const EXCEPCIONES = {
    * eliminada se habría llevado consigo la constancia de una deuda viva.
    */
   'deudas.cuenta_id':               [FRENA, 'deuda(s) o compromiso(s) anotado(s)', 'Ciérrela en vez de eliminarla, o pase esas deudas a otra caja: una deuda no se borra con la caja.'],
+  // El plan de cuotas no significa nada sin su deuda: se va con ella. Los
+  // PAGOS no, y por eso la deuda con pagos no se deja borrar (ver su gancho).
+  'cuotas_deuda.deuda_id':          [ARRASTRA, 'cuota(s) del plan de pagos'],
   'traspasos.cuenta_origen_id':     [FRENA, 'traspaso(s) que salen de ella', 'Ciérrela en vez de eliminarla.'],
   'traspasos.cuenta_destino_id':    [FRENA, 'traspaso(s) que llegan a ella', 'Ciérrela en vez de eliminarla.'],
   'cuotas_cuerpo.integrante_id':    [FRENA, 'cuota(s) pagada(s)', 'Márquelo como «Retirado» en vez de eliminarlo, y su historial queda intacto.'],

@@ -260,8 +260,19 @@ test('y el listado se le recorta con la misma condición', () => {
 test('borrar la caja de una deuda se frena, no se la lleva por delante', async () => {
   const api = await elSistemaAndando();
   const suya = caja('Con deuda');
-  const r = await api('POST', '/deudas', laDeuda({ cuenta_id: suya }));
+  /*
+   * Una COMPRA A CRÉDITO, a propósito: desde la 1.248.0 un préstamo deja su
+   * desembolso en la caja, y entonces lo que frena el borrado es el movimiento
+   * y no la deuda. Con una compra a crédito no hay movimiento ninguno, así que
+   * lo único que puede frenarlo es la regla que se está probando.
+   */
+  const r = await api('POST', '/deudas', laDeuda({
+    cuenta_id: suya, clase: 'Compra a crédito',
+    contraparte_tipo: 'Una institución', contraparte: null, institucion: 'Muebles del Sur',
+  }));
   assert.equal(r.estado, 201, r.texto);
+  assert.equal(db.prepare('SELECT COUNT(*) AS c FROM tesoreria WHERE cuenta_id = ?').get(suya).c, 0,
+    'la caja no puede tener movimientos, o el frenado sería el de ellos');
 
   const b = await api('DELETE', `/cuentas_tesoreria/${suya}?igual_asi=1`);
   assert.equal(b.estado, 400, b.texto);

@@ -955,6 +955,48 @@ function categoriasDeTesoreria() {
 
 
 /**
+ * Las categorías con que se anotan las deudas.
+ *
+ * Los movimientos que deja una deuda —la plata que se recibe al contraerla y
+ * cada cuota que se paga— tienen que caer en una categoría, y ninguna de las
+ * dieciocho que traía el sistema hablaba de deudas: las más cercanas eran
+ * «Aportes», «Donaciones» y «Otro», y las tres dicen algo distinto. Con ellas,
+ * en el papel que se archiva, un préstamo quedaba escrito al lado de los
+ * diezmos.
+ *
+ * Va aparte de la siembra de las otras dieciocho porque aquélla ya corrió en
+ * las bases que existen y no volvería a correr. Se puede repetir sin daño:
+ * solo agrega las que falten, comparando sin distinguir mayúsculas, para no
+ * pisar una que la iglesia haya creado a mano con ese mismo nombre.
+ */
+function categoriasDeLasDeudas() {
+  if (yaAplicada('categorias de las deudas')) return;
+  const columnas = db.prepare('PRAGMA table_info("categorias_tesoreria")').all().map((c) => c.name);
+  if (!columnas.includes('nombre')) return;
+  marcarAplicada('categorias de las deudas');
+
+  const puente = require('./deuda-tesoreria');
+  const cuales = [
+    [puente.CATEGORIA_DESEMBOLSO, 'Ingreso'],
+    [puente.CATEGORIA_PAGO, 'Egreso'],
+    [puente.CATEGORIA_PRESTADO, 'Egreso'],
+    [puente.CATEGORIA_COBRO, 'Ingreso'],
+  ];
+  const existe = db.prepare('SELECT id FROM categorias_tesoreria WHERE lower(nombre) = lower(?)');
+  const agregar = db.prepare('INSERT INTO categorias_tesoreria (nombre, tipo, activo) VALUES (?, ?, 1)');
+  let nuevas = 0;
+  for (const [nombre, tipo] of cuales) {
+    if (existe.get(nombre)) continue;
+    agregar.run(nombre, tipo);
+    nuevas += 1;
+  }
+  if (nuevas) {
+    console.log(`🏷️  deudas: ${nuevas} categoría(s) de tesorería nuevas para los préstamos y sus pagos.`);
+  }
+}
+
+
+/**
  * Los tipos de actividad y los motivos de ausencia salieron del programa y
  * pasaron a ser datos que la iglesia mantiene, como ya había pasado con las
  * categorías de tesorería.
@@ -3005,6 +3047,7 @@ function ejecutarMigraciones() {
     ['la iglesia principal no es una asignación', iglesiaPrincipalNoEsAsignacion],
     ['administrador general', administradorGeneral],
     ['categorías de tesorería', categoriasDeTesoreria],
+    ['categorías de las deudas', categoriasDeLasDeudas],
     ['tipos de actividad y motivos de ausencia', listasDeAsistenciaComoDatos],
     ['directiva de cada iglesia', directivaDeCadaIglesia],
     ['devolver los que la directiva sacó (corregida)', devolverLosQueLaDirectivaSaco],
@@ -3291,7 +3334,7 @@ function solicitudesConSeguimiento() {
 // crean fichas nuevas a partir de datos escritos a mano, y equivocarse ahí
 // significa duplicar personas, perder ayudas o repetir un número de solicitud.
 module.exports = {
-  ejecutarMigraciones, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
+  ejecutarMigraciones, categoriasDeLasDeudas, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
   cadaIglesiaConSuCodigo, solicitudesNumeradasPorIglesia,
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, actividadesConVariosCuerpos,
   elConteoDeLeidosSeGuarda,

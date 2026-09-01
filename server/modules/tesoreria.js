@@ -91,7 +91,9 @@ function avisoDeMovimientoRepetido(db, datos) {
  */
 function avisoDeEgresoSinRespaldo({ data, existing, tipo, monto }) {
   if (tipo !== 'Egreso') return null;
-  if (existing && (existing.traspaso_id || existing.servicio_id || existing.ayuda_id)) return null;
+  if (existing && (existing.traspaso_id || existing.servicio_id || existing.ayuda_id || existing.deuda_id)) {
+    return null;
+  }
 
   const comprobante = data.comprobante !== undefined
     ? data.comprobante
@@ -160,7 +162,9 @@ module.exports = {
        */
       calc: (r) => {
         if (r.comprobante) return { texto: '📎 Sí', nivel: 'ok' };
-        if (r.tipo !== 'Egreso' || r.traspaso_id || r.servicio_id || r.ayuda_id) return { texto: '—', nivel: '' };
+        if (r.tipo !== 'Egreso' || r.traspaso_id || r.servicio_id || r.ayuda_id || r.deuda_id) {
+          return { texto: '—', nivel: '' };
+        }
         return { texto: 'Falta', nivel: 'medio' };
       },
     },
@@ -173,7 +177,7 @@ module.exports = {
         ? { sql: "comprobante IS NOT NULL AND TRIM(comprobante) <> ''", params: [] }
         : {
             sql: `tipo = 'Egreso' AND traspaso_id IS NULL AND servicio_id IS NULL AND ayuda_id IS NULL
-                    AND (comprobante IS NULL OR TRIM(comprobante) = '')`,
+                    AND deuda_id IS NULL AND (comprobante IS NULL OR TRIM(comprobante) = '')`,
             params: [],
           }),
     },
@@ -222,6 +226,16 @@ module.exports = {
     // …y por una ayuda social entregada con cargo a una cuenta
     { name: 'ayuda_id', type: 'number', oculto: true, readonly: true },
     /*
+     * …y por una deuda: la plata que se recibe al contraerla —el desembolso, que
+     * lleva su marca porque no se puede deducir del tipo en todos los casos— y
+     * cada cuota que se paga, que apunta además a la cuota del plan. De sumar
+     * los pagos sale cuánto falta, así que estos movimientos SON el registro de
+     * lo pagado: no hay un «pagada: sí» en ninguna otra parte.
+     */
+    { name: 'deuda_id', type: 'number', oculto: true, readonly: true },
+    { name: 'cuota_id', type: 'number', oculto: true, readonly: true },
+    { name: 'desembolso', type: 'number', oculto: true, readonly: true, default: 0 },
+    /*
      * Un lado de un traslado entre cuentas de la organización: los dos de un
      * traspaso, y los dos del aporte que una ofrenda pasa al fondo. No es plata
      * que entre ni salga, y por eso el resumen la cuenta aparte (ver
@@ -242,6 +256,10 @@ module.exports = {
       }
       if (existing && existing.ayuda_id) {
         return 'Este movimiento lo generó una ayuda social entregada: modifíquelo en «Ayudas Sociales»';
+      }
+      if (existing && existing.deuda_id) {
+        return 'Este movimiento lo generó una deuda: modifíquelo en «Deudas y Compromisos», '
+          + 'para que el libro y la deuda no digan cosas distintas de la misma plata';
       }
 
       // La iglesia del movimiento es la de su cuenta (o ninguna, si es de la corporación)

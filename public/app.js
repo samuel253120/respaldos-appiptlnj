@@ -3957,7 +3957,7 @@ function selectLabel(f, v) {
  * persona ha pedido—. Antes no tenía nada que la ficha dijera y el formulario
  * no dijera igual.
  */
-const CON_FICHA = ['miembros', 'pastores', 'cuerpos', 'iglesias', 'no_miembros'];
+const CON_FICHA = ['miembros', 'pastores', 'cuerpos', 'iglesias', 'no_miembros', 'deudas'];
 
 /** "07-11-1973": la fecha como se lee y se dice acá. */
 /**
@@ -4210,6 +4210,16 @@ async function viewFicha(name, id, pestana) {
     const v = row[f.name];
     if (v == null || v === '') continue;
     if (f.type === 'select') insignias.push(`<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`);
+    /*
+     * Una cifra suelta en la cabecera no dice nada: «303334» al lado del
+     * nombre de un acreedor no se lee como «falta pagar $ 303.334». Así que un
+     * calculado de tipo dinero sale con su rótulo delante y con los puntos de
+     * los miles; los de texto se quedan como estaban, porque «3 entregas» ya se
+     * explica solo y ponerle «Entregas · 3 entregas» sería peor.
+     */
+    else if (f.computed && f.type === 'money') {
+      insignias.push(`<span class="badge">${esc(f.label)} · ${fmtMoney(v)}</span>`);
+    }
     else if (f.computed && typeof v !== 'object') insignias.push(`<span class="badge">${esc(v)}</span>`);
     /*
      * Un dato calculado puede llevar a donde salió: «A cargo de · Iglesia
@@ -4501,6 +4511,14 @@ async function renderInscribirNoMiembro(id, row, caja) {
 function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
   const suyas = [{ clave: 'datos', titulo: 'Datos', icono: '📋', pinta: pintarLosDatos }];
   const sumar = (clave, titulo, icono, pinta) => suyas.push({ clave, titulo, icono, pinta });
+
+  /*
+   * El plan de pagos de una deuda va en su ficha y no en el listado: es una
+   * tabla de seis o doce filas que se mira de una vez, y desde ahí se marca
+   * cada cuota como pagada. Es la misma forma que la planilla de cuotas de un
+   * cuerpo, que es de donde salió la idea.
+   */
+  if (name === 'deudas') sumar('plan', 'Plan de cuotas', '📆', (c) => renderPlanDeCuotas(id, c));
 
   if (name === 'cuerpos') {
     if (MOD['integrantes_cuerpo']) sumar('integrantes', 'Integrantes', '🧑‍🤝‍🧑', (c) => renderIntegrantesCuerpo(id, c));
@@ -15733,6 +15751,124 @@ async function renderCuotasCuerpo(cuerpoId, caja, anio) {
         toast(e.message, true);
       }
     }));
+}
+
+/**
+ * El plan de pagos de una deuda: una fila por cuota, con lo pactado, lo pagado
+ * y en qué está. Marcar una cuota deja su movimiento en la caja de la deuda.
+ *
+ * Los estados no se guardan: se deducen de lo pagado y de la fecha, cada vez
+ * que se mira. Un estado guardado hay que acordarse de ponerlo al día cuando
+ * pasa un día, y un estado que hay que recordar actualizar un día miente.
+ */
+async function renderPlanDeCuotas(deudaId, caja) {
+  const d = await api('GET', `/deudas/${deudaId}/plan`).catch(() => null);
+  if (!d || !caja) return;
+
+  const r = d.resumen || {};
+  const comoSeVe = {
+    Pagada: 'ok', 'Pagada en parte': 'medio', Atrasada: 'vencida', Pendiente: '',
+  };
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>📆 Plan de pagos</b>
+        <span style="color:var(--muted);font-size:13px">
+          ${r.pagadas || 0} de ${r.cuotas || 0} pagadas${r.atrasadas
+            ? ` · <b style="color:var(--danger)">${r.atrasadas} atrasada(s)</b>` : ''}
+        </span>
+        <span class="spacer"></span>
+        <span style="font-size:13px">falta <b>${fmtMoney(r.falta)}</b> de ${fmtMoney(r.total)}</span>
+      </div>
+      ${d.desembolso ? `
+        <div class="aviso" style="margin:0 14px 12px">
+          <b>La plata entró a la caja</b>
+          <span>${esc(d.desembolso.tipo)} de ${fmtMoney(d.desembolso.monto)} el
+            ${esc(fechaCorta(d.desembolso.fecha))}, anotado solo en Tesorería.</span>
+        </div>` : ''}
+      <div class="table-scroll">
+        <table class="grid">
+          <thead><tr>
+            <th>Cuota</th><th>Vence</th><th class="num">Monto</th>
+            <th class="num">Pagado</th><th>Estado</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${(d.cuotas || []).map((c) => `
+              <tr${c.proxima ? ' class="destacada"' : ''}>
+                <td>${c.numero} de ${r.cuotas}</td>
+                <td>${c.vence ? esc(fechaCorta(c.vence)) : '<span class="mut">sin fecha</span>'}</td>
+                <td class="num cifra">${fmtMoney(c.monto)}</td>
+                <td class="num cifra">${c.pagado ? fmtMoney(c.pagado) : '<span class="mut">—</span>'}</td>
+                <td><span class="badge ${nivelClase(comoSeVe[c.estado])}">${esc(c.estado)}</span></td>
+                <td class="acciones">${d.puede_pagar && c.falta > 0
+                  ? `<button class="btn sm" data-pagar="${c.id}" data-falta="${c.falta}">Anotar pago</button>`
+                  : ''}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${d.a_cuenta && d.a_cuenta.pagado ? `
+        <div style="padding:0 16px 12px;font-size:14px">
+          Y ${fmtMoney(d.a_cuenta.pagado)} abonado${d.a_cuenta.pagos > 1 ? ` en ${d.a_cuenta.pagos} veces` : ''}
+          sin decir a qué cuota.</div>` : ''}
+      ${(d.pagos || []).length ? `
+        <div class="toolbar" style="border-top:1px solid var(--line)"><b style="font-size:13px">Pagos anotados</b></div>
+        <div class="table-scroll">
+          <table class="grid">
+            <thead><tr><th>Fecha</th><th>Concepto</th><th class="num">Monto</th><th></th></tr></thead>
+            <tbody>
+              ${d.pagos.map((m) => `
+                <tr>
+                  <td>${esc(fechaCorta(m.fecha))}</td>
+                  <td>${esc(m.concepto || '')}</td>
+                  <td class="num cifra">${fmtMoney(m.monto)}</td>
+                  <td class="acciones">${d.puede_pagar
+                    ? `<button class="btn danger sm" data-quitar="${m.id}" title="Retirar este pago">🗑️</button>` : ''}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>` : ''}
+    </div>`;
+
+  caja.querySelectorAll('[data-pagar]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const cuanto = prompt('¿Cuánto se pagó?', String(b.dataset.falta));
+      if (cuanto === null) return;
+      const monto = Number(String(cuanto).replace(/[^\d]/g, ''));
+      if (!monto) return;
+      try {
+        await guardarPreguntando(`/deudas/${deudaId}/pagos`, { cuota_id: Number(b.dataset.pagar), monto });
+        toast('Pago anotado');
+        renderPlanDeCuotas(deudaId, caja);
+      } catch (e) {
+        if (e !== SE_ARREPINTIO) toast(e.message, true);
+      }
+    }));
+
+  caja.querySelectorAll('[data-quitar]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirm('¿Retirar este pago? Se va también su movimiento de tesorería.')) return;
+      try {
+        await api('DELETE', `/deudas/${deudaId}/pagos/${b.dataset.quitar}`);
+        toast('Pago retirado');
+        renderPlanDeCuotas(deudaId, caja);
+      } catch (e) { toast(e.message, true); }
+    }));
+}
+
+/**
+ * Manda algo y, si el servidor contesta con una pregunta en vez de un error,
+ * la pregunta. Es el mismo mecanismo de `borrarPreguntando`, del otro lado.
+ */
+async function guardarPreguntando(ruta, cuerpo) {
+  try {
+    return await api('POST', ruta, cuerpo);
+  } catch (err) {
+    if (!(err.datos && err.datos.confirmar)) throw err;
+    if (!confirm(`${err.message}\n\n¿Anotarlo igual?`)) throw SE_ARREPINTIO;
+    return api('POST', ruta, { ...cuerpo, igual_asi: true });
+  }
 }
 
 /** Las cuentas del cuerpo con su saldo, y sus últimos movimientos. */
