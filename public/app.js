@@ -2050,12 +2050,53 @@ async function viewDashboard() {
       </div>`
     : '';
 
+  /*
+   * Los cuerpos que cobran cuota mensual y no dicen de cuánto.
+   *
+   * Medido antes de esto: los dieciséis cuerpos de la base cobraban, ninguno
+   * tenía el monto escrito, y eso alcanzaba a las 603 personas de la
+   * membresía. Solo se veía entrando a la planilla de cuotas de cada cuerpo,
+   * uno por uno. Va acá porque es de lo poco que pide hacer algo, y cada línea
+   * abre la ficha donde se arregla.
+   *
+   * Va DEBAJO de las credenciales: aquéllas dicen algo falso hacia afuera —un
+   * QR que contesta «vigente» a quien lo escanea— y ésta es un dato que falta
+   * hacia adentro.
+   */
+  const sinCuota = d.cuerposSinCuota || [];
+  const gentePorCobrar = sinCuota.reduce((t, c) => t + (Number(c.integrantes) || 0), 0);
+  const avisoCuota = sinCuota.length
+    ? `
+      <div class="card aviso-credenciales">
+        <h3>💵 Cuotas sin monto definido</h3>
+        <p class="mut">
+          Hay <b>${sinCuota.length}</b> cuerpo${sinCuota.length === 1 ? '' : 's'} que cobra${sinCuota.length === 1 ? '' : 'n'}
+          cuota mensual y no dice${sinCuota.length === 1 ? '' : 'n'} de cuánto${gentePorCobrar
+            ? `, y alcanza${sinCuota.length === 1 ? '' : 'n'} a <b>${fmtNumero(gentePorCobrar)}</b> persona${gentePorCobrar === 1 ? '' : 's'}`
+            : ''}.
+          Mientras el monto esté vacío su planilla de cuotas no deja marcar ningún pago. El monto se
+          pone en la ficha del cuerpo.
+        </p>
+        <ul class="mini-list">
+          ${sinCuota.slice(0, CUANTAS_SE_MUESTRAN).map((c) => `
+            <li data-ir="#/m/cuerpos/ficha/${c.id}">
+              <span>${esc(c.nombre)}${c.iglesia ? ` <span class="mut">— ${esc(iglesiaDeTrabajo(c.iglesia) || c.iglesia)}</span>` : ''}</span>
+              <span class="badge amber">${c.integrantes ? `${fmtNumero(c.integrantes)} integrante${c.integrantes === 1 ? '' : 's'}` : 'sin integrantes'}</span>
+            </li>`).join('')}
+          ${sinCuota.length > CUANTAS_SE_MUESTRAN
+            ? `<li class="mut" data-ir="#/m/cuerpos">y ${sinCuota.length - CUANTAS_SE_MUESTRAN} más — ver todos</li>`
+            : ''}
+        </ul>
+      </div>`
+    : '';
+
   content().innerHTML = `
     <div class="page-head">
       <h2>📊 Panel de control</h2>
     </div>
     ${avisoSinTitular}
     ${avisoCredenciales}
+    ${avisoCuota}
     <div class="stats">
       ${statDefs.map(([name, ic, lbl, num, alerta, adonde, nota]) => `
         <div class="stat${alerta ? ' urge' : ''}" data-ir="${esc(adonde || `#/m/${name}`)}">

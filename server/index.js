@@ -595,9 +595,29 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     ? getModule('credenciales').deQuienesYaNoEjercen(req.user)
     : [];
 
+  /*
+   * Los cuerpos que cobran cuota mensual y no dicen de cuánto.
+   *
+   * Medido antes de esto: los DIECISÉIS de la base cobraban, ninguno tenía el
+   * monto escrito, y eso alcanzaba a las 603 personas de la membresía. Se veía
+   * solo entrando a la planilla de cuotas de cada cuerpo, uno por uno. Un dato
+   * que falta y que nadie ve es un dato que no se llena nunca (ver
+   * server/cuota-sin-monto.js).
+   *
+   * Va en el panel por lo mismo que las credenciales por vencer: es de lo poco
+   * que pide HACER algo, y no se nota por ningún otro lado.
+   *
+   * Solo para quien puede ver Cuerpos, como el resto de las cifras del panel:
+   * una línea que la persona no puede abrir en ninguna parte es una línea que
+   * no puede arreglar.
+   */
+  const cuerposSinCuota = can(req.user, 'cuerpos', 'view')
+    ? require('./cuota-sin-monto').losQueCobranSinMonto(db, req.user)
+    : [];
+
   res.json({
     counts, finanzas, cumpleanos, solicitudesRecientes,
-    credencialesPorVencer, credencialesSinTitular,
+    credencialesPorVencer, credencialesSinTitular, cuerposSinCuota,
   });
 });
 

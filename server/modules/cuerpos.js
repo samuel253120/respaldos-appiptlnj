@@ -81,6 +81,26 @@ function evaluarCumplimiento(fila, db) {
       ok: require('../cuerpo-inactivo').funciona(fila),
       detalle: fila.estado || 'Activo',
     },
+    {
+      /*
+       * Y si cobra cuota, que diga de cuánto.
+       *
+       * Medido sobre la base de trabajo: los DIECISÉIS cuerpos cobraban cuota
+       * mensual y ninguno tenía el monto escrito, lo que alcanzaba a las 603
+       * personas de la membresía. Se veía únicamente entrando a la planilla de
+       * cuotas de cada cuerpo, uno por uno; ni el listado, ni el panel, ni esta
+       * evaluación lo decían (ver server/cuota-sin-monto.js).
+       *
+       * Un cuerpo que NO cobra cumple: no le falta nada.
+       */
+      texto: 'Cuota mensual con monto',
+      ok: !require('../cuota-sin-monto').leFaltaElMonto(fila),
+      detalle: !fila.cobra_cuota
+        ? 'No cobra cuota mensual'
+        : Number(fila.cuota_mensual) > 0
+          ? `$ ${Number(fila.cuota_mensual).toLocaleString('es-CL')} al mes`
+          : 'Cobra cuota mensual y no dice de cuánto: no se le puede registrar el pago a nadie',
+    },
   ];
 
   const faltan = items.filter((i) => !i.ok).length;
@@ -207,7 +227,7 @@ module.exports = {
      * cuál lo tiene ya, para poder ir a destildarlo si de verdad se quiere
      * cambiar.
      */
-    beforeSave(data, { id, existing, isNew, db }) {
+    beforeSave(data, { id, existing, isNew, db, confirmado }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
       const tipo = dato('tipo') || 'Cuerpo';
       const iglesiaId = dato('iglesia_id');
@@ -261,18 +281,32 @@ module.exports = {
         data.lider = `${ficha.nombres || ''} ${ficha.apellidos || ''}`.trim();
       }
 
+      /*
+       * La directiva es una sola por iglesia. Es un RECHAZO, no una pregunta:
+       * hay que ir a destildar el otro cuerpo antes de poder guardar éste.
+       */
       const marcada = dato('reune_lideres');
-      if (!marcada) return null;
-      if (!iglesiaId) return null;
-
-      const otra = db
-        .prepare('SELECT id, nombre FROM cuerpos WHERE iglesia_id = ? AND reune_lideres = 1 AND id <> ?')
-        .get(iglesiaId, id || 0);
-      if (otra) {
-        return `"${otra.nombre}" ya es la directiva de esta iglesia. Destíldelo ahí antes de marcar este, ` +
-          'para que los miembros líderes no queden en dos cuerpos a la vez.';
+      if (marcada && iglesiaId) {
+        const otra = db
+          .prepare('SELECT id, nombre FROM cuerpos WHERE iglesia_id = ? AND reune_lideres = 1 AND id <> ?')
+          .get(iglesiaId, id || 0);
+        if (otra) {
+          return `"${otra.nombre}" ya es la directiva de esta iglesia. Destíldelo ahí antes de marcar este, ` +
+            'para que los miembros líderes no queden en dos cuerpos a la vez.';
+        }
       }
-      return null;
+
+      /*
+       * Y al final, lo único que este gancho PREGUNTA en vez de rechazar:
+       * encender la cuota sin decir de cuánto (ver server/cuota-sin-monto.js).
+       *
+       * Va última a propósito. Todo lo de arriba son rechazos —el dato no
+       * entra, y no hay manera de contestarlos que sí—, así que tienen que
+       * salir antes: preguntar primero haría que alguien contestara «está
+       * bien» para toparse enseguida con un no.
+       */
+      return require('../cuota-sin-monto')
+        .avisoSiCobraSinMonto(data, { existing, confirmado });
     },
 
     /**
