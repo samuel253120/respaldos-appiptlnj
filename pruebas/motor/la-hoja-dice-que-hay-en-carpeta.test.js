@@ -50,7 +50,9 @@ test('los dos trozos que se revisan son los que se creen', () => {
   // explicarse ahí por qué el encabezado dice de qué registro es.
   assert.ok(laHoja.length > 3000 && laHoja.length < 20000, `la hoja mide ${laHoja.length}`);
   assert.match(laHoja, /print-sheet print-generic/);
-  assert.ok(laRuta.length > 400 && laRuta.length < 4000, `la ruta mide ${laRuta.length}`);
+  // Mismo caso que el tope de arriba: es una red por si el corte se corriera,
+  // no una medida. Subió en la 1.269.0 al traerse también el plan de una deuda.
+  assert.ok(laRuta.length > 400 && laRuta.length < 6000, `la ruta mide ${laRuta.length}`);
   assert.match(laRuta, /printGenerico/);
 });
 

@@ -69,9 +69,14 @@ test('la hoja se pide por la MISMA ruta que pinta el panel de su ficha', () => {
 test('y lo que la hoja lleva de más llega con nombre, no por posición', () => {
   /*
    * Eran cinco cosas en fila y la sexta habría dejado una llamada de siete
-   * argumentos donde nadie puede ver cuál es cuál.
+   * argumentos donde nadie puede ver cuál es cuál. Van SIETE desde la 1.269.0
+   * —el plan de pagos de una deuda—, que es justamente lo que esta prueba
+   * cuida: la lista puede crecer mientras cada cosa siga llegando con nombre.
    */
-  assert.match(app, /printGenerico\(m, row, \{ susAyudas, suHistorial, susDocumentos, loQueTiene, suGente \}\)/);
+  assert.match(app, /printGenerico\(m, row, \{ [\w, ]+ \}\)/,
+    'con nombre y no por posición');
+  assert.match(app, /printGenerico\(m, row, \{[^}]*\bsuGente\b[^}]*\bsuPlan\b[^}]*\}\)/,
+    'y las dos últimas que se agregaron siguen ahí');
   assert.match(app, /function printGenerico\(m, row, extras = \{\}\)/);
 });
 

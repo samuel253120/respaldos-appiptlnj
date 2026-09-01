@@ -10058,6 +10058,26 @@ async function viewPrint(name, id) {
     suGente = await api('GET', `/cuerpos/${id}/integrantes`).catch(() => null);
   }
 
+  /*
+   * Y la hoja de una DEUDA sale con su plan de cuotas y lo que va pagado.
+   *
+   * Es lo que la corporación pidió —«sí hay hoja impresa de la deuda, con su
+   * plan de cuotas y lo que va pagado»— y por lo mismo que la de la iglesia y
+   * la del cuerpo: una deuda se pide en papel para llevarla a la reunión de la
+   * directiva y para mostrársela a quien prestó. Sin el plan es la ficha a
+   * secas, y la pregunta que trae a alguien a esta hoja es cuánto falta y
+   * cuándo vence lo próximo.
+   *
+   * Sale de la MISMA ruta que pinta la planilla de su ficha, así que el papel y
+   * la pantalla no pueden decir cifras distintas; y esa ruta ya calla lo que
+   * esa persona no puede ver. Si no se puede traer, la hoja sale igual sin esta
+   * parte, que es la regla de las ayudas, del historial y de la carpeta.
+   */
+  let suPlan = null;
+  if (name === 'deudas') {
+    suPlan = await api('GET', `/deudas/${id}/plan`).catch(() => null);
+  }
+
   let clausulaDeposito = null;
   if (name === 'inventarios' && row.regimen === 'En depósito') {
     clausulaDeposito = await api('GET', '/inventarios/clausula-deposito')
@@ -10074,7 +10094,7 @@ async function viewPrint(name, id) {
   else if (name === 'actas_reuniones' || name === 'actas_asambleas') sheet = printActa(m, row, name === 'actas_asambleas', asistenciaDelActa);
   else if (name === 'servicios') sheet = printServicio(m, row);
   else if (name === 'tesoreria') sheet = printMovimiento(m, row);
-  else sheet = printGenerico(m, row, { susAyudas, suHistorial, susDocumentos, loQueTiene, suGente });
+  else sheet = printGenerico(m, row, { susAyudas, suHistorial, susDocumentos, loQueTiene, suGente, suPlan });
 
   content().innerHTML = `
     <div class="print-actions no-print">
@@ -11568,7 +11588,68 @@ function printMovimiento(m, row) {
  * dejado una llamada de siete argumentos donde nadie puede ver cuál es cuál.
  */
 function printGenerico(m, row, extras = {}) {
-  const { susAyudas, suHistorial, susDocumentos, loQueTiene, suGente } = extras;
+  const { susAyudas, suHistorial, susDocumentos, loQueTiene, suGente, suPlan } = extras;
+
+  /*
+   * EL PLAN DE PAGOS DE UNA DEUDA, en la hoja que se lleva a la reunión.
+   *
+   * Medido antes de esto: la hoja de una compra en seis cuotas con dos pagadas
+   * traía sus catorce datos —el monto, la fecha, con quién es, lo que falta— y
+   * ni una palabra de las cuotas. La pregunta que trae a alguien a esta hoja es
+   * cuánto falta y CUÁNDO VENCE LO PRÓXIMO, y eso son seis compromisos con su
+   * fecha, no un número.
+   *
+   * Sale del mismo lugar que la planilla de la ficha, así que el papel y la
+   * pantalla no pueden discrepar. Va con las tres cifras arriba —lo pactado, lo
+   * pagado y lo que falta— porque en un papel que se archiva el total tiene que
+   * poder leerse sin sumar la columna a mano.
+   *
+   * Sin la columna de botones ni el badge de colores: en el papel un estado se
+   * lee escrito, y una impresora en blanco y negro convierte tres colores en
+   * tres grises iguales.
+   */
+  const plan = suPlan && suPlan.resumen ? suPlan : null;
+  const laDeuda = !plan ? '' : `
+    <h2 class="print-h2">Plan de pagos</h2>
+    <div class="sub">${plan.resumen.pagadas || 0} de ${plan.resumen.cuotas || 0} cuota(s) pagada(s)${
+      plan.resumen.atrasadas ? ` · ${plan.resumen.atrasadas} atrasada(s)` : ''} · pactado
+      ${fmtMoney(plan.resumen.total)} · pagado ${fmtMoney(Number(plan.resumen.total || 0) - Number(plan.resumen.falta || 0))}
+      · falta ${fmtMoney(plan.resumen.falta)}</div>
+    ${plan.desembolso ? `
+      <div class="sub">La plata ${plan.desembolso.tipo === 'Ingreso' ? 'entró a la caja' : 'salió de la caja'}:
+        ${fmtMoney(plan.desembolso.monto)} el ${esc(fechaLarga(plan.desembolso.fecha))}.</div>` : ''}
+    ${(plan.cuotas || []).length ? `
+      <table class="grid tramite">
+        <thead><tr><th>Cuota</th><th>Vence</th><th class="num">Pactado</th>
+          <th class="num">Pagado</th><th>Estado</th></tr></thead>
+        <tbody>
+          ${plan.cuotas.map((c) => `
+            <tr>
+              <td class="nowrap">${c.numero} de ${plan.resumen.cuotas}</td>
+              <td class="nowrap">${c.vence ? esc(fechaCorta(c.vence)) : '—'}</td>
+              <td class="num">${fmtMoney(c.monto)}</td>
+              <td class="num">${c.pagado ? fmtMoney(c.pagado) : '—'}</td>
+              <td>${esc(c.estado || '')}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : '<div class="sub">Sin cuotas anotadas.</div>'}
+    ${plan.a_cuenta && plan.a_cuenta.pagado ? `
+      <div class="sub">Y ${fmtMoney(plan.a_cuenta.pagado)} abonado${plan.a_cuenta.pagos > 1
+        ? ` en ${plan.a_cuenta.pagos} veces` : ''} sin decir a qué cuota.</div>` : ''}
+    ${(plan.pagos || []).length ? `
+      <h2 class="print-h2">Pagos anotados</h2>
+      <div class="sub">Cada uno dejó su movimiento en la caja de la deuda. ${plan.pagos.length} pago(s).</div>
+      <table class="grid tramite">
+        <thead><tr><th>Fecha</th><th>Concepto</th><th class="num">Monto</th></tr></thead>
+        <tbody>
+          ${plan.pagos.map((mv) => `
+            <tr>
+              <td class="nowrap">${esc(fechaCorta(mv.fecha))}</td>
+              <td>${esc(mv.concepto || '')}</td>
+              <td class="num">${fmtMoney(mv.monto)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : ''}`;
   /*
    * Lo que una congregación tiene hoy, arriba de su carpeta y de su historial.
    *
@@ -11876,6 +11957,7 @@ function printGenerico(m, row, extras = {}) {
       </table>
       ${loSuyo}
       ${susIntegrantes}
+      ${laDeuda}
       ${entregas}
       ${carpeta}
       ${historial}

@@ -108,6 +108,17 @@ const DOCUMENTOS = [
    */
   { nombre: 'la hoja de un cuerpo', modulo: 'cuerpos' },
   { nombre: 'un acta de reunión', modulo: 'actas_reuniones' },
+  /*
+   * La hoja de una DEUDA con su plan de cuotas. La corporación la pidió así
+   * —«con su plan de cuotas y lo que va pagado»— y hasta la 1.269.0 salía la
+   * ficha a secas: catorce datos y ni una palabra de las seis cuotas.
+   *
+   * Es la única que se SIEMBRA: la base de trabajo no trae deudas anotadas
+   * —lo dijo la propia corporación— así que sin sembrar una no habría hoja que
+   * revisar y la comprobación pasaría por no encontrar nada, que es la peor
+   * manera de pasar. Se borra al final.
+   */
+  { nombre: 'la hoja de una deuda', modulo: 'deudas', sembrar: true },
   { nombre: 'el informe de asistencia', ruta: '#/asistencia/informes' },
   /*
    * La planilla mensual es de UN cuerpo: sin decir cuál, la pantalla contesta
@@ -119,6 +130,35 @@ const DOCUMENTOS = [
    */
   { nombre: 'la planilla mensual', modulo: 'cuerpos', rutaCon: (id) => `#/asistencia/informes?tipo=planilla&cuerpo_id=${id}` },
 ];
+
+/**
+ * Una deuda con su plan a medio pagar, para poder revisar su hoja. Devuelve su
+ * id, o null si no se pudo (y entonces la revisión lo dice, no lo calla).
+ */
+async function sembrarUnaDeuda(pagina) {
+  return pagina.evaluate(async () => {
+    const cuentas = await api('GET', '/cuentas_tesoreria?page=1&pageSize=50');
+    const caja = (cuentas.items || cuentas.rows || []).find((c) => c.estado !== 'Cerrada');
+    if (!caja) return null;
+    const d = await api('POST', '/deudas', {
+      cuenta_id: caja.id, direccion: 'Por pagar', clase: 'Compra a crédito',
+      concepto: 'Sillas para el templo (prueba de impresos)', monto: 500000,
+      fecha: '2026-06-10', cuotas: 6, primera_cuota: '2026-07-10',
+      contraparte_tipo: 'Una institución', institucion: 'Muebles del Sur Ltda.',
+      estado: 'Vigente', igual_asi: true,
+    }).catch(() => null);
+    if (!d || !d.id) return null;
+    const plan = await api('GET', `/deudas/${d.id}/plan`).catch(() => null);
+    const cuota = plan && plan.cuotas && plan.cuotas[0];
+    if (cuota) {
+      await api('POST', `/deudas/${d.id}/pagos`, {
+        cuota_id: cuota.id, fecha: cuota.vence, monto: cuota.monto,
+        metodo: 'Transferencia', igual_asi: true,
+      }).catch(() => null);
+    }
+    return d.id;
+  });
+}
 
 /**
  * El primer registro que exista en ese módulo: su id y cómo se llama.
@@ -165,9 +205,18 @@ async function primerRegistro(pagina, modulo) {
   // Desde acá se mira como lo ve la impresora, no como lo ve la pantalla
   await pagina.emulateMedia({ media: 'print' });
 
+  let sembrado = null;
   for (const doc of DOCUMENTOS) {
     console.log(`\n── ${doc.nombre} ──`);
     let cual = null;
+    if (doc.sembrar) {
+      sembrado = await sembrarUnaDeuda(pagina);
+      if (!sembrado) {
+        revisar(`${doc.nombre}: se pudo preparar una para revisar`, false,
+          'no se pudo anotar una deuda de prueba');
+        continue;
+      }
+    }
     if (doc.modulo) {
       cual = await primerRegistro(pagina, doc.modulo);
       if (!cual) {
@@ -265,6 +314,24 @@ async function primerRegistro(pagina, modulo) {
      * otra pantalla. Sin esa mitad, estas tres comprobaciones se le hacían
      * también a la planilla y salían en rojo por pedirle algo que no le toca.
      */
+    /*
+     * La hoja de una deuda lleva su PLAN DE PAGOS: la pregunta que trae a
+     * alguien a esta hoja es cuánto falta y cuándo vence lo próximo, y eso son
+     * seis compromisos con su fecha, no un número. Sale del mismo lugar que la
+     * planilla de la ficha, así que el papel y la pantalla no pueden discrepar.
+     */
+    if (doc.modulo === 'deudas') {
+      revisar('la hoja de una deuda trae su plan de pagos',
+        /Plan de pagos/.test(r.texto) && /1 de 6/.test(r.texto) && /6 de 6/.test(r.texto),
+        'sin las cuotas es la ficha a secas, y la pregunta es cuándo vence la próxima');
+      revisar('y dice lo que va pagado y lo que falta',
+        /pagada\(s\)/.test(r.texto) && /falta/.test(r.texto) && /Pagada/.test(r.texto),
+        'una deuda a medio pagar tiene que decir por dónde va');
+      revisar('y los pagos anotados, uno por uno',
+        /Pagos anotados/.test(r.texto),
+        'cada pago dejó un movimiento en la caja: en el papel tienen que poder cotejarse');
+    }
+
     if (doc.modulo === 'cuerpos' && !doc.rutaCon) {
       revisar('la hoja de un cuerpo dice quiénes lo componen',
         /Quiénes lo componen/.test(r.texto),
@@ -275,6 +342,20 @@ async function primerRegistro(pagina, modulo) {
         !/\b\d{7,8}-[\dkK]\b/.test(r.texto.replace(/RUT[^\n]*/g, '')),
         'el RUT tiene su propia llave, y una hoja impresa es por donde se escapa');
     }
+  }
+
+  /*
+   * Y se retira la deuda de prueba. Un papel de prueba que se queda en la base
+   * es una deuda que la organización no contrajo, y aparecería en su balance.
+   */
+  if (sembrado) {
+    await pagina.evaluate(async (id) => {
+      const movs = await api('GET', `/tesoreria?page=1&pageSize=50&f_deuda_id=${id}`).catch(() => null);
+      for (const mv of ((movs && (movs.items || movs.rows)) || [])) {
+        if (mv.desembolso === 0) await api('DELETE', `/deudas/${id}/pagos/${mv.id}`).catch(() => null);
+      }
+      await api('DELETE', `/deudas/${id}?igual_asi=1`).catch(() => null);
+    }, sembrado);
   }
 
   await navegador.close();

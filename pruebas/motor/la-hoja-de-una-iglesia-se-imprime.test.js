@@ -77,8 +77,13 @@ test('la hoja de una iglesia pide lo que la congregación tiene hoy', () => {
   assert.match(app, /sheet = printGenerico\(m, row, \{[^}]*\bloQueTiene\b[^}]*\}\)/,
     'y llega hasta la hoja');
   const desde = app.indexOf('function printGenerico(');
-  // El recorte creció con la sección de la gente de un cuerpo (1.255.0)
-  const trozo = app.slice(desde, desde + 4600);
+  /*
+   * El recorte creció con la sección de la gente de un cuerpo (1.255.0) y otra
+   * vez con el plan de pagos de una deuda (1.269.0). Es una ventana para no
+   * comprobar contra el archivo entero, no una medida de cuánto puede crecer la
+   * hoja: se corre cuando la función crece por delante.
+   */
+  const trozo = app.slice(desde, desde + 8000);
   assert.match(trozo, /Lo que tiene hoy/);
   assert.match(trozo, /es lo que hay\s*\n?\s*anotado en el sistema en el momento de imprimir/,
     'quien firme la hoja tiene que saber que son cifras de hoy, no datos de la ficha');
