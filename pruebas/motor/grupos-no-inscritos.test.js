@@ -374,8 +374,21 @@ test('cambiar de registro suelta el enlace anterior', () => {
   });
   const antes = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(puesto.id);
 
+  /*
+   * Desde la 1.253.0, cambiar a alguien que no es integrante del grupo PREGUNTA
+   * (ver server/quien-dirige-el-cuerpo.js), así que acá se contesta: lo que
+   * esta prueba mide es el ENLACE, no la pregunta, que tiene las suyas aparte.
+   */
   const cambio = { lider_tipo: 'Miembro', lider_id: ana };
-  const error = cuerpos.hooks.beforeSave(cambio, { id: puesto.id, existing: antes, isNew: false, db });
+  const pregunta = cuerpos.hooks.beforeSave(
+    { ...cambio }, { id: puesto.id, existing: antes, isNew: false, db }
+  );
+  assert.equal(pregunta && pregunta.confirmar, 'quien_lo_dirige_no_es_integrante',
+    'Ana no está entre los integrantes de este grupo');
+
+  const error = cuerpos.hooks.beforeSave(
+    cambio, { id: puesto.id, existing: antes, isNew: false, db, confirmado: true }
+  );
   assert.equal(error, null, String(error));
   assert.equal(cambio.lider_no_miembro_id, null,
     'si no, el enlace viejo quedaría apuntando a alguien que ya no dirige nada');

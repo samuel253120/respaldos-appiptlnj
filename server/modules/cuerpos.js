@@ -268,26 +268,43 @@ module.exports = {
           + 'tipo tiene que ser Grupo.';
       }
 
-      const deDonde = liderTipo === 'No miembro'
-        ? { tabla: 'no_miembros', campo: 'lider_no_miembro_id', otro: 'lider_id' }
-        : { tabla: 'miembros', campo: 'lider_id', otro: 'lider_no_miembro_id' };
-      const quien = Number(dato(deDonde.campo));
-      data[deDonde.otro] = null;
+      /*
+       * De qué registro sale quien lo dirige, y las dos comprobaciones que se
+       * le hacen (ver server/quien-dirige-el-cuerpo.js). Estaban escritas acá
+       * y solo para la mitad: al encargado NO INSCRITO de un grupo se le
+       * comprobaba la iglesia, y al líder formal de un cuerpo —del que sale su
+       * directiva— no se le comprobaba nada.
+       */
+      const dirige = require('../quien-dirige-el-cuerpo');
+      const deDonde = dirige.DE_DONDE[liderTipo];
+      const campo = liderTipo === 'No miembro' ? 'lider_no_miembro_id' : 'lider_id';
+      const otro = liderTipo === 'No miembro' ? 'lider_id' : 'lider_no_miembro_id';
+      const quien = Number(dato(campo));
+      data[otro] = null;
+      let preguntaDelLider = null;
       if (!quien) {
         // Un cuerpo puede no tener líder puesto todavía: eso es legítimo
-        data[deDonde.campo] = null;
+        data[campo] = null;
         data.lider = null;
       } else {
         const ficha = db
           .prepare(`SELECT nombres, apellidos, iglesia_id FROM "${deDonde.tabla}" WHERE id = ?`)
           .get(quien);
         if (!ficha) return 'La persona que se puso como líder ya no está en el sistema.';
-        if (liderTipo === 'No miembro' && ficha.iglesia_id && iglesiaId
-            && Number(ficha.iglesia_id) !== Number(iglesiaId)) {
-          return 'Esa persona está registrada en otra iglesia. Cada iglesia lleva a los suyos.';
-        }
-        data[deDonde.campo] = quien;
+
+        // La iglesia se FRENA: un cuerpo es de una iglesia y su gente es de esa
+        // iglesia, y de ahí sale quién ve cada cosa suya.
+        const deOtra = dirige.avisoSiEsDeOtraIglesia(ficha, iglesiaId);
+        if (deOtra) return deOtra;
+
+        data[campo] = quien;
         data.lider = `${ficha.nombres || ''} ${ficha.apellidos || ''}`.trim();
+
+        // Y que sea integrante se PREGUNTA: hay interinatos, y hay cuerpos que
+        // se están formando. Se guarda para el final, con las otras preguntas.
+        preguntaDelLider = dirige.avisoSiNoEsIntegrante(db, {
+          tipo: liderTipo, personaId: quien, ficha, existing, confirmado,
+        });
       }
 
       /*
@@ -325,6 +342,13 @@ module.exports = {
       const repetido = require('../el-nombre-del-cuerpo')
         .avisoDeCuerpoRepetido(db, data, { existing, confirmado });
       if (repetido) return repetido;
+
+      /*
+       * Y en medio, la de quien lo dirige sin ser integrante: cuesta menos de
+       * deshacer que un cuerpo duplicado —se cambia el líder y ya— y más que
+       * un monto sin poner, que además se dice en otros dos lugares.
+       */
+      if (preguntaDelLider) return preguntaDelLider;
 
       return require('../cuota-sin-monto')
         .avisoSiCobraSinMonto(data, { existing, confirmado });
