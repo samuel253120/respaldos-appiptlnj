@@ -50,7 +50,20 @@ module.exports = {
       seccion: 'Identificación',
     },
     { name: 'fecha', label: 'Fecha', type: 'date', required: true },
-    { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
+    {
+      /*
+       * No lo escribe nadie: sale del cuerpo elegido, en cada guardado. Se
+       * muestra —y se sigue pudiendo filtrar por él en el listado— porque de
+       * este campo depende QUIÉN VE ESTA ACTA (ver server/alcance.js).
+       *
+       * Deja de ser obligatorio porque deja de pedirse: lo garantiza el
+       * gancho de más abajo, no quien llena el formulario. Un campo de solo
+       * lectura llega vacío al guardado, y exigirlo dejaría de entrar toda
+       * acta nueva.
+       */
+      name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true,
+      help: 'La de su cuerpo. Si el acta se pasa a un cuerpo de otra iglesia, ésta cambia con él.',
+    },
     { name: 'cuerpo_id', label: 'Cuerpo / Grupo', type: 'ref', ref: 'cuerpos', required: true },
     { name: 'lugar', label: 'Lugar', type: 'text', seccion: 'Dónde y quiénes' },
     { name: 'hora_inicio', label: 'Hora de inicio', type: 'time' },
@@ -196,5 +209,48 @@ module.exports = {
         next(e);
       }
     });
+  },
+
+  hooks: {
+    /**
+     * LA IGLESIA SALE DEL CUERPO, SIEMPRE.
+     *
+     * Eran dos campos que el formulario pedía por separado, como si fueran
+     * independientes. No lo son: cada cuerpo pertenece a una iglesia y a una
+     * sola, así que la iglesia de un acta no es un dato propio —es la de su
+     * cuerpo—. Nadie comprobaba que coincidieran, y se podía guardar el acta
+     * de un cuerpo de la Iglesia Central anotada en la Iglesia Norte.
+     *
+     * Lo que se rompe con eso no es la ficha: es quién la ve. De este campo
+     * sale el alcance (server/alcance.js), y el alcance pide las dos cosas
+     * —la iglesia Y el cuerpo—. Un acta con el cuerpo correcto y la iglesia
+     * de otra congregación no pasa el filtro de nadie: no la ve el líder de
+     * su propio cuerpo, porque esa iglesia no es suya, y no la busca quien
+     * administra la otra, donde aparece un acta de un cuerpo que allá no
+     * existe. Medido antes de esto: de las ocho actas del cuerpo n.º 14 que
+     * había en la base, su propio líder veía siete. La octava era la mal
+     * anotada, y no avisaba nada.
+     *
+     * Se deduce en CADA guardado y no solo cuando el campo viene vacío,
+     * porque son dos puertas y las dos estaban abiertas. Medido en la
+     * v1.270.0: crear un acta mandando una iglesia distinta de la de su
+     * cuerpo contestaba 201 y quedaba así; y cambiarle el cuerpo a un acta ya
+     * guardada —que es lo que hace el formulario, mandando la ficha entera
+     * con el `iglesia_id` que ya traía cargado— contestaba 200 y la dejaba
+     * anotada en la iglesia anterior.
+     *
+     * Es el mismo arreglo que la v1.263.0 le hizo a las directivas, por el
+     * mismo motivo y con la misma lección: lo que se copió hay que volver a
+     * mirarlo.
+     */
+    beforeSave(data, { db, existing }) {
+      const cuerpoId = data.cuerpo_id !== undefined ? data.cuerpo_id : existing && existing.cuerpo_id;
+      if (!cuerpoId) return null;
+      // El cuerpo ya se comprobó antes de llegar acá: que exista (referenciasRotas)
+      // y que sea de los suyos (referenciasFueraDeAlcance). Acá solo se lee.
+      const suCuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
+      if (suCuerpo) data.iglesia_id = suCuerpo.iglesia_id;
+      return null;
+    },
   },
 };
