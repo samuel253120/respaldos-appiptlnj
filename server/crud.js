@@ -1491,6 +1491,16 @@ function buildRouter() {
             .avisoSiElPastorYaNoEjerce(db, def, { data, existing, isNew });
           if (yaNoEjerce) throw new ErrorDeDatos(yaNoEjerce);
 
+          /*
+           * Y a un cuerpo inactivo no se le cuelga nada nuevo (ver
+           * server/cuerpo-inactivo.js). Tercera regla de la misma forma y por
+           * el mismo motivo que las dos de arriba: un estado que no hace
+           * cumplir nada promete una protección que no existe.
+           */
+          const cuerpoCerrado = require('./cuerpo-inactivo')
+            .avisoSiElCuerpoEstaInactivo(db, def, { data, existing, isNew });
+          if (cuerpoCerrado) throw new ErrorDeDatos(cuerpoCerrado);
+
           const keys = Object.keys(data);
           let row;
           if (isNew) {

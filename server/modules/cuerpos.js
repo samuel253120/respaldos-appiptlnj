@@ -68,9 +68,18 @@ function evaluarCumplimiento(fila, db) {
             : `Venció el ${directiva.fecha_termino}`,
     },
     {
+      /*
+       * Un estado en BLANCO cuenta como activo, que es lo que significa (ver
+       * server/cuerpo-inactivo.js). Antes se exigía la palabra escrita, y como
+       * el valor de fábrica solo se aplica al abrir el formulario, los cuerpos
+       * que ya existían la tenían vacía: doce de dieciséis salían con un
+       * reproche —«Cuerpo activo ✗ Sin estado»— por un dato que nadie les
+       * había pedido. El «Cuerpo de prueba 1», con 49 integrantes activos,
+       * quedaba «Pendiente (4)» en parte por eso.
+       */
       texto: 'Cuerpo activo',
-      ok: fila.estado === 'Activo',
-      detalle: fila.estado || 'Sin estado',
+      ok: require('../cuerpo-inactivo').funciona(fila),
+      detalle: fila.estado || 'Activo',
     },
   ];
 
@@ -88,6 +97,14 @@ module.exports = {
   group: 'Organización',
   order: 52,
   display: '{nombre}',
+  /*
+   * Lo que este cuerpo ofrece cuando otro módulo lo referencia en un
+   * formulario: los que reciben cosas nuevas, más el que ese campo ya tuviera
+   * elegido. Sin lo segundo, abrir el acta de un cuerpo que se cerró la
+   * dejaría sin cuerpo en el desplegable, y guardar lo habría borrado. Es el
+   * mismo arreglo que la 1.232.0 le hizo a las iglesias inactivas.
+   */
+  opcionesPorDefecto: '/cuerpos/activos?ademas={cuerpo_id}',
   searchFields: ['nombre', 'descripcion', 'lider'],
   listFields: ['foto', 'nombre', 'tipo', 'iglesia_id', 'lider', 'estado', 'cumplimiento'],
   defaultSort: { field: 'nombre', dir: 'asc' },
@@ -313,7 +330,39 @@ module.exports = {
     },
   },
 
-  extraRoutes(router, { db, requirePerm, can }) {
+  extraRoutes(router, { db, requirePerm, can, scopeClause }) {
+    /**
+     * Los cuerpos que reciben cosas nuevas, para los desplegables.
+     *
+     * `ademas` trae lo que ese campo ya tenía elegido, y ese cuerpo entra
+     * aunque esté inactivo: es el acta, la cuenta o la ficha de integrante de
+     * un cuerpo que se cerró, y su cuerpo tiene que seguir a la vista.
+     *
+     * Se pide con la llave de VER cuerpos, que es la que ya hace falta para
+     * que el desplegable diga sus nombres, y sale acotado por el alcance de
+     * siempre.
+     */
+    router.get('/cuerpos/activos', requirePerm('cuerpos', 'view'), (req, res) => {
+      const inactivos = require('../cuerpo-inactivo');
+      const params = [];
+      const where = [];
+      const suyos = scopeClause(req.user, params);
+      if (suyos) where.push(suyos);
+
+      const ademas = Number(req.query.ademas) || 0;
+      if (ademas) {
+        params.push(ademas);
+        where.push(`(${inactivos.condicionDeActivos()} OR id = ?)`);
+      } else {
+        where.push(inactivos.condicionDeActivos());
+      }
+
+      const filas = db
+        .prepare(`SELECT id, nombre FROM cuerpos WHERE ${where.join(' AND ')} ORDER BY nombre`)
+        .all(...params);
+      res.json(filas.map((c) => ({ id: c.id, label: c.nombre })));
+    });
+
     /**
      * El cuerpo del que se está pidiendo el panel, comprobando que sea uno de
      * los suyos.

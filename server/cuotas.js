@@ -121,6 +121,17 @@ function registrarPago(conexion, { integranteId, anio, mes, monto, fecha, metodo
   const cuerpo = conexion.prepare('SELECT * FROM cuerpos WHERE id = ?').get(ficha.cuerpo_id);
   if (!cuerpo || !cuerpo.cobra_cuota) return { error: 'Este cuerpo no cobra cuota mensual.' };
 
+  /*
+   * Y un cuerpo INACTIVO no cobra cuotas nuevas (ver
+   * server/cuerpo-inactivo.js). Se pide acá, y no solo en el motor, porque la
+   * planilla de cuotas escribe el pago derecho —y con él su ingreso en
+   * tesorería— desde su propia ruta: escrita la regla en un solo lado, ésta
+   * sería la puerta de atrás para meterle plata nueva a un cuerpo cerrado.
+   */
+  const cerrado = require('./cuerpo-inactivo')
+    .avisoSiEstaInactivo(conexion, ficha.cuerpo_id, 'cobrar cuotas nuevas');
+  if (cerrado) return { error: cerrado };
+
   const elMes = String(mes || '').padStart(2, '0');
   if (!/^(0[1-9]|1[0-2])$/.test(elMes)) return { error: 'Ese mes no existe.' };
   const elAnio = Number(anio);

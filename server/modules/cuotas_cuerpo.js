@@ -95,6 +95,18 @@ module.exports = {
       if (!id) {
         const sinDonde = require('../cuotas').avisoSiLaCuentaEstaCerrada(ficha.cuerpo_id, db);
         if (sinDonde) return sinDonde;
+
+        /*
+         * Ni de un cuerpo que dejó de funcionar (ver
+         * server/cuerpo-inactivo.js). La regla general del motor no llega
+         * hasta acá: `cuerpo_id` no se elige, se copia de la ficha del
+         * integrante, y por eso es una columna y no una referencia. Es la
+         * segunda de las dos puertas por las que entra una cuota —la otra es
+         * la planilla, en server/cuotas.js— y las dos piden la misma regla.
+         */
+        const cerrado = require('../cuerpo-inactivo')
+          .avisoSiEstaInactivo(db, ficha.cuerpo_id, 'cobrar cuotas nuevas');
+        if (cerrado) return cerrado;
       }
 
       if (!dato('fecha_pago')) data.fecha_pago = new Date().toISOString().slice(0, 10);

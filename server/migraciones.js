@@ -3023,6 +3023,56 @@ function loQueSeQuedoEnLaIglesiaAnterior(conexion = db) {
   marcar();
 }
 
+/**
+ * El estado de cada cuerpo, escrito.
+ *
+ * El campo trae «Activo» de fábrica, pero un valor de fábrica solo se aplica
+ * cuando alguien abre el formulario: los cuerpos que ya existían tenían el
+ * estado VACÍO. Medido antes de esto, doce de dieciséis, y no era inofensivo
+ * —el cumplimiento los castigaba por eso: el «Cuerpo de prueba 1», con 49
+ * integrantes activos, salía «Pendiente (4)» y uno de los cuatro reproches era
+ * «Cuerpo activo ✗ Sin estado»—.
+ *
+ * Ahora además el estado decide algo (ver server/cuerpo-inactivo.js), así que
+ * el vacío tenía que quedar dicho antes de que la regla empezara a mirarlo.
+ * Y se escribe «Activo» y no otra cosa porque es lo que significa: si un cuerpo
+ * hubiera dejado de funcionar, alguien lo habría marcado.
+ *
+ * Es la misma vuelta que la 1.229.0 le dio al nivel de cada artículo de
+ * inventario, y por el mismo motivo: un dato que empieza a mandar no puede
+ * quedar en blanco en las tres cuartas partes de las filas.
+ *
+ * Recibe la conexión porque esto toca TODOS los cuerpos, y las pruebas del
+ * motor comparten una sola base entre procesos: correrla ahí le cambiaría los
+ * datos a los demás archivos mientras están mirándolos. Se la prueba sobre una
+ * copia, que es también como corre de verdad —sobre una base sola, al arrancar—.
+ */
+function elEstadoDeCadaCuerpo(conexion = db) {
+  const NOMBRE = 'el estado de cada cuerpo, escrito';
+  const yaEsta = () => !!conexion.prepare('SELECT nombre FROM migraciones WHERE nombre = ?').get(NOMBRE);
+  const marcar = () => conexion.prepare('INSERT OR IGNORE INTO migraciones (nombre) VALUES (?)').run(NOMBRE);
+  if (yaEsta()) return;
+
+  const hayTabla = (t) =>
+    !!conexion.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('cuerpos')) return marcar();
+  const columnas = conexion.prepare('PRAGMA table_info(cuerpos)').all().map((c) => c.name);
+  // La columna se crea al arrancar; si aún no está, se intenta de nuevo
+  if (!columnas.includes('estado')) return;
+
+  const puestos = conexion
+    .prepare("UPDATE cuerpos SET estado = 'Activo' WHERE estado IS NULL OR estado = ''")
+    .run().changes;
+
+  if (puestos) {
+    console.log(
+      `👥 Cuerpos / Grupos: ${puestos} estrenaron su estado «Activo», que es lo que el vacío ` +
+        'significaba. Desde ahora el estado decide si el cuerpo recibe cosas nuevas.'
+    );
+  }
+  marcar();
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -3087,6 +3137,7 @@ function ejecutarMigraciones() {
     ['el nivel de cada artículo de inventario', elNivelDeCadaArticuloDeInventario],
     ['las cajas con el nombre viejo de su iglesia', lasCajasConElNombreViejoDeSuIglesia],
     ['los nombres de iglesia sin espacios de más', losNombresDeIglesiaSinEspaciosDeMas],
+    ['el estado de cada cuerpo, escrito', elEstadoDeCadaCuerpo],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -3347,4 +3398,5 @@ module.exports = {
   elNivelDeCadaArticuloDeInventario,
   lasCajasConElNombreViejoDeSuIglesia,
   losNombresDeIglesiaSinEspaciosDeMas,
+  elEstadoDeCadaCuerpo,
 };
