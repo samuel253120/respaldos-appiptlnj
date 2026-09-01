@@ -33,6 +33,10 @@ const TINTA = '#111827';
 const SUAVE = '#6b7280';
 const LINEA = '#d1d5db';
 const MARCA = '#16265c'; // el azul del emblema
+// El color de lo que todavía no está firmado. Es el mismo de la hoja de la
+// pantalla (.acta-sin-firmar en public/styles.css): un acta a medio camino se
+// tiene que ver igual salga por donde salga.
+const SIN_FIRMAR = '#9f1239';
 
 /** El logo que corresponde: el que se subió, o el que trae el sistema. */
 function rutaDelLogo() {
@@ -169,6 +173,36 @@ function generar(actaFila, { quien } = {}) {
     doc.font('Helvetica').fontSize(10.5).fillColor(SUAVE)
       .text(bajada, { width: ancho, align: 'center' });
   }
+  /*
+   * ── El sello de que esto no es el documento final ────────────────────
+   *
+   * El PDF ya decía el estado en su tabla de datos, pero dicho ahí se lee
+   * igual que el lugar o la hora. Un borrador impreso circula —se lleva a una
+   * reunión, se archiva, se muestra—, y quien lo recibe tiene que verlo de una
+   * mirada, no buscándolo entre los campos. Va en un recuadro, para que sea lo
+   * mismo que muestra la hoja de la pantalla: los dos caminos para sacar la
+   * misma acta del sistema tienen que decir lo mismo.
+   */
+  if (actaFila.estado !== 'Firmada') {
+    const que = String(actaFila.estado || 'Borrador').toUpperCase();
+    const porque = actaFila.estado === 'Aprobada'
+      ? 'Aprobada en la reunión y todavía sin firmar: no es el documento definitivo.'
+      : 'Documento de trabajo: no ha sido aprobado ni firmado.';
+    doc.moveDown(0.8);
+    const arriba = doc.y;
+    // Se mide primero el alto que va a ocupar el texto y después se dibuja el
+    // marco: al revés habría que adivinarlo, y una frase larga se saldría.
+    const altoTitulo = doc.font('Helvetica-Bold').fontSize(10).heightOfString(que, { width: ancho - 24 });
+    const altoTexto = doc.font('Helvetica').fontSize(9.5).heightOfString(porque, { width: ancho - 24 });
+    const alto = altoTitulo + altoTexto + 16;
+    doc.lineWidth(1.4).strokeColor(SIN_FIRMAR).roundedRect(izq, arriba, ancho, alto, 3).stroke();
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(SIN_FIRMAR)
+      .text(que, izq + 12, arriba + 7, { width: ancho - 24, align: 'center', characterSpacing: 2 });
+    doc.font('Helvetica').fontSize(9.5).fillColor(SIN_FIRMAR)
+      .text(porque, izq + 12, doc.y + 1, { width: ancho - 24, align: 'center' });
+    doc.y = arriba + alto;
+  }
+
   doc.moveDown(1);
 
   // ── Los datos, en dos columnas de etiqueta y valor ────────────────────
@@ -190,6 +224,11 @@ function generar(actaFila, { quien } = {}) {
   dato('Presidida por', actaFila.presidida_por);
   dato('Secretario(a)', actaFila.secretario);
   dato('Estado', actaFila.estado);
+  // Quién la firmó y cuándo, desde la 1.272.0. Un acta sin firmar no los trae
+  // y `dato` se salta solo lo que viene vacío.
+  dato('Firmada por', actaFila.firmada_por
+    ? actaFila.firmada_por + (actaFila.fecha_firma ? ` · ${formato.fechaLarga(actaFila.fecha_firma)}` : '')
+    : '');
   if (actaFila.documento) dato('Documento adjunto', path.basename(String(actaFila.documento)));
 
   // ── La asistencia enlazada ────────────────────────────────────────────
@@ -263,6 +302,7 @@ function generar(actaFila, { quien } = {}) {
   if (doc.y + ALTO_DE_LAS_FIRMAS > doc.page.height - doc.page.margins.bottom) doc.addPage();
   const yFirmas = doc.y + 24;
   const anchoFirma = (ancho - 40) / 2;
+  const sinFirmar = actaFila.estado !== 'Firmada';
   [[actaFila.presidida_por || '', 'Preside'], [actaFila.secretario || '', 'Secretario(a)']]
     .forEach(([quienFirma, cargo], i) => {
       const x = izq + i * (anchoFirma + 40);
@@ -271,6 +311,12 @@ function generar(actaFila, { quien } = {}) {
         .text(quienFirma, x, yFirmas + 6, { width: anchoFirma, align: 'center' });
       doc.font('Helvetica').fontSize(9).fillColor(SUAVE)
         .text(cargo, x, doc.y, { width: anchoFirma, align: 'center' });
+      // Dos rayas a secas es lo que hacía que un borrador impreso pareciera
+      // firmado: si no lo está, la raya lo dice.
+      if (sinFirmar) {
+        doc.font('Helvetica').fontSize(8.5).fillColor(SIN_FIRMAR)
+          .text('Pendiente de firma', x, doc.y + 1, { width: anchoFirma, align: 'center' });
+      }
     });
 
   // ── El pie, en todas las páginas ──────────────────────────────────────

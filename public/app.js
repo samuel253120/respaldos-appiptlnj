@@ -11242,6 +11242,36 @@ function printActa(m, row, esAsamblea, asistencia) {
   // que los traiga se sigue imprimiendo tal cual (ver el módulo).
   const asistentes = (row.asistentes_labels || []).join(' · ');
 
+  /*
+   * QUÉ HOJA ES ÉSTA.
+   *
+   * Un borrador salía impreso idéntico a un acta firmada: el mismo membrete de
+   * la institución, los mismos datos y las mismas dos líneas de firma al pie,
+   * sin una palabra que dijera que todavía no está aprobado. Una vez en papel
+   * era indistinguible del definitivo, y un papel así circula: se lleva a una
+   * reunión, se archiva, se muestra. El PDF sí decía el estado —de los dos
+   * caminos para sacar la misma acta del sistema, uno lo decía y el otro no—.
+   *
+   * El aviso lleva BORDE y no fondo de color, a propósito: los navegadores no
+   * imprimen los fondos salvo que se les marque «gráficos de fondo» a mano, y
+   * este aviso tiene que salir en el papel justamente cuando alguien imprime.
+   * Un borde y un color de letra sí se imprimen siempre.
+   */
+  const firmada = row.estado === 'Firmada';
+  const avisoDelEstado = firmada ? '' : `
+      <div class="acta-sin-firmar">
+        <b>${esc((row.estado || 'Borrador').toUpperCase())}</b>
+        ${row.estado === 'Aprobada'
+          ? 'Aprobada en la reunión y todavía sin firmar: no es el documento definitivo.'
+          : 'Documento de trabajo: no ha sido aprobado ni firmado.'}
+      </div>`;
+
+  /*
+   * Y al pie, las firmas dicen si ya están puestas. Dejar las dos rayas a
+   * secas es lo que hacía que la hoja pareciera lo que no era.
+   */
+  const pendiente = firmada ? '' : '<br><span class="pend">Pendiente de firma</span>';
+
   /** Un grupo de la lista enlazada, solo si tiene gente. */
   const grupoImpreso = (titulo, gente, conMotivo) => {
     if (!gente || !gente.length) return '';
@@ -11263,6 +11293,7 @@ function printActa(m, row, esAsamblea, asistencia) {
       ${membreteDelDocumento()}
       <h1>${esAsamblea ? 'Acta de Asamblea' : 'Acta de Reunión'} N.º ${esc(row.numero_acta || '')}</h1>
       <div class="sub">${esc(iglesiaDeTrabajo(row.iglesia_id_label))}${row.cuerpo_id_label ? ' — ' + esc(row.cuerpo_id_label) : ''}</div>
+      ${avisoDelEstado}
       <table class="meta-tbl">
         <tr><td class="k">Fecha</td><td>${fechaLarga(row.fecha)}</td></tr>
         ${esAsamblea ? `<tr><td class="k">Tipo de asamblea</td><td>${esc(row.tipo || '')}</td></tr>` : ''}
@@ -11271,6 +11302,11 @@ function printActa(m, row, esAsamblea, asistencia) {
         <tr><td class="k">Presidida por</td><td>${esc(row.presidida_por || '')}</td></tr>
         <tr><td class="k">Secretario(a)</td><td>${esc(row.secretario || '')}</td></tr>
         ${esAsamblea ? `<tr><td class="k">Asistentes / Quórum</td><td>${esc(row.total_asistentes ?? '')} asistentes — ${row.hubo_quorum ? 'hubo quórum' : 'sin quórum'}</td></tr>` : ''}
+        <tr><td class="k">Estado</td><td>${esc(row.estado || 'Borrador')}</td></tr>
+        ${/* Quién la firmó y cuándo, cuando el módulo lo lleva anotado (v1.272.0).
+             Las asambleas todavía no: la línea no sale y la hoja no cambia. */''}
+        ${firmada && row.firmada_por ? `<tr><td class="k">Firmada por</td><td>${esc(row.firmada_por)}${
+          row.fecha_firma ? ` · ${fechaLarga(row.fecha_firma)}` : ''}</td></tr>` : ''}
       </table>
       ${listaEnlazada}
       ${asistentes ? `<h3>Asistentes</h3><p>${esc(asistentes)}</p>` : ''}
@@ -11285,8 +11321,8 @@ function printActa(m, row, esAsamblea, asistencia) {
       ${row.desarrollo ? `<h3>Desarrollo</h3><div class="blk">${row.desarrollo}</div>` : ''}
       ${row.acuerdos ? `<h3>Acuerdos</h3><div class="blk">${row.acuerdos}</div>` : ''}
       <div class="acta-firmas">
-        <div class="firma">${esc(row.presidida_por || 'Preside')}<br>Preside</div>
-        <div class="firma">${esc(row.secretario || 'Secretario(a)')}<br>Secretario(a)</div>
+        <div class="firma">${esc(row.presidida_por || 'Preside')}<br>Preside${pendiente}</div>
+        <div class="firma">${esc(row.secretario || 'Secretario(a)')}<br>Secretario(a)${pendiente}</div>
       </div>
       <div class="doc-pie">${pieDelDocumento()}</div>
     </div>`;

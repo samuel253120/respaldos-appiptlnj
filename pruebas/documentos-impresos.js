@@ -265,8 +265,16 @@ async function primerRegistro(pagina, modulo) {
      * ella misma lleva escrito— y no con la función que arma el título.
      */
     if (cual && cual.nombre && !doc.rutaCon) {
+      /*
+       * Comparado sin distinguir mayúsculas: el encabezado de un acta lo pone
+       * en versales la hoja de estilos (`.acta-sheet h1`), así que el texto
+       * pintado dice «ACTA N.º ABC-001» donde la ficha guarda «abc-001». Se
+       * cayó con un acta numerada en minúsculas, y el número era el correcto:
+       * la comprobación estaba mirando el estilo, no el dato.
+       */
+      const enElPapel = r.encabezado.toLocaleUpperCase('es');
       revisar('el encabezado dice de qué registro es, y no solo qué número tiene',
-        r.encabezado.includes(cual.nombre),
+        enElPapel.includes(cual.nombre.toLocaleUpperCase('es')),
         `el encabezado decía «${r.encabezado}» y el registro se llama «${cual.nombre}»`);
     }
 
@@ -348,6 +356,78 @@ async function primerRegistro(pagina, modulo) {
    * Y se retira la deuda de prueba. Un papel de prueba que se queda en la base
    * es una deuda que la organización no contrajo, y aparecería en su balance.
    */
+  /*
+   * ── UN BORRADOR IMPRESO NO PUEDE PARECER EL DOCUMENTO DEFINITIVO ──
+   *
+   * Un acta en «Borrador» salía impresa idéntica a una firmada: el mismo
+   * membrete de la institución, los mismos datos y las mismas dos líneas de
+   * firma al pie, sin una palabra que dijera que todavía no está aprobada. El
+   * PDF sí decía el estado, así que de los dos caminos para sacar la misma
+   * acta del sistema uno lo decía y el otro no.
+   *
+   * Va acá y no en el motor porque esto solo se puede comprobar en un navegador
+   * de verdad, con la hoja pintada: mirar el código no distingue una regla
+   * escrita de una regla conectada —se probó, y el sello se podía dejar armado
+   * sin insertarlo en la hoja y ninguna prueba del motor se ponía roja—.
+   *
+   * Se siembran las dos actas porque el estado de la que haya en la base no se
+   * puede elegir, y una comprobación que depende de eso pasa por casualidad.
+   */
+  const actasSembradas = await pagina.evaluate(async () => {
+    const cu = await api('GET', '/cuerpos?page=1&pageSize=3');
+    const cuerpo = ((cu && (cu.items || cu.rows)) || [])[0];
+    if (!cuerpo) return null;
+    const una = async (estado) => {
+      const r = await api('POST', '/actas_reuniones', {
+        numero_acta: `IMPR-${estado}-${Date.now()}`, fecha: '2026-03-15', cuerpo_id: cuerpo.id,
+        estado, presidida_por: 'Juan Pérez', secretario: 'Ana Soto',
+        acuerdos: '<p>Se aprueba comprar sillas.</p>',
+      }).catch(() => null);
+      return r && r.id;
+    };
+    return { borrador: await una('Borrador'), firmada: await una('Firmada') };
+  });
+
+  if (!actasSembradas || !actasSembradas.borrador || !actasSembradas.firmada) {
+    revisar('el acta impresa: se pudieron preparar dos para revisar', false,
+      'no se pudo anotar un acta de prueba');
+  } else {
+    console.log('\n── el acta impresa dice si está firmada ──');
+
+    await pagina.goto(`${URL}/#/print/actas_reuniones/${actasSembradas.borrador}`);
+    await pagina.waitForTimeout(2200);
+    const borrador = await pagina.evaluate(RADIOGRAFIA);
+    revisar('un borrador impreso lo dice, y con el sello a la vista',
+      /BORRADOR/.test(borrador.texto) && /no ha sido aprobado ni firmado/i.test(borrador.texto),
+      'una vez en papel era indistinguible del acta definitiva, y un papel así circula');
+    revisar('y sus dos líneas de firma dicen que la firma falta',
+      (borrador.texto.match(/Pendiente de firma/g) || []).length >= 2,
+      'dos rayas a secas con los nombres puestos es lo que lo hacía parecer firmado');
+    revisar('el sello se ve aunque la impresora no pinte los fondos',
+      await pagina.evaluate(() => {
+        const el = document.querySelector('.acta-sin-firmar');
+        if (!el) return false;
+        const e = getComputedStyle(el);
+        return parseFloat(e.borderTopWidth) >= 1
+          && /rgba\(0, 0, 0, 0\)|transparent/.test(e.backgroundColor);
+      }),
+      'con fondo de color no saldría: los navegadores no lo imprimen salvo que se les marque a mano');
+
+    await pagina.goto(`${URL}/#/print/actas_reuniones/${actasSembradas.firmada}`);
+    await pagina.waitForTimeout(2200);
+    const firmada = await pagina.evaluate(RADIOGRAFIA);
+    revisar('un acta firmada no lleva el sello', !/BORRADOR/.test(firmada.texto),
+      'la advertencia es para las que no lo están; ponerla siempre la vuelve invisible');
+    revisar('ni firmas pendientes', !/Pendiente de firma/.test(firmada.texto));
+    revisar('y dice quién la firmó y qué día',
+      /Firmada por/.test(firmada.texto) && /\d{1,2} de \w+ de \d{4}/.test(firmada.texto),
+      'firmar es un acto con fecha y con responsable');
+
+    await pagina.evaluate(async (ids) => {
+      for (const id of Object.values(ids)) await api('DELETE', `/actas_reuniones/${id}?igual_asi=1`).catch(() => null);
+    }, actasSembradas);
+  }
+
   if (sembrado) {
     await pagina.evaluate(async (id) => {
       const movs = await api('GET', `/tesoreria?page=1&pageSize=50&f_deuda_id=${id}`).catch(() => null);
