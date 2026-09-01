@@ -151,9 +151,57 @@ module.exports = {
   comoSeOfrecen: (opciones) =>
     require('../el-nombre-del-cuerpo').conLoQueLosDistingue(opciones, require('../db').db),
   searchFields: ['nombre', 'descripcion', 'lider'],
-  listFields: ['foto', 'nombre', 'tipo', 'iglesia_id', 'lider', 'estado', 'cumplimiento'],
+  /*
+   * En el listado va `dirigido_por` y no `lider`: los dos dicen el mismo
+   * nombre, pero el primero LLEVA a la ficha de esa persona. La columna de
+   * texto se queda como campo —es por donde el buscador encuentra un cuerpo
+   * por su líder, y es la que sale en la hoja impresa—, pero mostrar las dos
+   * sería el mismo dato dos veces.
+   */
+  listFields: ['foto', 'nombre', 'tipo', 'iglesia_id', 'dirigido_por', 'estado', 'cumplimiento'],
   defaultSort: { field: 'nombre', dir: 'asc' },
   computed: [
+    {
+      /*
+       * QUIÉN LO DIRIGE, con enlace a su ficha.
+       *
+       * El nombre ya estaba guardado —la columna `lider`, que el sistema copia
+       * de la ficha elegida— pero en la cabecera de la ficha no salía por
+       * ninguna parte: un cuerpo con 49 integrantes abría con una sola
+       * insignia que decía «Cuerpo». Y un nombre suelto tampoco alcanzaba:
+       * quien lo lee ahí quiere abrir a esa persona.
+       *
+       * Se calcula, no se guarda, así que se mantiene solo: sale del enlace
+       * —`lider_id` o `lider_no_miembro_id`— y no de la copia, de modo que no
+       * puede quedar diciendo algo que ya no es. Usa la capacidad que estrenó
+       * la 1.246.0 con «A cargo de» en la ficha de un pastor: un calculado que
+       * lleva a donde salió se pinta como enlace, con su rótulo delante.
+       *
+       * `enElPapel: false` porque la hoja impresa ya lleva «Quién lo dirige»
+       * desde el campo guardado, y el mismo dato dicho dos veces en un papel
+       * que alguien firma hace dudar de cuál manda.
+       */
+      name: 'dirigido_por', label: 'Quién lo dirige', type: 'badge', enElPapel: false,
+      help: 'Sale del enlace a su ficha, no de la copia del nombre: así no puede quedar viejo.',
+      calc: (fila, { db }) => {
+        const esNoMiembro = fila.lider_tipo === 'No miembro';
+        const id = esNoMiembro ? fila.lider_no_miembro_id : fila.lider_id;
+        const tabla = esNoMiembro ? 'no_miembros' : 'miembros';
+        /*
+         * UNA SOLA SALIDA EN BLANCO. Antes preguntaba primero «¿hay a quién
+         * apuntar?» y después «¿existe esa ficha?». La primera pregunta no
+         * decidía nada: sin enlace la consulta no encuentra ficha y se sale
+         * por la segunda igual. Un guardia que se puede quitar sin que cambie
+         * nada no está guardando; la línea que decide es esta.
+         */
+        const ficha = db.prepare(`SELECT nombres, apellidos FROM "${tabla}" WHERE id = ?`).get(id ?? null);
+        if (!ficha) return '';
+        return {
+          texto: require('../nombres').paraMostrar(ficha.nombres, ficha.apellidos),
+          ir: `#/m/${tabla}/ficha/${id}`,
+        };
+      },
+    },
     {
       name: 'cumplimiento', label: 'Cumplimiento', type: 'badge',
       help: 'Se calcula con el reglamento, la directiva vigente y el estado del cuerpo.',
@@ -549,6 +597,128 @@ module.exports = {
       ['tesoreria_cuerpo', 'view', 'la tesorería de los cuerpos']
     );
     const COBRA_CUOTAS = conPermisoDe(['tesoreria_cuerpo', 'view', 'la tesorería de los cuerpos']);
+
+    /**
+     * EL RESUMEN DE UN CUERPO: cuánta gente, cuánto en caja, cómo va su
+     * directiva y cuánto se mueve.
+     *
+     * La ficha de un cuerpo con 49 integrantes activos, dos cajas y su
+     * directiva abría con el nombre, su iglesia y una sola insignia que decía
+     * «Cuerpo». Nada más. Todo lo demás estaba detrás de sus siete pestañas, y
+     * lo que está detrás de una pestaña no se mira: quien abre la ficha de un
+     * cuerpo para saber si conviene fusionarlo, cerrarlo o pedirle su
+     * reglamento no va a recorrerlas para averiguarlo. Es lo mismo que la
+     * 1.234.0 le agregó a la ficha de una iglesia, y por lo mismo: ES LO QUE SE
+     * MIRA ANTES DE DECIDIR.
+     *
+     * CADA CIFRA PIDE SU PROPIO PERMISO, y la que no se puede ver no viaja. Un
+     * resumen es más peligroso que un listado, no menos: entrega la cifra sin
+     * que haya que abrir nada. Es la misma corrección que ya se les hizo a los
+     * paneles de esta misma ficha.
+     */
+    router.get('/cuerpos/:id(\\d+)/resumen', requirePerm('cuerpos', 'view'), (req, res) => {
+      const cuerpo = cuerpoDelUsuario(req, res);
+      if (!cuerpo) return;
+      const { YA_OCURRIO } = require('../saldos');
+      const { VIGENTES } = require('../integrantes');
+      const id = cuerpo.id;
+      const resumen = {};
+      const cuantos = (sql, ...params) => db.prepare(sql).get(id, ...params).n;
+
+      if (can(req.user, 'integrantes_cuerpo', 'view')) {
+        /*
+         * Los que pertenecen HOY —activos y en prueba— y, aparte, los que se
+         * retiraron. Es la misma definición que usan la planilla de cuotas y
+         * el panel de su ficha (ver server/integrantes.js): dos cifras de lo
+         * mismo que se contradigan en la misma pantalla es exactamente lo que
+         * le pasó a la primera versión del resumen de una iglesia.
+         */
+        const marcas = VIGENTES.map(() => '?').join(', ');
+        resumen.integrantes = {
+          activos: db
+            .prepare(`SELECT COUNT(*) AS n FROM integrantes_cuerpo
+                       WHERE cuerpo_id = ? AND estado IN (${marcas})`)
+            .get(id, ...VIGENTES).n,
+          total: cuantos('SELECT COUNT(*) AS n FROM integrantes_cuerpo WHERE cuerpo_id = ?'),
+          en_prueba: cuantos("SELECT COUNT(*) AS n FROM integrantes_cuerpo WHERE cuerpo_id = ? AND estado = 'En prueba'"),
+        };
+      }
+
+      /*
+       * Su plata. Pide las DOS llaves, como en todas partes: ver las cuentas y
+       * ver sus montos son permisos distintos, y quien no tenga el segundo ve
+       * cuántas cajas hay y no cuánto hay en ellas (ver server/sensibles.js).
+       */
+      if (can(req.user, 'cuentas_tesoreria', 'view')) {
+        const caja = db.prepare(
+          `SELECT COUNT(*) AS cuentas,
+                  COALESCE(SUM(c.saldo_inicial), 0)
+                  + COALESCE((SELECT SUM(CASE WHEN t.tipo = 'Ingreso' THEN t.monto ELSE -t.monto END)
+                              FROM tesoreria t
+                             WHERE t.cuenta_id IN (SELECT id FROM cuentas_tesoreria WHERE cuerpo_id = ?)
+                               AND ${YA_OCURRIO}), 0) AS saldo
+             FROM cuentas_tesoreria c WHERE c.cuerpo_id = ?`
+        ).get(id, id);
+        const montos = can(req.user, 'tesoreria_montos', 'view');
+        resumen.tesoreria = {
+          cuentas: caja.cuentas,
+          saldo: montos ? caja.saldo : null,
+          reservado: !montos,
+        };
+      }
+
+      /*
+       * Su directiva vigente, que es de lo primero que se pregunta al abrir un
+       * cuerpo: es uno de los requisitos que su propio cumplimiento evalúa.
+       */
+      if (can(req.user, 'directivas', 'view')) {
+        const vigente = db
+          .prepare(`SELECT periodo, fecha_termino FROM directivas
+                     WHERE cuerpo_id = ? AND estado = 'Vigente'
+                     ORDER BY fecha_inicio DESC LIMIT 1`)
+          .get(id);
+        resumen.directiva = {
+          periodo: vigente ? vigente.periodo : null,
+          vence: vigente ? vigente.fecha_termino : null,
+          total: cuantos('SELECT COUNT(*) AS n FROM directivas WHERE cuerpo_id = ?'),
+        };
+      }
+
+      if (can(req.user, 'asistencias', 'view')) {
+        // A un cuerpo se lo convoca por una LISTA de cuerpos, no por una
+        // columna suya: se pregunta como lo pregunta el alcance (ver
+        // server/alcance.js), o la cifra saldría siempre en cero.
+        const convocado = `EXISTS (SELECT 1 FROM json_each(asistencias.cuerpos) WHERE json_each.value = ?)`;
+        const ultima = db
+          .prepare(`SELECT fecha FROM asistencias WHERE ${convocado} AND ${YA_OCURRIO} ORDER BY fecha DESC LIMIT 1`)
+          .get(id);
+        resumen.asistencia = {
+          este_ano: cuantos(
+            `SELECT COUNT(*) AS n FROM asistencias
+              WHERE ${convocado} AND fecha >= date('now','localtime','start of year')`
+          ),
+          ultima: ultima ? ultima.fecha : null,
+        };
+      }
+
+      if (can(req.user, 'actas_reuniones', 'view')) {
+        const ultima = db
+          .prepare('SELECT fecha FROM actas_reuniones WHERE cuerpo_id = ? ORDER BY fecha DESC LIMIT 1')
+          .get(id);
+        resumen.actas = {
+          total: cuantos('SELECT COUNT(*) AS n FROM actas_reuniones WHERE cuerpo_id = ?'),
+          ultima: ultima ? ultima.fecha : null,
+        };
+      }
+
+      if (can(req.user, 'inventarios', 'view')) {
+        resumen.inventario = {
+          total: cuantos('SELECT COUNT(*) AS n FROM inventarios WHERE cuerpo_id = ?'),
+        };
+      }
+
+      res.json(resumen);
+    });
 
     // Detalle del cumplimiento de un cuerpo, para mostrarlo en su ficha
     router.get('/cuerpos/:id(\\d+)/cumplimiento', requirePerm('cuerpos', 'view'), (req, res) => {

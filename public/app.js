@@ -4273,6 +4273,19 @@ async function viewFicha(name, id, pestana) {
       insignias.push(`<a class="badge ${nivelClase(v.nivel)}" href="${esc(v.ir)}"
         >${esc(f.label)} · ${esc(v.texto)}</a>`);
     }
+    /*
+     * Y un calculado que trae COLOR pero no lleva a ninguna parte tampoco se
+     * pintaba: se caía por todas las ramas y desaparecía de la cabecera. Eran
+     * seis fichas —el cumplimiento de un cuerpo, el porcentaje de una
+     * actividad, el respaldo de un movimiento, la próxima cuota de una deuda,
+     * la ficha de miembro de un pastor y la situación de una credencial—, y
+     * son justamente el dato que dice si algo está bien o mal. Va con su
+     * ETIQUETA delante, por lo mismo que el enlace de arriba: «Al día» suelto
+     * en una cabecera no dice de qué.
+     */
+    else if (f.computed && v && v.texto) {
+      insignias.push(`<span class="badge ${nivelClase(v.nivel)}">${esc(f.label)} · ${esc(v.texto)}</span>`);
+    }
     else if (f.type === 'ref') subtitulo.push(etiquetaDeRef(f, row[f.name + '_label']));
   }
 
@@ -4396,6 +4409,7 @@ async function viewFicha(name, id, pestana) {
    * pide aparte y llega después; si no llega, la ficha se ve igual que siempre.
    */
   if (name === 'iglesias') renderResumenDeIglesia(id, document.getElementById('fichaResumen'));
+  if (name === 'cuerpos') renderResumenDeCuerpo(id, document.getElementById('fichaResumen'));
 
   if (name === 'no_miembros' && row.miembro_id && MOD['miembros']) {
     const caja = document.getElementById('fcInsignias');
@@ -16137,6 +16151,88 @@ async function renderResumenDeIglesia(id, caja) {
   if (d.solicitudes && d.solicitudes.abiertas) {
     suma('📨', fmtNumero(d.solicitudes.abiertas), 'Solicitudes en trámite',
       `#/m/solicitudes?f_iglesia_id=${id}`);
+  }
+
+  if (!fichas.length) return;
+  caja.innerHTML = `<div class="stats">${fichas.join('')}</div>`;
+}
+
+/**
+ * LO QUE EL CUERPO ES, arriba de su ficha y sin abrir ninguna pestaña.
+ *
+ * La ficha de un cuerpo con 49 integrantes activos, dos cajas y su directiva
+ * abría con el nombre, su iglesia y una sola insignia que decía «Cuerpo». Todo
+ * lo demás estaba detrás de sus siete pestañas, y lo que está detrás de una
+ * pestaña no se mira: quien abre la ficha de un cuerpo para saber si conviene
+ * fusionarlo, cerrarlo o pedirle su reglamento no va a recorrerlas.
+ *
+ * Es lo mismo que la 1.234.0 le agregó a la ficha de una iglesia, con la misma
+ * forma y por la misma razón. Se pide aparte y llega después: la ficha no se
+ * queda esperando, y si no llega se ve igual que siempre. Cada cifra la manda
+ * el servidor solo si esa persona puede verla, así que acá no se decide nada
+ * de permisos: lo que no viene, no se dibuja.
+ */
+async function renderResumenDeCuerpo(id, caja) {
+  const d = await api('GET', `/cuerpos/${id}/resumen`).catch(() => null);
+  if (!d || !caja) return;
+
+  const fichas = [];
+  const suma = (ic, num, lbl, adonde, apunte) =>
+    fichas.push(`<div class="stat"${adonde ? ` data-ir="${esc(adonde)}"` : ''}>
+        <div class="num">${esc(num)}</div><div class="lbl">${esc(lbl)}</div><div class="ic">${ic}</div>
+        ${apunte ? `<div class="apunte">${esc(apunte)}</div>` : ''}
+      </div>`);
+
+  if (d.integrantes) {
+    /*
+     * El número grande es el de los que PERTENECEN HOY, y el apunte dice
+     * cuántos están en prueba y cuántos se retiraron. Al revés —el total
+     * arriba— la cifra que se lee de un vistazo incluiría a los retirados, que
+     * no es la que nadie pregunta al abrir un cuerpo.
+     */
+    const g = d.integrantes;
+    const notas = [
+      g.en_prueba ? `${fmtNumero(g.en_prueba)} en prueba` : '',
+      g.total > g.activos ? `${fmtNumero(g.total - g.activos)} retirado(s)` : '',
+    ].filter(Boolean).join(' · ');
+    suma('🧍', fmtNumero(g.activos), 'Integrantes', `#/m/integrantes_cuerpo?f_cuerpo_id=${id}`, notas);
+  }
+  if (d.tesoreria) {
+    suma('💰', d.tesoreria.reservado ? '🔒' : fmtMoney(d.tesoreria.saldo),
+      d.tesoreria.reservado
+        ? `${fmtNumero(d.tesoreria.cuentas)} caja(s) · saldos reservados`
+        : 'En sus cajas',
+      `#/m/cuentas_tesoreria?f_cuerpo_id=${id}`,
+      `${fmtNumero(d.tesoreria.cuentas)} caja(s)`);
+  }
+  if (d.directiva) {
+    /*
+     * Sin directiva vigente el número no es un cero: es que no hay ninguna, y
+     * decirlo con palabras se lee mejor que un «0» que hay que interpretar. Es
+     * además uno de los requisitos que su propio cumplimiento evalúa.
+     */
+    suma('🗳️', d.directiva.periodo || '—',
+      d.directiva.periodo ? 'Directiva vigente' : 'Sin directiva vigente',
+      `#/m/directivas?f_cuerpo_id=${id}`,
+      d.directiva.periodo && d.directiva.vence
+        ? `hasta el ${fechaCorta(d.directiva.vence)}`
+        : d.directiva.total ? `${fmtNumero(d.directiva.total)} en su historial` : '');
+  }
+  if (d.asistencia) {
+    suma('✅', fmtNumero(d.asistencia.este_ano), 'Actividades este año',
+      `#/m/asistencias?f_cuerpo_id=${id}`,
+      d.asistencia.ultima ? `la última, el ${fechaCorta(d.asistencia.ultima)}` : 'ninguna todavía');
+  }
+  if (d.actas) {
+    suma('📝', fmtNumero(d.actas.total), 'Actas de reunión',
+      `#/m/actas_reuniones?f_cuerpo_id=${id}`,
+      d.actas.ultima ? `la última, el ${fechaCorta(d.actas.ultima)}` : 'ninguna todavía');
+  }
+  // El inventario solo cuando tiene: un cero permanente ocupa el lugar de algo
+  // que sí importa, y esta fila se lee de un vistazo o no se lee
+  if (d.inventario && d.inventario.total) {
+    suma('📦', fmtNumero(d.inventario.total), 'Bienes a su cargo',
+      `#/m/inventarios?f_cuerpo_id=${id}`);
   }
 
   if (!fichas.length) return;

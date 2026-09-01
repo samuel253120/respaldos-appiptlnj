@@ -56,6 +56,20 @@ migraciones.solicitudesNumeradasPorIglesia();
 
 const codigoDe = (id) => db.prepare('SELECT codigo FROM iglesias WHERE id = ?').get(id).codigo;
 
+/*
+ * LAS QUE ESTA MIGRACIÓN ALCANZÓ, anotadas acá y no leídas de nuevo en cada
+ * comprobación. Esta base la comparten varios procesos a la vez, y otras
+ * pruebas crean iglesias todo el tiempo —algunas a propósito sin código—: una
+ * que aparezca DESPUÉS no la migró nadie, así que mirar la tabla entera hacía
+ * que estas dos comprobaciones hablaran de trabajo ajeno. Pasaban por suerte,
+ * y se cayeron el día que otro archivo insertó una en medio de las dos
+ * lecturas: la migración no había cambiado nada, había una fila más al lado.
+ */
+const lasQueAlcanzo = db.prepare('SELECT id FROM iglesias ORDER BY id').all().map((i) => i.id);
+const susCodigos = () => db
+  .prepare(`SELECT id, codigo FROM iglesias WHERE id IN (${lasQueAlcanzo.map(() => '?').join(',')}) ORDER BY id`)
+  .all(...lasQueAlcanzo);
+
 // ------------------------------------------- cada iglesia con su código ----
 
 test('a la que no tenía se le pone uno sacado de su nombre', () => {
@@ -77,17 +91,19 @@ test('una cuyo nombre no distingue nada igual queda identificada', () => {
 });
 
 test('ninguna iglesia queda sin código, y no hay dos iguales', () => {
-  const todas = db.prepare('SELECT id, codigo FROM iglesias').all();
+  const todas = susCodigos();
+  assert.ok(todas.length >= 5, 'tienen que estar al menos las cinco que se sembraron acá');
   assert.ok(todas.every((i) => String(i.codigo || '').trim()), 'alguna quedó sin código');
   const vistos = new Set(todas.map((i) => String(i.codigo).toUpperCase()));
   assert.equal(vistos.size, todas.length, 'dos iglesias con el mismo código darían dos series idénticas');
 });
 
 test('correrla de nuevo no cambia nada', () => {
-  const antes = db.prepare('SELECT id, codigo FROM iglesias ORDER BY id').all();
+  const antes = susCodigos();
   olvidar('cada_iglesia_con_su_codigo');
   migraciones.cadaIglesiaConSuCodigo();
-  assert.deepEqual(db.prepare('SELECT id, codigo FROM iglesias ORDER BY id').all(), antes);
+  assert.deepEqual(susCodigos(), antes,
+    'a ninguna de las que ya tenían su código se lo puede cambiar la segunda pasada');
 });
 
 // ------------------------------------------------ lo ya emitido no se toca --
