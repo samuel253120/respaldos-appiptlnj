@@ -78,9 +78,9 @@ function aNombreDeQuien(data, { existing, db }) {
   if (!ficha) return `${deDonde.que} de esta ayuda ya no está en el sistema.`;
 
   // La misma fórmula con que después se pone al día cuando la ficha se
-  // corrige (ver server/nombre-del-beneficiario.js): escritas por separado,
+  // corrige (ver server/el-nombre-copiado.js): escritas por separado,
   // un día difieren por un espacio y las ayudas quedan «cambiando» solas.
-  data.beneficiario = require('../nombre-del-beneficiario').comoSeLlama(ficha);
+  data.beneficiario = require('../el-nombre-copiado').comoSeLlama(ficha);
   data[deDonde.otro] = null;
   return null;
 }

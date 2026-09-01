@@ -3073,6 +3073,63 @@ function elEstadoDeCadaCuerpo(conexion = db) {
   marcar();
 }
 
+/**
+ * Los nombres copiados que quedaron viejos.
+ *
+ * Seis registros del sistema guardan el nombre de una persona en una columna
+ * propia, copiada de su ficha al guardar. Hasta la 1.254.0 solo UNA de las
+ * seis volvía a mirarla cuando la ficha se corregía; las otras cinco quedaron
+ * con el nombre del día que se guardaron (ver server/el-nombre-copiado.js).
+ *
+ * Desde ahora siguen a la ficha, pero eso vale de aquí en adelante: lo que ya
+ * quedó viejo sigue viejo, y no es un rótulo cualquiera —es el nombre por el
+ * que se busca a esa persona en el listado, el que titula cada registro y el
+ * que sale impreso—.
+ *
+ * NO SE ADIVINA NADA: se le pide a la misma regla que corre de aquí en
+ * adelante que ponga al día a cada persona, una por una. Así el resultado es
+ * exactamente el que habría si la regla hubiera existido siempre, y no una
+ * segunda versión de ella escrita acá que un día diga otra cosa.
+ *
+ * Las filas que llevan un nombre escrito a mano y no apuntan a ninguna ficha
+ * no se tocan: la regla solo mira las que sí apuntan a una.
+ *
+ * Recibe la conexión porque esto pasa por TODAS las personas, y las pruebas
+ * del motor comparten una sola base entre procesos: correrla ahí le cambiaría
+ * los datos a los demás archivos mientras están mirándolos. Se la prueba sobre
+ * una copia, que es también como corre de verdad —sobre una base sola, al
+ * arrancar—.
+ */
+function losNombresCopiadosQueQuedaronViejos(conexion = db) {
+  const NOMBRE = 'los nombres copiados que quedaron viejos';
+  const yaEsta = () => !!conexion.prepare('SELECT nombre FROM migraciones WHERE nombre = ?').get(NOMBRE);
+  const marcar = () => conexion.prepare('INSERT OR IGNORE INTO migraciones (nombre) VALUES (?)').run(NOMBRE);
+  if (yaEsta()) return;
+
+  const hayTabla = (t) =>
+    !!conexion.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('miembros') || !hayTabla('no_miembros')) return marcar();
+
+  const { ponerAlDiaElNombre } = require('./el-nombre-copiado');
+  let puestas = 0;
+  let personas = 0;
+  for (const deDonde of ['miembros', 'no_miembros']) {
+    for (const f of conexion.prepare(`SELECT id FROM "${deDonde}"`).all()) {
+      const cuantas = ponerAlDiaElNombre(conexion, deDonde, f.id);
+      if (cuantas) { puestas += cuantas; personas++; }
+    }
+  }
+
+  if (puestas) {
+    console.log(
+      `📝 ${puestas} registro(s) de ${personas} persona(s) tenían copiado un nombre viejo y ` +
+        'quedaron al día: lo que muestran el listado, el título y lo impreso vuelve a decir lo que ' +
+        'dice su ficha.'
+    );
+  }
+  marcar();
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -3138,6 +3195,7 @@ function ejecutarMigraciones() {
     ['las cajas con el nombre viejo de su iglesia', lasCajasConElNombreViejoDeSuIglesia],
     ['los nombres de iglesia sin espacios de más', losNombresDeIglesiaSinEspaciosDeMas],
     ['el estado de cada cuerpo, escrito', elEstadoDeCadaCuerpo],
+    ['los nombres copiados que quedaron viejos', losNombresCopiadosQueQuedaronViejos],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -3399,4 +3457,5 @@ module.exports = {
   lasCajasConElNombreViejoDeSuIglesia,
   losNombresDeIglesiaSinEspaciosDeMas,
   elEstadoDeCadaCuerpo,
+  losNombresCopiadosQueQuedaronViejos,
 };

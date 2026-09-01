@@ -1029,11 +1029,13 @@ module.exports = {
       require('../ya-no-esta').alGuardarUnMiembro(db, fila, user);
 
       /*
-       * Y corregirle el nombre se lo corrige a sus ayudas: el que cada una
-       * muestra es una copia que se sacó de esta ficha el día que se guardó
-       * (ver server/nombre-del-beneficiario.js).
+       * Y corregirle el nombre se lo corrige EN TODO LO QUE LO COPIÓ: sus
+       * ayudas, el cuerpo que dirige, sus fichas de integrante, sus cuotas
+       * pagadas y las solicitudes que presentó. Cada uno guarda una copia que
+       * se sacó de esta ficha el día que se guardó, y hasta la 1.254.0 solo
+       * las ayudas volvían a mirarla (ver server/el-nombre-copiado.js).
        */
-      require('../nombre-del-beneficiario').ponerAlDiaElNombre(db, 'miembros', fila.id);
+      require('../el-nombre-copiado').ponerAlDiaElNombre(db, 'miembros', fila.id);
 
       /**
        * Los miembros líderes componen la directiva de su iglesia.

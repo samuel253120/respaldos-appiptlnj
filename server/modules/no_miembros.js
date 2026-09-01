@@ -497,17 +497,18 @@ module.exports = {
     },
 
     /**
-     * Corregirle el nombre a la ficha se lo corrige a sus ayudas.
+     * Corregirle el nombre a la ficha se lo corrige donde se copió.
      *
-     * El nombre que muestra cada ayuda es una copia que se sacó de acá el día
-     * que se guardó. Sin esto, corregir «Soto» por «Sotto» dejaba las tres
-     * entregas de esa señora diciendo el apellido malo, y desde ahí no se
-     * podía arreglar: el campo es de solo lectura. El porqué de reescribir la
-     * copia —y no mostrar el nombre vivo— está en
-     * server/nombre-del-beneficiario.js.
+     * El nombre que muestran su ayuda, el grupo que encarga, su ficha de
+     * integrante, su cuota pagada y la solicitud que presentó es una copia que
+     * se sacó de acá el día que se guardó. Sin esto, corregir «Soto» por
+     * «Sotto» dejaba todo eso diciendo el apellido malo, y desde ahí no se
+     * podía arreglar: esos campos son de solo lectura. El porqué de reescribir
+     * la copia —y no mostrar el nombre vivo— está en
+     * server/el-nombre-copiado.js.
      */
     afterSave(fila, { db }) {
-      require('../nombre-del-beneficiario').ponerAlDiaElNombre(db, 'no_miembros', fila.id);
+      require('../el-nombre-copiado').ponerAlDiaElNombre(db, 'no_miembros', fila.id);
     },
 
     /**

@@ -25,7 +25,7 @@ exigirBaseDescartable();
 const fs = require('fs');
 const path = require('path');
 const { db } = require('../../server/db');
-const nombre = require('../../server/nombre-del-beneficiario');
+const nombre = require('../../server/el-nombre-copiado');
 const noMiembros = require('../../server/modules/no_miembros');
 const miembros = require('../../server/modules/miembros');
 
@@ -130,7 +130,7 @@ test('el hook que copia y el refresco arman el nombre igual', () => {
   assert.equal(nombre.comoSeLlama({ nombres: 'Ana', apellidos: null }), 'Ana', 'sin espacios de sobra');
   assert.equal(nombre.comoSeLlama(null), null);
   const ayudas = fs.readFileSync(path.join(__dirname, '../../server/modules/ayudas_sociales.js'), 'utf8');
-  assert.match(ayudas, /data\.beneficiario = require\('\.\.\/nombre-del-beneficiario'\)\.comoSeLlama\(ficha\);/,
+  assert.match(ayudas, /data\.beneficiario = require\('\.\.\/el-nombre-copiado'\)\.comoSeLlama\(ficha\);/,
     'escritas por separado, un día difieren por un espacio y las ayudas quedan «cambiando» solas');
 });
 
