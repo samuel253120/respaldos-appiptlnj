@@ -169,7 +169,13 @@ module.exports = {
       optionsRoute: '/directivas/integrantes?cuerpo_id={cuerpo_id}', help: 'Cargo adicional, no siempre se designa.' },
     { name: 'otros_cargos', label: 'Otros cargos', type: 'textarea', help: 'Opcional. Ej: Directora de música: Ana Soto' },
     { name: 'acta_eleccion', label: 'Acta de elección', type: 'file' },
-    { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias' },
+    {
+      // No lo escribe nadie: sale del cuerpo elegido, en cada guardado. Se
+      // muestra porque de él depende quién ve esta directiva, y se sigue
+      // pudiendo filtrar por él en el listado
+      name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true,
+      help: 'La de su cuerpo. Si la directiva se pasa a un cuerpo de otra iglesia, ésta cambia con él.',
+    },
     {
       /*
        * CIERRA, PERO NO ABRE. «Finalizada» da por cerrada la directiva aunque
@@ -218,21 +224,47 @@ module.exports = {
       const cuerpoId = data.cuerpo_id !== undefined ? data.cuerpo_id : existing && existing.cuerpo_id;
       if (!cuerpoId) return null;
 
-      // Heredar la iglesia del cuerpo
-      if (data.iglesia_id === undefined || data.iglesia_id === null) {
-        const cuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
-        if (cuerpo) data.iglesia_id = cuerpo.iglesia_id;
-      }
+      /*
+       * LA IGLESIA SALE DEL CUERPO, SIEMPRE.
+       *
+       * Antes se heredaba solo cuando el campo venía vacío, y eso dejaba dos
+       * huecos. Medido: cambiándole el cuerpo a una directiva desde el
+       * FORMULARIO —que manda la ficha entera, con el `iglesia_id` que ya tenía
+       * cargado— la directiva se quedaba anotada en la iglesia anterior; y
+       * mandando a mano una iglesia distinta de la de su cuerpo, se guardaba
+       * así. De ese campo sale QUIÉN LA VE (server/alcance.js), de modo que la
+       * directiva de un cuerpo la seguía viendo la congregación que ya no era
+       * suya, y la que ahora lo tiene no la veía.
+       *
+       * La iglesia de una directiva no es un dato propio: es la de su cuerpo.
+       * Un dato que se deduce no se pregunta —el campo pasa a ser de solo
+       * lectura— y se vuelve a deducir en cada guardado, que es la lección de
+       * la 1.220.0, la 1.226.0, la 1.236.0 y la 1.254.0: lo que se copió hay
+       * que volver a mirarlo.
+       */
+      const suCuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
+      if (suCuerpo) data.iglesia_id = suCuerpo.iglesia_id;
 
-      // Los cargos los ocupan integrantes del propio cuerpo. Solo se revisa lo
-      // que se está cambiando ahora: si alguien salió del cuerpo después de
-      // haber sido electo, su directiva anterior se puede seguir corrigiendo.
+      /*
+       * Los cargos los ocupan integrantes del propio cuerpo. Solo se revisa lo
+       * que se está cambiando ahora: si alguien salió del cuerpo después de
+       * haber sido electo, su directiva anterior se puede seguir corrigiendo.
+       *
+       * SALVO QUE CAMBIE EL CUERPO. Ahí no cambia un cargo: cambian todos, de
+       * golpe, porque pasan a medirse contra otra gente. Medido: una directiva
+       * mudada de cuerpo conservaba su primer jefe y su secretario, que no eran
+       * integrantes del cuerpo nuevo —el selector de ese cuerpo no los ofrece, y
+       * sin embargo ahí estaban—. Es el caso corriente de haber elegido mal el
+       * cuerpo al crearla: los cargos se eligieron de la lista equivocada, así
+       * que están todos mal.
+       */
+      const cambiaDeCuerpo = !!existing && String(existing.cuerpo_id || '') !== String(cuerpoId);
       const permitidos = idsDeIntegrantes(db, cuerpoId);
       for (const { campo, label: cargo } of LOS_DEL_CUERPO) {
-        const valor = data[campo];
+        const valor = data[campo] !== undefined ? data[campo] : existing && existing[campo];
         if (valor === undefined || valor === null || valor === '') continue;
         const cambia = !existing || String(existing[campo] || '') !== String(valor);
-        if (!cambia) continue;
+        if (!cambia && !cambiaDeCuerpo) continue;
         if (!permitidos.has(Number(valor))) {
           const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(cuerpoId);
           const persona = db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(valor);
