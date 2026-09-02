@@ -47,7 +47,11 @@ function unaIglesia() {
 const unActa = (api, e, cambios) => api('POST', '/actas_asambleas', {
   numero_acta: `FIR-${e.m}-${Math.random().toString(36).slice(2, 7)}`,
   fecha: '2026-04-20', tipo: 'Ordinaria', iglesia_id: e.iglesia,
-  presidida_por: 'Pastor Pérez', secretario: 'Ana Soto', ...cambios,
+  presidida_por: 'Pastor Pérez', secretario: 'Ana Soto',
+  // Un acta que anota acuerdos anota también con cuánta gente se tomaron: sin
+  // esto, el aviso del quórum de la v1.280.0 sale en cada fixture y tapa lo que
+  // estas pruebas vienen a mirar.
+  total_asistentes: 120, ...cambios,
 });
 
 /** Un acta ya firmada, con algo escrito adentro. */

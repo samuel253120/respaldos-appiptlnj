@@ -50,7 +50,7 @@ test('el trozo que se revisa es el de la hoja del acta', () => {
    * dice que no puede haberse convertido en el archivo. Se sube sin remordimiento
    * cuando la hoja crece de verdad.
    */
-  assert.ok(laHoja.length > 1200 && laHoja.length < 9000, `el recorte mide ${laHoja.length}`);
+  assert.ok(laHoja.length > 1200 && laHoja.length < 14000, `el recorte mide ${laHoja.length}`);
   assert.match(laHoja, /acta-firmas/);
 });
 

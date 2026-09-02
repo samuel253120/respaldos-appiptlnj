@@ -60,7 +60,10 @@ function unaIglesia() {
 
 const unActa = (api, e, cambios) => api('POST', '/actas_asambleas', {
   numero_acta: `ASA-${e.m}-${Math.random().toString(36).slice(2, 7)}`,
-  fecha: '2026-04-10', tipo: 'Ordinaria', iglesia_id: e.iglesia, ...cambios,
+  fecha: '2026-04-10', tipo: 'Ordinaria', iglesia_id: e.iglesia,
+  // Con cuánta gente: el aviso del quórum de la v1.280.0 pregunta cuando un acta
+  // dice que lo hubo y no dice con cuántos, y acá se mira otra cosa.
+  total_asistentes: 120, ...cambios,
 });
 
 const elModulo = () => require('../../server/modules/actas_asambleas');

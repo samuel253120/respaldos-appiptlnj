@@ -37,6 +37,106 @@ const {
   anotarLaFirma, enUnSoloAviso, avisoDeActaQueSeBorra,
 } = require('../acta-firmada');
 
+/**
+ * EL QUÓRUM, QUE ES LO ÚNICO QUE ESTE LIBRO TIENE Y EL DE REUNIONES NO.
+ *
+ * La reunión de un cuerpo no tiene quórum; una asamblea sí, y es lo que decide
+ * si lo que se acordó ahí vale. La casilla «¿Hubo quórum?» existía, venía
+ * marcada que sí de fábrica, y no la miraba nadie: medido en la v1.279.0, un
+ * acta que decía «no hubo quórum» y traía escrito «Se aprueba la venta del
+ * inmueble por unanimidad» entraba con 201 y sin una palabra.
+ *
+ * Lo que se hace acá es PREGUNTAR, no impedir. Y hay una razón precisa para no
+ * impedirlo: si un acuerdo tomado sin quórum es nulo o solo es anulable lo dicen
+ * los estatutos de la corporación, no este programa. Además hay un caso
+ * legítimo y frecuente —la asamblea que se levanta por falta de quórum, y de la
+ * que igual se levanta acta— que quedaría prohibido por error. Preguntando, el
+ * acta se puede anotar tal como ocurrió y quien la escribe se entera de lo que
+ * está anotando.
+ *
+ * LO QUE TODAVÍA NO SE HACE, y hay que decirlo: el sistema no CALCULA el
+ * quórum. Sabe cuántos miembros tiene cada iglesia, así que podría; lo que no
+ * sabe es cuánto es el quórum —la mitad más uno, dos tercios— ni sobre qué
+ * padrón se cuenta —los miembros activos, o los que tienen derecho a voto—, y
+ * eso lo dicen los estatutos. Mientras tanto la casilla sigue siendo una
+ * declaración de quien escribe el acta, y estas dos preguntas son lo que se
+ * puede comprobar sin inventar esa regla.
+ */
+
+/** Cómo queda un campo después de este guardado: lo que llega, o lo que ya estaba. */
+const comoQueda = (campo, data, existing) => (
+  data[campo] !== undefined ? data[campo] : existing && existing[campo]);
+
+/**
+ * ¿Dice el acta que hubo quórum?
+ *
+ * Llega ya normalizada a 1 o a 0: el motor convierte cualquier forma de escribir
+ * un sí o un no —«1», «true», true— antes de este gancho (ver `coerce` en
+ * server/crud.js), y lo hace por las dos puertas, la pantalla y la importación
+ * de planillas. Escribir acá otra vez esa conversión sería repetir una regla que
+ * ya tiene dueño; lo que sí hay es una prueba que comprueba que el motor la
+ * cumple, porque de eso depende que un «0» de una planilla no se lea como un sí.
+ */
+const huboQuorum = (data, existing) => Number(comoQueda('hubo_quorum', data, existing)) === 1;
+
+/**
+ * ¿Tiene el acta algo escrito en sus acuerdos?
+ *
+ * También llega limpio: los acuerdos son texto con formato, y un editor que se
+ * vacía deja «<p></p>» o «<p><br></p>», que es tan vacío como el blanco aunque
+ * no lo parezca. De eso se encarga server/textorico.js antes del guardado, y
+ * deja `null`. Mirarlo otra vez acá sería la misma repetición.
+ */
+const tieneAcuerdos = (data, existing) => String(comoQueda('acuerdos', data, existing) || '').trim() !== '';
+
+/**
+ * Sin quórum, pero con acuerdos.
+ *
+ * Se avisa cuando el acta QUEDA así, no solo cuando la casilla cambia: un acta
+ * que ya estaba sin quórum y a la que recién ahora se le escriben los acuerdos
+ * es exactamente el mismo caso, y mirar solo el cambio lo dejaría pasar.
+ */
+function loDeLosAcuerdosSinQuorum(data, existing) {
+  if (huboQuorum(data, existing) || !tieneAcuerdos(data, existing)) return null;
+  return 'El acta dice que NO hubo quórum, y trae acuerdos escritos. Si los estatutos piden '
+    + 'quórum para acordar, lo que se anote acá no va a valer aunque quede escrito. Si la '
+    + 'asamblea se levantó sin acordar nada, deje los acuerdos en blanco y anote en el '
+    + 'desarrollo que se levantó por falta de quórum.';
+}
+
+/**
+ * Quórum declarado, pero sin gente que lo sostenga.
+ *
+ * No se compara contra el padrón —eso es lo que falta decidir— sino contra sí
+ * misma: un acta que afirma que hubo quórum tiene que decir con cuánta gente.
+ * Cero, o el campo en blanco, es la contradicción que sí se puede ver sin saber
+ * cuánto es el quórum de esa corporación.
+ *
+ * PERO SOLO CUANDO EL ACTA YA ESTÁ AFIRMANDO ALGO, y esto es lo importante. La
+ * casilla viene marcada que sí de fábrica, así que un acta recién creada —número,
+ * fecha, tipo e iglesia, que es lo único obligatorio— dice «hubo quórum» sin que
+ * nadie lo haya declarado, y todavía no dice con cuánta gente porque todavía no
+ * dice nada. Se probó sin esta condición: TODA acta nueva preguntaba, y un aviso
+ * que sale siempre enseña a apretar «guardar igual» sin leerlo, que es la manera
+ * de que el día que importe tampoco se lea.
+ *
+ * Se considera que el acta afirma algo cuando trae acuerdos escritos, o cuando
+ * dejó de ser un borrador: en los dos casos es un documento que alguien va a
+ * leer, y ahí la contradicción pesa.
+ */
+function loDelQuorumSinGente(data, existing) {
+  if (!huboQuorum(data, existing)) return null;
+
+  const estado = comoQueda('estado', data, existing) || 'Borrador';
+  if (!tieneAcuerdos(data, existing) && estado === 'Borrador') return null;
+
+  const cuantos = comoQueda('total_asistentes', data, existing);
+  if (cuantos !== null && cuantos !== undefined && cuantos !== '' && Number(cuantos) > 0) return null;
+  const enBlanco = cuantos === null || cuantos === undefined || cuantos === '';
+  return `El acta dice que hubo quórum y ${enBlanco ? 'no dice cuántos asistieron' : 'anota 0 asistentes'}. `
+    + 'El quórum se cuenta con gente: escriba el total de asistentes, o destilde la casilla.';
+}
+
 module.exports = {
   name: 'actas_asambleas',
   label: 'Actas de Asambleas',
@@ -172,21 +272,33 @@ module.exports = {
      * borrador estaría mintiendo.
      */
     beforeSave(data, { user, existing, confirmado }) {
-      if (!confirmado && existing && existing.estado === FIRMADA) {
-        const cambia = loQueCambia('actas_asambleas', data, existing);
-        if (cambia.length) {
-          /*
-           * Va por enUnSoloAviso aunque hoy la advertencia sea una sola: la
-           * marca de «guardar igual» es UNA para toda la petición, así que el
-           * día que este libro tenga una segunda regla —el quórum, el acta
-           * vacía— tienen que salir juntas y numeradas o quien confirme la
-           * primera pasaría la otra sin leerla. Es la lección que dejó el libro
-           * de reuniones en la 1.276.0.
-           */
-          return {
-            error: enUnSoloAviso([{ texto: avisoDeActaFirmada(existing, data, cambia) }]),
-            confirmar: 'acta_firmada',
-          };
+      /*
+       * TODAS LAS ADVERTENCIAS DE UN GUARDADO VAN EN UN SOLO AVISO, NUMERADAS.
+       *
+       * La marca de «guardar igual» es UNA para toda la petición: preguntando de
+       * a una, quien confirma la primera pasaría las demás sin haberlas leído.
+       * Van ordenadas por gravedad —el acta firmada primero, porque es la que
+       * habla de un papel que ya existe afuera—. Es la lección que dejó el libro
+       * de reuniones en la 1.276.0.
+       */
+      if (!confirmado) {
+        const avisos = [];
+
+        if (existing && existing.estado === FIRMADA) {
+          const cambia = loQueCambia('actas_asambleas', data, existing);
+          if (cambia.length) {
+            avisos.push({ clave: 'acta_firmada', texto: avisoDeActaFirmada(existing, data, cambia) });
+          }
+        }
+
+        const sinQuorum = loDeLosAcuerdosSinQuorum(data, existing);
+        if (sinQuorum) avisos.push({ clave: 'asamblea_sin_quorum', texto: sinQuorum });
+
+        const sinGente = loDelQuorumSinGente(data, existing);
+        if (sinGente) avisos.push({ clave: 'quorum_sin_asistentes', texto: sinGente });
+
+        if (avisos.length) {
+          return { error: enUnSoloAviso(avisos), confirmar: avisos[0].clave };
         }
       }
       anotarLaFirma(data, existing, user);

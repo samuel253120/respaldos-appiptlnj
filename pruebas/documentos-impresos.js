@@ -459,7 +459,10 @@ async function primerRegistro(pagina, modulo) {
     const marca = Date.now();
     const asamblea = await api('POST', '/actas_asambleas', {
       numero_acta: `IMPR-CAJA-A-${marca}`, fecha: '2026-03-16', tipo: 'Ordinaria',
-      iglesia_id: iglesia.id, agenda: `Punto 1 ${caja}`, acuerdos: `Se acuerda. ${caja}`,
+      // Con cuánta gente: un acta que anota acuerdos y dice haber tenido quórum
+      // sin decir con cuántos pregunta desde la v1.280.0, y acá se mira otra cosa
+      iglesia_id: iglesia.id, total_asistentes: 120,
+      agenda: `Punto 1 ${caja}`, acuerdos: `Se acuerda. ${caja}`,
     }).catch(() => null);
     const reunion = await api('POST', '/actas_reuniones', {
       numero_acta: `IMPR-CAJA-R-${marca}`, fecha: '2026-03-16', cuerpo_id: cuerpo.id,
@@ -533,7 +536,8 @@ async function primerRegistro(pagina, modulo) {
       const iglesia = ((ig && (ig.items || ig.rows)) || [])[0];
       const r = await api('POST', '/actas_asambleas', {
         numero_acta: `IMPR-SALTOS-${Date.now()}`, fecha: '2026-03-16', tipo: 'Ordinaria',
-        iglesia_id: iglesia.id, agenda: '1. Primero\n2. Segundo\n3. Tercero',
+        iglesia_id: iglesia.id, total_asistentes: 120,
+        agenda: '1. Primero\n2. Segundo\n3. Tercero',
       }).catch(() => null);
       return r && r.id;
     });

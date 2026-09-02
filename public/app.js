@@ -7754,6 +7754,16 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y elegir otra reunión',
       seguir: 'Asistió igual, guardar',
     },
+    asamblea_sin_quorum: {
+      titulo: '⚖️ Esta asamblea no tuvo quórum',
+      volver: 'Volver y revisar los acuerdos',
+      seguir: 'Así ocurrió, guardar',
+    },
+    quorum_sin_asistentes: {
+      titulo: '🔢 Dice que hubo quórum, pero no dice con cuántos',
+      volver: 'Volver y anotar los asistentes',
+      seguir: 'Guardar así',
+    },
     acta_que_se_borra: {
       titulo: '🗑️ Va a eliminar un acta',
       volver: 'No, dejarla donde está',
@@ -11364,6 +11374,28 @@ function printActa(m, row, esAsamblea, asistencia) {
   const pendiente = firmada ? '' : '<br><span class="pend">Pendiente de firma</span>';
 
   /*
+   * SIN QUÓRUM, DICHO DONDE SE LEE.
+   *
+   * El dato ya salía impreso, en su fila de la tabla —«120 asistentes — sin
+   * quórum»—, o sea perdido entre la hora y el lugar. En una asamblea el quórum
+   * no es un dato más: es lo que decide si lo que se acordó ahí vale, y quien
+   * recibe esta hoja tiene que verlo antes de leer los acuerdos.
+   *
+   * La hoja dice el HECHO y no su consecuencia: si un acuerdo sin quórum es
+   * nulo lo dicen los estatutos de la corporación, y un papel que afirme eso por
+   * su cuenta estaría diciendo algo que este sistema no sabe.
+   *
+   * Con borde y color de letra, sin fondo, por lo mismo que el sello del
+   * borrador: los navegadores no imprimen los fondos salvo que se les marque
+   * «gráficos de fondo» a mano, y esto tiene que salir en el papel.
+   */
+  const avisoDelQuorum = esAsamblea && !row.hubo_quorum ? `
+      <div class="acta-sin-firmar">
+        <b>SIN QUÓRUM</b>
+        El acta quedó registrada como asamblea sin quórum.
+      </div>` : '';
+
+  /*
    * LO QUE EL ACTA DICE, IMPRESO SEGÚN LO QUE CADA CAMPO ES.
    *
    * Estos tres campos son los que llevan el acta adentro, y NO son todos de la
@@ -11424,6 +11456,7 @@ function printActa(m, row, esAsamblea, asistencia) {
       <h1>${esAsamblea ? 'Acta de Asamblea' : 'Acta de Reunión'} N.º ${esc(row.numero_acta || '')}</h1>
       <div class="sub">${esc(iglesiaDeTrabajo(row.iglesia_id_label))}${row.cuerpo_id_label ? ' — ' + esc(row.cuerpo_id_label) : ''}</div>
       ${avisoDelEstado}
+      ${avisoDelQuorum}
       <table class="meta-tbl">
         <tr><td class="k">Fecha</td><td>${fechaLarga(row.fecha)}</td></tr>
         ${esAsamblea ? `<tr><td class="k">Tipo de asamblea</td><td>${esc(row.tipo || '')}</td></tr>` : ''}
@@ -11431,7 +11464,13 @@ function printActa(m, row, esAsamblea, asistencia) {
         <tr><td class="k">Hora</td><td>${esc(row.hora_inicio || '')}${row.hora_fin ? ' a ' + esc(row.hora_fin) : ''}</td></tr>
         <tr><td class="k">Presidida por</td><td>${esc(row.presidida_por || '')}</td></tr>
         <tr><td class="k">Secretario(a)</td><td>${esc(row.secretario || '')}</td></tr>
-        ${esAsamblea ? `<tr><td class="k">Asistentes / Quórum</td><td>${esc(row.total_asistentes ?? '')} asistentes — ${row.hubo_quorum ? 'hubo quórum' : 'sin quórum'}</td></tr>` : ''}
+        ${/* Sin el número, decía « asistentes — hubo quórum», con el hueco
+             adelante: se anota «no se anotó cuántos», que es lo que pasó. */''}
+        ${esAsamblea ? `<tr><td class="k">Asistentes / Quórum</td><td>${
+          row.total_asistentes == null || row.total_asistentes === ''
+            ? 'No se anotó cuántos asistieron'
+            : `${esc(row.total_asistentes)} asistentes`} — ${
+          row.hubo_quorum ? 'hubo quórum' : 'sin quórum'}</td></tr>` : ''}
         <tr><td class="k">Estado</td><td>${esc(row.estado || 'Borrador')}</td></tr>
         ${/* Quién la firmó y cuándo. Lo llevan los dos libros de actas: las de
              reunión desde la v1.272.0 y las de asamblea desde la v1.279.0, con
