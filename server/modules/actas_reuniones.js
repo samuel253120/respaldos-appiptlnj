@@ -26,63 +26,18 @@
  *
  * Se ven y se crean desde la ficha del propio cuerpo, que es donde se buscan.
  */
-const { enLista } = require('../formato');
-const { hoy, comoSeLee } = require('../fechas');
+const { comoSeLee } = require('../fechas');
 
-/** El único estado que significa algo fuera del sistema: hay un papel firmado. */
-const FIRMADA = 'Firmada';
-
-/**
- * Qué está cambiando este guardado, con los nombres que se ven en la pantalla.
- *
- * Los campos salen del propio módulo y no de una lista escrita a mano, para que
- * uno que se agregue mañana entre solo: una lista aparte se olvida, y el olvido
- * acá no se nota —se nota como un acta firmada que un día se dejó cambiar sin
- * preguntar—.
- *
- * Quedan fuera dos clases. Los de SOLO LECTURA, porque los escribe el sistema y
- * no la persona: preguntar por ellos sería preguntar por uno mismo. Y los
- * OCULTOS, entre los que está «Asistentes (escritos a mano)», el campo retirado
- * que la pantalla sigue mandando como lista vacía aunque en la base esté en
- * blanco: contarlo habría hecho que TODO guardado de un acta firmada
- * preguntara, incluso uno que no cambia absolutamente nada.
+/*
+ * Lo de la firma y lo que se pierde al borrar un acta son las mismas reglas que
+ * en el libro de asambleas, y viven juntas en server/acta-firmada.js: son el
+ * mismo documento con distinto dueño, y una regla copiada hay que arreglarla
+ * dos veces (esa lección la dejó escrita la directiva, más abajo).
  */
-function loQueCambia(data, existing) {
-  const def = require('../registry').getModule('actas_reuniones'); // tardío: evita ciclo con el registro
-  const cambia = [];
-  for (const f of def.fields) {
-    if (f.readonly || f.oculto) continue;
-    if (!(f.name in data)) continue;
-    if (String(existing[f.name] ?? '') === String(data[f.name] ?? '')) continue;
-    cambia.push(f.label);
-  }
-  return cambia;
-}
-
-/**
- * El aviso, que tiene que decir tres cosas: que está firmada, quién y cuándo la
- * firmó, y qué es exactamente lo que este guardado va a cambiar. Sin la tercera
- * la pregunta no se puede contestar: «¿está seguro?» a secas no es información.
- */
-function avisoDeActaFirmada(existing, data, cambia) {
-  const quien = existing.firmada_por ? ` por ${existing.firmada_por}` : '';
-  const cuando = existing.fecha_firma ? ` el ${comoSeLee(existing.fecha_firma)}` : '';
-  const cual = existing.numero_acta ? ` n.º ${existing.numero_acta}` : '';
-  const firmada = `El acta${cual} está firmada${quien}${cuando}.`;
-
-  // Dejar de estar firmada es lo más grave que puede pasarle, así que va
-  // adelante y el resto de los cambios queda como añadidura.
-  const nuevoEstado = data.estado !== undefined ? data.estado : existing.estado;
-  if (nuevoEstado !== FIRMADA) {
-    const otros = cambia.filter((c) => c !== 'Estado');
-    return `${firmada} Va a dejar de estarlo: pasa a «${nuevoEstado}», y con eso se borra la constancia `
-      + `de quién la firmó y cuándo.${otros.length ? ` Además cambia ${enLista(otros)}.` : ''} `
-      + 'Si lo que quiere es corregirla, hágalo sin sacarle la firma.';
-  }
-  return `${firmada} Va a cambiar ${enLista(cambia)}. Desde ahora el papel que se firmó dirá una cosa `
-    + 'y el sistema otra, y quien tenga una copia impresa no va a saberlo. El cambio queda anotado en el '
-    + 'Registro de Cambios.';
-}
+const {
+  FIRMADA, camposDeLaFirma, loQueCambia, avisoDeActaFirmada,
+  anotarLaFirma, enUnSoloAviso, avisoDeActaQueSeBorra,
+} = require('../acta-firmada');
 
 /** Lo que un acta puede tener adentro: lo escrito, o el papel escaneado. */
 const LO_QUE_DICE = ['agenda', 'desarrollo', 'acuerdos'];
@@ -216,7 +171,10 @@ function loDeLasHoras(data, existing) {
     return hora * 60 + minuto;
   };
   /** Para decirla en el aviso como se lee en la ficha. */
-  const comoSeLee = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+  // «enReloj» y no «comoSeLee»: ese nombre ya es el de las fechas, importado
+  // arriba, y acá adentro lo tapaba. Funcionaba —esta función no usa fechas—
+  // pero es la clase de trampa que se cobra sola el día que alguien la use.
+  const enReloj = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 
   const inicio = enMinutos(deAntes('hora_inicio'));
   const fin = enMinutos(deAntes('hora_fin'));
@@ -229,49 +187,16 @@ function loDeLasHoras(data, existing) {
   if (inicio === null || fin === null) return null;
 
   if (inicio === fin) {
-    return `El acta dice que la reunión empezó y terminó a las ${comoSeLee(inicio)}, o sea que no `
+    return `El acta dice que la reunión empezó y terminó a las ${enReloj(inicio)}, o sea que no `
       + 'duró nada. Revise las horas.';
   }
   if (fin < inicio) {
-    return `El acta dice que la reunión empezó a las ${comoSeLee(inicio)} y terminó a las `
-      + `${comoSeLee(fin)}. Si de verdad terminó pasada la medianoche, confirme; si no, corrija las horas.`;
+    return `El acta dice que la reunión empezó a las ${enReloj(inicio)} y terminó a las `
+      + `${enReloj(fin)}. Si de verdad terminó pasada la medianoche, confirme; si no, corrija las horas.`;
   }
   return null;
 }
 
-/**
- * Varias advertencias en un solo aviso.
- *
- * Con una sola se dice tal cual. Con más, se numeran: «Y otra cosa: … Y otra
- * cosa: …» encadenado se lee como una regañina y se pierde de vista cuántas
- * son, y quien contesta necesita saber a cuántas cosas le está diciendo que sí.
- */
-function enUnSoloAviso(avisos) {
-  if (avisos.length === 1) return avisos[0].texto;
-  const cuantas = avisos.length === 2 ? 'dos' : String(avisos.length);
-  return `Hay ${cuantas} cosas que revisar antes de guardar. `
-    + avisos.map((a, i) => `(${i + 1}) ${a.texto}`).join(' ');
-}
-
-/**
- * La firma se anota sola, y se borra sola.
- *
- * Solo cuando el estado CAMBIA: así, editar un acta que ya estaba firmada
- * conserva la fecha y el nombre de cuando se firmó de verdad, en vez de
- * correrlos al día de la última corrección.
- */
-function anotarLaFirma(data, existing, user) {
-  const antes = existing ? existing.estado : null;
-  const despues = data.estado !== undefined ? data.estado : antes;
-  if (despues === antes) return;
-  if (despues === FIRMADA) {
-    data.firmada_por = (user && user.nombre) || null;
-    data.fecha_firma = hoy();
-  } else if (antes === FIRMADA) {
-    data.firmada_por = null;
-    data.fecha_firma = null;
-  }
-}
 
 module.exports = {
   name: 'actas_reuniones',
@@ -403,11 +328,9 @@ module.exports = {
      * que siguiera diciendo «la firmó Fulana el 25 de agosto» estaría mintiendo,
      * y de las dos mentiras posibles ésa es la peligrosa.
      */
-    // Sin `seccion`: van dentro de «Documento y estado», que abrió el adjunto.
-    // Repetirla acá no los mete ahí, abre una segunda sección con el mismo
-    // título, y la ficha salía con el encabezado dos veces. Se vio en pantalla.
-    { name: 'firmada_por', label: 'Firmada por', type: 'text', readonly: true },
-    { name: 'fecha_firma', label: 'Fecha de la firma', type: 'date', readonly: true },
+    // Los declara el compartido, para que los dos libros de actas los lleven
+    // iguales (ver server/acta-firmada.js, que explica por qué van sin sección)
+    ...camposDeLaFirma(),
   ],
 
   extraRoutes(router, { db, requirePerm }) {
@@ -578,7 +501,7 @@ module.exports = {
       if (!confirmado) {
         const avisos = [];
         if (existing && existing.estado === FIRMADA) {
-          const cambia = loQueCambia(data, existing);
+          const cambia = loQueCambia('actas_reuniones', data, existing);
           if (cambia.length) avisos.push({ clave: 'acta_firmada', texto: avisoDeActaFirmada(existing, data, cambia) });
         }
         const ajena = loDeLaAsistenciaEnlazada(data, existing, db);
@@ -612,45 +535,13 @@ module.exports = {
     beforeDelete(fila, { db, confirmado }) {
       if (confirmado) return null;
 
+      // De quién es el acta: acá, del cuerpo que la levantó
       const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(fila.cuerpo_id);
-      const cual = fila.numero_acta ? `el acta n.º ${fila.numero_acta}` : 'un acta sin número';
-      const cuando = fila.fecha ? ` del ${comoSeLee(fila.fecha)}` : '';
-      const deQuien = cuerpo ? ` de "${cuerpo.nombre}"` : '';
-
-      // En qué estado se va. Una firmada dice además quién la firmó y cuándo,
-      // que es el dato que hace pensar dos veces antes de confirmar.
-      const firmada = fila.estado === FIRMADA;
-      const porQuien = fila.firmada_por ? ` por ${fila.firmada_por}` : '';
-      const elDia = fila.fecha_firma ? ` el ${comoSeLee(fila.fecha_firma)}` : '';
-      const enQueEstado = firmada
-        ? `, que está FIRMADA${porQuien}${elDia}`
-        : `, en estado ${fila.estado || 'Borrador'}`;
-
-      // Y qué trae adentro: no es lo mismo una ficha recién creada en blanco
-      // que un acta escrita entera con su escaneo.
-      const trae = [];
-      if (fila.agenda) trae.push('su agenda');
-      if (fila.desarrollo) trae.push('el desarrollo escrito');
-      if (fila.acuerdos) trae.push('los acuerdos');
-      if (fila.documento) trae.push('el documento escaneado');
-      const conQue = trae.length
-        ? ` Trae ${enLista(trae)}.`
-        : ' No tiene nada escrito ni adjunto.';
-
-      const elArchivo = fila.documento
-        ? ' El escaneo se borra del servidor junto con ella.'
-        : '';
-
       return {
-        /*
-         * Lo que se dice al final es DÓNDE cae cada mitad de la pérdida, y no
-         * «esto no se puede deshacer»: eso ya lo dijo el navegador en su
-         * primer «¿Eliminar este registro?», y repetirlo gasta la única frase
-         * que esta pregunta tiene para decir algo que la otra no sabe.
-         */
-        error: `Va a eliminar ${cual}${cuando}${deQuien}${enQueEstado}.${conQue}${elArchivo}`
-          + ' Lo que decía queda copiado en el Registro de Cambios; el libro de ese cuerpo, en'
-          + ' cambio, queda sin ella.',
+        error: avisoDeActaQueSeBorra(fila, {
+          deQuien: cuerpo ? ` de "${cuerpo.nombre}"` : '',
+          elLibro: 'el libro de ese cuerpo',
+        }),
         confirmar: 'acta_que_se_borra',
       };
     },

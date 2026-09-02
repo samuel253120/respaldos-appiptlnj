@@ -11433,8 +11433,10 @@ function printActa(m, row, esAsamblea, asistencia) {
         <tr><td class="k">Secretario(a)</td><td>${esc(row.secretario || '')}</td></tr>
         ${esAsamblea ? `<tr><td class="k">Asistentes / Quórum</td><td>${esc(row.total_asistentes ?? '')} asistentes — ${row.hubo_quorum ? 'hubo quórum' : 'sin quórum'}</td></tr>` : ''}
         <tr><td class="k">Estado</td><td>${esc(row.estado || 'Borrador')}</td></tr>
-        ${/* Quién la firmó y cuándo, cuando el módulo lo lleva anotado (v1.272.0).
-             Las asambleas todavía no: la línea no sale y la hoja no cambia. */''}
+        ${/* Quién la firmó y cuándo. Lo llevan los dos libros de actas: las de
+             reunión desde la v1.272.0 y las de asamblea desde la v1.279.0, con
+             la misma pieza (server/acta-firmada.js). Un acta antigua sin la
+             constancia anotada no saca la línea y la hoja no cambia. */''}
         ${firmada && row.firmada_por ? `<tr><td class="k">Firmada por</td><td>${esc(row.firmada_por)}${
           row.fecha_firma ? ` · ${fechaLarga(row.fecha_firma)}` : ''}</td></tr>` : ''}
       </table>

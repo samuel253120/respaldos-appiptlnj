@@ -24,7 +24,19 @@
  * documento adjunto es un Word o un PDF con texto, el sistema puede TRAER ese
  * texto al campo, para no escribir de nuevo lo que ya está escrito (ver
  * server/transcribir.js y la ruta /transcribir de más abajo).
+ *
+ * QUÉ SIGNIFICA «FIRMADA». Es el único estado que quiere decir algo fuera del
+ * sistema: hay un papel firmado, en una carpeta, con la firma de quien presidió
+ * y de quien fue secretario. De ahí salen las dos reglas que este módulo
+ * comparte con el libro de reuniones —el aviso al cambiar un acta firmada y el
+ * aviso al borrar cualquiera— y que viven en server/acta-firmada.js, porque son
+ * el mismo documento con distinto dueño.
  */
+const {
+  FIRMADA, camposDeLaFirma, loQueCambia, avisoDeActaFirmada,
+  anotarLaFirma, enUnSoloAviso, avisoDeActaQueSeBorra,
+} = require('../acta-firmada');
+
 module.exports = {
   name: 'actas_asambleas',
   label: 'Actas de Asambleas',
@@ -71,7 +83,26 @@ module.exports = {
       options: ['Borrador', 'Aprobada', 'Firmada'],
     },
     { name: 'documento', label: 'Documento adjunto (escaneada/firmada)', type: 'file' },
+    // Los declara el compartido, para que los dos libros de actas los lleven
+    // iguales (ver server/acta-firmada.js, que explica por qué van sin sección)
+    ...camposDeLaFirma(),
   ],
+
+  /*
+   * QUÉ SE COPIA AL REGISTRO DE CAMBIOS CUANDO EL ACTA SE BORRA.
+   *
+   * Lo que quedaba anotado eran las seis columnas del listado: número, fecha,
+   * tipo, iglesia, total de asistentes y estado. O sea, la cabecera. De la
+   * decisión de la asamblea no quedaba una palabra — medido con un acta que
+   * decía «Se aprueba la venta por 118 votos a favor»: se borró, y ese acuerdo
+   * no quedó en ninguna parte.
+   *
+   * El adjunto se va con el registro y no se puede copiar acá; lo escrito sí, y
+   * es lo que hace la diferencia entre una eliminación y una pérdida. Va el
+   * nombre del archivo igual, para que se sepa qué se fue.
+   */
+  camposAlBorrar: ['lugar', 'hora_inicio', 'hora_fin', 'presidida_por', 'secretario',
+    'hubo_quorum', 'firmada_por', 'fecha_firma', 'agenda', 'desarrollo', 'acuerdos', 'documento'],
 
   extraRoutes(router, { db, requirePerm }) {
     /**
@@ -116,5 +147,73 @@ module.exports = {
         next(e);
       }
     });
+  },
+
+  hooks: {
+    /**
+     * Antes de guardar: si el acta está firmada, decir qué se va a cambiar.
+     *
+     * «Firmada» quiere decir que hay un papel firmado en una carpeta. Medido en
+     * la v1.278.0: a un acta de asamblea guardada como Firmada se le podían dar
+     * vuelta los acuerdos —de «se aprueba la compra del terreno» a «se
+     * rechaza»— y el sistema contestaba 200 sin decir una palabra; y devolverla
+     * a «Borrador», lo mismo. Desde ese momento el papel dice una cosa y el
+     * sistema otra, y quien tenga la copia impresa no tiene manera de saberlo.
+     *
+     * SE PREGUNTA Y NO SE PROHÍBE. Corregir un acta firmada es legítimo —una
+     * cifra mal transcrita, un apellido— y prohibirlo obligaría a borrarla y
+     * escribirla de nuevo, que es peor. Lo que no puede pasar es que ocurra sin
+     * que nadie lo vea.
+     *
+     * Y la constancia de la firma la escribe el sistema: quién la firmó y qué
+     * día salen de quien hizo el cambio de estado, no de un campo que alguien
+     * llena. Se estampan solo cuando el estado CAMBIA, y se borran si el acta
+     * deja de estar firmada: una fecha de firma en un acta que volvió a
+     * borrador estaría mintiendo.
+     */
+    beforeSave(data, { user, existing, confirmado }) {
+      if (!confirmado && existing && existing.estado === FIRMADA) {
+        const cambia = loQueCambia('actas_asambleas', data, existing);
+        if (cambia.length) {
+          /*
+           * Va por enUnSoloAviso aunque hoy la advertencia sea una sola: la
+           * marca de «guardar igual» es UNA para toda la petición, así que el
+           * día que este libro tenga una segunda regla —el quórum, el acta
+           * vacía— tienen que salir juntas y numeradas o quien confirme la
+           * primera pasaría la otra sin leerla. Es la lección que dejó el libro
+           * de reuniones en la 1.276.0.
+           */
+          return {
+            error: enUnSoloAviso([{ texto: avisoDeActaFirmada(existing, data, cambia) }]),
+            confirmar: 'acta_firmada',
+          };
+        }
+      }
+      anotarLaFirma(data, existing, user);
+      return null;
+    },
+
+    /**
+     * Antes de borrar: decir qué se lleva puesto.
+     *
+     * La misma pieza que el libro de reuniones, con lo único que cambia entre
+     * los dos: de quién es el acta. Acá es de la congregación entera.
+     */
+    beforeDelete(fila, { db, confirmado }) {
+      if (confirmado) return null;
+
+      const iglesia = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(fila.iglesia_id);
+      // «de la asamblea ordinaria de Iglesia Central» y no «de Iglesia Central
+      // (asamblea ordinaria)»: se lee de corrido, que es lo que se necesita en
+      // una frase que alguien va a leer una sola vez y apurado.
+      const cual = fila.tipo ? `la asamblea ${String(fila.tipo).toLowerCase()}` : 'la asamblea';
+      return {
+        error: avisoDeActaQueSeBorra(fila, {
+          deQuien: iglesia ? ` de ${cual} de ${iglesia.nombre}` : ` de ${cual}`,
+          elLibro: 'el libro de esa congregación',
+        }),
+        confirmar: 'acta_que_se_borra',
+      };
+    },
   },
 };
