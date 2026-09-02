@@ -653,10 +653,26 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     ? require('./cuerpo-que-no-levanta-actas').losQueNoLevantanActas(db, req.user)
     : [];
 
+  /*
+   * Los documentos recibidos a los que se les está pasando el plazo.
+   *
+   * Es el único plazo del sistema que no pone la institución: lo pone quien
+   * manda el oficio, y pasarlo tiene consecuencias afuera. El panel traía la
+   * cifra de «solicitudes pasadas de plazo» desde hace tiempo y de esto no
+   * decía nada, aunque el campo existiera desde que se armó el módulo
+   * (ver server/documento-sin-responder.js).
+   *
+   * Pide ver la Oficina de Partes, y se acota a lo que esa persona alcanza: la
+   * secretaria de una iglesia ve los oficios de su iglesia.
+   */
+  const documentosSinResponder = can(req.user, 'documentos', 'view')
+    ? require('./documento-sin-responder').losQueEsperanRespuesta(db, req.user)
+    : [];
+
   res.json({
     counts, finanzas, cumpleanos, solicitudesRecientes,
     credencialesPorVencer, credencialesSinTitular, cuerposSinCuota, cuerposSinDirectiva,
-    cuerposSinActas,
+    cuerposSinActas, documentosSinResponder,
   });
 });
 

@@ -235,6 +235,58 @@ function solicitudesSinRespuesta(usuario, dejar) {
 }
 
 /**
+ * El plazo de un oficio que sigue sin contestarse.
+ *
+ * De los doce avisos que este vigía daba, ninguno miraba el único plazo que la
+ * institución NO se pone a sí misma: el que trae escrito un oficio de una
+ * municipalidad, del Servicio de Impuestos Internos o de un tribunal. Medido en
+ * la v1.284.0, con un documento cuyo plazo se había pasado siete meses antes y
+ * el trámite sin empezar: ni el panel ni los avisos decían una palabra.
+ *
+ * CUIDADO con `documentosPorVencer`, que está más arriba en este mismo archivo
+ * y NO es esto: aquélla mira los documentos de la carpeta de un miembro —el
+ * carné que caduca—. Son dos cosas distintas con nombres parecidos.
+ *
+ * UN SOLO AVISO CON TODOS, como el de las ayudas y por el mismo motivo. Un
+ * documento se puede derivar a alguien, pero ese «alguien» es un MIEMBRO y no
+ * una cuenta del sistema, así que no hay a quién mandarle el suyo. Lo que sirve
+ * en la oficina es la lista.
+ *
+ * La clave lleva los números y sus plazos: mientras sea la misma lista no
+ * vuelve a avisar todos los días, y en cuanto entre otro —o se conteste
+ * alguno— sí, porque ya es otra lista.
+ */
+function documentosPorResponder(usuario, dejar) {
+  const { can } = require('../permissions');
+  if (!can(usuario, 'documentos', 'view')) return;
+
+  let losQue = [];
+  try {
+    losQue = require('../documento-sin-responder').losQueEsperanRespuesta(db, usuario) || [];
+  } catch (e) {
+    return; // sin el módulo todavía, no se avisa: no es motivo para romper la pasada
+  }
+  if (!losQue.length) return;
+
+  const vencidos = losQue.filter((d) => d.nivel === 'vencido');
+  const cuantos = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
+  dejar({
+    tipo: 'documento_por_responder',
+    clave: `documentos_plazo:${losQue.map((d) => `${d.numero}=${d.plazo}`).join(',')}`,
+    titulo: vencidos.length
+      ? `${cuantos(vencidos.length, 'documento pasó', 'documentos pasaron')} su plazo de respuesta`
+      : `${cuantos(losQue.length, 'documento está', 'documentos están')} por cumplir su plazo`,
+    cuerpo: losQue
+      .slice(0, 10)
+      .map((d) => `${d.numero} — ${d.titulo}${d.remitente ? ` (${d.remitente})` : ''}: ${d.situacion}`)
+      .join('\n')
+      + (losQue.length > 10 ? `\ny ${losQue.length - 10} más.` : ''),
+    enlace: '#/m/documentos',
+  });
+}
+
+/**
  * Lo que se pidió y nadie entregó.
  *
  * El sistema avisa de una credencial por vencer, de un documento por vencer, de
@@ -671,10 +723,10 @@ function avisoDeOficialesSinArmar({ nombre, cuerpo }) {
   };
 }
 
-const REVISIONES = [credencialesPorVencer, documentosPorVencer, prestamosPorDevolver,
-  solicitudesSinRespuesta, solicitudesSinResponsableActivo, ayudasSinEntregar, cumpleanosDeHoy,
-  respaldoYDisco, cuotasAtrasadas, faltasSeguidas, cumplieronLaMayoria,
-  cuerpoDeOficialesSinArmar];
+const REVISIONES = [credencialesPorVencer, documentosPorVencer, documentosPorResponder,
+  prestamosPorDevolver, solicitudesSinRespuesta, solicitudesSinResponsableActivo,
+  ayudasSinEntregar, cumpleanosDeHoy, respaldoYDisco, cuotasAtrasadas, faltasSeguidas,
+  cumplieronLaMayoria, cuerpoDeOficialesSinArmar];
 
 // ------------------------------------------------------------- la pasada ----
 
@@ -766,4 +818,5 @@ module.exports = {
   empezar, mirar, pasada, leToca, REVISIONES,
   solicitudesSinRespuesta, solicitudesSinResponsableActivo, cumplieronLaMayoria,
   ayudasSinEntregar, cuerpoDeOficialesSinArmar, avisoDeOficialesSinArmar,
+  documentosPorResponder,
 };

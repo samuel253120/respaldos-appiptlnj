@@ -2195,10 +2195,56 @@ async function viewDashboard() {
       </div>`
     : '';
 
+  /*
+   * Los documentos recibidos a los que se les está pasando el plazo.
+   *
+   * Va PRIMERO de los avisos del panel, y es la única vez que algo le gana a
+   * las credenciales sin titular. El motivo: es el único plazo del sistema que
+   * no lo pone la institución —lo pone quien manda el oficio— y pasarlo tiene
+   * consecuencias fuera del sistema. Los demás avisos hablan de algo que la
+   * congregación se debe a sí misma; éste, de algo que se le debe a alguien de
+   * afuera que está esperando.
+   *
+   * El texto dice CUÁNTO, no solo que sí: entre un plazo que se pasó ayer y uno
+   * que se pasó hace siete meses hay toda la diferencia, y «vencido» a secas no
+   * la dice.
+   */
+  const sinResponder = d.documentosSinResponder || [];
+  const pasados = sinResponder.filter((x) => x.nivel === 'vencido');
+  const avisoPlazos = sinResponder.length
+    ? `
+      <div class="card aviso-credenciales">
+        <h3>🗂️ Documentos con el plazo de respuesta encima</h3>
+        <p class="mut">
+          ${pasados.length
+            ? `<b>${pasados.length}</b> documento${pasados.length === 1 ? '' : 's'} recibido${pasados.length === 1 ? '' : 's'} ${pasados.length === 1 ? 'pasó' : 'pasaron'} el plazo con que ${pasados.length === 1 ? 'llegó' : 'llegaron'}.`
+            : ''}
+          ${sinResponder.length - pasados.length
+            ? `${pasados.length ? 'Y otro' : 'Hay'}${sinResponder.length - pasados.length === 1
+                ? `${pasados.length ? '' : ' <b>1</b> documento'} que está por cumplirlo`
+                : `${pasados.length ? 's' : ''} <b>${sinResponder.length - pasados.length}</b> ${pasados.length ? '' : 'documentos '}que están por cumplirlo`}.`
+            : ''}
+          Este plazo <b>no lo pone la institución</b>: viene escrito en el documento que llegó.
+        </p>
+        <ul class="mini-list">
+          ${sinResponder.slice(0, CUANTAS_SE_MUESTRAN).map((x) => `
+            <li data-ir="#/m/documentos/ficha/${x.id}">
+              <span>${esc(x.numero || 'sin número')} — ${esc(x.titulo)}${x.remitente ? ` <span class="mut">de ${esc(x.remitente)}</span>` : ''}
+                <span class="mut">· ${esc(x.situacion)}</span></span>
+              <span class="badge ${x.nivel === 'vencido' ? 'red' : 'yellow'}">${x.nivel === 'vencido' ? 'pasado' : 'por vencer'}</span>
+            </li>`).join('')}
+          ${sinResponder.length > CUANTAS_SE_MUESTRAN
+            ? `<li class="mut" data-ir="#/m/documentos">y ${sinResponder.length - CUANTAS_SE_MUESTRAN} más — ver todos</li>`
+            : ''}
+        </ul>
+      </div>`
+    : '';
+
   content().innerHTML = `
     <div class="page-head">
       <h2>📊 Panel de control</h2>
     </div>
+    ${avisoPlazos}
     ${avisoSinTitular}
     ${avisoCredenciales}
     ${avisoDirectivas}

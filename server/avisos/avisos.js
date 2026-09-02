@@ -73,6 +73,21 @@ const TIPOS = {
     urgente: false,
     ayuda: 'Una credencial de su iglesia que vence dentro del plazo de aviso.',
   },
+  documento_por_responder: {
+    label: 'Documentos recibidos con el plazo de respuesta encima',
+    // Es el único plazo del sistema que no pone la institución, así que urge de
+    // otra manera: lo que se pasa acá se le pasa a alguien de afuera que está
+    // esperando, y muchas veces con consecuencias.
+    urgente: true,
+    // Solo a quien lleva la oficina de partes: para el resto es un aviso sobre
+    // algo que no está en sus manos, igual que la ayuda sin entregar
+    llave: 'documentos',
+    ayuda:
+      'Un documento recibido cuyo plazo para responder ya se pasó, o se cumple dentro de los días '
+      + 'que se indiquen en Configuración, y que sigue «Ingresado», «Derivado» o «En trámite». '
+      + 'No es el de más abajo: aquél es el carnet de una persona, éste es el oficio que mandó una '
+      + 'municipalidad o un tribunal.',
+  },
   documento_por_vencer: {
     label: 'Documentos de la carpeta por vencer',
     urgente: false,

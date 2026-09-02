@@ -524,6 +524,16 @@ const OPCIONES = [
           + 'cuando se pidió.',
       },
       {
+        clave: 'avisos_plazo_documento_dias',
+        label: 'Avisar del plazo de un documento recibido con tantos días de anticipación',
+        tipo: 'number', defecto: '7', min: 1, max: 90,
+        ayuda:
+          'Días de anticipación con que el sistema avisa de que se cumple el plazo para responder un '
+          + 'documento de la oficina de partes. Es el único plazo que no pone la institución: lo pone '
+          + 'quien manda el oficio. Lo que ya se pasó avisa igual, diciendo hace cuánto. '
+          + 'No confundir con el de más abajo, que es el del carnet de una persona.',
+      },
+      {
         clave: 'avisos_documento_dias', label: 'Avisar de un documento por vencer con tantos días de anticipación',
         tipo: 'number', defecto: '30', min: 1, max: 365,
         ayuda:
