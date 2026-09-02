@@ -4797,6 +4797,23 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
         vacio: 'Esta iglesia todavía no tiene pastores ni guías anotados.',
       }, c));
     }
+    /*
+     * Sus asambleas, que era lo único suyo que no se veía desde su ficha.
+     *
+     * La ficha de un CUERPO tiene su pestaña de Actas desde que se armó; la de
+     * la congregación entera no tenía ninguna, y el acta de una asamblea general
+     * —donde se elige directiva, se aprueban los estados financieros y se
+     * autoriza vender un inmueble— había que ir a buscarla al listado general y
+     * filtrar por iglesia. Es justamente el documento que solo la congregación
+     * entera tiene.
+     *
+     * Va después de los pastores porque el orden de estas pestañas es el de las
+     * preguntas que se hacen —primero la gente, después cómo está organizada,
+     * después quién la pastorea— y la asamblea es lo que decide sobre todo eso.
+     */
+    if (MOD['actas_asambleas']) {
+      sumar('asambleas', 'Asambleas', '🏛️', (c) => renderAsambleasDeLaIglesia(id, c));
+    }
     if (MOD['cuentas_tesoreria']) {
       sumar('tesoreria', 'Tesorería', '💰', (c) => renderTesoreriaDeLaIglesia(id, c));
     }
@@ -7753,6 +7770,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       titulo: '🖐️ Ese cuerpo no estaba convocado',
       volver: 'Volver y elegir otra reunión',
       seguir: 'Asistió igual, guardar',
+    },
+    acta_que_cambia_de_iglesia: {
+      titulo: '🏛️ El acta cambia de congregación',
+      volver: 'Volver y dejarla donde está',
+      seguir: 'Estaba mal anotada, moverla',
     },
     asistentes_que_no_caben: {
       titulo: '🔢 Son más asistentes que miembros',
@@ -17370,6 +17392,49 @@ function ponerBotonDeTranscribir(id, row, isNew, modulo = 'actas_reuniones') {
       boton.textContent = decia;
     }
   });
+}
+
+/**
+ * Las asambleas de una iglesia, en su propia ficha.
+ *
+ * Lo mismo que la pestaña de actas de un cuerpo, con lo que una asamblea tiene
+ * de suyo: su tipo —ordinaria o extraordinaria— y si hubo quórum, que es lo que
+ * decide si lo que se acordó ahí vale y por eso se ve sin abrir el acta.
+ */
+async function renderAsambleasDeLaIglesia(iglesiaId, caja) {
+  if (!MOD['actas_asambleas']) return;
+  const actas = await api('GET', `/actas_asambleas?f_iglesia_id=${iglesiaId}&sort=fecha&dir=desc&limit=30`)
+    .catch(() => null);
+  if (!actas) return;
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>🏛️ Actas de asambleas</b>
+        <span style="color:var(--muted);font-size:13px">${fmtNumero(actas.total)} acta(s)</span>
+        <span class="spacer"></span>
+        ${MOD['actas_asambleas'].perms.create
+          ? `<a class="btn sm" href="#/m/actas_asambleas/new?iglesia_id=${iglesiaId}">➕ Nueva acta</a>`
+          : ''}
+      </div>
+      ${actas.rows.length ? `<ul class="mini-list">
+        ${actas.rows.map((a) => `
+          <li data-ir="#/m/actas_asambleas/edit/${a.id}">
+            <span><b>Asamblea ${esc(a.numero_acta)}</b>
+              <span class="mut">${esc(fechaCorta(a.fecha))}${a.tipo ? ` · ${esc(a.tipo)}` : ''}${
+                a.presidida_por ? ` · ${esc(a.presidida_por)}` : ''}</span></span>
+            <span class="mut">
+              ${/* Sin quórum se dice acá, para no tener que abrir el acta: es lo
+                   que decide si lo que se acordó ahí vale. */''}
+              ${a.hubo_quorum ? '' : '<span class="badge yellow">sin quórum</span> '}
+              ${a.documento ? '📎 ' : ''}<span class="badge ${a.estado === 'Firmada' ? 'green' : a.estado === 'Aprobada' ? 'blue' : ''}">${esc(a.estado || 'Borrador')}</span>
+            </span>
+          </li>`).join('')}
+      </ul>` : `<div class="empty-state" style="padding:26px">
+          Todavía no hay actas de asamblea de esta iglesia.<br>
+          <span class="mut">Se pueden adjuntar como documento o escribir acá mismo.</span>
+        </div>`}
+    </div>`;
 }
 
 /**

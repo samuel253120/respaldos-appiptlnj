@@ -115,6 +115,61 @@ function loDeLosAsistentesQueNoCaben(data, existing, db) {
 }
 
 /**
+ * El acta que cambia de congregación.
+ *
+ * La iglesia es el único dueño que tiene un acta de asamblea: de ahí sale en qué
+ * libro está, quién la ve y qué número le tocaba. Cambiarla no es corregir un
+ * dato de la ficha, es mover el acta de un libro a otro.
+ *
+ * Medido en la v1.281.0: el acta de una asamblea de la Iglesia Central se pasó a
+ * la Iglesia Norte con una sola petición, contestó 200 y no dijo nada. Quedó
+ * anotada en el libro de una congregación que nunca tuvo esa asamblea.
+ *
+ * SE PREGUNTA Y NO SE IMPIDE, y acá el motivo es distinto del de las otras
+ * reglas: corregir la iglesia de un acta mal anotada es exactamente para lo que
+ * el campo tiene que poder cambiarse. Lo que no puede pasar es que se cambie sin
+ * que quien lo hace vea las tres cosas que arrastra.
+ *
+ * EL ALCANCE YA ESTÁ BIEN PUESTO y no es lo que falta: se probó con una
+ * secretaria acotada a una iglesia, y crear un acta de otra o mover la suya
+ * hacia otra contestan 403 las dos. Esto es para quien alcanza las dos —un
+ * administrador de la corporación—, que sí debe poder, pero debería tener que
+ * decir que sí.
+ */
+function loDeLaIglesiaQueCambia(data, existing, db) {
+  const antes = existing && existing.iglesia_id;
+  const despues = data.iglesia_id !== undefined ? data.iglesia_id : antes;
+  /*
+   * Sin «de dónde» no hay mudanza: un acta que se está creando no viene de
+   * ningún libro, y ese es el caso que cubre el primer `!antes`. Se probó
+   * poniendo delante un `if (!existing) return null` y no cambiaba nada —lo que
+   * quiere decir que sobraba—, así que la intención se dice acá y no se escribe
+   * dos veces.
+   */
+  if (!antes || !despues || Number(antes) === Number(despues)) return null;
+
+  const nombre = (id) => {
+    const f = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(id);
+    return f ? f.nombre : `la iglesia n.º ${id}`;
+  };
+  const cual = existing.numero_acta ? ` n.º ${existing.numero_acta}` : '';
+
+  /*
+   * El número va con el acta, y es único DENTRO de cada iglesia: en el libro
+   * nuevo puede estar tomado —y ahí el guardado se cae— y en el viejo queda el
+   * hueco. Se dice antes, que es cuando sirve.
+   */
+  const chocado = db.prepare(
+    'SELECT id FROM actas_asambleas WHERE lower(numero_acta) = lower(?) AND iglesia_id = ? AND id != ?'
+  ).get(String(existing.numero_acta || ''), despues, existing.id);
+
+  return `El acta${cual} está en el libro de ${nombre(antes)} y va a pasar al de ${nombre(despues)}. `
+    + `El número se va con ella${chocado ? `, y en ese libro ese número YA ESTÁ USADO` : ''}, `
+    + `y en el libro de ${nombre(antes)} queda el hueco. `
+    + 'Cambia también quién puede verla: pasa a estar entre lo de esa otra congregación.';
+}
+
+/**
  * Sin quórum, pero con acuerdos.
  *
  * Se avisa cuando el acta QUEDA así, no solo cuando la casilla cambia: un acta
@@ -336,6 +391,9 @@ module.exports = {
 
         const sinGente = loDelQuorumSinGente(data, existing);
         if (sinGente) avisos.push({ clave: 'quorum_sin_asistentes', texto: sinGente });
+
+        const seMuda = loDeLaIglesiaQueCambia(data, existing, db);
+        if (seMuda) avisos.push({ clave: 'acta_que_cambia_de_iglesia', texto: seMuda });
 
         const noCaben = loDeLosAsistentesQueNoCaben(data, existing, db);
         if (noCaben) avisos.push({ clave: 'asistentes_que_no_caben', texto: noCaben });
