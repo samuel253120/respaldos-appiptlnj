@@ -124,6 +124,7 @@ async function revisarUnMedio(navegador, medio, ancho) {
   const recortados = [];
   const titulosQueNoSeParten = [];
   const noSePuedeGuardar = [];
+  const fantasmas = [];
 
   const revisar = async (ruta) => {
     await pagina.goto(URL + '/' + ruta);
@@ -163,6 +164,71 @@ async function revisarUnMedio(navegador, medio, ancho) {
     });
     if (obligatoriosEscondidos.length) {
       noSePuedeGuardar.push(`${ruta} → ${[...new Set(obligatoriosEscondidos)].join(', ')}`);
+    }
+
+    /*
+     * UN REGISTRO GUARDADO QUE YA NO SE PUEDE VOLVER A GUARDAR.
+     *
+     * Lo de arriba mira un obligatorio ESCONDIDO. Esto mira el otro lado: uno
+     * a la vista, en el formulario de EDICIÓN de algo que ya está guardado, y
+     * vacío. Quiere decir que ese registro entró antes de que el campo fuera
+     * obligatorio, y que ahora no se puede tocar nada suyo —ni cambiarle el
+     * estado— sin averiguar por otro lado qué va en esa casilla.
+     *
+     * Pasa cada vez que un campo se vuelve obligatorio con datos ya adentro, y
+     * no se nota: el formulario se dibuja entero, no hay error, y el botón
+     * Guardar contesta lo que conteste el navegador. Se descubrió al exigir el
+     * número de la oficina de partes en la v1.284.0 —había documentos
+     * guardados sin él— y el remedio fue que el sistema PROPONGA el número
+     * también al editar, no solo al crear. Sin eso, la casilla se abría vacía
+     * y obligatoria.
+     *
+     * Se mide en todos los formularios de edición, que es donde puede pasar, y
+     * no solo en ese: cualquier campo que se vuelva obligatorio mañana cae acá.
+     */
+    if (/\/edit\//.test(ruta)) {
+      const vaciosYObligatorios = await pagina.evaluate(() => {
+        const form = document.getElementById('recForm');
+        if (!form) return [];
+        return [...form.querySelectorAll('[required]')]
+          .filter((c) => c.getClientRects().length && !String(c.value || '').trim())
+          .map((c) => c.name || '(sin nombre)');
+      });
+      if (vaciosYObligatorios.length) {
+        noSePuedeGuardar.push(`${ruta} → obligatorio y vacío: ${[...new Set(vaciosYObligatorios)].join(', ')}`);
+      }
+    }
+
+    /*
+     * UN VALOR QUE LA PANTALLA NO MUESTRA Y AUN ASÍ MANDA.
+     *
+     * Un campo escondido por su condición sigue teniendo un control en el
+     * formulario, y un desplegable escondido se dibuja con su PRIMERA OPCIÓN
+     * puesta aunque el registro no tenga ninguna. Si eso viaja al guardar, se
+     * escribe un dato que nadie eligió.
+     *
+     * Medido en la v1.283.0: una asistencia marcada «Presente», con el motivo
+     * en null en la base, mandaba «motivo: Emergencia» —el primero de la
+     * lista—, así que guardarla le habría puesto un motivo de justificación a
+     * alguien que sí fue.
+     *
+     * Se llama a la MISMA función que arma lo que se manda, sobre el
+     * formulario de verdad: no mira el código, mira lo que saldría.
+     */
+    const mandaLoQueNoMuestra = await pagina.evaluate((nombre) => {
+      if (!document.getElementById('recForm')) return [];
+      const def = typeof MOD !== 'undefined' && MOD[nombre];
+      if (!def || typeof collectForm !== 'function') return [];
+      let datos;
+      try { datos = collectForm(def); } catch (e) { return []; }
+      return Object.keys(datos).filter((k) => {
+        const el = document.querySelector(`#recForm [name="${k}"]`);
+        const caja = el && el.closest('.fld');
+        return caja && caja.style.display === 'none';
+      });
+    }, (ruta.match(/#\/m\/([^/]+)/) || [])[1] || '');
+    if (mandaLoQueNoMuestra.length) {
+      fantasmas.push(`${ruta} → ${[...new Set(mandaLoQueNoMuestra)].join(', ')}`);
     }
 
     /*
@@ -452,6 +518,7 @@ async function revisarUnMedio(navegador, medio, ancho) {
       ` · pegados en "Cargando…": ${pegados.length ? pegados.join(', ') : 'ninguno'}` +
       ` · campos repetidos: ${repetidos.length ? repetidos.join(' | ') : 'ninguno'}` +
       ` · formularios que no se podrían guardar: ${noSePuedeGuardar.length ? noSePuedeGuardar.join(' | ') : 'ninguno'}` +
+      ` · campos que se mandan sin mostrarse: ${fantasmas.length ? fantasmas.join(' | ') : 'ninguno'}` +
       (ancho <= 700 ? ` · datos tapados por los botones: ${tapados.length ? tapados.join(' | ') : 'ninguno'}` : '') +
       (ancho <= 700 ? ` · recortado sin salida: ${recortados.length ? recortados.join(' | ') : 'nada'}` : '') +
       ` · títulos de columna que no se parten: ${titulosQueNoSeParten.length ? titulosQueNoSeParten.join(' | ') : 'ninguno'}` +
@@ -460,7 +527,8 @@ async function revisarUnMedio(navegador, medio, ancho) {
   );
   await pagina.close();
   return pegados.length + Object.keys(anchos).length + distintos.length + repetidos.length
-    + tapados.length + recortados.length + titulosQueNoSeParten.length + noSePuedeGuardar.length;
+    + tapados.length + recortados.length + titulosQueNoSeParten.length + noSePuedeGuardar.length
+    + fantasmas.length;
 }
 
 (async () => {

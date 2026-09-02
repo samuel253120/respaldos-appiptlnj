@@ -67,6 +67,15 @@ async function elSistemaAndando() {
   const app = express();
   app.use(express.json());
   app.use('/api', buildRouter());
+  /*
+   * Y la importación de planillas, que es el OTRO camino por el que entran
+   * datos a este sistema. Se montaba solo el router del motor, así que una
+   * prueba que pidiera /api/importar recibía un 404 y parecía que la ruta no
+   * existía. Se agregó en la v1.284.0, al comprobar que la planilla y el
+   * formulario exigieran los mismos campos: esa regla vive en los dos caminos
+   * y solo se puede comprobar teniendo los dos andando.
+   */
+  app.use('/api/importar', require('../../server/importar').router);
   servidor = app.listen(0, '127.0.0.1');
   await new Promise((listo) => servidor.once('listening', listo));
   const puerto = servidor.address().port;

@@ -28,7 +28,7 @@ const { getModule, displayOf } = require('./registry');
 const { authRequired, requirePerm } = require('./auth');
 const {
   coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, revisarLimites, dondeEsUnico,
-  buscarDuplicado, avisoDeDuplicado, referenciasFueraDeAlcance,
+  buscarDuplicado, avisoDeDuplicado, referenciasFueraDeAlcance, seAplica,
 } = require('./crud');
 const rut = require('./rut');
 const bitacora = require('./bitacora');
@@ -199,7 +199,14 @@ function prepararFila(def, fila, user) {
 
   for (const f of def.fields) {
     const valor = datos[f.name];
-    if (f.required && (valor === undefined || valor === null || valor === '')) {
+    /*
+     * Los obligatorios, con la MISMA regla del formulario: un campo cuya
+     * condición no se cumple no se exige. Se pedían todos a secas, y por eso
+     * una fila con un par de campos excluyentes —«Miembro» / «No Miembro»—
+     * pedía los dos y no había manera de que entrara.
+     */
+    if (f.required && seAplica(f, datos, null, def.fields)
+        && (valor === undefined || valor === null || valor === '')) {
       errores.push(`Falta ${f.label}`);
     }
     if (valor == null || valor === '') continue;

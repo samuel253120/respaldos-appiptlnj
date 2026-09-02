@@ -25,9 +25,12 @@
  * quien lo firmó; la de registro es cuándo pasó por la oficina. Una carta
  * fechada el 3 puede llegar el 11, y para un plazo lo que cuenta es el 11.
  *
- * EL NÚMERO ES UNA PROPUESTA. El sistema propone el que sigue y se puede
- * cambiar: hay libros que vienen de antes y correspondencia que llegó con su
- * número puesto.
+ * EL NÚMERO ES UNA PROPUESTA, Y NO ES OPCIONAL. El sistema propone el que
+ * sigue y se puede cambiar —hay libros que vienen de antes y correspondencia
+ * que llegó con su número puesto—, pero en los dos libros que numeran no se
+ * puede dejar en blanco: una anotación sin número no se puede citar ni se
+ * puede echar de menos, que es lo único para lo que sirve un correlativo. Lo
+ * interno queda fuera de la exigencia porque queda fuera de la numeración.
  */
 
 /** Cómo pasó el documento por la oficina. */
@@ -177,12 +180,35 @@ module.exports = {
     {
       name: 'numero', label: 'N.º de la oficina de partes', type: 'text', unique: 'iglesia_id',
       seccion: 'El registro',
+      /*
+       * OBLIGATORIO, PERO SOLO EN LOS DOS LIBROS QUE NUMERAN.
+       *
+       * Un libro de partes es un correlativo: es lo único que permite decir,
+       * dos años después, que un documento entró tal día y que no falta
+       * ninguno entre medio. Sin número, una anotación no se puede citar ni se
+       * puede echar de menos. Los otros tres libros que este sistema numera
+       * —las actas de reunión, las de asamblea y los certificados— lo exigen
+       * desde siempre; este, que es el que existe PARA ser un correlativo, no
+       * lo exigía: se guardaba con la casilla en blanco y el libro lo imprimía
+       * con un guion, debajo de un cierre que decía «constan 5 documento(s)».
+       *
+       * El «solo en los dos libros» no hace falta escribirlo: lo interno no
+       * lleva correlativo, su casilla no se muestra, y el motor no exige un
+       * campo cuyo `showIf` no aplica —ni el navegador tampoco, que le quita el
+       * obligatorio a lo que esconde—. Así que basta con las dos palabras de
+       * abajo y la condición que ya estaba.
+       *
+       * Sigue siendo UNA PROPUESTA: el sistema ofrece el que sigue y se puede
+       * escribir otro. Lo que ya no se puede es dejarlo vacío.
+       */
+      required: true,
       // Lo interno no lleva correlativo: ofrecer la caja invitaría a poner uno
       // que el sistema después descarta, sin decir por qué
       showIf: { field: 'flujo', in: ['Recibido', 'Emitido'] },
-      help: 'Lo propone el sistema al elegir la iglesia y el flujo, y se puede cambiar. No puede repetirse ' +
-        'dentro de la misma iglesia. Cambiar el prefijo en Configuración empieza una serie nueva: del libro ' +
-        'se cuentan solo los números que siguen el formato de hoy.',
+      help: 'Lo propone el sistema al elegir la iglesia y el flujo, y se puede cambiar, pero no dejar en ' +
+        'blanco: el libro es un correlativo. No puede repetirse dentro de la misma iglesia. Cambiar el ' +
+        'prefijo en Configuración empieza una serie nueva: del libro se cuentan solo los números que ' +
+        'siguen el formato de hoy.',
     },
     {
       name: 'iglesia_id', label: 'Iglesia que lo registra', type: 'ref', ref: 'iglesias', required: true,

@@ -821,6 +821,65 @@ function dondeEsUnico(def, campo, datos, existing) {
   }
 }
 
+/**
+ * ¿Aplica este campo, según la condición con que se declaró?
+ *
+ * Un campo puede declarar `showIf: { field, equals | in }` para existir solo en
+ * algunos casos: «Miembro» solo cuando el beneficiario es un miembro, el
+ * número de la oficina de partes solo en los dos flujos que numeran. Un campo
+ * que no aplica NO SE EXIGE aunque sea obligatorio —pedirlo sería pedir algo
+ * que la pantalla ni siquiera muestra—.
+ *
+ * Vive acá, y no dentro de la ruta que guarda, porque la planilla tiene que
+ * decidirlo igual que el formulario. Estaba escrito solo en la ruta, y la
+ * importación exigía todos los obligatorios a secas: medido en la v1.283.0,
+ * una fila de Ayudas Sociales a nombre de un no miembro contestaba «Falta
+ * Miembro» Y «Falta No Miembro» a la vez —los dos campos de un par
+ * excluyente—, así que ninguna planilla de ese módulo podía entrar, fuera cual
+ * fuera el beneficiario. Son catorce campos así en siete módulos.
+ *
+ * No entiende la forma `menorDe` —la que mira la edad que da una fecha—, que
+ * solo se usa en la pantalla; hoy ningún campo la combina con `required`, así
+ * que no hay nada que decidir mal, pero si algún día lo hace hay que enseñarle
+ * a contar años antes.
+ */
+function seAplica(campo, datos, existing, campos, hondura = 0) {
+  if (!campo.showIf) return true;
+  const actual = datos[campo.showIf.field] !== undefined
+    ? datos[campo.showIf.field]
+    : existing
+      ? existing[campo.showIf.field]
+      : undefined;
+  const coincide = Array.isArray(campo.showIf.in)
+    ? campo.showIf.in.includes(actual)
+    : actual === campo.showIf.equals;
+  if (!coincide) return false;
+
+  /*
+   * Y UN CAMPO QUE NO APLICA NO DECIDE POR OTRO.
+   *
+   * Una condición puede colgar de un campo que a su vez tiene condición:
+   * «Detalle del motivo» depende del motivo de la ausencia, y el motivo solo
+   * existe cuando la asistencia está «Justificada». Mirar solo el valor del de
+   * arriba no basta, porque ese valor puede estar ahí de antes o venir puesto
+   * por la pantalla.
+   *
+   * Medido en la v1.283.0: una asistencia marcada «Presente», con el motivo en
+   * null en la base, contestaba 400 «El campo "Detalle del motivo" es
+   * obligatorio» al guardarla desde la pantalla —el desplegable escondido del
+   * motivo se dibuja con su primera opción puesta y viaja con el formulario—.
+   * Ese registro no se podía guardar por ningún camino.
+   *
+   * Hoy hay UNA sola cadena así en todo el sistema, y es esa. La hondura corta
+   * en diez por si alguien escribe un círculo: más vale exigir de menos que
+   * quedarse dando vueltas.
+   */
+  if (!campos || hondura > 10) return true;
+  const manda = campos.find((f) => f.name === campo.showIf.field);
+  if (!manda || !manda.showIf) return true;
+  return seAplica(manda, datos, existing, campos, hondura + 1);
+}
+
 /** Cómo se le dice a alguien que ese valor ya está usado. */
 function avisoDeDuplicado(def, campo, donde = '') {
   return `Ya existe ${otroUOtra(def)} ${def.labelSingular.toLowerCase()} con ese ${campo.label}${donde}`;
@@ -1326,17 +1385,7 @@ function buildRouter() {
         const avisoDeNivel = tesorerias.alGuardar(def, { ...(existing || {}), ...data }, req.user, db);
         if (avisoDeNivel) return res.status(403).json({ error: avisoDeNivel });
 
-        /** ¿Aplica este campo, según su condición showIf? */
-        const aplica = (f) => {
-          if (!f.showIf) return true;
-          const actual = data[f.showIf.field] !== undefined
-            ? data[f.showIf.field]
-            : existing
-              ? existing[f.showIf.field]
-              : undefined;
-          if (Array.isArray(f.showIf.in)) return f.showIf.in.includes(actual);
-          return actual === f.showIf.equals;
-        };
+        const aplica = (f) => seAplica(f, data, existing, def.fields);
 
         // Validación de requeridos (los campos que no aplican no se exigen)
         for (const f of def.fields) {
@@ -1761,7 +1810,7 @@ function buildRouter() {
 module.exports = {
   consultaDeUnListado,
   buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara,
-  revisarLimites, buscarDuplicado, avisoDeDuplicado, dondeEsUnico, TECHO,
+  revisarLimites, buscarDuplicado, avisoDeDuplicado, dondeEsUnico, seAplica, TECHO,
   referenciasRotas, referenciasFueraDeAlcance,
   // Se exporta para que las pruebas puedan exigir que un dato mal escrito se
   // le explique a la persona (400) en vez de salir como avería del sistema.

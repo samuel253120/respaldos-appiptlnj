@@ -7972,6 +7972,34 @@ function aplicarCondiciones() {
       } else {
         visible = String(div.dataset.showifValor).split('|').includes(actual);
       }
+
+      /*
+       * UN CAMPO ESCONDIDO NO DECIDE POR OTRO.
+       *
+       * Una condición puede colgar de un campo que a su vez tiene condición:
+       * «Detalle del motivo» depende del motivo, y el motivo solo existe
+       * cuando la asistencia está «Justificada». Si el de arriba no aplica, el
+       * de abajo tampoco — pero se miraba solo el VALOR del de arriba, y un
+       * desplegable escondido no está vacío: se dibuja con su primera opción
+       * puesta aunque el registro no tenga ninguna.
+       *
+       * Medido en la v1.283.0 sobre una asistencia marcada «Presente», con el
+       * motivo en null en la base: el desplegable escondido mostraba
+       * «Emergencia», y con eso «Detalle del motivo» salía a la vista y
+       * obligatorio, vacío. El botón Guardar dejaba de hacer absolutamente
+       * nada —el navegador no manda un formulario con un obligatorio vacío— y
+       * en la pantalla no aparecía ningún mensaje. Ese registro no se podía
+       * guardar.
+       *
+       * Alcanza el paso hacia atrás porque los campos se recorren en el orden
+       * en que están escritos y una condición siempre cuelga de un campo
+       * anterior: cuando le toca al de abajo, el de arriba ya se decidió.
+       */
+      if (visible && control) {
+        const manda = control.closest('[data-showif-field]');
+        if (manda && manda !== div && manda.style.display === 'none') visible = false;
+      }
+
       div.style.display = visible ? '' : 'none';
 
       /*
@@ -9394,8 +9422,44 @@ function initFileField(f) {
 function collectForm(m) {
   const form = document.getElementById('recForm');
   const data = {};
+  /**
+   * ¿Está escondido por su condición? Se busca su caja, venga como venga el
+   * control: los normales llevan el nombre, los de varias referencias y los de
+   * permisos viven en una caja con id propio.
+   */
+  const escondido = (f) => {
+    const el = form.querySelector(`[name="${f.name}"]`)
+      || document.getElementById('mr_' + f.name)
+      || document.getElementById('perm_' + f.name);
+    const caja = el && el.closest('.fld');
+    return !!caja && caja.style.display === 'none';
+  };
+
   for (const f of m.fields) {
     if (f.computed) continue;
+    /*
+     * LO QUE LA PANTALLA NO MUESTRA, NO LO MANDA.
+     *
+     * Un campo con condición que no se cumple está escondido, pero su control
+     * sigue en el formulario y sigue teniendo un valor: un desplegable
+     * escondido se dibuja con su PRIMERA OPCIÓN puesta aunque el registro no
+     * tenga ninguna, y una casilla escondida vale «no». Mandándolos, se
+     * escribe un dato que nadie eligió.
+     *
+     * Medido en la v1.283.0, dos casos:
+     *
+     *   · una asistencia «Presente» con el motivo en null en la base mandaba
+     *     «motivo: Emergencia» —el primero de la lista—, así que guardarla le
+     *     habría puesto un motivo de justificación a alguien que sí fue;
+     *   · un bien del inventario que dejaba de estar «En depósito» mandaba
+     *     «el dueño aceptó la cláusula: no», borrando la constancia de que la
+     *     había firmado.
+     *
+     * Va acá arriba y no dentro de una rama porque alcanza a TODOS los tipos
+     * de campo: el segundo caso es una casilla, que se recogía por otro lado.
+     * En un guardado parcial, lo que no se manda conserva lo que ya tenía.
+     */
+    if (escondido(f)) continue;
     if (f.type === 'multiref') {
       const box = document.getElementById('mr_' + f.name);
       data[f.name] = box ? JSON.parse(box.dataset.value || '[]') : [];
@@ -17276,11 +17340,24 @@ function prepararElActa(id, row, isNew) {
  * acaba de escribir, que es la peor manera de ayudar.
  */
 function proponerElNumeroDeActa(isNew, { ruta, depende, clave, campo: cual = 'numero_acta' }) {
-  if (!isNew) return; // lo ya guardado conserva el número que tenga
   const form = document.getElementById('recForm');
   if (!form) return;
   const campo = form.querySelector(`[name="${cual}"]`);
   if (!campo) return;
+
+  /*
+   * Lo ya guardado conserva el número que tenga. Pero si NO TIENE ninguno, no
+   * hay nada que conservar, y ahí sí se le propone uno.
+   *
+   * Hasta la v1.283.0 esto se saltaba entero al editar. Daba igual mientras el
+   * número fuera opcional; deja de darlo en cuanto se exige, porque entonces
+   * un registro viejo sin número se abre con una casilla obligatoria vacía y
+   * sin nada que ofrecer: la persona tendría que ir a mirar el libro para
+   * saber cuál le toca. Alcanza a los cuatro libros que el sistema numera, y
+   * en los otros tres el caso es raro —su número siempre fue obligatorio— pero
+   * el remedio es el mismo.
+   */
+  if (!isNew && campo.value.trim()) return;
 
   let loQuePropuso = null;
   const valorDe = (nombre) => {
