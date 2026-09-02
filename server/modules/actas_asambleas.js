@@ -9,7 +9,9 @@ module.exports = {
   display: 'Asamblea {numero_acta} — {fecha}',
   dateField: 'fecha',
   printable: true,
-  searchFields: ['numero_acta', 'agenda', 'acuerdos', 'presidida_por'],
+  // Con el desarrollo, por lo mismo que en las actas de reunión: es donde cae
+  // el texto que se transcribe del documento adjunto (ver ese módulo).
+  searchFields: ['numero_acta', 'agenda', 'desarrollo', 'acuerdos', 'presidida_por'],
   listFields: ['numero_acta', 'fecha', 'tipo', 'iglesia_id', 'total_asistentes', 'estado'],
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [

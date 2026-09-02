@@ -85,6 +85,66 @@ function avisoDeActaFirmada(existing, data, cambia) {
 }
 
 /**
+ * Una reunión que termina antes de empezar.
+ *
+ * Los dos campos de hora entraban sin que nadie los mirara: «empieza a las
+ * 21:00 y termina a las 19:00» contestaba 201, y la hoja impresa salía diciendo
+ * «Hora: 21:00 a 19:00». Es el mismo par que en las directivas se comprueba
+ * desde hace tiempo, pero ahí son fechas y acá horas, y nadie las miraba.
+ *
+ * PREGUNTA, NO RECHAZA, y eso no es por costumbre de la casa: es que una
+ * reunión que empieza a las 23:00 y termina a las 00:30 del día siguiente es
+ * perfectamente normal —una vigilia, una asamblea larga— y una regla escrita
+ * como «término > inicio» la rechazaría siendo correcta. No hay manera de
+ * distinguir el error del caso legítimo mirando los datos, así que se pregunta,
+ * que es justamente lo que un ser humano sí sabe contestar.
+ *
+ * Devuelve el texto del aviso, o nulo si no hay nada que decir. No lo devuelve
+ * ya envuelto en `{ error, confirmar }` porque puede terminar sumado al aviso
+ * del acta firmada: la marca de «guardar igual» es UNA sola por guardado, y
+ * dos preguntas separadas dejarían pasar la segunda sin que nadie la lea.
+ */
+function loDeLasHoras(data, existing) {
+  const deAntes = (campo) => (data[campo] !== undefined ? data[campo] : existing && existing[campo]);
+  /*
+   * En minutos desde la medianoche, y no comparando el texto: la pantalla manda
+   * siempre «09:30» y la API no siempre, y comparadas como texto «9:30» sale
+   * MAYOR que «21:00» —el 9 va después del 2— así que una reunión de las 21:00
+   * a las 9:30 pasaría sin que nadie la mirara.
+   */
+  const enMinutos = (h) => {
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(h || '').trim());
+    if (!m) return null;
+    const hora = Number(m[1]);
+    const minuto = Number(m[2]);
+    if (hora > 23 || minuto > 59) return null;
+    return hora * 60 + minuto;
+  };
+  /** Para decirla en el aviso como se lee en la ficha. */
+  const comoSeLee = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+  const inicio = enMinutos(deAntes('hora_inicio'));
+  const fin = enMinutos(deAntes('hora_fin'));
+  /*
+   * Con una sola hora anotada no hay nada que comparar, y está bien que así
+   * sea: muchas actas dicen a qué hora empezó la reunión y no a qué hora
+   * terminó. Se comprueba contra `null` a propósito y no con `!inicio`: las
+   * 00:00 son cero minutos, y una reunión que empieza a medianoche existe.
+   */
+  if (inicio === null || fin === null) return null;
+
+  if (inicio === fin) {
+    return `El acta dice que la reunión empezó y terminó a las ${comoSeLee(inicio)}, o sea que no `
+      + 'duró nada. Revise las horas.';
+  }
+  if (fin < inicio) {
+    return `El acta dice que la reunión empezó a las ${comoSeLee(inicio)} y terminó a las `
+      + `${comoSeLee(fin)}. Si de verdad terminó pasada la medianoche, confirme; si no, corrija las horas.`;
+  }
+  return null;
+}
+
+/**
  * La firma se anota sola, y se borra sola.
  *
  * Solo cuando el estado CAMBIA: así, editar un acta que ya estaba firmada
@@ -114,7 +174,18 @@ module.exports = {
   display: 'Acta {numero_acta} — {fecha}',
   dateField: 'fecha',
   printable: true,
-  searchFields: ['numero_acta', 'agenda', 'acuerdos', 'presidida_por'],
+  /*
+   * Se busca también en el DESARROLLO, que es el campo más largo del acta y el
+   * que llena el botón «Transcribir» cuando trae el texto del documento
+   * adjunto. Faltaba, y el efecto era el peor posible: se transcribía un acta
+   * escaneada de doce párrafos, quedaba entera adentro del sistema, y buscar
+   * cualquier palabra de esos doce párrafos no la encontraba. La función que
+   * hace valioso al módulo era la que producía contenido invisible.
+   *
+   * Que sea texto con formato no lo estorba: los acuerdos también lo son y ya
+   * estaban en la lista.
+   */
+  searchFields: ['numero_acta', 'agenda', 'desarrollo', 'acuerdos', 'presidida_por'],
   listFields: ['numero_acta', 'fecha', 'cuerpo_id', 'iglesia_id', 'presidida_por', 'estado'],
   /*
    * Lo que se conserva de un acta que se borra, además de su cabecera.
@@ -386,10 +457,28 @@ module.exports = {
        * tocando. Crear un acta ya firmada tampoco se pregunta: así es como se
        * carga el libro viejo, que está firmado hace años.
        */
+      /*
+       * Las dos preguntas de un guardado, y por qué van juntas.
+       *
+       * La marca de «guardar igual» es UNA por guardado: si se preguntara
+       * primero por el acta firmada y después por las horas, quien confirma la
+       * primera pasaría la segunda sin haberla leído nunca. Así que cuando las
+       * dos aplican se dicen en el mismo aviso, y la más grave —tocar un
+       * documento ya firmado— va adelante.
+       */
+      const porLasHoras = confirmado ? null : loDeLasHoras(data, existing);
+
       if (existing && existing.estado === FIRMADA && !confirmado) {
         const cambia = loQueCambia(data, existing);
-        if (cambia.length) return { error: avisoDeActaFirmada(existing, data, cambia), confirmar: 'acta_firmada' };
+        if (cambia.length) {
+          const aviso = avisoDeActaFirmada(existing, data, cambia);
+          return {
+            error: porLasHoras ? `${aviso} Y otra cosa: ${porLasHoras}` : aviso,
+            confirmar: 'acta_firmada',
+          };
+        }
       }
+      if (porLasHoras) return { error: porLasHoras, confirmar: 'horas_del_acta' };
 
       anotarLaFirma(data, existing, user);
       return null;
