@@ -181,7 +181,25 @@ test('quien está en dos cuerpos sale en los dos', () => {
 test('un cuerpo que no existe no trae a nadie, y en blanco no filtra', () => {
   assert.equal(ids({ cuerpo_id: '999999' }).length, 0);
   assert.equal(ids({ cuerpo_id: 'ni un número' }).length, 0);
-  assert.equal(ids({ cuerpo_id: '' }).length, ids({}).length, 'en blanco es no haber preguntado');
+  /*
+   * «En blanco es no haber preguntado» se comprobaba comparando los DOS
+   * conteos completos de la tabla, y esa tabla la escriben otros archivos de
+   * prueba al mismo tiempo: los del motor comparten una base y corren en
+   * paralelo. Bastaba con que alguno insertara un miembro entre una consulta y
+   * la otra para que dijera «1700 !== 1701» y pareciera un defecto del filtro.
+   * Se vio una vez en la v1.286.0.
+   *
+   * Ahora se comprueba sobre la gente DE ESTE ARCHIVO, que es de quien esta
+   * prueba puede responder: filtrar en blanco tiene que traerlos a todos, igual
+   * que no filtrar. Lo que otro proceso agregue por su lado no la mueve.
+   */
+  const mios = [guagua, nina, justo18, casi18, treinta, justo31, abuela, sinFecha, retirada, enPrueba];
+  const enBlanco = new Set(ids({ cuerpo_id: '' }));
+  const sinFiltro = new Set(ids({}));
+  for (const quien of mios) {
+    assert.ok(sinFiltro.has(quien), `sin filtro tiene que salir ${quien}`);
+    assert.ok(enBlanco.has(quien), `y con el filtro en blanco también: ${quien}`);
+  }
 });
 
 test('los dos filtros juntos se suman, no se pisan', () => {

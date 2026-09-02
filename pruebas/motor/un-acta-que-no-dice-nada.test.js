@@ -178,11 +178,19 @@ test('la pantalla sabe ponerle título a cada una de estas preguntas', () => {
    * Sin su entrada, el aviso sale con el encabezado genérico «Revise esto antes
    * de guardar» y los botones «Volver y corregirlo» / «Está bien, guardar así»,
    * que no dicen a qué se está diciendo que sí.
+   *
+   * Las tres son preguntas de GUARDAR, y solo esas van en esa tabla. Acá estaba
+   * también «acta_que_se_borra», y era un error: un borrado no pasa por ahí
+   * —pregunta en la misma caja del navegador con que se borra, con sus propios
+   * botones—, así que esa entrada no se leía nunca. Se quitó en la v1.286.0, al
+   * descubrirlo estando a punto de copiarla cuatro veces más. Lo que un borrado
+   * tenga que decir va entero en el mensaje del servidor, y eso se comprueba en
+   * borrar-un-documento-del-libro.test.js.
    */
   const fs = require('fs');
   const path = require('path');
   const app = fs.readFileSync(path.join(__dirname, '../../public/app.js'), 'utf8');
-  for (const clave of ['acta_firmada', 'acta_sin_nada', 'horas_del_acta', 'acta_que_se_borra']) {
+  for (const clave of ['acta_firmada', 'acta_sin_nada', 'horas_del_acta']) {
     assert.match(app, new RegExp(`${clave}:\\s*\\{`), `falta el título de «${clave}»`);
   }
 });

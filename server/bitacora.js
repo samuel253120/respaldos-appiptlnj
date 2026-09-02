@@ -300,7 +300,16 @@ function legible(campo, valor) {
  */
 function resumenDe(def, fila, alBorrar) {
   const pedidos = alBorrar ? (def.camposAlBorrar || []) : [];
-  return [...(def.listFields || []), ...pedidos]
+  /*
+   * Sin repetir: un campo puede estar en las DOS listas y entonces salía dos
+   * veces en la misma línea. Pasa con los adjuntos y es casi obligado que
+   * pase: un módulo que muestra el archivo en su listado y además quiere
+   * conservar su nombre al borrar tiene que nombrarlo en los dos sitios, porque
+   * los archivos no entran solos en la constancia. Se vio en la Oficina de
+   * Partes, cuyo listado muestra el escaneo: la constancia del borrado decía
+   * «Documento digitalizado: …» al principio y otra vez al final.
+   */
+  return [...new Set([...(def.listFields || []), ...pedidos])]
     .map((nombre) => {
       const campo = def.fields.find((f) => f.name === nombre);
       if (!campo || campo.type === 'password') return null;

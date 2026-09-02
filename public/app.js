@@ -7688,6 +7688,15 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
    * lleva solicitudes abiertas—, la pantalla decía «Revise este monto» sobre un
    * aviso que no habla de ningún monto. Lo que se pregunta lo dice el servidor
    * con `confirmar`; acá solo se le pone la cara que le corresponde.
+   *
+   * ACÁ NO VA NINGUNA PREGUNTA DE BORRADO, y conviene saberlo antes de agregar
+   * una. Esta tabla la lee `preguntarSiIgualVa`, que solo se llama al GUARDAR;
+   * un borrado pregunta por `borrarPreguntando`, en la misma caja del navegador
+   * que ya se usa para borrar, y ahí los botones son los del navegador y el
+   * texto sale entero del servidor. Había una entrada de borrado —la del acta,
+   * desde la v1.273.0— que no se leía nunca, y estuvo a punto de multiplicarse
+   * por cuatro copiándola: se quitó, y hay una prueba que se pone roja si
+   * vuelve alguna.
    */
   const COMO_SE_PREGUNTA = {
     saldo_negativo: {
@@ -7837,11 +7846,6 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       titulo: '🔢 Dice que hubo quórum, pero no dice con cuántos',
       volver: 'Volver y anotar los asistentes',
       seguir: 'Guardar así',
-    },
-    acta_que_se_borra: {
-      titulo: '🗑️ Va a eliminar un acta',
-      volver: 'No, dejarla donde está',
-      seguir: 'Eliminarla igual',
     },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {

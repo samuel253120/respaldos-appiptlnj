@@ -49,6 +49,12 @@ const MEDIOS = ['En mano', 'Correo postal', 'Correo electrónico', 'WhatsApp', '
 /** En qué va el trámite. */
 const ESTADOS = ['Ingresado', 'Derivado', 'En trámite', 'Respondido', 'Despachado', 'Archivado'];
 
+/** Los tres en que el asunto sigue abierto. Los otros tres dicen que terminó. */
+const ABIERTOS_DEL_TRAMITE = ESTADOS.slice(0, 3);
+
+const { comoSeLee } = require('../fechas');
+const { enLista } = require('../formato');
+
 const ES_RECIBIDO = { field: 'flujo', equals: 'Recibido' };
 const ES_EMITIDO = { field: 'flujo', equals: 'Emitido' };
 
@@ -134,6 +140,61 @@ function armarElLibro(db, { iglesiaId, anio, flujo }) {
   };
 }
 
+/**
+ * Lo que se le dice a alguien antes de borrar un documento.
+ *
+ * Se nombra el documento, de quién venía, qué trae adentro y —lo propio de
+ * este módulo— QUÉ LE PASA AL LIBRO. Un acta que se borra deja un libro sin
+ * ella; un documento numerado deja además un hueco en un correlativo, que es
+ * lo único que un libro de partes tiene para demostrar que no falta nada.
+ *
+ * Lo interno no abre hueco, porque no lleva número, y eso también se dice: si
+ * no, la advertencia diría lo mismo para las dos cosas y dejaría de informar.
+ */
+function avisoDelDocumentoQueSeBorra(fila, db) {
+  const cual = fila.numero ? `el documento n.º ${fila.numero}` : 'un documento sin número';
+  const cuando = fila.fecha_registro ? ` registrado el ${comoSeLee(fila.fecha_registro)}` : '';
+
+  // De quién venía o a quién iba: en un oficio es la mitad del dato
+  const contraparte = fila.flujo === 'Emitido' ? fila.destinatario : fila.remitente;
+  const conQuien = contraparte
+    ? `, ${fila.flujo === 'Emitido' ? 'dirigido a' : 'de'} ${contraparte}`
+    : '';
+
+  // Y qué trae adentro: no es lo mismo una ficha en blanco que un oficio
+  // escrito, con su referencia, sus folios y el papel escaneado
+  const trae = [];
+  if (fila.referencia) trae.push(`su n.º de origen (${fila.referencia})`);
+  if (fila.folios) trae.push(`${fila.folios} folio(s)`);
+  if (fila.descripcion) trae.push('la descripción');
+  if (fila.observaciones) trae.push('las observaciones');
+  if (fila.archivo) trae.push('el documento escaneado');
+  const conQue = trae.length ? ` Trae ${enLista(trae)}.` : ' No tiene nada escrito ni adjunto.';
+
+  const elArchivo = fila.archivo ? ' El escaneo se borra del servidor junto con él.' : '';
+
+  /*
+   * Y el trámite abierto, que es lo que hace pensar dos veces: un documento
+   * que todavía debe respuesta —y con más razón si tiene plazo— no es un
+   * registro mal anotado que convenga borrar.
+   */
+  const abierto = ABIERTOS_DEL_TRAMITE.includes(String(fila.estado || ''))
+    ? ` Está «${fila.estado}»${fila.plazo ? `, con plazo para responder el ${comoSeLee(fila.plazo)}` : ''}.`
+    : '';
+
+  /*
+   * Lo del hueco va al final y en su propia frase, porque es lo único que esta
+   * pregunta sabe y el «¿está seguro?» del navegador no.
+   */
+  const elLibro = fila.numero
+    ? ` El libro queda con un hueco en el correlativo: si el documento existió, «Archivado» lo`
+      + ' conserva sin sacarlo del libro.'
+    : ' No lleva correlativo, así que el libro no queda con ningún hueco.';
+
+  return `Va a eliminar ${cual}${cuando}${conQuien}.${conQue}${elArchivo}${abierto}`
+    + ` Lo que decía queda copiado en el Registro de Cambios.${elLibro}`;
+}
+
 module.exports = {
   name: 'documentos',
   label: 'Oficina de Partes',
@@ -156,6 +217,28 @@ module.exports = {
   listFields: ['numero', 'flujo', 'fecha_registro', 'titulo', 'tipo', 'de_o_para', 'estado', 'iglesia_id', 'archivo'],
   filterFields: ['flujo', 'tipo', 'estado'],
   defaultSort: { field: 'fecha_registro', dir: 'desc' },
+
+  /*
+   * Lo que se conserva de un documento cuando su ficha desaparece.
+   *
+   * La constancia de una eliminación se arma con los campos del LISTADO, que
+   * es una lista pensada para caber en columnas. Medido en la v1.285.0 sobre
+   * una denuncia de la Superintendencia con cuarenta folios: quedaban SIETE
+   * datos de cabecera —el número, el flujo, la fecha de registro, la materia,
+   * el tipo, el estado y la iglesia— y ni el remitente, ni la referencia con
+   * que venía, ni los folios, ni la descripción, ni el escaneo.
+   *
+   * De un oficio, lo que hay que poder demostrar después es QUIÉN LO MANDÓ,
+   * CON QUÉ NÚMERO y QUÉ DECÍA. Nada de eso quedaba.
+   *
+   * El `archivo` va en la lista aunque ya esté en el listado: los adjuntos no
+   * entran solos en la constancia —el nombre de un archivo no dice nada en una
+   * tabla—, pero cuando el archivo se borró junto con la ficha, su nombre es lo
+   * único que queda de él.
+   */
+  camposAlBorrar: ['fecha', 'referencia', 'folios', 'remitente', 'destinatario', 'medio',
+    'recibido_por', 'firmado_por', 'descripcion', 'etiquetas', 'observaciones',
+    'derivado_a', 'plazo', 'responde_a', 'cuerpo_id', 'archivo'],
 
   computed: [
     {
@@ -336,7 +419,12 @@ module.exports = {
       return null;
     },
 
-    beforeDelete(fila, { db }) {
+    beforeDelete(fila, { db, confirmado }) {
+      /*
+       * Primero la negativa, que no se pregunta: si este documento es el que
+       * otros contestan, borrarlo dejaría esas respuestas sin decir a qué
+       * responden. Eso no lo arregla un «sí, igual».
+       */
       const respuestas = db
         .prepare('SELECT COUNT(*) AS c FROM documentos WHERE responde_a = ?')
         .get(fila.id).c;
@@ -346,6 +434,21 @@ module.exports = {
           'y borrarlo dejaría esas respuestas sin decir a qué contestan. Márquelo como «Archivado».'
         );
       }
+
+      /*
+       * Y después la pregunta. Medido en la v1.285.0: una denuncia de la
+       * Superintendencia con cuarenta folios, su escaneo y su descripción se
+       * borraba con un 200 y sin una palabra del servidor. La única barrera era
+       * el «¿Eliminar este registro?» del navegador, el mismo que sale al
+       * borrar un tipo de actividad.
+       *
+       * Este módulo YA SABÍA que esto importaba: su propia ayuda de permisos
+       * dice, con estas palabras, que «borrar uno deja un hueco en el libro:
+       * para eso está el estado Archivado». Lo decía en la pantalla de
+       * permisos, donde lo lee quien reparte llaves, y no en el momento de
+       * borrar, que es donde hace falta.
+       */
+      if (!confirmado) return { error: avisoDelDocumentoQueSeBorra(fila, db), confirmar: 'documento_que_se_borra' };
       return null;
     },
   },
