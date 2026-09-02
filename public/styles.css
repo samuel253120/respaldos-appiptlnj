@@ -2917,6 +2917,24 @@ table.libro tbody tr:nth-child(even) td { background: #fafbfe; }
 
 .libro-cierre { margin-top: 16px; }
 .libro-cuenta { font-size: 13px; color: var(--text); }
+/*
+ * Lo que falta en el correlativo, dentro del cierre y antes de las firmas.
+ *
+ * CON BORDE Y NO CON FONDO. Los navegadores no imprimen los fondos salvo que
+ * la persona marque «gráficos de fondo» en el diálogo de impresión, y esto
+ * tiene que salir justamente en el papel: es la parte del cierre que dice que
+ * el libro no está completo. Un borde y un color de letra se imprimen siempre.
+ */
+.libro-falta {
+  margin-top: 12px; padding: 9px 12px;
+  border: 1.5px solid #9a3412; border-radius: 3px;
+  color: #7c2d12; font-size: 12.5px; line-height: 1.5;
+}
+.libro-falta b { color: #7c2d12; }
+.libro-falta ul { margin: 5px 0 4px; padding-left: 18px; }
+.libro-falta li { margin-bottom: 2px; }
+.libro-falta span { display: block; font-size: 11px; opacity: .85; }
+
 .libro-firmas { display: flex; justify-content: space-around; margin-top: 46px; }
 .libro-firmas .firma {
   width: 240px; border-top: 1px solid #78716c; padding-top: 6px;

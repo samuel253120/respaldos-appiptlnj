@@ -106,6 +106,21 @@ const SERIES = {
 };
 
 /**
+ * Parte «PREFIJO123-2026» en sus dos mitades: el 123 y el año.
+ *
+ * Vive suelta porque hay dos preguntas distintas que necesitan el mismo
+ * formato: «¿qué número es éste, si es del año que me importa?» —lo de abajo,
+ * para proponer el siguiente— y «¿de qué número y de qué año es?», que es lo
+ * que necesita el libro para saber si falta alguno entre medio. Escrito dos
+ * veces, el día que el formato cambiara cambiaría en una sola.
+ *
+ * El prefijo se compara sin distinguir mayúsculas y se escapa antes de meterlo
+ * en la expresión: alguien puede escribir «ACTA (N.º)» como prefijo, y un
+ * paréntesis suelto adentro de una expresión regular la rompe o —peor— la
+ * cambia de significado sin avisar.
+ */
+
+/**
  * Lee «PREFIJO123-2026» y devuelve 123, o null si no sigue ese formato.
  *
  * El prefijo se compara sin distinguir mayúsculas y se escapa antes de meterlo
@@ -113,11 +128,16 @@ const SERIES = {
  * paréntesis suelto adentro de una expresión regular la rompe o —peor— la
  * cambia de significado sin avisar.
  */
-function leerNumero(valor, anio, prefijo) {
+function partirNumero(valor, prefijo) {
   const escapado = String(prefijo || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const patron = new RegExp(`^${escapado}(\\d{1,6})-(\\d{4})$`, 'i');
   const m = patron.exec(String(valor || '').trim());
-  return m && m[2] === String(anio) ? Number(m[1]) : null;
+  return m ? { n: Number(m[1]), anio: m[2] } : null;
+}
+
+function leerNumero(valor, anio, prefijo) {
+  const partes = partirNumero(valor, prefijo);
+  return partes && partes.anio === String(anio) ? partes.n : null;
 }
 
 /** El año que corresponde: el de la fecha del acta, o el de hoy. */
@@ -167,4 +187,4 @@ function proximoNumero(cual, dentroDe, fecha) {
   return serie.arma(mayor + 1, anio, prefijo);
 }
 
-module.exports = { proximoNumero, anioDe, prefijoDe, leerNumero, SERIES };
+module.exports = { proximoNumero, anioDe, prefijoDe, leerNumero, partirNumero, SERIES };

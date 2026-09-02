@@ -87,6 +87,71 @@ const ES_EMITIDO = { field: 'flujo', equals: 'Emitido' };
 
 
 /**
+ * LOS HUECOS DEL LIBRO.
+ *
+ * Un correlativo sirve para una sola cosa: para que se note si falta algo. Un
+ * libro que enumera 001, 002 y 005 y cierra diciendo «constan 3 documentos»
+ * está afirmando que están todos, y no lo están.
+ *
+ * NO SE IMPIDEN LOS HUECOS, y es una decisión: un libro que viene de papel
+ * empieza legítimamente en el 47, anular un número es una operación real de
+ * oficina, y el módulo deja escribir el número a mano justamente por eso. Lo
+ * que corresponde es que la hoja los DECLARE: un hueco explicado deja de
+ * parecerse a uno escondido.
+ *
+ * Se cuentan POR SERIE Y POR AÑO, que es como corre un correlativo: lo que
+ * entra y lo que sale llevan libros distintos, y el 001 vuelve a empezar cada
+ * enero. Y solo entre el primero y el último anotados: que el libro empiece en
+ * el 47 no es un hueco, es dónde empieza.
+ *
+ * Los números escritos a mano que no siguen el formato no estorban —ni cuentan
+ * ni abren hueco—, igual que en la propuesta del número siguiente.
+ */
+function losHuecosDelLibro(filas) {
+  const { partirNumero, prefijoDe } = require('../numeracion');
+  const prefijos = {
+    Recibido: prefijoDe('documentos_recibidos'),
+    Emitido: prefijoDe('documentos_emitidos'),
+  };
+
+  const series = new Map();
+  let sinNumero = 0;
+  for (const f of filas) {
+    if (!prefijos[f.flujo]) continue; // lo interno no lleva correlativo
+    const escrito = String(f.numero || '').trim();
+    if (!escrito) { sinNumero++; continue; }
+    const partes = partirNumero(escrito, prefijos[f.flujo]);
+    if (!partes) continue; // numerado a su manera: no cuenta ni estorba
+    const clave = `${f.flujo}|${partes.anio}`;
+    if (!series.has(clave)) series.set(clave, { flujo: f.flujo, anio: partes.anio, numeros: new Set() });
+    series.get(clave).numeros.add(partes.n);
+  }
+
+  const faltan = [];
+  for (const { flujo, anio, numeros } of series.values()) {
+    const puestos = [...numeros].sort((a, b) => a - b);
+    const desde = puestos[0];
+    const hasta = puestos[puestos.length - 1];
+    const perdidos = [];
+    for (let n = desde; n <= hasta; n++) if (!numeros.has(n)) perdidos.push(n);
+    if (perdidos.length) {
+      faltan.push({
+        flujo,
+        anio,
+        desde: `${prefijos[flujo]}${String(desde).padStart(3, '0')}-${anio}`,
+        hasta: `${prefijos[flujo]}${String(hasta).padStart(3, '0')}-${anio}`,
+        cuantos: perdidos.length,
+        // Los primeros, para poder nombrarlos: una lista de cuarenta números no
+        // se lee, y lo que hace falta saber es cuáles hay que ir a buscar.
+        numeros: perdidos.slice(0, 12).map((n) => `${prefijos[flujo]}${String(n).padStart(3, '0')}-${anio}`),
+      });
+    }
+  }
+  faltan.sort((a, b) => (a.flujo === b.flujo ? a.anio.localeCompare(b.anio) : a.flujo.localeCompare(b.flujo)));
+  return { faltan, sinNumero };
+}
+
+/**
  * El libro armado: las anotaciones en su orden y la cuenta del cierre.
  *
  * Está aparte de la ruta para poder probarlo suelto. Un libro que numere mal,
@@ -162,7 +227,13 @@ function armarElLibro(db, { iglesiaId, anio, flujo }) {
       total: filas.length,
       recibidos: cuenta('Recibido'),
       emitidos: cuenta('Emitido'),
+      // Los de archivo se cuentan aparte porque el cierre tiene que poder
+      // contar LO QUE LA HOJA MUESTRA: pidiendo solo el archivo interno decía
+      // «constan 2 documento(s): 0 recibido(s) y 0 emitido(s)», las dos cosas
+      // en la misma línea y debajo las dos firmas.
+      internos: cuenta('Interno o de archivo'),
       folios: filas.reduce((n, f) => n + (Number(f.folios) || 0), 0),
+      huecos: losHuecosDelLibro(filas),
     },
   };
 }
@@ -595,4 +666,5 @@ module.exports = {
 
 module.exports.FLUJOS = FLUJOS;
 module.exports.armarElLibro = armarElLibro;
+module.exports.losHuecosDelLibro = losHuecosDelLibro;
 module.exports.TIPOS = TIPOS;

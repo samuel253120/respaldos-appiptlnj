@@ -10964,6 +10964,68 @@ function plazoDeLaSolicitud(f, diasGenerales) {
 }
 
 /**
+ * EL CIERRE DEL LIBRO: la línea que cuenta lo que la hoja muestra.
+ *
+ * Estaba escrita para el libro entero, donde todo documento es una cosa o la
+ * otra, y con un filtro puesto se contradecía: pidiendo solo el archivo interno
+ * decía «En este libro constan 2 documento(s): 0 recibido(s) y 0 emitido(s)»,
+ * las dos cosas en la misma línea, y debajo las dos líneas de firma. Pidiendo
+ * solo lo recibido decía «3 recibido(s) y 0 emitido(s)», con un «y 0» que
+ * sobra: nadie preguntó por los emitidos.
+ *
+ * Una hoja que se firma tiene que contar lo que muestra.
+ */
+function cierreDelLibro(d) {
+  const r = d.resumen;
+  const folios = r.folios ? `, con un total de <b>${fmtNumero(r.folios)}</b> folio(s)` : '';
+  const cuantos = `<b>${fmtNumero(r.total)}</b> documento(s)`;
+
+  if (d.flujo === 'Recibido') return `En este libro constan ${cuantos} recibido(s)${folios}.`;
+  if (d.flujo === 'Emitido') return `En este libro constan ${cuantos} emitido(s)${folios}.`;
+  if (d.flujo === 'Interno o de archivo') {
+    return `En este archivo constan ${cuantos} de archivo interno${folios}.`;
+  }
+  return `En este libro constan ${cuantos}: <b>${fmtNumero(r.recibidos)}</b> recibido(s) y `
+    + `<b>${fmtNumero(r.emitidos)}</b> emitido(s)${folios}.`;
+}
+
+/**
+ * Y LO QUE FALTA: los huecos del correlativo y las anotaciones sin número.
+ *
+ * Es lo único que un libro de partes tiene para demostrar que no falta nada, y
+ * la hoja no lo decía. No se impiden los huecos —un libro que viene de papel
+ * empieza en el 47, y anular un número es una operación real de oficina—: se
+ * declaran, que es lo que hace que un hueco explicado deje de parecerse a uno
+ * escondido.
+ *
+ * Va DENTRO del cierre y antes de las firmas, con borde y no con fondo: los
+ * navegadores no imprimen los fondos, y esto tiene que salir justamente en el
+ * papel.
+ */
+function loQueFaltaEnElLibro(d) {
+  const h = (d.resumen && d.resumen.huecos) || { faltan: [], sinNumero: 0 };
+  if (!h.faltan.length && !h.sinNumero) return '';
+
+  const partes = h.faltan.map((s) => {
+    const cuales = s.numeros.join(', ');
+    const mas = s.cuantos > s.numeros.length ? ` y ${fmtNumero(s.cuantos - s.numeros.length)} más` : '';
+    return `<li>Entre ${esc(s.desde)} y ${esc(s.hasta)} falta${s.cuantos === 1 ? '' : 'n'} `
+      + `<b>${fmtNumero(s.cuantos)}</b>: ${esc(cuales)}${mas}.</li>`;
+  });
+  if (h.sinNumero) {
+    partes.push(`<li><b>${fmtNumero(h.sinNumero)}</b> anotación(es) sin número de oficina de partes.</li>`);
+  }
+
+  return `
+    <div class="libro-falta">
+      <b>Lo que falta en el correlativo</b>
+      <ul>${partes.join('')}</ul>
+      <span>Un hueco puede tener explicación —un número anulado, un libro que viene de antes—,
+        pero la hoja tiene que decirlo.</span>
+    </div>`;
+}
+
+/**
  * El libro de la oficina de partes, para leerlo entero y para imprimirlo.
  *
  * La ficha de un documento sirve para trabajarlo; el libro sirve para otra
@@ -11086,11 +11148,9 @@ async function viewLibroDePartes(precarga) {
         </div>
         <div class="libro-cierre">
           <div class="libro-cuenta">
-            En este libro constan <b>${fmtNumero(d.resumen.total)}</b> documento(s):
-            <b>${fmtNumero(d.resumen.recibidos)}</b> recibido(s) y
-            <b>${fmtNumero(d.resumen.emitidos)}</b> emitido(s)${
-              d.resumen.folios ? `, con un total de <b>${fmtNumero(d.resumen.folios)}</b> folio(s)` : ''}.
+            ${cierreDelLibro(d)}
           </div>
+          ${loQueFaltaEnElLibro(d)}
           <div class="libro-firmas print-only">
             <div class="firma">Secretaría<br><span class="rotulo">Firma y timbre</span></div>
             <div class="firma">Pastor(a) / Encargado(a)<br><span class="rotulo">Firma</span></div>
