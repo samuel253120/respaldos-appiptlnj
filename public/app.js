@@ -4567,6 +4567,8 @@ async function viewFicha(name, id, pestana) {
       <h2>${m.icon} ${esc(m.labelSingular)}</h2>
       <div class="actions">
         <button class="btn secondary" id="btnBack">← Volver</button>
+        ${SE_BAJA_EN_PDF[name] && tieneLlave('datos_impresion')
+          ? '<button class="btn secondary" id="btnPdf">⬇️ PDF</button>' : ''}
         ${m.printable && tieneLlave('datos_impresion') ? `<button class="btn secondary" id="btnPrint">🖨️ Imprimir</button>` : ''}
         ${m.perms.edit ? `<button class="btn" id="btnEdit">✏️ Editar</button>` : ''}
       </div>
@@ -4591,6 +4593,13 @@ async function viewFicha(name, id, pestana) {
   if (be) be.addEventListener('click', () => (location.hash = `#/m/${name}/edit/${id}`));
   const bp = document.getElementById('btnPrint');
   if (bp) bp.addEventListener('click', () => (location.hash = `#/print/${name}/${id}`));
+  /*
+   * Y el archivo, donde uno está cuando lo necesita: hasta la v1.291.0 el
+   * botón vivía solo en la vista de impresión, que es un paso más allá, y es
+   * justamente el que se busca para adjuntar algo a un correo.
+   */
+  const bpdf = document.getElementById('btnPdf');
+  if (bpdf) bpdf.addEventListener('click', () => descargarEnPdf(id, bpdf, name));
 
   /*
    * Cuántas veces se le ha entregado algo, arriba y sin abrir nada.
@@ -10389,13 +10398,13 @@ async function viewPrint(name, id) {
   content().innerHTML = `
     <div class="print-actions no-print">
       <button class="btn secondary" data-ir="#/m/${name}">← Volver</button>
-      ${name === 'actas_reuniones' || name === 'actas_asambleas' ? `<button class="btn secondary" id="actaPDF">⬇️ Descargar PDF</button>` : ''}
+      ${SE_BAJA_EN_PDF[name] ? '<button class="btn secondary" id="actaPDF">⬇️ Descargar PDF</button>' : ''}
       <button class="btn" data-imprimir="1">🖨️ Imprimir</button>
     </div>
     ${sheet}`;
 
   const bajarPdf = document.getElementById('actaPDF');
-  if (bajarPdf) bajarPdf.addEventListener('click', () => descargarActaEnPdf(id, bajarPdf, name));
+  if (bajarPdf) bajarPdf.addEventListener('click', () => descargarEnPdf(id, bajarPdf, name));
 }
 
 /**
@@ -11015,18 +11024,23 @@ function plazoDeLaSolicitud(f, diasGenerales) {
  *
  * Una hoja que se firma tiene que contar lo que muestra.
  */
-function cierreDelLibro(d) {
-  const r = d.resumen;
-  const folios = r.folios ? `, con un total de <b>${fmtNumero(r.folios)}</b> folio(s)` : '';
-  const cuantos = `<b>${fmtNumero(r.total)}</b> documento(s)`;
+/**
+ * LAS PALABRAS LAS PONE EL SERVIDOR; acá se decide cómo se ven.
+ *
+ * Estaban escritas en esta función, y desde la v1.291.0 el libro se puede bajar
+ * también como PDF: dos hojas que afirman lo mismo no pueden tener dos
+ * redacciones, o el día que una cambie dirán cosas distintas. Ahora la frase
+ * viaja con el libro (ver server/libro-en-palabras.js) y lo que queda acá es
+ * ponerle la negrita a lo que viene marcado entre ⟦ y ⟧.
+ */
+function conLoDestacado(texto) {
+  return esc(String(texto == null ? '' : texto))
+    .split('⟦').join('<b>')
+    .split('⟧').join('</b>');
+}
 
-  if (d.flujo === 'Recibido') return `En este libro constan ${cuantos} recibido(s)${folios}.`;
-  if (d.flujo === 'Emitido') return `En este libro constan ${cuantos} emitido(s)${folios}.`;
-  if (d.flujo === 'Interno o de archivo') {
-    return `En este archivo constan ${cuantos} de archivo interno${folios}.`;
-  }
-  return `En este libro constan ${cuantos}: <b>${fmtNumero(r.recibidos)}</b> recibido(s) y `
-    + `<b>${fmtNumero(r.emitidos)}</b> emitido(s)${folios}.`;
+function cierreDelLibro(d) {
+  return conLoDestacado((d.enPalabras || {}).cierre || '');
 }
 
 /**
@@ -11043,25 +11057,14 @@ function cierreDelLibro(d) {
  * papel.
  */
 function loQueFaltaEnElLibro(d) {
-  const h = (d.resumen && d.resumen.huecos) || { faltan: [], sinNumero: 0 };
-  if (!h.faltan.length && !h.sinNumero) return '';
-
-  const partes = h.faltan.map((s) => {
-    const cuales = s.numeros.join(', ');
-    const mas = s.cuantos > s.numeros.length ? ` y ${fmtNumero(s.cuantos - s.numeros.length)} más` : '';
-    return `<li>Entre ${esc(s.desde)} y ${esc(s.hasta)} falta${s.cuantos === 1 ? '' : 'n'} `
-      + `<b>${fmtNumero(s.cuantos)}</b>: ${esc(cuales)}${mas}.</li>`;
-  });
-  if (h.sinNumero) {
-    partes.push(`<li><b>${fmtNumero(h.sinNumero)}</b> anotación(es) sin número de oficina de partes.</li>`);
-  }
+  const falta = (d.enPalabras || {}).falta;
+  if (!falta) return '';
 
   return `
     <div class="libro-falta">
-      <b>Lo que falta en el correlativo</b>
-      <ul>${partes.join('')}</ul>
-      <span>Un hueco puede tener explicación —un número anulado, un libro que viene de antes—,
-        pero la hoja tiene que decirlo.</span>
+      <b>${esc(falta.titulo)}</b>
+      <ul>${falta.lineas.map((l) => `<li>${conLoDestacado(l)}</li>`).join('')}</ul>
+      <span>${esc(falta.nota)}</span>
     </div>`;
 }
 
@@ -11109,7 +11112,9 @@ async function viewLibroDePartes(precarga) {
           <option value="Interno o de archivo">Solo el archivo interno</option>
         </select>
         <span class="spacer"></span>
-        ${puedeImprimir ? '<button class="btn" data-imprimir="1">🖨️ Imprimir</button>' : ''}
+        ${puedeImprimir ? `
+          <button class="btn secondary" id="lbPdf">⬇️ Bajar en PDF</button>
+          <button class="btn" data-imprimir="1">🖨️ Imprimir</button>` : ''}
       </div>
     </div>
     <div id="libroHoja"></div>`;
@@ -11214,6 +11219,35 @@ async function viewLibroDePartes(precarga) {
   alCambiar('lbAnio', 'anio');
   alCambiar('lbFlujo', 'flujo');
   sel('lbFlujo').value = st.flujo;
+
+  /*
+   * Y bajarlo como archivo, que no es lo mismo que imprimirlo: imprimir es
+   * apretar el botón del navegador y aceptar lo que ese navegador decida;
+   * bajarlo es tener el documento que se adjunta a un correo. Se baja EL LIBRO
+   * QUE SE ESTÁ MIRANDO, con los mismos filtros puestos: si la hoja muestra
+   * solo lo recibido de 2026, eso es lo que baja.
+   */
+  const botonPdf = sel('lbPdf');
+  if (botonPdf) {
+    botonPdf.addEventListener('click', async () => {
+      const decia = botonPdf.textContent;
+      botonPdf.disabled = true;
+      botonPdf.textContent = 'Preparando…';
+      try {
+        const nombre = await bajarArchivoConSesion(
+          `/api/documentos/libro/pdf?iglesia_id=${encodeURIComponent(st.iglesia_id)}`
+          + `&anio=${encodeURIComponent(st.anio)}&flujo=${encodeURIComponent(st.flujo)}`,
+          'Libro de partes.pdf'
+        );
+        toast(`Se descargó «${nombre}»`);
+      } catch (e) {
+        toast(e.message, true);
+      } finally {
+        botonPdf.disabled = false;
+        botonPdf.textContent = decia;
+      }
+    });
+  }
 
   await pintar();
 }
@@ -17269,18 +17303,35 @@ async function renderDirectivasCuerpo(cuerpoId, caja) {
 
 /** Las actas de las reuniones administrativas del cuerpo. */
 /**
- * Baja el acta completa como PDF.
+ * QUÉ SE PUEDE BAJAR COMO PDF, y cómo se llama el archivo mientras llega.
+ *
+ * Eran dos actas, y estaban escritas con un «si el módulo es éste o el otro»
+ * repetido en tres lugares. Con el tercero —la ficha de un documento de la
+ * oficina de partes, en la v1.291.0— eso ya era una lista disfrazada de
+ * condición: acá está la lista.
+ *
+ * El nombre de acá es el de respaldo: el de verdad lo manda el servidor en la
+ * cabecera del archivo, con su número y su fecha.
+ */
+const SE_BAJA_EN_PDF = {
+  actas_reuniones: (id) => `Acta ${id}.pdf`,
+  actas_asambleas: (id) => `Acta de asamblea ${id}.pdf`,
+  documentos: (id) => `Documento ${id}.pdf`,
+};
+
+/**
+ * Baja el documento completo como PDF.
  *
  * Se arma en el servidor y no con el diálogo de impresión del navegador: así
  * sale igual en cualquier aparato —el teléfono incluido, donde «guardar como
- * PDF» es un trámite— y con el membrete, la asistencia y el pie que
- * corresponden (ver server/pdf/acta.js).
+ * PDF» es un trámite— y con el membrete y el pie que corresponden (ver
+ * server/pdf/acta.js y server/pdf/oficina-de-partes.js).
  */
-async function descargarActaEnPdf(id, boton, modulo = 'actas_reuniones') {
+async function descargarEnPdf(id, boton, modulo = 'actas_reuniones') {
   const decia = boton ? boton.textContent : '';
   if (boton) { boton.disabled = true; boton.textContent = 'Preparando…'; }
   try {
-    const comoSeLlama = modulo === 'actas_asambleas' ? `Acta de asamblea ${id}.pdf` : `Acta ${id}.pdf`;
+    const comoSeLlama = (SE_BAJA_EN_PDF[modulo] || ((x) => `Documento ${x}.pdf`))(id);
     const nombre = await bajarArchivoConSesion(`/api/${modulo}/${id}/pdf`, comoSeLlama);
     toast(`Se descargó «${nombre}»`);
   } catch (e) {
@@ -17669,7 +17720,7 @@ function ponerBotonDePdf(id, isNew, modulo = 'actas_reuniones') {
   acciones.insertAdjacentHTML('afterbegin',
     '<button class="btn secondary" id="actaPDF">⬇️ Descargar PDF</button>');
   const boton = document.getElementById('actaPDF');
-  boton.addEventListener('click', () => descargarActaEnPdf(id, boton, modulo));
+  boton.addEventListener('click', () => descargarEnPdf(id, boton, modulo));
 }
 
 /**

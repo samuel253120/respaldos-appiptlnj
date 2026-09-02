@@ -223,24 +223,29 @@ test('el resumen cuenta los de archivo aparte, para poder decirlo', () => {
 
 test('la hoja cuenta lo que muestra, y no lo que no le preguntaron', () => {
   /*
-   * MIRA EL CÓDIGO de la hoja, y se deja escrito: la línea del cierre se arma
-   * en el navegador y no hay dónde comprobarla desde acá. Lo que se cuida es
-   * que exista una frase POR CADA filtro, en vez de una sola escrita para el
-   * libro entero — que es lo que la hacía contradecirse.
+   * UNA FRASE POR CADA FILTRO, en vez de una sola escrita para el libro entero
+   * —que es lo que la hacía contradecirse: pidiendo solo el archivo decía
+   * «constan 2 documento(s): 0 recibido(s) y 0 emitido(s)»—.
+   *
+   * Hasta la v1.290.0 esto MIRABA EL CÓDIGO de la pantalla, porque la frase se
+   * armaba en el navegador y no había dónde comprobarla. Desde la v1.291.0 el
+   * libro se puede bajar también como PDF y las dos hojas tienen que decir lo
+   * mismo, así que las palabras se escribieron una sola vez en el servidor
+   * (server/libro-en-palabras.js) — y esta prueba pasó de leer código a
+   * llamar a la pieza y mirar lo que contesta, que es mucho mejor prueba.
    */
-  const fs = require('fs');
-  const path = require('path');
-  const app = fs.readFileSync(path.join(__dirname, '../../public/app.js'), 'utf8');
-  const trozo = app.slice(app.indexOf('function cierreDelLibro'));
-  const cuerpo = trozo.slice(0, trozo.indexOf('\n}\n') + 3);
-  assert.ok(cuerpo.length > 300 && cuerpo.length < 2500, `el recorte mide ${cuerpo.length}`);
+  const { cierreDelLibro } = require('../../server/libro-en-palabras');
+  const resumen = { total: 5, recibidos: 3, emitidos: 2, internos: 0, folios: 0 };
+  const conFiltro = (flujo) => cierreDelLibro({ flujo, resumen });
 
-  assert.match(cuerpo, /d\.flujo === 'Recibido'/);
-  assert.match(cuerpo, /d\.flujo === 'Emitido'/);
-  assert.match(cuerpo, /d\.flujo === 'Interno o de archivo'/);
-  assert.match(cuerpo, /de archivo interno/, 'el archivo tiene su propia frase');
+  assert.match(conFiltro('Recibido'), /constan ⟦5⟧ documento\(s\) recibido\(s\)\./);
+  assert.ok(!conFiltro('Recibido').includes('emitido'), 'y no nombra lo que no le preguntaron');
+  assert.match(conFiltro('Emitido'), /constan ⟦5⟧ documento\(s\) emitido\(s\)\./);
+  assert.ok(!conFiltro('Emitido').includes('recibido'));
+  assert.match(conFiltro('Interno o de archivo'), /En este archivo constan ⟦5⟧ documento\(s\) de archivo interno\./,
+    'el archivo tiene su propia frase, y ni siquiera es «este libro»');
   // Y la del libro entero, que es la única que nombra los dos
-  assert.match(cuerpo, /recibido\(s\) y `[\s\S]*emitido\(s\)/);
+  assert.match(conFiltro(''), /constan ⟦5⟧ documento\(s\): ⟦3⟧ recibido\(s\) y ⟦2⟧ emitido\(s\)\./);
 });
 
 test('y lo que falta se dibuja con borde, no con fondo: tiene que salir en el papel', () => {

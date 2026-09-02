@@ -20,43 +20,23 @@
  * se emitió y quién lo emitió. Si el acta tiene un documento adjunto, se dice
  * cuál es: el PDF no lo puede meter adentro, pero sí dejar constancia.
  */
-const fs = require('fs');
 const path = require('path');
-const PDFDocument = require('pdfkit');
-const { db, UPLOADS_DIR } = require('../db');
+const { db } = require('../db');
 const ajustes = require('../ajustes');
 const formato = require('../formato');
 const nombres = require('../nombres');
 const textoRico = require('./textorico-a-pdf');
+/*
+ * El membrete, el pie y los colores son de la INSTITUCIÓN y no de esta hoja:
+ * viven en server/pdf/hoja.js desde la v1.291.0, cuando la oficina de partes
+ * pidió los suyos y hubo que elegir entre copiarlos o compartirlos.
+ */
+const hoja = require('./hoja');
 
-const TINTA = '#111827';
-const SUAVE = '#6b7280';
-const LINEA = '#d1d5db';
-const MARCA = '#16265c'; // el azul del emblema
-// El color de lo que todavía no está firmado. Es el mismo de la hoja de la
-// pantalla (.acta-sin-firmar en public/styles.css): un acta a medio camino se
-// tiene que ver igual salga por donde salga.
-const SIN_FIRMAR = '#9f1239';
-
-/** El logo que corresponde: el que se subió, o el que trae el sistema. */
-function rutaDelLogo() {
-  const suyo = ajustes.obtener('iglesia_logo');
-  if (suyo) {
-    const ruta = path.join(UPLOADS_DIR, path.basename(suyo));
-    if (fs.existsSync(ruta)) return ruta;
-  }
-  const dedefecto = path.join(__dirname, '..', '..', 'public', 'img', 'logo.png');
-  return fs.existsSync(dedefecto) ? dedefecto : null;
-}
-
-/** Los datos de contacto en una línea, saltándose los que estén en blanco. */
-function contactoDeLaInstitucion() {
-  return [
-    ajustes.obtener('iglesia_direccion'),
-    ajustes.obtener('iglesia_telefono'),
-    ajustes.obtener('iglesia_rut'),
-  ].map((x) => (x || '').trim()).filter(Boolean).join(' · ');
-}
+const { TINTA, SUAVE, LINEA, MARCA } = hoja;
+// El color de lo que todavía no está firmado: el mismo con que las hojas de
+// este sistema marcan lo que está a medio camino.
+const SIN_FIRMAR = hoja.ALERTA;
 
 /** La gente de un cuerpo en una actividad, separada por cómo asistió. */
 function laAsistencia(actaFila) {
@@ -151,52 +131,12 @@ const CLASES = {
 
 function generar(actaFila, { quien, modulo = 'actas_reuniones' } = {}) {
   const ES = CLASES[modulo] || CLASES.actas_reuniones;
-  const doc = new PDFDocument({
-    size: 'LETTER',
-    margins: { top: 56, bottom: 64, left: 56, right: 56 },
-    info: {
-      Title: `${ES.titulo.charAt(0) + ES.titulo.slice(1).toLowerCase()} N.º ${actaFila.numero_acta || ''}`,
-      Author: ajustes.obtener('iglesia_nombre') || 'Sistema de Gestión de Iglesias',
-      Subject: ES.asunto,
-    },
-    // El pie se dibuja a mano en cada página (ver más abajo), así que pdfkit no
-    // debe agregar la página nueva por su cuenta antes de que se pinte.
-    bufferPages: true,
+  const doc = hoja.abrirHoja({
+    titulo: `${ES.titulo.charAt(0) + ES.titulo.slice(1).toLowerCase()} N.º ${actaFila.numero_acta || ''}`,
+    asunto: ES.asunto,
   });
-
-  const izq = doc.page.margins.left;
-  const ancho = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const derecha = izq + ancho;
-
-  // ── Membrete ───────────────────────────────────────────────────────────
-  const logo = rutaDelLogo();
-  const arribaDelTodo = doc.y;
-  if (logo) {
-    try {
-      doc.image(logo, izq, arribaDelTodo, { fit: [52, 52] });
-    } catch (e) { /* un logo ilegible no puede impedir que salga el acta */ }
-  }
-  const xTexto = izq + (logo ? 66 : 0);
-  const anchoTexto = ancho - (logo ? 66 : 0);
-
-  doc.font('Helvetica-Bold').fontSize(13).fillColor(MARCA)
-    .text((ajustes.obtener('iglesia_nombre') || '').toUpperCase(), xTexto, arribaDelTodo + 2, { width: anchoTexto });
-  const lema = (ajustes.obtener('iglesia_lema') || '').trim();
-  if (lema) {
-    doc.font('Helvetica-Oblique').fontSize(9.5).fillColor(SUAVE).text(lema, { width: anchoTexto });
-  }
-  const contacto = contactoDeLaInstitucion();
-  if (contacto) {
-    doc.font('Helvetica').fontSize(8.5).fillColor(SUAVE).text(contacto, { width: anchoTexto });
-  }
-  const legal = (ajustes.obtener('documento_pie_texto') || '').trim();
-  if (legal) {
-    doc.font('Helvetica').fontSize(8.5).fillColor(SUAVE).text(legal, { width: anchoTexto });
-  }
-
-  doc.y = Math.max(doc.y, arribaDelTodo + (logo ? 56 : 0)) + 10;
-  doc.moveTo(izq, doc.y).lineTo(derecha, doc.y).lineWidth(1.4).strokeColor(MARCA).stroke();
-  doc.moveDown(1);
+  const { izq, ancho, derecha } = hoja.medidas(doc);
+  hoja.membrete(doc);
 
   // ── Título ─────────────────────────────────────────────────────────────
   doc.font('Helvetica-Bold').fontSize(16).fillColor(TINTA)
@@ -366,34 +306,8 @@ function generar(actaFila, { quien, modulo = 'actas_reuniones' } = {}) {
       }
     });
 
-  // ── El pie, en todas las páginas ──────────────────────────────────────
-  /*
-   * Se dibuja al final y recorriendo las páginas ya escritas: hacerlo al vuelo
-   * obligaría a saber cuántas páginas van a ser antes de escribirlas, y el
-   * «página 2 de 5» necesita el total.
-   */
-  const pie = `Emitido el ${formato.fechaLarga(new Date().toISOString().slice(0, 10))}`
-    + (quien ? ` por ${quien}` : '');
-  const rango = doc.bufferedPageRange();
-  for (let i = 0; i < rango.count; i++) {
-    doc.switchToPage(rango.start + i);
-    /*
-     * El pie va POR DEBAJO del margen inferior, que es donde corresponde. Para
-     * pdfkit eso es texto que no cabe, así que abre una página nueva… y como se
-     * hace en un bucle, abría una por cada pie: el acta salía con seis páginas
-     * en vez de dos, tres de ellas con nada más que el pie. Se le baja el
-     * margen a cero mientras se dibuja y se le devuelve después.
-     */
-    const margenAbajo = doc.page.margins.bottom;
-    doc.page.margins.bottom = 0;
-    const y = doc.page.height - margenAbajo + 18;
-    doc.moveTo(izq, y - 8).lineTo(derecha, y - 8).lineWidth(0.5).strokeColor(LINEA).stroke();
-    doc.font('Helvetica').fontSize(8).fillColor(SUAVE)
-      .text(pie, izq, y, { width: ancho - 90, lineBreak: false });
-    doc.font('Helvetica').fontSize(8).fillColor(SUAVE)
-      .text(`Página ${i + 1} de ${rango.count}`, derecha - 90, y, { width: 90, align: 'right', lineBreak: false });
-    doc.page.margins.bottom = margenAbajo;
-  }
+  // ── El pie, en todas las páginas, que es de la institución y no del acta ──
+  hoja.pieEnTodasLasPaginas(doc, { quien });
 
   doc.end();
   return doc;

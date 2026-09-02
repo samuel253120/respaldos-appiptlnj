@@ -220,7 +220,7 @@ function armarElLibro(db, { iglesiaId, anio, flujo }) {
     .map((f) => f.anio)
     .filter(Boolean);
 
-  return {
+  const libro = {
     iglesia: iglesia ? iglesia.nombre : '',
     anio: /^\d{4}$/.test(anioPedido) ? anioPedido : null,
     flujo: FLUJOS.includes(cual) ? cual : null,
@@ -239,6 +239,17 @@ function armarElLibro(db, { iglesiaId, anio, flujo }) {
       huecos: losHuecosDelLibro(filas),
     },
   };
+
+  /*
+   * Y CÓMO SE DICE, que viaja con el libro y no lo escribe cada hoja.
+   *
+   * El cierre y la declaración de lo que falta son la parte que AFIRMA algo, y
+   * hay dos maneras de sacar el libro del sistema: la vista de impresión y el
+   * PDF. Las dos tienen que decir exactamente lo mismo, así que las palabras se
+   * escriben una sola vez (ver server/libro-en-palabras.js).
+   */
+  libro.enPalabras = require('../libro-en-palabras').enPalabras(libro);
+  return libro;
 }
 
 /**
@@ -318,6 +329,25 @@ function avisoDelFlujoQueCambia(campos, deQue, aQue) {
     + (campos.includes('numero')
       ? ' El número se libera y el libro vuelve a ofrecerlo, así que la anotación desaparece del correlativo.'
       : '');
+}
+
+/**
+ * Mandar un PDF para que se baje, con su nombre puesto.
+ *
+ * El nombre va DOS VECES a propósito: la primera la entiende cualquier
+ * navegador, la segunda lleva las tildes y las eñes sin romperse. Y sin caché:
+ * el libro cambia cada vez que se anota algo, y un archivo guardado por el
+ * navegador diría que constan cuatro documentos cuando ya hay cinco.
+ */
+function mandarElPdf(res, comoSeLlama, armar) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${comoSeLlama.replace(/[^\x20-\x7E]/g, '_')}"; `
+    + `filename*=UTF-8''${encodeURIComponent(comoSeLlama)}`
+  );
+  res.setHeader('Cache-Control', 'private, no-store');
+  return armar().pipe(res);
 }
 
 /**
@@ -856,6 +886,66 @@ module.exports = {
       res.json({
         numero: require('../numeracion').proximoNumero(serie, iglesiaId, req.query.fecha_registro),
       });
+    });
+
+    /**
+     * EL LIBRO, COMO ARCHIVO QUE SE BAJA.
+     *
+     * Medido en la v1.290.0: la vista de impresión salía bien —membrete,
+     * cierre y firmas—, y las dos rutas de PDF contestaban 404. Un libro de
+     * partes es lo que se manda por correo a un auditor o a un abogado, y para
+     * eso había que imprimir a PDF desde el navegador, que agrega la cabecera y
+     * el pie que ese navegador quiera y depende del aparato de cada uno.
+     *
+     * Pide lo mismo que la hoja de la pantalla —la iglesia, y que esté entre
+     * las suyas— MÁS el permiso de imprimir: esto es sacar el libro del
+     * sistema, que es otra cosa que mirarlo. Es la misma regla que las dos
+     * clases de acta.
+     */
+    router.get('/documentos/libro/pdf', requirePerm('documentos', 'view'), (req, res, next) => {
+      if (!require('../permissions').can(req.user, 'datos_impresion', 'view')) {
+        return res.status(403).json({ error: 'No tiene permiso para imprimir ni descargar documentos.' });
+      }
+      const iglesiaId = Number(req.query.iglesia_id) || 0;
+      if (!iglesiaId) return res.status(400).json({ error: 'Indique de qué iglesia es el libro' });
+      if (!require('../alcance').alcanzaIglesia(req.user, iglesiaId)) {
+        return res.status(403).json({ error: 'Esa iglesia no está entre las que tiene asignadas' });
+      }
+      try {
+        const libro = armarElLibro(require('../db').db, {
+          iglesiaId, anio: req.query.anio, flujo: req.query.flujo,
+        });
+        const pdf = require('../pdf/oficina-de-partes');
+        mandarElPdf(res, pdf.nombreDelLibro(libro), () =>
+          pdf.generarLibro(libro, { quien: req.user && req.user.nombre }));
+      } catch (e) {
+        next(e);
+      }
+    });
+
+    /**
+     * Y UN DOCUMENTO SUELTO, con lo que la tabla del libro no puede llevar: la
+     * descripción entera, las observaciones y el hilo de la respuesta.
+     *
+     * Es la hoja que se adjunta a un correo cuando alguien pregunta por un
+     * oficio en particular. La ruta tiene que ir ANTES que la del hilo por el
+     * orden en que express prueba las rutas, y el `(\d+)` está para que
+     * «/documentos/libro» no se lea como un documento llamado «libro».
+     */
+    router.get('/documentos/:id(\\d+)/pdf', requirePerm('documentos', 'view'), (req, res, next) => {
+      if (!require('../permissions').can(req.user, 'datos_impresion', 'view')) {
+        return res.status(403).json({ error: 'No tiene permiso para imprimir ni descargar documentos.' });
+      }
+      const fila = require('../alcance')
+        .registroSuyo(req, res, 'documentos', Number(req.params.id), 'Ese documento');
+      if (!fila) return undefined;
+      try {
+        const pdf = require('../pdf/oficina-de-partes');
+        return mandarElPdf(res, pdf.nombreDelDocumento(fila), () =>
+          pdf.generarDocumento(fila, { quien: req.user && req.user.nombre }));
+      } catch (e) {
+        return next(e);
+      }
     });
 
     /**
