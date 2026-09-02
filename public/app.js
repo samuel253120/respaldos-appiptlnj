@@ -10611,15 +10611,54 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
    * va en blanco para firmar sobre ella, y debajo dice qué firma va ahí
    * —«Firma Pastor», «Timbre Iglesia»—, que es como están hechas en papel.
    */
+  /*
+   * Y al pie, las firmas dicen si el papel vale. Dejar las dos rayas a secas es
+   * lo que hacía que una hoja anulada pareciera lo que no era — la misma
+   * lección que dejó el acta sin firmar.
+   */
+  const noVale = () => (row.estado === 'Anulado' ? '<span class="pend">Certificado anulado</span>' : '');
   const bloqueFirmas = (soloRotulo) => (f.muestra_firmas === 0 ? '' : `
     <div class="cert-firmas${soloRotulo ? ' en-blanco' : ''}">
       <div class="firma">${soloRotulo
         ? `<span class="rotulo">${esc(firma1)}</span>`
-        : `${esc(firma1)}<br><span class="rotulo">Firma</span>`}</div>
+        : `${esc(firma1)}<br><span class="rotulo">Firma</span>`}${noVale()}</div>
       <div class="firma">${soloRotulo
         ? `<span class="rotulo">${esc(firma2)}</span>`
-        : `${esc(firma2)}<br><span class="rotulo">Firma y sello</span>`}</div>
+        : `${esc(firma2)}<br><span class="rotulo">Firma y sello</span>`}${noVale()}</div>
     </div>`);
+  /*
+   * EL SELLO DE LO QUE YA NO VALE.
+   *
+   * Un certificado anulado salía impreso EXACTAMENTE igual que uno válido: la
+   * misma orla, las mismas dos líneas de firma y el mismo número, y la palabra
+   * «anulado» en ninguna parte. Medido en la v1.291.0. En la pantalla el
+   * sistema sí lo marcaba —insignia roja en el listado y en la ficha—; en el
+   * papel, que es lo que la persona se lleva, no quedaba nada.
+   *
+   * Es el mismo arreglo que la v1.272.0 le hizo al acta sin firmar, y por el
+   * mismo motivo: el papel circula, y quien lo recibe no tiene cómo saber que
+   * en el libro de la iglesia ese número está dado de baja.
+   *
+   * DOS DECISIONES QUE SE VEN ACÁ:
+   *
+   *   · BORDE Y COLOR DE LETRA, NUNCA FONDO. Los navegadores no imprimen los
+   *     fondos salvo que se les marque «gráficos de fondo» a mano, y esto tiene
+   *     que salir en el papel justamente al imprimir.
+   *   · EL SELLO NO TOMA LOS COLORES DEL FORMATO. Todo lo demás de la hoja los
+   *     respeta —el título, el texto, el marco—, pero un formato con la letra
+   *     clara podría dejar el sello invisible, y esto no es decoración de la
+   *     hoja: es lo que dice que la hoja no vale.
+   */
+  const anulado = row.estado === 'Anulado';
+  const cuandoSeAnulo = row.fecha_anulacion
+    ? ` el ${fechaLarga(row.fecha_anulacion)}`
+    : '';
+  const selloAnulado = !anulado ? '' : `
+    <div class="cert-anulado">
+      <b>ANULADO</b>
+      Este certificado fue anulado${esc(cuandoSeAnulo)} y no tiene validez.
+    </div>`;
+
   const firmas = bloqueFirmas(false);
   const pie = f.muestra_pie === 0 || !pieDeLaInstitucion()
     ? '' : `<div class="cert-pie">${esc(pieDeLaInstitucion())}</div>`;
@@ -10677,6 +10716,7 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
           ${bloqueEpigrafe}
         </div>
       </div>
+      ${selloAnulado}
       ${rotulo ? `<div class="cn-rotulo">${esc(rotulo)}</div>` : ''}
       <div class="cn-nombre">${esc(row.nombre_titular || '')}</div>
       ${cuerpo ? `<p class="cn-parrafo">${certRellenarMarcado(row.texto || f.texto || '', row)}</p>` : ''}
@@ -10711,6 +10751,7 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
         ${rotulo ? `<span>${esc(rotulo)}</span>` : ''}
         ${titulo ? `<h1>${esc(titulo)}</h1>` : ''}
       </div>
+      ${selloAnulado}
       ${cuerpo ? `<p class="cb-parrafo">${certRellenarMarcado(row.texto || f.texto || '', row)}</p>` : ''}
       ${bloqueFirmas(true)}
       ${bloqueEpigrafe}
@@ -10726,6 +10767,7 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
         ${titulo ? `<h1>${esc(titulo)}</h1>` : ''}
         ${bloqueEpigrafe}
         ${conNumero && row.numero ? `<div class="cert-no">N.º ${esc(row.numero)}</div>` : ''}
+        ${selloAnulado}
         ${rotulo ? `<div class="otorgado">${esc(rotulo)}</div>` : ''}
         <div class="titular">${esc(row.nombre_titular || '')}</div>
         ${cuerpo ? `<div class="texto">${esc(cuerpo)}</div>` : ''}

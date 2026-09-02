@@ -262,6 +262,57 @@ print(chr(10).join(x.get_textpage().get_text_range() for x in d))
   }
 
   /* ------------------------------------------------------------------
+   * EL SELLO DE LO ANULADO, EN EL PAPEL.
+   *
+   * Un certificado anulado salía impreso exactamente igual que uno válido
+   * —medido en la v1.291.0—, y en la pantalla sí se marcaba: el problema
+   * empezaba justo donde termina la pantalla. Por eso esta comprobación va
+   * acá, sobre el PDF de verdad y no sobre el HTML: lo que importa es lo que
+   * queda en el papel que alguien se lleva.
+   *
+   * Se prueba sobre las tres disposiciones, que son tres trozos de código
+   * distintos, y con el mismo certificado antes y después de anularlo: sin el
+   * «antes», una hoja que dijera «ANULADO» siempre pasaría esta prueba.
+   * ------------------------------------------------------------------ */
+  console.log('\n── El sello de un certificado anulado');
+  /*
+   * EL SELLO SE BUSCA LETRA POR LETRA, y no es capricho: va escrito con las
+   * letras separadas —`letter-spacing: 3px`, para que se lea como un sello— y
+   * el texto que se saca de un PDF conserva esa separación. En el papel dice
+   * «ANULADO»; leído del archivo, «A N U L A D O».
+   */
+  const DICE_ANULADO = /A\s*N\s*U\s*L\s*A\s*D\s*O/;
+  for (const { tipo, cert } of suyos) {
+    await ir('#/m/certificados');
+    await ir(`#/print/certificados/${cert.id}`);
+    await pagina.waitForSelector('.cert-sheet', { timeout: 25000 });
+    await pagina.waitForTimeout(250);
+    const valido = path.join(carpeta, `anulado-${tipo}-antes.pdf`);
+    fs.writeFileSync(valido, await pagina.pdf({ preferCSSPageSize: true, printBackground: true }));
+    revisar(`${tipo}: mientras vale, la hoja no dice nada de anulación`,
+      !DICE_ANULADO.test(loQueDiceElPdf(valido).replace(/\s+/g, ' ')));
+
+    const antes = await api('GET', `/certificados/${cert.id}`);
+    await api('PUT', `/certificados/${cert.id}`, { ...antes, estado: 'Anulado' });
+    await ir('#/m/certificados');
+    await ir(`#/print/certificados/${cert.id}`);
+    await pagina.waitForSelector('.cert-sheet', { timeout: 25000 });
+    await pagina.waitForTimeout(250);
+    const archivo = path.join(carpeta, `anulado-${tipo}.pdf`);
+    fs.writeFileSync(archivo, await pagina.pdf({ preferCSSPageSize: true, printBackground: true }));
+    const dice = loQueDiceElPdf(archivo).replace(/\s+/g, ' ');
+
+    revisar(`${tipo}: anulado, la hoja lo dice`, DICE_ANULADO.test(dice),
+      'el papel salía idéntico al de uno válido');
+    revisar(`${tipo}: y dice cuándo se anuló`, /fue anulado el .* y no tiene validez/.test(dice),
+      dice.slice(0, 160));
+    revisar(`${tipo}: las líneas de firma también lo dicen`,
+      (dice.match(/Certificado anulado/g) || []).length >= 2,
+      'dos rayas a secas hacen que un papel anulado parezca válido');
+    revisar(`${tipo}: y sigue cabiendo en una hoja`, medirElPdf(archivo).hojas === 1);
+  }
+
+  /* ------------------------------------------------------------------
    * LA CONTRACARA: que la hoja de una página no le pase a las demás.
    *
    * Lo que hace que un certificado quepa en una hoja es una regla que aprieta

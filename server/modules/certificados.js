@@ -29,6 +29,9 @@
  * certificado de matrimonio a nombre de una sola persona es un papel que hay
  * que rehacer.
  */
+/** El estado de lo que ya no vale. El otro es «Emitido». */
+const ANULADO = 'Anulado';
+
 module.exports = {
   name: 'certificados',
   label: 'Certificados',
@@ -148,6 +151,26 @@ module.exports = {
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Emitido',
       options: ['Emitido', 'Anulado'],
+      help: 'Anular no borra: el número se conserva y la hoja sale con su sello, diciendo que '
+        + 'ese papel ya no vale.',
+    },
+    /*
+     * CUÁNDO SE ANULÓ, para que el sello lo pueda decir.
+     *
+     * Lo estampa el sistema al cambiar el estado, no se escribe a mano: es lo
+     * mismo que hacen las actas con «Firmada por» y su fecha desde la v1.272.0.
+     * Un sello que dice «ANULADO» y no dice cuándo deja la pregunta de vuelta
+     * en quien recibe el papel.
+     *
+     * Solo al CAMBIAR de estado. Volver a guardar un certificado que ya estaba
+     * anulado no re-estampa la fecha: la anulación ocurrió el día que ocurrió,
+     * y re-escribirla en cada guardado la convertiría en «la última vez que
+     * alguien tocó esta ficha», que es otra cosa.
+     */
+    {
+      name: 'fecha_anulacion', label: 'Fecha de anulación', type: 'date', readonly: true,
+      showIf: { field: 'estado', equals: 'Anulado' },
+      help: 'La anota el sistema al anularlo, y sale impresa en el sello de la hoja.',
     },
     { name: 'notas', label: 'Notas internas', type: 'textarea' },
   ],
@@ -213,6 +236,20 @@ module.exports = {
       }
       if (como === 'Matrimonio' && !limpio('conyuge')) {
         return 'Un certificado de matrimonio nombra a los dos cónyuges. Falta escribir el otro.';
+      }
+
+      /*
+       * Y la fecha de la anulación, que es lo que el sello imprime.
+       *
+       * Se mira el estado que QUEDA contra el que había: al anular se estampa
+       * el día, y al volver a «Emitido» se borra —un certificado que vuelve a
+       * valer no puede seguir diciendo cuándo se anuló—.
+       */
+      const estadoAntes = existing ? existing.estado : null;
+      const estadoAhora = dato('estado');
+      if (estadoAhora !== estadoAntes) {
+        if (estadoAhora === ANULADO) data.fecha_anulacion = require('../fechas').hoy();
+        else if (estadoAntes === ANULADO) data.fecha_anulacion = null;
       }
 
       // La ciudad se congela al emitir: si mañana la iglesia se muda, los

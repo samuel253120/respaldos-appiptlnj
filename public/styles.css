@@ -1179,6 +1179,26 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
 .cert-firmas { display: flex; justify-content: space-around; margin-top: 60px; }
 .cert-firmas .firma { width: 220px; border-top: 1px solid #78716c; padding-top: 6px; font-size: 13px; color: #57534e; }
 .cert-firmas .firma .rotulo { font-size: 11px; color: #a8a29e; }
+/*
+ * EL SELLO DE UN CERTIFICADO ANULADO, y la nota bajo cada firma.
+ *
+ * Con BORDE y color de letra, nunca con fondo: los navegadores no imprimen los
+ * fondos salvo que se les marque «gráficos de fondo» a mano, y esto tiene que
+ * salir en el papel justamente al imprimir. Es la misma decisión que tomó
+ * .acta-sin-firmar en la v1.272.0, y por el mismo motivo.
+ *
+ * El color es fijo y no sale de las variables del formato: un formato con la
+ * letra clara podría dejar el sello invisible, y esto no es decoración de la
+ * hoja — es lo que dice que la hoja no vale.
+ */
+.cert-anulado {
+  border: 2px solid #9f1239; border-radius: 3px; padding: 7px 14px; margin: 10px auto 14px;
+  max-width: 78%; text-align: center; font-size: 12.5px; color: #9f1239; line-height: 1.45;
+}
+.cert-anulado b { display: block; font-size: 14px; letter-spacing: 3px; margin-bottom: 2px; }
+.cert-firmas .firma .pend {
+  display: block; margin-top: 3px; font-size: 11px; color: #9f1239; letter-spacing: 0.4px;
+}
 .cert-fecha { margin-top: 30px; font-size: 13px; color: #78716c; }
 
 .cred-card {
