@@ -1,7 +1,17 @@
 /**
- * Lo que le pasa a un acta cuando está firmada, y lo que se pierde al borrarla.
+ * Las reglas que los dos libros de actas comparten.
  *
- * Esto vivía entero dentro del módulo de Actas de Reuniones, escrito para él.
+ * Un acta de asamblea y una de reunión son el mismo documento con distinto
+ * dueño: una la levanta un cuerpo y la otra la congregación entera. Casi todo lo
+ * que hay que cuidar en una hay que cuidarlo igual en la otra —que una firmada
+ * no se cambie sin decirlo, que borrarla no se lleve en silencio lo que decía,
+ * que un acta vacía se note, que las horas no vayan al revés— y eso es lo que
+ * vive acá.
+ *
+ * Nació llamándose «reglas-del-acta» con una sola de esas reglas adentro. Cuando
+ * fueron cuatro, el nombre ya mentía.
+ *
+ * Todo esto vivía dentro del módulo de Actas de Reuniones, escrito para él.
  * Cuando le llegó el turno al de Actas de Asambleas hizo falta lo mismo, palabra
  * por palabra, y ahí había que elegir entre copiarlo o sacarlo afuera.
  *
@@ -168,8 +178,109 @@ function avisoDeActaQueSeBorra(fila, { deQuien = '', elLibro }) {
     + ` Lo que decía queda copiado en el Registro de Cambios; ${elLibro}, en cambio, queda sin ella.`;
 }
 
+/** Lo que un acta puede tener adentro: lo escrito, o el papel escaneado. */
+const LO_QUE_DICE = ['agenda', 'desarrollo', 'acuerdos'];
+
+/** Cómo queda un campo después de este guardado: lo que llega, o lo que ya estaba. */
+const comoQueda = (campo, data, existing) => (
+  data[campo] !== undefined ? data[campo] : existing && existing[campo]);
+
+/** ¿Hay algo escrito ahí? */
+const conAlgo = (campo, data, existing) => String(comoQueda(campo, data, existing) || '').trim() !== '';
+
+/**
+ * Un acta que no dice nada.
+ *
+ * Lo obligatorio de un acta es su cabecera: número, fecha y de quién es. Todo lo
+ * que el acta DICE es opcional. Está bien pensado a medias, y a propósito: un
+ * acta puede ir solo adjunta —«Se puede dejar en blanco si el acta va adjunta»,
+ * dice la ayuda del campo— y también escribirse acá sin adjuntar nada. Las dos
+ * maneras valen.
+ *
+ * Lo que faltaba es la esquina que queda: NINGUNA DE LAS DOS. Un acta sin
+ * adjunto y sin una palabra escrita no es un acta a medio llenar, es una ficha
+ * que no contiene nada, y se imprime con el membrete de la institución y dos
+ * líneas de firma al pie.
+ *
+ * Se pregunta y no se rechaza porque hay un caso legítimo y corriente: crear la
+ * ficha ahora para adjuntarle el escaneo al rato. Que pregunte una vez y siga.
+ *
+ * El texto con formato llega acá YA LIMPIO: un editor de texto rico deja
+ * «<p></p>» o «<p><br></p>» cuando se borra todo, y eso es tan vacío como el
+ * blanco aunque no lo parezca, pero de eso se encarga server/textorico.js antes
+ * del guardado —por las dos puertas, la pantalla y la importación de planillas—.
+ * Mirarlo otra vez acá sería repetir una regla que ya tiene dueño.
+ */
+function loDelActaVacia(data, existing) {
+  if (LO_QUE_DICE.some((c) => conAlgo(c, data, existing)) || comoQueda('documento', data, existing)) {
+    return null;
+  }
+
+  // No es lo mismo una ficha que nace en blanco que un acta que decía algo y se
+  // está quedando sin nada: la segunda es una pérdida, no un trámite pendiente.
+  const teniaAlgo = existing
+    && (LO_QUE_DICE.some((c) => String(existing[c] || '').trim() !== '') || existing.documento);
+  if (teniaAlgo) {
+    return 'Este acta decía algo y va a quedar sin nada: sin agenda, sin desarrollo, sin acuerdos y '
+      + 'sin documento adjunto. Lo que decía se puede recuperar del Registro de Cambios, pero el acta '
+      + 'queda en blanco.';
+  }
+  return 'Este acta no dice nada: no tiene agenda, ni desarrollo, ni acuerdos, ni documento adjunto. '
+    + 'Se puede guardar así —para adjuntarle el escaneo más tarde—, pero mientras tanto se imprime '
+    + 'con el membrete de la institución y dos líneas de firma, y nada en medio.';
+}
+
+/**
+ * Las horas de la sesión, una contra la otra.
+ *
+ * `cual` es cómo se llama la sesión en el aviso —«la reunión», «la asamblea»—,
+ * que es lo único que cambia entre los dos libros.
+ */
+function loDeLasHoras(data, existing, cual = 'la reunión') {
+  /*
+   * En minutos desde la medianoche, y no comparando el texto: la pantalla manda
+   * siempre «09:30» y la API no siempre, y comparadas como texto «9:30» sale
+   * MAYOR que «21:00» —el 9 va después del 2— así que una sesión de las 21:00 a
+   * las 9:30 pasaría sin que nadie la mirara.
+   */
+  const enMinutos = (h) => {
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(h || '').trim());
+    if (!m) return null;
+    const hora = Number(m[1]);
+    const minuto = Number(m[2]);
+    if (hora > 23 || minuto > 59) return null;
+    return hora * 60 + minuto;
+  };
+  /** Para decirla en el aviso como se lee en la ficha. */
+  const enReloj = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+  const inicio = enMinutos(comoQueda('hora_inicio', data, existing));
+  const fin = enMinutos(comoQueda('hora_fin', data, existing));
+  /*
+   * Con una sola hora anotada no hay nada que comparar, y está bien que así sea:
+   * muchas actas dicen a qué hora empezó y no a qué hora terminó. Se comprueba
+   * contra `null` a propósito y no con `!inicio`: las 00:00 son cero minutos, y
+   * una sesión que empieza a medianoche existe.
+   */
+  if (inicio === null || fin === null) return null;
+
+  if (inicio === fin) {
+    return `El acta dice que ${cual} empezó y terminó a las ${enReloj(inicio)}, o sea que no `
+      + 'duró nada. Revise las horas.';
+  }
+  if (fin < inicio) {
+    return `El acta dice que ${cual} empezó a las ${enReloj(inicio)} y terminó a las `
+      + `${enReloj(fin)}. Si de verdad terminó pasada la medianoche, confirme; si no, corrija las horas.`;
+  }
+  return null;
+}
+
 module.exports = {
   FIRMADA,
+  LO_QUE_DICE,
+  comoQueda,
+  loDelActaVacia,
+  loDeLasHoras,
   camposDeLaFirma,
   loQueCambia,
   avisoDeActaFirmada,

@@ -7754,6 +7754,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y elegir otra reunión',
       seguir: 'Asistió igual, guardar',
     },
+    asistentes_que_no_caben: {
+      titulo: '🔢 Son más asistentes que miembros',
+      volver: 'Volver y revisar el número',
+      seguir: 'Asistieron esos, guardar',
+    },
     asamblea_sin_quorum: {
       titulo: '⚖️ Esta asamblea no tuvo quórum',
       volver: 'Volver y revisar los acuerdos',

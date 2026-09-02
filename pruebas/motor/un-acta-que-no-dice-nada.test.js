@@ -102,7 +102,7 @@ test('y con el documento adjunto tampoco', async () => {
   const api = await elSistemaAndando();
   const e = unCuerpo();
   const a = await unActa(api, e, { igual_asi: true });
-  db.prepare("UPDATE actas_reuniones SET documento = 'acta-firmada.pdf' WHERE id = ?").run(a.json.id);
+  db.prepare("UPDATE actas_reuniones SET documento = 'reglas-del-acta.pdf' WHERE id = ?").run(a.json.id);
   const r = await comoElFormulario(api, a.json.id, { lugar: 'Salón parroquial' });
   assert.equal(r.estado, 200, 'un acta que va adjunta está completa');
 });

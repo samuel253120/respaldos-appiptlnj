@@ -178,17 +178,17 @@ test('el nombre del adjunto queda, aunque el archivo se haya ido', async () => {
   const e = unCuerpo();
   const a = await unActaEscrita(api, e);
   const numero = a.json.numero_acta;
-  db.prepare("UPDATE actas_reuniones SET documento = 'acta-firmada.pdf' WHERE id = ?").run(a.json.id);
+  db.prepare("UPDATE actas_reuniones SET documento = 'reglas-del-acta.pdf' WHERE id = ?").run(a.json.id);
 
   await api('DELETE', `/actas_reuniones/${a.json.id}?igual_asi=true`);
-  assert.match(laConstancia(numero), /acta-firmada\.pdf/);
+  assert.match(laConstancia(numero), /reglas-del-acta\.pdf/);
 });
 
 test('y la pregunta avisa de que el escaneo se va con ella', async () => {
   const api = await elSistemaAndando();
   const e = unCuerpo();
   const a = await unActaEscrita(api, e);
-  db.prepare("UPDATE actas_reuniones SET documento = 'acta-firmada.pdf' WHERE id = ?").run(a.json.id);
+  db.prepare("UPDATE actas_reuniones SET documento = 'reglas-del-acta.pdf' WHERE id = ?").run(a.json.id);
 
   const r = await api('DELETE', `/actas_reuniones/${a.json.id}`);
   assert.match(r.json.error, /el documento escaneado/);

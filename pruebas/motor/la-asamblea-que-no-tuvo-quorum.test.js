@@ -144,8 +144,15 @@ test('un acta recién creada, en blanco, NO pregunta nada del quórum', async ()
    * importe tampoco se lee.
    */
   const api = await elSistemaAndando();
+
+  /*
+   * Un acta en blanco sí pregunta desde la v1.281.0, pero por OTRA cosa: por no
+   * decir nada. Lo que se comprueba acá es que el quórum no tenga nada que
+   * decir, así que se mira de qué es la pregunta y no si la hay.
+   */
   const enBlanco = await unActa(api, unaIglesia(), {});
-  assert.equal(enBlanco.estado, 201, enBlanco.texto);
+  assert.notEqual(enBlanco.json.confirmar, 'quorum_sin_asistentes', enBlanco.texto);
+  assert.doesNotMatch(String(enBlanco.json.error || ''), /quórum/i, 'del quórum no se dice nada');
 
   // Y una que va por la mitad tampoco: todavía es un borrador que se está llenando
   const aMedias = await unActa(api, unaIglesia(), { agenda: '1. Lo de siempre', lugar: 'Templo' });

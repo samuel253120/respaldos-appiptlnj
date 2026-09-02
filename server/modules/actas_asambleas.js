@@ -29,13 +29,13 @@
  * sistema: hay un papel firmado, en una carpeta, con la firma de quien presidió
  * y de quien fue secretario. De ahí salen las dos reglas que este módulo
  * comparte con el libro de reuniones —el aviso al cambiar un acta firmada y el
- * aviso al borrar cualquiera— y que viven en server/acta-firmada.js, porque son
+ * aviso al borrar cualquiera— y que viven en server/reglas-del-acta.js, porque son
  * el mismo documento con distinto dueño.
  */
 const {
-  FIRMADA, camposDeLaFirma, loQueCambia, avisoDeActaFirmada,
-  anotarLaFirma, enUnSoloAviso, avisoDeActaQueSeBorra,
-} = require('../acta-firmada');
+  FIRMADA, camposDeLaFirma, loQueCambia, avisoDeActaFirmada, anotarLaFirma,
+  enUnSoloAviso, avisoDeActaQueSeBorra, loDelActaVacia, loDeLasHoras, comoQueda,
+} = require('../reglas-del-acta');
 
 /**
  * EL QUÓRUM, QUE ES LO ÚNICO QUE ESTE LIBRO TIENE Y EL DE REUNIONES NO.
@@ -63,10 +63,6 @@ const {
  * puede comprobar sin inventar esa regla.
  */
 
-/** Cómo queda un campo después de este guardado: lo que llega, o lo que ya estaba. */
-const comoQueda = (campo, data, existing) => (
-  data[campo] !== undefined ? data[campo] : existing && existing[campo]);
-
 /**
  * ¿Dice el acta que hubo quórum?
  *
@@ -88,6 +84,35 @@ const huboQuorum = (data, existing) => Number(comoQueda('hubo_quorum', data, exi
  * deja `null`. Mirarlo otra vez acá sería la misma repetición.
  */
 const tieneAcuerdos = (data, existing) => String(comoQueda('acuerdos', data, existing) || '').trim() !== '';
+
+/**
+ * Más gente en la asamblea que miembros tiene la congregación.
+ *
+ * El tope de arriba se dejó sin escribir a propósito: un número grande puesto a
+ * mano no dice nada. El que sí dice algo lo tiene la base — cuántos miembros
+ * tiene esa iglesia—, y una asamblea GENERAL es una reunión de miembros, así que
+ * más asistentes que miembros es o un error de tipeo o algo que conviene mirar.
+ *
+ * Se pregunta y no se prohíbe: puede haber invitados, y puede haber una
+ * membresía desactualizada. Lo que no puede pasar es que «5.000 asistentes» en
+ * una congregación de 600 entre sin que nadie lo note y salga impreso.
+ */
+function loDeLosAsistentesQueNoCaben(data, existing, db) {
+  const cuantos = Number(comoQueda('total_asistentes', data, existing));
+  if (!Number.isFinite(cuantos) || cuantos <= 0) return null;
+  const iglesiaId = comoQueda('iglesia_id', data, existing);
+  if (!iglesiaId) return null;
+
+  const fila = db.prepare(
+    "SELECT COUNT(*) AS n FROM miembros WHERE iglesia_id = ? AND (estado IS NULL OR estado != 'Retirado')"
+  ).get(iglesiaId);
+  const miembros = (fila && fila.n) || 0;
+  if (!miembros || cuantos <= miembros) return null;
+
+  return `El acta anota ${cuantos} asistentes, y esa congregación tiene ${miembros} miembros. `
+    + 'Una asamblea general es una reunión de miembros: revise si se le fue un dígito. Si de '
+    + 'verdad asistieron más —invitados, o la membresía está por actualizar—, confirme y siga.';
+}
 
 /**
  * Sin quórum, pero con acuerdos.
@@ -171,7 +196,22 @@ module.exports = {
     { name: 'hora_fin', label: 'Hora de finalización', type: 'time' },
     { name: 'presidida_por', label: 'Presidida por', type: 'text' },
     { name: 'secretario', label: 'Secretario(a)', type: 'text' },
-    { name: 'total_asistentes', label: 'Total de asistentes', type: 'number' },
+    /*
+     * Cuánta gente vino, con su piso.
+     *
+     * Sin el `min` entraba cualquier cosa: medido en la v1.280.0, «−50
+     * asistentes» contestaba 201 y así quedaba impreso en la hoja. El motor sabe
+     * hacer esto desde siempre y contesta con un aviso escrito para una persona;
+     * lo que faltaba era declararlo. El mismo dato en Servicios —«Asistencia de
+     * adultos», «Asistencia de niños»— ya lo declaraba, así que no era una
+     * decisión de la organización: era una línea que en este módulo no se
+     * escribió.
+     *
+     * Sin `max`: un tope grande sería un número inventado, y el que de verdad
+     * dice algo —cuánta gente tiene esa congregación— se mira en el gancho, que
+     * puede leerlo de la base y preguntar en vez de prohibir.
+     */
+    { name: 'total_asistentes', label: 'Total de asistentes', type: 'number', min: 0 },
     { name: 'hubo_quorum', label: '¿Hubo quórum?', type: 'boolean', default: 1 },
     { name: 'agenda', label: 'Agenda / Orden del día', type: 'textarea' },
     // Con formato, como en las actas de reunión: un acta de asamblea se escribe
@@ -184,7 +224,7 @@ module.exports = {
     },
     { name: 'documento', label: 'Documento adjunto (escaneada/firmada)', type: 'file' },
     // Los declara el compartido, para que los dos libros de actas los lleven
-    // iguales (ver server/acta-firmada.js, que explica por qué van sin sección)
+    // iguales (ver server/reglas-del-acta.js, que explica por qué van sin sección)
     ...camposDeLaFirma(),
   ],
 
@@ -271,7 +311,7 @@ module.exports = {
      * deja de estar firmada: una fecha de firma en un acta que volvió a
      * borrador estaría mintiendo.
      */
-    beforeSave(data, { user, existing, confirmado }) {
+    beforeSave(data, { user, existing, confirmado, db }) {
       /*
        * TODAS LAS ADVERTENCIAS DE UN GUARDADO VAN EN UN SOLO AVISO, NUMERADAS.
        *
@@ -296,6 +336,15 @@ module.exports = {
 
         const sinGente = loDelQuorumSinGente(data, existing);
         if (sinGente) avisos.push({ clave: 'quorum_sin_asistentes', texto: sinGente });
+
+        const noCaben = loDeLosAsistentesQueNoCaben(data, existing, db);
+        if (noCaben) avisos.push({ clave: 'asistentes_que_no_caben', texto: noCaben });
+
+        const horas = loDeLasHoras(data, existing, 'la asamblea');
+        if (horas) avisos.push({ clave: 'horas_del_acta', texto: horas });
+
+        const vacia = loDelActaVacia(data, existing);
+        if (vacia) avisos.push({ clave: 'acta_sin_nada', texto: vacia });
 
         if (avisos.length) {
           return { error: enUnSoloAviso(avisos), confirmar: avisos[0].clave };

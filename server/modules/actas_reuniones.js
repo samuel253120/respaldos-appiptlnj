@@ -30,62 +30,14 @@ const { comoSeLee } = require('../fechas');
 
 /*
  * Lo de la firma y lo que se pierde al borrar un acta son las mismas reglas que
- * en el libro de asambleas, y viven juntas en server/acta-firmada.js: son el
+ * en el libro de asambleas, y viven juntas en server/reglas-del-acta.js: son el
  * mismo documento con distinto dueño, y una regla copiada hay que arreglarla
  * dos veces (esa lección la dejó escrita la directiva, más abajo).
  */
 const {
-  FIRMADA, camposDeLaFirma, loQueCambia, avisoDeActaFirmada,
-  anotarLaFirma, enUnSoloAviso, avisoDeActaQueSeBorra,
-} = require('../acta-firmada');
-
-/** Lo que un acta puede tener adentro: lo escrito, o el papel escaneado. */
-const LO_QUE_DICE = ['agenda', 'desarrollo', 'acuerdos'];
-
-/**
- * Un acta que no dice nada.
- *
- * Lo obligatorio de un acta es su número, su fecha, su iglesia y su cuerpo:
- * todo lo que el acta DICE es opcional. Está bien pensado a medias, y a
- * propósito: el módulo permite que un acta vaya solo adjunta —«Se puede dejar
- * en blanco si el acta va adjunta», dice la ayuda del campo— y también que se
- * escriba acá sin adjuntar nada. Las dos maneras valen.
- *
- * Lo que faltaba es la esquina que queda: NINGUNA DE LAS DOS. Un acta sin
- * adjunto y sin una palabra escrita no es un acta a medio llenar, es una ficha
- * que no contiene nada, y se imprime con el membrete de la institución y dos
- * líneas de firma al pie.
- *
- * Se pregunta y no se rechaza porque hay un caso legítimo y corriente: crear la
- * ficha ahora para adjuntarle el escaneo al rato. Que pregunte una vez y siga.
- *
- * El texto con formato llega acá YA LIMPIO: un editor de texto rico deja
- * «<p></p>» o «<p><br></p>» cuando se borra todo, y eso es tan vacío como el
- * blanco aunque no lo parezca, pero de eso se encarga server/textorico.js antes
- * del guardado —por las dos puertas, la pantalla y la importación de
- * planillas—. Mirarlo otra vez acá sería repetir una regla que ya tiene dueño;
- * la prueba que lo comprueba está igual, porque lo que importa es que el acta
- * vacía se note, no en qué capa se note.
- */
-function loDelActaVacia(data, existing) {
-  const comoQueda = (campo) => (data[campo] !== undefined ? data[campo] : existing && existing[campo]);
-  const conAlgo = (campo) => String(comoQueda(campo) || '').trim() !== '';
-  if (LO_QUE_DICE.some(conAlgo) || comoQueda('documento')) return null;
-
-  // No es lo mismo una ficha que nace en blanco que un acta que decía algo y se
-  // está quedando sin nada: la segunda es una pérdida, no un trámite pendiente.
-  const teniaAlgo = existing
-    && (LO_QUE_DICE.some((c) => String(existing[c] || '').replace(/<[^>]*>/g, '').trim() !== '')
-        || existing.documento);
-  if (teniaAlgo) {
-    return 'Este acta decía algo y va a quedar sin nada: sin agenda, sin desarrollo, sin acuerdos y '
-      + 'sin documento adjunto. Lo que decía se puede recuperar del Registro de Cambios, pero el acta '
-      + 'queda en blanco.';
-  }
-  return 'Este acta no dice nada: no tiene agenda, ni desarrollo, ni acuerdos, ni documento adjunto. '
-    + 'Se puede guardar así —para adjuntarle el escaneo más tarde—, pero mientras tanto se imprime '
-    + 'con el membrete de la institución y dos líneas de firma, y nada en medio.';
-}
+  FIRMADA, camposDeLaFirma, loQueCambia, avisoDeActaFirmada, anotarLaFirma,
+  enUnSoloAviso, avisoDeActaQueSeBorra, loDelActaVacia, loDeLasHoras,
+} = require('../reglas-del-acta');
 
 /**
  * La asistencia enlazada tiene que ser de una reunión a la que ese cuerpo fue.
@@ -133,70 +85,6 @@ function loDeLaAsistenciaEnlazada(data, existing, db) {
     + 'va a mostrar ninguna lista. Si el cuerpo asistió igual, confirme; si no, elija la reunión que '
     + 'corresponde.';
 }
-
-/**
- * Una reunión que termina antes de empezar.
- *
- * Los dos campos de hora entraban sin que nadie los mirara: «empieza a las
- * 21:00 y termina a las 19:00» contestaba 201, y la hoja impresa salía diciendo
- * «Hora: 21:00 a 19:00». Es el mismo par que en las directivas se comprueba
- * desde hace tiempo, pero ahí son fechas y acá horas, y nadie las miraba.
- *
- * PREGUNTA, NO RECHAZA, y eso no es por costumbre de la casa: es que una
- * reunión que empieza a las 23:00 y termina a las 00:30 del día siguiente es
- * perfectamente normal —una vigilia, una asamblea larga— y una regla escrita
- * como «término > inicio» la rechazaría siendo correcta. No hay manera de
- * distinguir el error del caso legítimo mirando los datos, así que se pregunta,
- * que es justamente lo que un ser humano sí sabe contestar.
- *
- * Devuelve el texto del aviso, o nulo si no hay nada que decir. No lo devuelve
- * ya envuelto en `{ error, confirmar }` porque puede terminar sumado al aviso
- * del acta firmada: la marca de «guardar igual» es UNA sola por guardado, y
- * dos preguntas separadas dejarían pasar la segunda sin que nadie la lea.
- */
-function loDeLasHoras(data, existing) {
-  const deAntes = (campo) => (data[campo] !== undefined ? data[campo] : existing && existing[campo]);
-  /*
-   * En minutos desde la medianoche, y no comparando el texto: la pantalla manda
-   * siempre «09:30» y la API no siempre, y comparadas como texto «9:30» sale
-   * MAYOR que «21:00» —el 9 va después del 2— así que una reunión de las 21:00
-   * a las 9:30 pasaría sin que nadie la mirara.
-   */
-  const enMinutos = (h) => {
-    const m = /^(\d{1,2}):(\d{2})/.exec(String(h || '').trim());
-    if (!m) return null;
-    const hora = Number(m[1]);
-    const minuto = Number(m[2]);
-    if (hora > 23 || minuto > 59) return null;
-    return hora * 60 + minuto;
-  };
-  /** Para decirla en el aviso como se lee en la ficha. */
-  // «enReloj» y no «comoSeLee»: ese nombre ya es el de las fechas, importado
-  // arriba, y acá adentro lo tapaba. Funcionaba —esta función no usa fechas—
-  // pero es la clase de trampa que se cobra sola el día que alguien la use.
-  const enReloj = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
-
-  const inicio = enMinutos(deAntes('hora_inicio'));
-  const fin = enMinutos(deAntes('hora_fin'));
-  /*
-   * Con una sola hora anotada no hay nada que comparar, y está bien que así
-   * sea: muchas actas dicen a qué hora empezó la reunión y no a qué hora
-   * terminó. Se comprueba contra `null` a propósito y no con `!inicio`: las
-   * 00:00 son cero minutos, y una reunión que empieza a medianoche existe.
-   */
-  if (inicio === null || fin === null) return null;
-
-  if (inicio === fin) {
-    return `El acta dice que la reunión empezó y terminó a las ${enReloj(inicio)}, o sea que no `
-      + 'duró nada. Revise las horas.';
-  }
-  if (fin < inicio) {
-    return `El acta dice que la reunión empezó a las ${enReloj(inicio)} y terminó a las `
-      + `${enReloj(fin)}. Si de verdad terminó pasada la medianoche, confirme; si no, corrija las horas.`;
-  }
-  return null;
-}
-
 
 module.exports = {
   name: 'actas_reuniones',
@@ -329,7 +217,7 @@ module.exports = {
      * y de las dos mentiras posibles ésa es la peligrosa.
      */
     // Los declara el compartido, para que los dos libros de actas los lleven
-    // iguales (ver server/acta-firmada.js, que explica por qué van sin sección)
+    // iguales (ver server/reglas-del-acta.js, que explica por qué van sin sección)
     ...camposDeLaFirma(),
   ],
 
@@ -508,7 +396,7 @@ module.exports = {
         if (ajena) avisos.push({ clave: 'asistencia_de_otra_reunion', texto: ajena });
         const vacia = loDelActaVacia(data, existing);
         if (vacia) avisos.push({ clave: 'acta_sin_nada', texto: vacia });
-        const horas = loDeLasHoras(data, existing);
+        const horas = loDeLasHoras(data, existing, 'la reunión');
         if (horas) avisos.push({ clave: 'horas_del_acta', texto: horas });
 
         if (avisos.length) return { error: enUnSoloAviso(avisos), confirmar: avisos[0].clave };

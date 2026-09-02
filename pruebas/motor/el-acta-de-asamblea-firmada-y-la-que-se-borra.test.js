@@ -19,7 +19,7 @@
  *
  * Las dos reglas son las mismas que el libro de reuniones estrenó en la
  * v1.272.0 y la v1.273.0, y por eso NO se copiaron: viven en
- * server/acta-firmada.js y los dos módulos las usan. Este sistema ya tropezó
+ * server/reglas-del-acta.js y los dos módulos las usan. Este sistema ya tropezó
  * dos veces con una regla copiada que hubo que arreglar dos veces, y la última
  * prueba de este archivo existe para que no vuelva a pasar.
  */
@@ -207,7 +207,10 @@ test('y lo que el acta decía queda copiado en el Registro de Cambios', async ()
 test('una eliminación de un acta en blanco se dice distinto', async () => {
   const api = await elSistemaAndando();
   const e = unaIglesia();
-  const r = await unActa(api, e, {});
+  // «igual_asi» porque un acta en blanco pregunta al crearse desde la v1.281.0,
+  // y acá el acta en blanco es justamente lo que se quiere tener para borrarla
+  const r = await unActa(api, e, { igual_asi: true });
+  assert.equal(r.estado, 201, r.texto);
   const d = await api('DELETE', `/actas_asambleas/${r.json.id}`);
   assert.match(d.json.error, /No tiene nada escrito ni adjunto/,
     'no es lo mismo una ficha recién creada que un acta escrita entera');
@@ -228,7 +231,7 @@ test('los dos libros de actas usan las MISMAS reglas, no una copia de ellas', ()
   const lee = (m) => fs.readFileSync(path.join(__dirname, '../..', 'server/modules', m), 'utf8');
   for (const m of ['actas_reuniones.js', 'actas_asambleas.js']) {
     const src = lee(m);
-    assert.match(src, /require\('\.\.\/acta-firmada'\)/, `${m} no usa el compartido`);
+    assert.match(src, /require\('\.\.\/reglas-del-acta'\)/, `${m} no usa el compartido`);
     assert.doesNotMatch(src, /function avisoDeActaFirmada/, `${m} volvió a escribir el aviso por su cuenta`);
     assert.doesNotMatch(src, /function anotarLaFirma/, `${m} volvió a escribir la constancia por su cuenta`);
   }
