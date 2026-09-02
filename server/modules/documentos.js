@@ -317,6 +317,120 @@ function avisoDelFlujoQueCambia(campos, deQue, aQue) {
       : '');
 }
 
+/**
+ * EL DOCUMENTO QUE CAMBIA DE OFICINA.
+ *
+ * Cada congregación lleva su propia oficina de partes y su propio correlativo,
+ * igual que lleva su propio libro de actas de asamblea. Por eso cambiarle la
+ * iglesia a un documento no es corregir un campo: es sacar una anotación de un
+ * libro y meterla en otro.
+ *
+ * Medido en la v1.288.0: un PUT con la otra iglesia contestaba 200 y sin una
+ * palabra. El alcance sí funcionaba —quien está acotado a una congregación no
+ * puede hacerlo, y contesta 403—, así que esto es para quien alcanza las dos,
+ * que es justamente quien puede mover un documento sin darse cuenta.
+ *
+ * DETECTARLO es lo que se comparte con el libro de asambleas: la mudanza es la
+ * misma y está en server/cambio-de-iglesia.js. La frase no —ahí está dicho por
+ * qué—, y acá hay además algo que un acta no tiene: el libro de destino recibe
+ * una anotación de algo que no pasó por esa ventanilla.
+ *
+ * Lo que este aviso NO dice es que el número pueda estar tomado allá. Eso el
+ * motor lo revisa antes que este gancho y rechaza el traslado nombrando la
+ * iglesia, así que preguntar por algo que después no va a poder ocurrir sería
+ * peor que rechazarlo.
+ */
+function loDeLaIglesiaQueCambia(mudanza, existing) {
+  const cual = existing.numero ? ` n.º ${existing.numero}` : '';
+  const elLibro = existing.numero
+    ? `El número se va con él: en el libro de ${mudanza.deDonde} queda el hueco, y en el de `
+      + `${mudanza.aDonde} entra una anotación de algo que no pasó por esa ventanilla. `
+    : 'No lleva correlativo, así que ningún libro queda con un hueco. ';
+
+  return `El documento${cual} está anotado en la oficina de partes de ${mudanza.deDonde} y va a `
+    + `pasar a la de ${mudanza.aDonde}. ${elLibro}`
+    + 'Cambia también quién puede verlo: pasa a estar entre lo de esa otra congregación.';
+}
+
+/**
+ * EL HILO NO CRUZA DOS OFICINAS.
+ *
+ * Un documento emitido puede decir a qué documento recibido contesta, y eso es
+ * lo que después permite seguir el hilo completo. Medido en la v1.288.0: un
+ * emitido de la Iglesia Central podía responder a un recibido de la Iglesia
+ * Norte, y quedaba enlazado con un 201.
+ *
+ * La regla es simple y no admite un «guardar igual»: son la misma oficina o no
+ * son el mismo hilo. Un libro de partes que enlaza hacia otro libro no puede
+ * decir, leyéndolo, qué se hizo con lo que le llegó.
+ *
+ * DOS COSAS QUE YA ESTABAN Y NO SE REPITEN ACÁ: que el documento exista lo
+ * revisa el motor —referencias rotas— antes que este gancho, y que esté dentro
+ * del alcance de quien guarda, también. Por eso la medición dio 201 y no otra
+ * cosa: el administrador alcanza las dos congregaciones.
+ *
+ * De ahí que acá no se compruebe que el otro documento exista: cuando este
+ * gancho corre, ya está comprobado. Se escribió primero con un «por las dudas»
+ * y se sacó al romperlo a propósito —no había manera de llegar con la mano
+ * vacía, y una rama que no se puede alcanzar tampoco se puede probar—. La
+ * garantía quedó escrita como prueba, que es donde se nota si algún día deja
+ * de valer.
+ */
+function loDeLaRespuestaQueCruza(otro, iglesiaId, db) {
+  const suyo = (id) => {
+    const f = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(id);
+    return f ? f.nombre : `la iglesia n.º ${id}`;
+  };
+  const cual = otro.numero ? `«${otro.numero}»` : `«${otro.titulo || `documento n.º ${otro.id}`}»`;
+
+  if (Number(otro.iglesia_id) !== Number(iglesiaId)) {
+    return `${cual} está anotado en la oficina de partes de ${suyo(otro.iglesia_id)}, y este `
+      + `documento se está anotando en la de ${suyo(iglesiaId)}. Una respuesta y lo que responde `
+      + 'son de la misma oficina: el hilo se sigue dentro de un libro, no entre dos. Elija un '
+      + 'documento recibido de esta misma iglesia.';
+  }
+  if (String(otro.flujo) !== 'Recibido') {
+    return `${cual} no es un documento recibido: está anotado como «${otro.flujo}». Lo que se `
+      + 'contesta es lo que llegó por la ventanilla, y eso es lo único que esta casilla ofrece.';
+  }
+  return null;
+}
+
+/**
+ * Y el mismo hilo, roto por el otro lado: mudando el documento en vez del enlace.
+ *
+ * Sin esto la regla de arriba se saltaría sola. Se anota la respuesta como
+ * corresponde —las dos de la misma iglesia—, y después se le cambia la iglesia
+ * a una de las dos: el enlace queda cruzando dos oficinas, que es exactamente
+ * lo que no se pudo hacer de frente.
+ *
+ * Es una NEGATIVA y no una pregunta, por lo mismo que negarse a borrar un
+ * documento que otros contestan: no hay un «sí, igual» que lo deje bien. Y
+ * tiene salida, que se dice: quitar el enlace, mover, y volver a enlazar con
+ * el que corresponda allá.
+ */
+function loDelHiloQueSeQuedaAtras(existing, respondeA, mudanza, db) {
+  if (respondeA) {
+    const otro = db.prepare('SELECT numero, titulo FROM documentos WHERE id = ?').get(respondeA);
+    const cual = otro && otro.numero ? `«${otro.numero}»` : 'otro documento';
+    return `Este documento contesta a ${cual}, que se queda en la oficina de partes de `
+      + `${mudanza.deDonde}. Una respuesta y lo que responde son de la misma oficina, así que `
+      + `para llevarlo a ${mudanza.aDonde} hay que quitarle antes el enlace «Responde al `
+      + 'documento», y volver a enlazarlo allá con el que corresponda.';
+  }
+
+  const respuestas = db
+    .prepare('SELECT id, numero FROM documentos WHERE responde_a = ?')
+    .all(existing.id);
+  if (respuestas.length) {
+    const cuales = enLista(respuestas.map((r) => (r.numero ? `«${r.numero}»` : `n.º ${r.id}`)));
+    return `A este documento le responden ${cuales}, que se quedan en la oficina de partes de `
+      + `${mudanza.deDonde}. Llevarlo a ${mudanza.aDonde} dejaría esas respuestas apuntando a `
+      + 'otro libro. Quíteles antes el enlace «Responde al documento».';
+  }
+  return null;
+}
+
 module.exports = {
   name: 'documentos',
   label: 'Oficina de Partes',
@@ -515,7 +629,21 @@ module.exports = {
     {
       name: 'responde_a', label: 'Responde al documento', type: 'ref', ref: 'documentos',
       seccion: 'El trámite', showIf: ES_EMITIDO,
-      help: 'El documento recibido que este contesta. Es lo que después permite seguir el hilo completo.',
+      /*
+       * La lista ofrece SOLO lo recibido por esta misma oficina. Hasta la
+       * v1.288.0 ofrecía cualquier documento del sistema —de cualquier iglesia
+       * y de cualquier flujo—, y el servidor lo aceptaba: un emitido de la
+       * Central quedaba contestando un recibido de la Norte.
+       *
+       * El «además» es el enlace que esta ficha YA TENÍA. Sin él, abrir un
+       * documento cuyo enlace apunta a algo que la lista ya no ofrece —quedó de
+       * antes de esta regla, o el otro documento pasó a archivo— lo mostraría
+       * en blanco y lo perdería al guardar. Es el mismo arreglo que la 1.232.0
+       * le hizo a las iglesias inactivas.
+       */
+      optionsRoute: '/documentos/para-responder?iglesia_id={iglesia_id}&ademas={responde_a}',
+      help: 'El documento recibido que este contesta, de esta misma oficina de partes. '
+        + 'Es lo que después permite seguir el hilo completo.',
     },
     { name: 'cuerpo_id', label: 'Cuerpo / Grupo (si aplica)', type: 'ref', ref: 'cuerpos', seccion: 'El trámite' },
     { name: 'observaciones', label: 'Observaciones', type: 'textarea', seccion: 'El trámite' },
@@ -531,10 +659,55 @@ module.exports = {
         data.fecha_registro = dato('fecha') || new Date().toISOString().slice(0, 10);
       }
 
+      /*
+       * ── LO QUE NO SE PREGUNTA, SE NIEGA ──
+       *
+       * Primero las negativas del hilo de la respuesta, que no tienen un
+       * «guardar igual» que las arregle. Van antes que las preguntas a
+       * propósito: preguntar «¿está seguro?» por un guardado que después se va
+       * a rechazar igual es hacer contestar dos veces para lo mismo.
+       *
+       * `quedaRespondiendo` es el enlace COMO QUEDA, no el que llega: si este
+       * mismo guardado cambia el flujo, el enlace se vacía unas líneas más
+       * abajo —no es del flujo nuevo— y no hay nada que revisar de él.
+       */
+      const seLimpian = loQueNoEsDeEsteFlujo(flujo);
+      const quedaRespondiendo = seLimpian.includes('responde_a') ? 0 : Number(dato('responde_a')) || 0;
+
       // Un documento no puede responderse a sí mismo
-      const responde = Number(dato('responde_a')) || 0;
-      if (responde && existing && Number(existing.id) === responde) {
+      if (quedaRespondiendo && existing && Number(existing.id) === quedaRespondiendo) {
         return 'Un documento no puede ser la respuesta de sí mismo.';
+      }
+
+      /*
+       * Y no puede responder a uno de otra oficina, ni a algo que no llegó por
+       * la ventanilla. Se revisa SOLO CUANDO EL ENLACE CAMBIA, que es la misma
+       * regla que usan los desplegables y las fechas del motor: se frena el
+       * guardado que empeora las cosas, no el que simplemente no arregla algo
+       * que ya estaba. Sin esto, corregirle el teléfono a un documento viejo
+       * mal enlazado sería imposible, y el enlace no es lo que se está tocando.
+       */
+      const enlaceDeAntes = Number((existing && existing.responde_a) || 0);
+      if (quedaRespondiendo && quedaRespondiendo !== enlaceDeAntes) {
+        const otro = db
+          .prepare('SELECT id, numero, titulo, flujo, iglesia_id FROM documentos WHERE id = ?')
+          .get(quedaRespondiendo);
+        const iglesiaId = dato('iglesia_id');
+        if (otro && iglesiaId) {
+          const reparo = loDeLaRespuestaQueCruza(otro, iglesiaId, db);
+          if (reparo) return reparo;
+        }
+      }
+
+      /*
+       * La mudanza de iglesia, que se mira una sola vez y sirve para las dos
+       * cosas: para negarse cuando arrastraría un enlace, y para preguntar
+       * cuando no.
+       */
+      const mudanza = require('../cambio-de-iglesia').laMudanza(data, existing, db);
+      if (mudanza) {
+        const roto = loDelHiloQueSeQuedaAtras(existing, quedaRespondiendo, mudanza, db);
+        if (roto) return roto;
       }
 
       /*
@@ -550,17 +723,42 @@ module.exports = {
        * que sale en cada guardado, que es la manera más segura de que deje de
        * leerse.
        */
-      const seLimpian = loQueNoEsDeEsteFlujo(flujo);
       const cambiaDeFlujo = existing && String(existing.flujo || '') !== flujo;
-      if (cambiaDeFlujo && !confirmado) {
-        const conAlgo = seLimpian.filter((c) => {
-          const v = dato(c);
-          return v !== null && v !== undefined && v !== '';
-        });
-        if (conAlgo.length) {
+      if (!confirmado) {
+        /*
+         * Las dos preguntas de este guardado salen JUNTAS, numeradas y en un
+         * solo aviso. La marca de «guardar igual» es una para toda la
+         * petición: preguntando de a una, quien contesta la primera pasaría la
+         * segunda sin haberla leído (ver server/una-sola-pregunta.js). Un
+         * documento que cambia de flujo Y de iglesia en el mismo guardado es
+         * raro, pero es de las dos que se pueden perder de vista.
+         */
+        const avisos = [];
+
+        if (cambiaDeFlujo) {
+          const conAlgo = seLimpian.filter((c) => {
+            const v = dato(c);
+            return v !== null && v !== undefined && v !== '';
+          });
+          if (conAlgo.length) {
+            avisos.push({
+              clave: 'documento_que_cambia_de_flujo',
+              texto: avisoDelFlujoQueCambia(conAlgo, existing.flujo, flujo),
+            });
+          }
+        }
+
+        if (mudanza) {
+          avisos.push({
+            clave: 'documento_que_cambia_de_iglesia',
+            texto: loDeLaIglesiaQueCambia(mudanza, existing),
+          });
+        }
+
+        if (avisos.length) {
           return {
-            error: avisoDelFlujoQueCambia(conAlgo, existing.flujo, flujo),
-            confirmar: 'documento_que_cambia_de_flujo',
+            error: require('../una-sola-pregunta').enUnSoloAviso(avisos),
+            confirmar: avisos[0].clave,
           };
         }
       }
@@ -637,6 +835,54 @@ module.exports = {
       res.json({
         numero: require('../numeracion').proximoNumero(serie, iglesiaId, req.query.fecha_registro),
       });
+    });
+
+    /**
+     * QUÉ SE PUEDE CONTESTAR: lo recibido por ESTA oficina, y nada más.
+     *
+     * Un documento emitido contesta a uno recibido, y los dos son del mismo
+     * libro. La lista de la que se elige tiene que decir eso mismo: hasta la
+     * v1.288.0 el selector pedía `/documentos/options`, que trae los mil
+     * últimos documentos de todas las iglesias que alcance quien mira, y de
+     * los tres flujos.
+     *
+     * `ademas` es el enlace que la ficha ya tenía, para no perderlo al abrirla
+     * (ver el campo). Va DENTRO del alcance y no fuera: así este «además»
+     * tampoco sirve para leer el número de un documento que no le toca a quien
+     * pregunta.
+     */
+    router.get('/documentos/para-responder', requirePerm('documentos', 'view'), (req, res) => {
+      const iglesiaId = Number(req.query.iglesia_id) || 0;
+      const ademas = Number(req.query.ademas) || 0;
+      if (!iglesiaId) return res.json([]);
+      if (!require('../alcance').alcanzaIglesia(req.user, iglesiaId)) {
+        return res.status(403).json({ error: 'Esa iglesia no está entre las que tiene asignadas' });
+      }
+
+      const db = require('../db').db;
+      const params = [];
+      const suyo = require('../alcance').condiciones(module.exports, req.user, params);
+      params.push(iglesiaId);
+      if (ademas) params.push(ademas);
+      const cond = [
+        ...(suyo ? [suyo] : []),
+        `((iglesia_id = ? AND flujo = 'Recibido')${ademas ? ' OR id = ?' : ''})`,
+      ];
+
+      const filas = db
+        .prepare(`SELECT id, numero, titulo, fecha_registro, remitente FROM documentos
+                  WHERE ${cond.join(' AND ')}
+                  ORDER BY COALESCE(fecha_registro, fecha) DESC, id DESC LIMIT 400`)
+        .all(...params);
+
+      res.json(filas.map((d) => ({
+        id: d.id,
+        // Como se cita y como se busca: primero el número, que es lo que uno
+        // tiene a mano —«contesto el oficio 45»—, y después de qué se trataba.
+        label: `${d.numero || 's/n'} · ${d.titulo || 'Sin título'}`
+          + (d.remitente ? ` (de ${d.remitente})` : ''),
+        buscar: [d.numero, d.titulo, d.remitente, d.fecha_registro].filter(Boolean).join(' '),
+      })));
     });
 
     /**

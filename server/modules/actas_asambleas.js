@@ -137,24 +137,11 @@ function loDeLosAsistentesQueNoCaben(data, existing, db) {
  * decir que sí.
  */
 function loDeLaIglesiaQueCambia(data, existing, db) {
-  const antes = existing && existing.iglesia_id;
-  const despues = data.iglesia_id !== undefined ? data.iglesia_id : antes;
   /*
-   * Sin «de dónde» no hay mudanza: un acta que se está creando no viene de
-   * ningún libro, y ese es el caso que cubre el primer `!antes`. Se probó
-   * poniendo delante un `if (!existing) return null` y no cambiaba nada —lo que
-   * quiere decir que sobraba—, así que la intención se dice acá y no se escribe
-   * dos veces.
-   */
-  if (!antes || !despues || Number(antes) === Number(despues)) return null;
-
-  const nombre = (id) => {
-    const f = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(id);
-    return f ? f.nombre : `la iglesia n.º ${id}`;
-  };
-  const cual = existing.numero_acta ? ` n.º ${existing.numero_acta}` : '';
-
-  /*
+   * DETECTARLO es lo que se comparte con la oficina de partes, que tiene el
+   * mismo dueño —la congregación— y por eso la misma mudanza. La frase no: ver
+   * server/cambio-de-iglesia.js, donde está dicho por qué.
+   *
    * El número va con el acta, y es único DENTRO de cada iglesia, así que en el
    * libro nuevo el suyo puede estar tomado. Eso NO se dice acá: desde la
    * v1.283.0 el motor lo revisa antes que este gancho y RECHAZA el traslado con
@@ -164,8 +151,12 @@ function loDeLaIglesiaQueCambia(data, existing, db) {
    * probó, y la primera versión de este aviso traía esa advertencia adentro
    * hasta que el arreglo del motor la dejó sin alcanzar nunca.
    */
-  return `El acta${cual} está en el libro de ${nombre(antes)} y va a pasar al de ${nombre(despues)}. `
-    + `El número se va con ella, y en el libro de ${nombre(antes)} queda el hueco. `
+  const mudanza = require('../cambio-de-iglesia').laMudanza(data, existing, db);
+  if (!mudanza) return null;
+  const cual = existing.numero_acta ? ` n.º ${existing.numero_acta}` : '';
+
+  return `El acta${cual} está en el libro de ${mudanza.deDonde} y va a pasar al de ${mudanza.aDonde}. `
+    + `El número se va con ella, y en el libro de ${mudanza.deDonde} queda el hueco. `
     + 'Cambia también quién puede verla: pasa a estar entre lo de esa otra congregación.';
 }
 

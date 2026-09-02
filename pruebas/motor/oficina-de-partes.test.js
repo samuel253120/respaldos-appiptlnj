@@ -203,8 +203,20 @@ test('no se borra un documento al que otros responden', () => {
 
 /* ── Los documentos que ya estaban ─────────────────────────────────── */
 
+/*
+ * SOLO LOS DE ESTE ARCHIVO. Los archivos del motor corren en PROCESOS
+ * PARALELOS sobre una misma base, así que contar la tabla entera dos veces
+ * —antes y después— no compara lo que hizo la migración: compara lo que hizo
+ * la migración más lo que otro proceso alcanzó a guardar en el medio. Se vio
+ * en la v1.289.0, al agregar un archivo que crea documentos: esta prueba se
+ * puso roja sola, con «se perdió alguno», sin que nada se hubiera perdido.
+ * Las dos iglesias de acá las crea este archivo y nadie más las nombra.
+ */
+const losDeAca = (columnas = 'COUNT(*) c') => db
+  .prepare(`SELECT ${columnas} FROM documentos WHERE iglesia_id IN (?, ?) ORDER BY id`);
+
 test('EL CASO DELICADO: lo que ya estaba se clasifica sin perder nada', () => {
-  const antes = db.prepare('SELECT COUNT(*) c FROM documentos').get().c;
+  const antes = losDeAca().get(iglesia, otra).c;
 
   const viejo = db.prepare(
     'INSERT INTO documentos (titulo, tipo, fecha, iglesia_id) VALUES (?, ?, ?, ?)'
@@ -219,7 +231,7 @@ test('EL CASO DELICADO: lo que ya estaba se clasifica sin perder nada', () => {
   documentosALaOficinaDePartes();
 
   const la = (id) => db.prepare('SELECT * FROM documentos WHERE id = ?').get(id);
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM documentos').get().c, antes + 4, 'se perdió alguno');
+  assert.equal(losDeAca().get(iglesia, otra).c, antes + 4, 'se perdió alguno');
 
   assert.equal(la(ids.recibida).flujo, 'Recibido');
   assert.equal(la(ids.enviada).flujo, 'Emitido');
@@ -243,9 +255,11 @@ test('y conservan su fecha, que es el único orden reconstruible', () => {
 });
 
 test('correrla de nuevo no reclasifica ni renumera nada', () => {
-  const antes = db.prepare('SELECT id, flujo, numero FROM documentos ORDER BY id').all();
+  // También acotado a lo de este archivo, y por lo mismo: ver arriba.
+  const como = () => losDeAca('id, flujo, numero').all(iglesia, otra);
+  const antes = como();
   documentosALaOficinaDePartes();
-  assert.deepEqual(db.prepare('SELECT id, flujo, numero FROM documentos ORDER BY id').all(), antes);
+  assert.deepEqual(como(), antes);
 });
 
 /* ── El libro, para leerlo e imprimirlo ────────────────────────────── */

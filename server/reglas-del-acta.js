@@ -121,18 +121,15 @@ function anotarLaFirma(data, existing, user) {
   }
 }
 
-/**
+/*
  * Varias advertencias de un mismo guardado, en un solo aviso y numeradas.
  *
- * La marca de «guardar igual» es UNA para toda la petición, así que preguntando
- * de a una, quien confirma la primera pasaría las demás sin haberlas leído.
+ * Vivía acá, que es donde hizo falta primero. Desde la v1.289.0 vive en
+ * server/una-sola-pregunta.js, porque la oficina de partes la necesitó igual y
+ * no tenía por qué pedírsela al libro de actas. Se sigue ofreciendo desde acá
+ * para que los dos libros no cambien la línea con que la piden.
  */
-function enUnSoloAviso(avisos) {
-  if (avisos.length === 1) return avisos[0].texto;
-  const cuantas = avisos.length === 2 ? 'dos' : String(avisos.length);
-  return `Hay ${cuantas} cosas que revisar antes de guardar. `
-    + avisos.map((a, i) => `(${i + 1}) ${a.texto}`).join(' ');
-}
+const { enUnSoloAviso } = require('./una-sola-pregunta');
 
 /**
  * El aviso de que un acta se va a borrar, con lo que se lleva puesto.

@@ -1510,7 +1510,7 @@ async function renderMisDatos(zona) {
       </div>
       <form id="recForm">
         <div class="form-grid" id="formGrid">
-          ${d.campos.map((campo) => fieldHtml(campo, d.datos, false)).join('')}
+          ${d.campos.map((campo) => fieldHtml(campo, d.datos, false, d.campos)).join('')}
         </div>
         <div class="form-error" id="perfilError"></div>
         <div class="form-foot"><button class="btn" type="submit">💾 Guardar mis datos</button></div>
@@ -7842,6 +7842,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y revisar los acuerdos',
       seguir: 'Así ocurrió, guardar',
     },
+    documento_que_cambia_de_iglesia: {
+      titulo: '🏛️ El documento cambia de oficina de partes',
+      volver: 'Volver y dejarlo donde está',
+      seguir: 'Estaba mal anotado, moverlo',
+    },
     documento_que_cambia_de_flujo: {
       // Sí es de guardar, y por eso sí va acá: lo que pregunta es si se puede
       // seguir guardando un cambio que vacía campos escritos por alguien.
@@ -8158,7 +8163,7 @@ function formularioEnBloques(campos, row, isNew) {
     bloques[bloques.length - 1].campos.push(f);
   }
   const sinTitulo = !bloques.some((b) => b.titulo);
-  const grilla = (b) => `<div class="form-grid">${b.campos.map((f) => fieldHtml(f, row, isNew)).join('')}</div>`;
+  const grilla = (b) => `<div class="form-grid">${b.campos.map((f) => fieldHtml(f, row, isNew, campos)).join('')}</div>`;
   if (sinTitulo) return bloques.map(grilla).join('');
 
   let numero = 0;
@@ -8175,7 +8180,28 @@ function formularioEnBloques(campos, row, isNew) {
   return `<div class="form-bloques">${cajas.join('')}</div>`;
 }
 
-function fieldHtml(f, row, isNew) {
+/**
+ * Cómo se nombra, en la casilla vacía, el dato que hay que elegir antes.
+ *
+ * Decía «— elija primero el cuerpo —» para todos, y el cuerpo era solo el
+ * primer caso: hoy hay desplegables que esperan el TIPO de un movimiento, la
+ * DIRECCIÓN de una deuda y, desde la v1.289.0, la IGLESIA de un documento. A
+ * quien tenía delante cualquiera de esos, la pantalla le pedía elegir algo que
+ * su formulario ni siquiera muestra.
+ *
+ * El rótulo sale de la declaración del propio módulo, que es de donde sale el
+ * que se ve dos casillas más arriba: así los dos dicen la misma palabra.
+ */
+function elQueFaltaElegir(nombres, campos) {
+  return nombres
+    .map((c) => {
+      const otro = (campos || []).find((x) => x.name === c);
+      return otro ? `«${otro.label}»` : 'el dato del que depende';
+    })
+    .join(' y ');
+}
+
+function fieldHtml(f, row, isNew, campos) {
   const val = row[f.name] != null ? row[f.name] : isNew && f.default != null ? f.default : '';
   const req = f.required ? '<span class="req">*</span>' : '';
   const help = f.help ? `<div class="help">${esc(f.help)}</div>` : '';
@@ -8278,7 +8304,8 @@ function fieldHtml(f, row, isNew) {
       }
 
       const dependeDe = camposDeLaRuta(f);
-      const faltaElegir = dependeDe.length && dependeDe.some((c) => !row[c]);
+      const faltan = dependeDe.filter((c) => !row[c]);
+      const faltaElegir = faltan.length > 0;
       const opts = lista.map((o) => `<option value="${o.id}" ${String(val) === String(o.id) ? 'selected' : ''}>${esc(o.label)}</option>`);
       // Si el valor guardado ya no figura en la lista (p. ej. quien era oficial
       // salió del cuerpo de oficiales), se agrega igual para no perderlo al guardar.
@@ -8286,7 +8313,7 @@ function fieldHtml(f, row, isNew) {
         opts.unshift(`<option value="${esc(val)}" selected>${esc(etiquetaActual)}</option>`);
       }
       const vacio = faltaElegir
-        ? '— elija primero el cuerpo —'
+        ? `— elija primero ${elQueFaltaElegir(faltan, campos)} —`
         : lista.length ? '—' : '— sin opciones —';
       input = `<select name="${f.name}"><option value="">${esc(vacio)}</option>${opts.join('')}</select>`;
       break;
@@ -8857,7 +8884,7 @@ function initSelectoresDependientes(m, row, isNew) {
       const contenedor = form.querySelector(`.fld:has([name="${f.name}"])`);
       if (!contenedor) continue;
       const nuevo = document.createElement('div');
-      nuevo.innerHTML = fieldHtml(f, fila, isNew);
+      nuevo.innerHTML = fieldHtml(f, fila, isNew, m.fields);
       contenedor.replaceWith(nuevo.firstElementChild);
       if (f.type === 'ref') initRefBuscador(f, fila);
       if (f.type === 'select') initSelectBuscable(f);
