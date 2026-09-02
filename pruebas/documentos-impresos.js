@@ -428,6 +428,135 @@ async function primerRegistro(pagina, modulo) {
     }, actasSembradas);
   }
 
+  /*
+   * ── LO QUE SE ESCRIBE EN EL ACTA ES TEXTO, NO EL CÓDIGO DE LA HOJA ──
+   *
+   * La hoja impresa arma el acta poniendo adentro lo que se escribió en sus
+   * campos largos. Los de TEXTO CON FORMATO van tal cual y pueden: el servidor
+   * los limpia al guardarlos. Los de TEXTO PELADO no los limpia nadie —y está
+   * bien que no, porque en todas las demás pantallas se muestran escapados—,
+   * así que la hoja tiene que escaparlos ella.
+   *
+   * No lo hacía. Medido en la v1.277.0: un acta cuyos campos llevaban una caja
+   * con posición y fondo propios se imprimía como un acta completa distinta,
+   * con otro número y otro acuerdo, tapando el membrete, la fecha y el sello de
+   * «BORRADOR». No hacía falta código: la política de contenido no deja
+   * ejecutar nada, pero sí permite estilos escritos en la etiqueta.
+   *
+   * Va acá, en un navegador de verdad, por la misma razón que el sello del
+   * borrador: leyendo el código no se distingue el texto que se escapa del que
+   * se pinta. Lo que se comprueba es lo que se ve en la hoja.
+   */
+  const CAJA = '<div style="position:absolute;inset:0;background:#fff;z-index:99">'
+    + '<h1>ACTA FALSA DE PRUEBA</h1></div>';
+
+  const actasConCaja = await pagina.evaluate(async (caja) => {
+    const cu = await api('GET', '/cuerpos?page=1&pageSize=3');
+    const cuerpo = ((cu && (cu.items || cu.rows)) || [])[0];
+    const ig = await api('GET', '/iglesias?page=1&pageSize=3');
+    const iglesia = ((ig && (ig.items || ig.rows)) || [])[0];
+    if (!cuerpo || !iglesia) return null;
+    const marca = Date.now();
+    const asamblea = await api('POST', '/actas_asambleas', {
+      numero_acta: `IMPR-CAJA-A-${marca}`, fecha: '2026-03-16', tipo: 'Ordinaria',
+      iglesia_id: iglesia.id, agenda: `Punto 1 ${caja}`, acuerdos: `Se acuerda. ${caja}`,
+    }).catch(() => null);
+    const reunion = await api('POST', '/actas_reuniones', {
+      numero_acta: `IMPR-CAJA-R-${marca}`, fecha: '2026-03-16', cuerpo_id: cuerpo.id,
+      agenda: `Punto 1 ${caja}`,
+    }).catch(() => null);
+    return { asamblea: asamblea && asamblea.id, reunion: reunion && reunion.id };
+  }, CAJA);
+
+  if (!actasConCaja || !actasConCaja.asamblea || !actasConCaja.reunion) {
+    revisar('el acta impresa: se pudieron preparar las dos con una caja metida', false,
+      'no se pudo anotar un acta de prueba');
+  } else {
+    console.log('\n── lo escrito en el acta sale como texto, no como hoja ──');
+
+    /** Qué le pasó a la caja metida en esta hoja. */
+    const laCaja = () => pagina.evaluate(() => {
+      const hoja = document.querySelector('.acta-sheet');
+      if (!hoja) return { sinHoja: true };
+      const caja = hoja.getBoundingClientRect();
+      const enElMedio = document.elementFromPoint(caja.left + caja.width / 2, caja.top + 200);
+      return {
+        /*
+         * Lo metido, pintado. Lo que se mide es que NINGÚN elemento del texto
+         * del acta lleve atributos, más los títulos de nivel uno.
+         *
+         * Es la propiedad que vale para los dos casos a la vez, y por eso se
+         * mide ésta y no «cuántas etiquetas hay»: del texto CON FORMATO, el
+         * servidor deja las etiquetas de formato peladas —un <div> o un <p> sin
+         * nada adentro son legítimos y salen bien impresos—, y lo que bota son
+         * justamente los atributos, que es por donde entra la caja que tapa; del
+         * texto PELADO no queda ningún elemento, porque va escapado entero. Un
+         * <h1> aparte, porque ninguno de los dos caminos lo deja pasar y es lo
+         * que se usaría para ponerle otro título a la hoja.
+         */
+        pintado: [...hoja.querySelectorAll('.blk *')].filter((e) => e.attributes.length).length
+          + hoja.querySelectorAll('.blk h1').length,
+        // Lo metido, escrito: se lee en la hoja como los signos que se escribieron
+        escrito: /<div style=/.test(hoja.innerText || ''),
+        // Y quién queda encima de la hoja, que es lo que decide qué se imprime
+        alFrente: enElMedio ? enElMedio.className || enElMedio.tagName : null,
+        dice: /ACTA FALSA DE PRUEBA/.test((hoja.querySelector('h1') || {}).textContent || ''),
+      };
+    });
+
+    for (const [modulo, id, cual] of [
+      ['actas_asambleas', actasConCaja.asamblea, 'de asamblea'],
+      ['actas_reuniones', actasConCaja.reunion, 'de reunión'],
+    ]) {
+      await pagina.goto(`${URL}/#/print/${modulo}/${id}`);
+      await pagina.waitForTimeout(2200);
+      const r = await laCaja();
+      revisar(`el acta ${cual}: lo metido no se pinta en la hoja`, r.pintado === 0,
+        'una caja con posición propia tapa el membrete, el número y el sello de borrador');
+      revisar(`el acta ${cual}: lo metido se lee como texto`, r.escrito === true,
+        'si no se ve escrito es que se interpretó, no que se escapó');
+      revisar(`el acta ${cual}: el título de la hoja sigue siendo el suyo`, r.dice === false,
+        'el título es lo primero que se lee de un documento que se firma');
+      revisar(`el acta ${cual}: nada quedó por encima de la hoja`,
+        /acta-sheet|print-sheet/.test(String(r.alFrente || '')),
+        'lo que quede al frente es lo que se imprime');
+    }
+
+    /*
+     * Y los saltos de línea siguen llegando al papel. Escapar el texto no puede
+     * costar eso: un acta escrita en párrafos que se imprime en un solo bloque
+     * es un acta peor, y sería la manera fácil de romper este arreglo sin que
+     * ninguna de las comprobaciones de arriba se diera cuenta.
+     */
+    const conSaltos = await pagina.evaluate(async () => {
+      const ig = await api('GET', '/iglesias?page=1&pageSize=3');
+      const iglesia = ((ig && (ig.items || ig.rows)) || [])[0];
+      const r = await api('POST', '/actas_asambleas', {
+        numero_acta: `IMPR-SALTOS-${Date.now()}`, fecha: '2026-03-16', tipo: 'Ordinaria',
+        iglesia_id: iglesia.id, agenda: '1. Primero\n2. Segundo\n3. Tercero',
+      }).catch(() => null);
+      return r && r.id;
+    });
+    if (conSaltos) {
+      await pagina.goto(`${URL}/#/print/actas_asambleas/${conSaltos}`);
+      await pagina.waitForTimeout(2200);
+      revisar('el acta escrita en varias líneas se imprime en varias líneas',
+        await pagina.evaluate(() => {
+          const b = document.querySelector('.acta-sheet .blk');
+          return !!b && (b.innerText || '').split('\n').filter((l) => l.trim()).length >= 3;
+        }),
+        'escapar el texto no puede costar los saltos de línea de un acta');
+      await pagina.evaluate(async (id) => {
+        await api('DELETE', `/actas_asambleas/${id}?igual_asi=1`).catch(() => null);
+      }, conSaltos);
+    }
+
+    await pagina.evaluate(async (ids) => {
+      await api('DELETE', `/actas_asambleas/${ids.asamblea}?igual_asi=1`).catch(() => null);
+      await api('DELETE', `/actas_reuniones/${ids.reunion}?igual_asi=1`).catch(() => null);
+    }, actasConCaja);
+  }
+
   if (sembrado) {
     await pagina.evaluate(async (id) => {
       const movs = await api('GET', `/tesoreria?page=1&pageSize=50&f_deuda_id=${id}`).catch(() => null);

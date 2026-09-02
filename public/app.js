@@ -7266,8 +7266,13 @@ async function viewForm(name, id, precarga) {
   // El acta: traer el texto del documento adjunto, y ver a quién enlaza
   if (name === 'actas_reuniones') prepararElActa(id, row, isNew);
 
-  // El acta de asamblea también estrena su número, pero se numera por iglesia
+  /*
+   * El acta de asamblea estrena su número por iglesia, y desde la v1.278.0
+   * también trae el texto de su documento adjunto: su desarrollo pasó a ser un
+   * campo con formato, que es donde ese botón vive.
+   */
   if (name === 'actas_asambleas') {
+    ponerBotonDeTranscribir(id, row, isNew, 'actas_asambleas');
     proponerElNumeroDeActa(isNew, {
       ruta: '/actas_asambleas/proximo-numero',
       depende: ['iglesia_id', 'fecha'],
@@ -11358,6 +11363,45 @@ function printActa(m, row, esAsamblea, asistencia) {
    */
   const pendiente = firmada ? '' : '<br><span class="pend">Pendiente de firma</span>';
 
+  /*
+   * LO QUE EL ACTA DICE, IMPRESO SEGÚN LO QUE CADA CAMPO ES.
+   *
+   * Estos tres campos son los que llevan el acta adentro, y NO son todos de la
+   * misma clase: hay módulos donde son texto con formato y módulos donde son
+   * texto pelado. La diferencia decide si lo guardado se puede poner tal cual
+   * en la hoja o hay que escaparlo antes, y ponerlos todos tal cual era un
+   * agujero de verdad, no un descuido de estilo.
+   *
+   * El TEXTO CON FORMATO va tal cual, y puede: viene limpio del servidor
+   * —server/textorico.js deja las etiquetas de formato y bota todo lo demás,
+   * sin atributos, así que no queda por dónde colarse—. Escapándolo, el acta
+   * saldría impresa con las etiquetas a la vista, «<p>Se acordó…</p>», en un
+   * documento que se firma.
+   *
+   * El TEXTO PELADO se escapa, y hay que escaparlo: nadie lo limpia al
+   * guardarlo, porque en todas las demás pantallas se muestra escapado y lo
+   * correcto es guardar lo que la persona escribió. Acá salía sin escapar, y
+   * con eso lo que se escribía en el acta no era el texto de la hoja sino su
+   * código. Medido en la v1.277.0: un acta de asamblea cuyos «Acuerdos»
+   * llevaban una caja con posición y fondo propios se imprimía como un acta
+   * completa distinta —otro número, otro acuerdo—, tapando el membrete, la
+   * fecha y hasta el aviso de «BORRADOR». No hacía falta código para eso: la
+   * política de contenido del sistema no deja ejecutar nada, pero sí permite
+   * estilos escritos en la etiqueta, y con eso alcanzaba.
+   *
+   * Se mira el TIPO DECLARADO en el módulo y no una lista escrita acá, y lo
+   * que no sea texto con formato se escapa. Así, un campo que mañana se agregue
+   * al acta —o uno que cambie de clase— entra por el lado seguro sin que nadie
+   * tenga que acordarse de esta línea.
+   */
+  const loQueDiceElActa = (campo, titulo) => {
+    const valor = row[campo];
+    if (!valor) return '';
+    const f = ((m && m.fields) || []).find((x) => x.name === campo);
+    const cuerpo = f && f.type === 'richtext' ? valor : esc(valor);
+    return `<h3>${esc(titulo)}</h3><div class="blk">${cuerpo}</div>`;
+  };
+
   /** Un grupo de la lista enlazada, solo si tiene gente. */
   const grupoImpreso = (titulo, gente, conMotivo) => {
     if (!gente || !gente.length) return '';
@@ -11396,16 +11440,9 @@ function printActa(m, row, esAsamblea, asistencia) {
       </table>
       ${listaEnlazada}
       ${asistentes ? `<h3>Asistentes</h3><p>${esc(asistentes)}</p>` : ''}
-      ${/*
-          Sin esc(): estos campos son de texto con formato y ya vienen limpios
-          del servidor (server/textorico.js deja solo las etiquetas de formato
-          y bota todo lo demás), igual que en la ficha en pantalla. Escapándolos
-          el acta salía impresa con las etiquetas a la vista —«<p>Se acordó…</p>»—
-          en un documento que se firma.
-        */''}
-      ${row.agenda ? `<h3>Agenda / Orden del día</h3><div class="blk">${row.agenda}</div>` : ''}
-      ${row.desarrollo ? `<h3>Desarrollo</h3><div class="blk">${row.desarrollo}</div>` : ''}
-      ${row.acuerdos ? `<h3>Acuerdos</h3><div class="blk">${row.acuerdos}</div>` : ''}
+      ${loQueDiceElActa('agenda', 'Agenda / Orden del día')}
+      ${loQueDiceElActa('desarrollo', 'Desarrollo')}
+      ${loQueDiceElActa('acuerdos', 'Acuerdos')}
       <div class="acta-firmas">
         <div class="firma">${esc(row.presidida_por || 'Preside')}<br>Preside${pendiente}</div>
         <div class="firma">${esc(row.secretario || 'Secretario(a)')}<br>Secretario(a)${pendiente}</div>
@@ -17247,7 +17284,7 @@ function ponerBotonDePdf(id, isNew) {
  * en el servidor —se sube al guardar—, y un botón que solo sabe fallar es peor
  * que no tenerlo.
  */
-function ponerBotonDeTranscribir(id, row, isNew) {
+function ponerBotonDeTranscribir(id, row, isNew, modulo = 'actas_reuniones') {
   if (isNew || !row.documento) return;
   const barra = document.querySelector('#rico_desarrollo .rico-barra');
   if (!barra || document.getElementById('actaTranscribir')) return;
@@ -17275,7 +17312,7 @@ function ponerBotonDeTranscribir(id, row, isNew) {
     boton.disabled = true;
     boton.textContent = 'Leyendo el documento…';
     try {
-      const r = await api('POST', `/actas_reuniones/${id}/transcribir`);
+      const r = await api('POST', `/${modulo}/${id}/transcribir`);
       hoja.innerHTML = r.texto;
       oculto.value = r.texto;
       hoja.dispatchEvent(new Event('input'));
