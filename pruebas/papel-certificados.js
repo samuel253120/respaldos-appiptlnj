@@ -374,7 +374,13 @@ print(chr(10).join(x.get_textpage().get_text_range() for x in d))
       huerfano.texto.slice(0, 200));
     revisar('y sigue cabiendo en una hoja', huerfano.hojas === 1);
   } finally {
-    if (elHuerfano) await api('DELETE', `/certificados/${elHuerfano.id}`).catch(() => {});
+    /*
+     * Con `igual_asi`, que desde la v1.294.0 borrar un certificado PREGUNTA
+     * —dice qué se lleva y que el número vuelve a ofrecerse—. Sin eso, este
+     * borrado contestaba 400, el `catch` se lo tragaba y la suite dejaba un
+     * certificado de mentira en la iglesia cada vez que se corría.
+     */
+    if (elHuerfano) await api('DELETE', `/certificados/${elHuerfano.id}?igual_asi=1`).catch(() => {});
   }
 
   for (const { tipo, cert, formatoId } of suyos) {

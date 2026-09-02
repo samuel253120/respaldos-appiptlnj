@@ -28,9 +28,87 @@
  * que la disposición necesita se hace en el servidor, no en la pantalla. Un
  * certificado de matrimonio a nombre de una sola persona es un papel que hay
  * que rehacer.
+ *
+ * ---------------------------------------------------------------------------
+ * Y NO SE BORRA SIN PREGUNTAR, ni se borra en silencio. Un certificado es lo
+ * único de este sistema que se firma, se sella y sale del edificio: borrarlo
+ * libera su número —que el sistema volverá a proponer— y deja fuera del
+ * alcance de nadie lo que decía. La pregunta lo dice, y `camposAlBorrar`
+ * conserva la ficha entera en el Registro de Cambios. Para dejar un
+ * certificado sin efecto CONSERVANDO su número está «Anulado».
  */
 /** El estado de lo que ya no vale. El otro es «Emitido». */
 const ANULADO = 'Anulado';
+
+/**
+ * Lo que se le dice a alguien antes de borrar un certificado.
+ *
+ * MEDIDO en la v1.293.0: `DELETE /certificados/6` contestaba 200 sin una
+ * palabra, y de los dieciséis datos que traía esa ficha quedaban SEIS en el
+ * Registro de Cambios —los del listado—. No quedaban la fecha del bautismo,
+ * que es lo que el papel certifica, ni el oficiante que lo firmó, ni el texto
+ * propio, ni la nota que decía «Se entregó en mano el 3 de marzo».
+ *
+ * Es el mismo arreglo que la oficina de partes cerró en la v1.286.0, y acá
+ * pesa más: un documento de la oficina de partes es la anotación de algo que
+ * pasó; un certificado ES el documento.
+ *
+ * LA PREGUNTA DICE TRES COSAS, y las tres hacen falta:
+ *
+ *   · CUÁL es —número, tipo y titular—, porque se borra desde un listado
+ *     donde todas las filas se parecen.
+ *   · QUÉ SE LLEVA. No es lo mismo una ficha a medio escribir que un
+ *     certificado con su oficiante, su texto y sus padrinos.
+ *   · Y QUÉ PASA CON EL NÚMERO, que es lo único que esta pregunta sabe y el
+ *     «¿está seguro?» del navegador no: el número vuelve a ofrecerse, y si el
+ *     papel ya se entregó quedan dos en circulación diciendo ser el mismo.
+ *     Por eso nombra ANULAR, que es la operación que conserva el número.
+ */
+function avisoDelCertificadoQueSeBorra(fila) {
+  const { comoSeLee } = require('../fechas');
+  const { enLista } = require('../formato');
+
+  const cual = fila.numero
+    ? `el certificado n.º ${fila.numero}`
+    : 'un certificado sin número';
+  const deQue = fila.tipo ? ` de ${fila.tipo}` : '';
+  const deQuien = fila.nombre_titular ? `, a nombre de ${fila.nombre_titular}` : '';
+  const cuando = fila.fecha_emision ? `, emitido el ${comoSeLee(fila.fecha_emision)}` : '';
+
+  /*
+   * Qué trae adentro. Los datos de las hojas de presentación y de matrimonio
+   * se cuentan juntos y no uno por uno: «los padres y los padrinos» dice lo
+   * que hay que saber, y siete nombres seguidos en una pregunta no se leen.
+   */
+  const trae = [];
+  if (fila.fecha_evento) trae.push(`la fecha del evento (${comoSeLee(fila.fecha_evento)})`);
+  if (fila.oficiante_id) trae.push('el oficiante que lo firma');
+  if (fila.texto) trae.push('un texto propio');
+  if (fila.conyuge) trae.push('el otro cónyuge');
+  const deLaHoja = ['fecha_nacimiento', 'padre', 'madre', 'padrino_1', 'madrina_1', 'padrino_2', 'madrina_2']
+    .filter((c) => fila[c]);
+  if (deLaHoja.length) trae.push('los datos de la presentación (los padres y los padrinos)');
+  if (fila.notas) trae.push('las notas internas');
+  const conQue = trae.length ? ` Trae ${enLista(trae)}.` : ' No tiene nada más escrito.';
+
+  /* Que haya salido de una solicitud es la respuesta que se le dio a alguien */
+  const deLaSolicitud = fila.solicitud_id
+    ? ' Salió de una solicitud, y esa solicitud quedará diciendo que se emitió algo que ya no está.'
+    : '';
+
+  const anulado = fila.estado === ANULADO
+    ? ' Ya está anulado, así que el papel entregado ya no vale — pero la fila es la constancia de que existió.'
+    : '';
+
+  const elNumero = fila.numero
+    ? ` El número ${fila.numero} vuelve a quedar disponible y el sistema lo va a proponer de nuevo:`
+      + ' si el papel ya se entregó, quedan dos certificados en circulación diciendo ser el mismo.'
+      + ' Para dejarlo sin efecto conservando el número está «Anulado».'
+    : ' No lleva número, así que no libera ninguno.';
+
+  return `Va a eliminar ${cual}${deQue}${deQuien}${cuando}.${conQue}${deLaSolicitud}${anulado}`
+    + ` Lo que decía queda copiado en el Registro de Cambios.${elNumero}`;
+}
 
 module.exports = {
   name: 'certificados',
@@ -47,6 +125,26 @@ module.exports = {
   printable: true,
   searchFields: ['numero', 'nombre_titular', 'tipo'],
   listFields: ['numero', 'tipo', 'nombre_titular', 'fecha_emision', 'iglesia_id', 'estado'],
+
+  /**
+   * Lo que se conserva de un certificado cuando se borra.
+   *
+   * La constancia del borrado guardaba, por omisión, los campos del LISTADO
+   * —seis—, que es una lista pensada para caber en columnas y no para
+   * conservar nada. Medido en la v1.293.0 sobre un certificado de bautismo
+   * completo: de dieciséis datos escritos quedaban seis, y no estaban la
+   * FECHA DEL BAUTISMO —que es lo que el papel certifica—, el oficiante que
+   * lo firmó, el texto propio ni la nota que decía cuándo se entregó en mano.
+   *
+   * Acá van los otros: los de cualquier certificado, los de las dos hojas que
+   * piden más —la presentación de niños y el matrimonio— y de dónde salió.
+   * Un certificado borrado no se puede volver a mirar; esta línea es lo único
+   * que queda de él, y tiene que alcanzar para rehacerlo.
+   */
+  camposAlBorrar: ['fecha_evento', 'oficiante_id', 'miembro_id', 'solicitud_id', 'disposicion',
+    'ciudad', 'texto', 'fecha_anulacion', 'notas',
+    'fecha_nacimiento', 'padre', 'madre', 'padrino_1', 'madrina_1', 'padrino_2', 'madrina_2',
+    'conyuge'],
   defaultSort: { field: 'fecha_emision', dir: 'desc' },
   fields: [
     {
@@ -259,6 +357,20 @@ module.exports = {
         data.ciudad = (iglesia && iglesia.ciudad) || null;
       }
       return null;
+    },
+
+    /**
+     * Borrar un certificado se pregunta (ver `avisoDelCertificadoQueSeBorra`).
+     *
+     * NO SE PROHÍBE, y es a propósito: un certificado mal emitido —el tipo
+     * equivocado, la iglesia equivocada, uno creado dos veces por apretar dos
+     * veces— hay que poder borrarlo, y prohibirlo dejaría el libro lleno de
+     * fichas que nadie puede sacar. Lo que hacía falta es que quien borra vea
+     * qué se lleva y sepa que existe la otra operación.
+     */
+    beforeDelete(fila, { confirmado }) {
+      if (confirmado) return null;
+      return { error: avisoDelCertificadoQueSeBorra(fila), confirmar: 'certificado_que_se_borra' };
     },
   },
 
