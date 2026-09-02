@@ -52,6 +52,33 @@ const ESTADOS = ['Ingresado', 'Derivado', 'En trámite', 'Respondido', 'Despacha
 /** Los tres en que el asunto sigue abierto. Los otros tres dicen que terminó. */
 const ABIERTOS_DEL_TRAMITE = ESTADOS.slice(0, 3);
 
+/**
+ * QUÉ CAMPO ES DE QUÉ FLUJO.
+ *
+ * Un documento cambia de flujo y lo que era del anterior deja de tener sentido:
+ * un número de oficina de partes puesto a una escritura afirma que esa
+ * escritura entró un día, y un plazo para responder en algo que nadie mandó no
+ * es un plazo de nadie. Por eso se limpia, y la regla es correcta.
+ *
+ * Estaba escrita en tres «if» sueltos dentro del gancho de guardado, que es lo
+ * que la hacía invisible: el servidor contestaba 200 y vaciaba cinco campos sin
+ * decir una palabra. Acá arriba se lee de una vez, y de esta misma tabla salen
+ * las dos cosas —lo que se limpia y lo que se avisa— para que no puedan decir
+ * cosas distintas.
+ */
+const LO_QUE_ES_DE_CADA_FLUJO = {
+  Recibido: ['numero', 'remitente', 'recibido_por', 'derivado_a', 'plazo'],
+  Emitido: ['numero', 'destinatario', 'firmado_por', 'responde_a'],
+  'Interno o de archivo': ['contraparte'],
+};
+
+/** Los campos que este flujo NO usa, y que por lo tanto se limpian. */
+function loQueNoEsDeEsteFlujo(flujo) {
+  const suyos = new Set(LO_QUE_ES_DE_CADA_FLUJO[flujo] || []);
+  const todos = new Set(Object.values(LO_QUE_ES_DE_CADA_FLUJO).flat());
+  return [...todos].filter((c) => !suyos.has(c));
+}
+
 const { comoSeLee } = require('../fechas');
 const { enLista } = require('../formato');
 
@@ -195,6 +222,30 @@ function avisoDelDocumentoQueSeBorra(fila, db) {
     + ` Lo que decía queda copiado en el Registro de Cambios.${elLibro}`;
 }
 
+/**
+ * Lo que se le dice a alguien antes de vaciarle campos por cambiar el flujo.
+ *
+ * Solo se nombra lo que DE VERDAD tiene algo escrito: avisar de cinco campos
+ * cuando cuatro están vacíos convierte la pregunta en un trámite, y una
+ * pregunta que sale siempre se aprieta sin leer.
+ */
+function avisoDelFlujoQueCambia(campos, deQue, aQue) {
+  // Los rótulos salen de la propia declaración de más abajo —se lee al
+  // preguntar, no al arrancar— para que un campo que se renombre no deje este
+  // aviso hablando de otra cosa.
+  const nombres = campos.map((c) => {
+    const f = (module.exports.fields || []).find((x) => x.name === c);
+    return `«${f ? f.label : c}»`;
+  });
+  const uno = campos.length === 1;
+  return `Va a pasar este documento de «${deQue}» a «${aQue}», y eso vacía ${enLista(nombres)}:`
+    + ` ${uno ? 'ese dato es' : 'esos datos son'} del flujo anterior`
+    + ` y no ${uno ? 'tiene' : 'tienen'} dónde ir en el nuevo.`
+    + (campos.includes('numero')
+      ? ' El número se libera y el libro vuelve a ofrecerlo, así que la anotación desaparece del correlativo.'
+      : '');
+}
+
 module.exports = {
   name: 'documentos',
   label: 'Oficina de Partes',
@@ -213,7 +264,8 @@ module.exports = {
   display: '{numero} — {titulo}',
   dateField: 'fecha',
   printable: true,
-  searchFields: ['numero', 'titulo', 'descripcion', 'etiquetas', 'remitente', 'destinatario', 'referencia'],
+  searchFields: ['numero', 'titulo', 'descripcion', 'etiquetas', 'remitente', 'destinatario',
+    'contraparte', 'referencia'],
   listFields: ['numero', 'flujo', 'fecha_registro', 'titulo', 'tipo', 'de_o_para', 'estado', 'iglesia_id', 'archivo'],
   filterFields: ['flujo', 'tipo', 'estado'],
   defaultSort: { field: 'fecha_registro', dir: 'desc' },
@@ -236,7 +288,7 @@ module.exports = {
    * tabla—, pero cuando el archivo se borró junto con la ficha, su nombre es lo
    * único que queda de él.
    */
-  camposAlBorrar: ['fecha', 'referencia', 'folios', 'remitente', 'destinatario', 'medio',
+  camposAlBorrar: ['fecha', 'referencia', 'folios', 'remitente', 'destinatario', 'contraparte', 'medio',
     'recibido_por', 'firmado_por', 'descripcion', 'etiquetas', 'observaciones',
     'derivado_a', 'plazo', 'responde_a', 'cuerpo_id', 'archivo'],
 
@@ -248,7 +300,9 @@ module.exports = {
        * una, y lo que uno busca es siempre la contraparte.
        */
       name: 'de_o_para', label: 'De / Para', type: 'texto',
-      calc: (fila) => (fila.flujo === 'Emitido' ? fila.destinatario : fila.remitente) || '',
+      calc: (fila) => (fila.flujo === 'Emitido' ? fila.destinatario
+        : fila.flujo === 'Interno o de archivo' ? fila.contraparte
+          : fila.remitente) || '',
     },
   ],
 
@@ -345,6 +399,27 @@ module.exports = {
       showIf: ES_EMITIDO, help: 'La institución o la persona a quien va dirigido.',
     },
     {
+      /*
+       * CON QUIÉN ES un documento que no entró ni salió por la oficina.
+       *
+       * «Interno o de archivo» es, según este mismo módulo, donde van «una
+       * escritura, un contrato, un documento legal que simplemente se guarda»,
+       * y a un contrato se le pregunta con quién se firmó. No tenía dónde
+       * decirlo: el remitente solo se muestra en lo recibido y el destinatario
+       * solo en lo emitido, así que un contrato de arriendo quedaba guardado
+       * sin la otra parte —y lo que se mandara por la API se borraba—.
+       *
+       * Es un campo propio y no el remitente con otro nombre: a un contrato no
+       * lo «envía» nadie. Y va por dentro del mismo bloque, porque contesta la
+       * misma pregunta que los otros dos, solo que para el tercer flujo.
+       */
+      name: 'contraparte', label: 'Con quién es', type: 'text',
+      seccion: 'Quién lo manda / a quién va',
+      showIf: { field: 'flujo', equals: 'Interno o de archivo' },
+      help: 'La otra parte: con quién se firmó el contrato, de quién es la escritura, ante quién se '
+        + 'constituyó. Lo que se guarda sin haber entrado ni salido igual es de alguien.',
+    },
+    {
       name: 'medio', label: 'Por dónde', type: 'select', options: MEDIOS,
       seccion: 'Quién lo manda / a quién va',
     },
@@ -376,16 +451,9 @@ module.exports = {
   ],
 
   hooks: {
-    beforeSave(data, { existing, db }) {
+    beforeSave(data, { existing, db, confirmado }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
       const flujo = String(dato('flujo') || 'Recibido');
-
-      /*
-       * Lo que no entró ni salió por la oficina no lleva correlativo: un
-       * número de oficina de partes puesto a una escritura dice que esa
-       * escritura entró un día, y no entró.
-       */
-      if (flujo === 'Interno o de archivo') data.numero = null;
 
       // La fecha de registro, si no se puso: el día del documento, o hoy
       if (flujo !== 'Interno o de archivo' && !dato('fecha_registro')) {
@@ -397,18 +465,45 @@ module.exports = {
       if (responde && existing && Number(existing.id) === responde) {
         return 'Un documento no puede ser la respuesta de sí mismo.';
       }
-      if (flujo !== 'Emitido') data.responde_a = null;
 
-      // Lo que solo aplica al otro flujo no se queda escrito de antes
-      if (flujo !== 'Recibido') {
-        data.remitente = null;
-        data.recibido_por = null;
-        data.derivado_a = null;
-        data.plazo = null;
+      /*
+       * Lo que es del otro flujo se limpia, y ANTES SE AVISA.
+       *
+       * Medido en la v1.286.0: se mandaba una sola cosa —el flujo— y volvían
+       * cinco campos en nulo, con un 200 y sin una palabra. Ahora se pregunta,
+       * y se nombra solo lo que de verdad tenía algo escrito: una pregunta que
+       * sale siempre se aprieta sin leer.
+       *
+       * Solo al CAMBIAR de flujo. Al crear no hay nada que perder, y guardar un
+       * documento sin tocarle el flujo no puede preguntar nada: sería el aviso
+       * que sale en cada guardado, que es la manera más segura de que deje de
+       * leerse.
+       */
+      const seLimpian = loQueNoEsDeEsteFlujo(flujo);
+      const cambiaDeFlujo = existing && String(existing.flujo || '') !== flujo;
+      if (cambiaDeFlujo && !confirmado) {
+        const conAlgo = seLimpian.filter((c) => {
+          const v = dato(c);
+          return v !== null && v !== undefined && v !== '';
+        });
+        if (conAlgo.length) {
+          return {
+            error: avisoDelFlujoQueCambia(conAlgo, existing.flujo, flujo),
+            confirmar: 'documento_que_cambia_de_flujo',
+          };
+        }
       }
-      if (flujo !== 'Emitido') {
-        data.destinatario = null;
-        data.firmado_por = null;
+      for (const campo of seLimpian) {
+        data[campo] = null;
+        /*
+         * Y el enlace del campo de persona, que va aparte. Sin esto quedaba a
+         * medias: «Derivado a» en blanco y `derivado_a_id` apuntando todavía a
+         * alguien, así que la ficha mostraba el nombre —lo rehace el motor
+         * desde el enlace— mientras la base decía que no había nadie.
+         */
+        if (`${campo}_id` in (existing || {}) || data[`${campo}_id`] !== undefined) {
+          data[`${campo}_id`] = null;
+        }
       }
 
       const folios = dato('folios');

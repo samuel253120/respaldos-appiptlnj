@@ -126,9 +126,17 @@ test('el prefijo de cada libro lo pone la iglesia', () => {
 
 /* ── Lo que no pasó por la oficina ─────────────────────────────────── */
 
-const guardando = (datos, existing = null) => {
+/**
+ * Llama al gancho de guardado y devuelve lo que quedó en los datos.
+ *
+ * `confirmado` va en true por omisión: desde la v1.287.0 cambiar el flujo
+ * PREGUNTA antes de vaciar lo que era del anterior, y estas pruebas miran qué
+ * se limpia, no si se pregunta —eso se comprueba en su propio archivo—. Con la
+ * pregunta sin contestar el gancho se devuelve enseguida y no limpia nada.
+ */
+const guardando = (datos, existing = null, confirmado = true) => {
   const copia = { ...datos };
-  const error = def.hooks.beforeSave(copia, { existing, db });
+  const error = def.hooks.beforeSave(copia, { existing, db, confirmado });
   return { error, datos: copia };
 };
 

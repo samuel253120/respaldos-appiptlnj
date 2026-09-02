@@ -115,8 +115,14 @@ test('y pasar a archivo uno que sí tenía número tampoco lo exige de vuelta', 
   });
   assert.equal(creado.estado, 201);
 
+  /*
+   * Confirmando: desde la v1.287.0 cambiar el flujo avisa de que se vacía lo
+   * que era del anterior —acá, el número—. Lo que esta prueba mira es que
+   * después de contestar que sí no quede exigido un número que ese flujo no
+   * lleva; que se avise se comprueba en su propio archivo.
+   */
   const guardado = await api('PUT', `/documentos/${creado.json.id}`, {
-    flujo: 'Interno o de archivo',
+    flujo: 'Interno o de archivo', igual_asi: true,
   });
   assert.equal(guardado.estado, 200, 'el flujo que no numera no puede quedar bloqueado por el número');
   assert.equal(guardado.json.numero, null);

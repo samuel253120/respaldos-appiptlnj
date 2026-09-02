@@ -7842,6 +7842,13 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y revisar los acuerdos',
       seguir: 'Así ocurrió, guardar',
     },
+    documento_que_cambia_de_flujo: {
+      // Sí es de guardar, y por eso sí va acá: lo que pregunta es si se puede
+      // seguir guardando un cambio que vacía campos escritos por alguien.
+      titulo: '🔀 Cambiar el flujo vacía datos que ya están escritos',
+      volver: 'Volver y revisarlos',
+      seguir: 'Cambiarlo igual',
+    },
     quorum_sin_asistentes: {
       titulo: '🔢 Dice que hubo quórum, pero no dice con cuántos',
       volver: 'Volver y anotar los asistentes',
