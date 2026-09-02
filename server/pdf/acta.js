@@ -109,14 +109,55 @@ function asistentesEscritosAMano(actaFila) {
  * `quien` es la persona que lo pidió: su nombre va al pie, porque un documento
  * que se entrega y no dice quién lo sacó no se puede preguntar después.
  */
-function generar(actaFila, { quien } = {}) {
+/**
+ * QUÉ CLASE DE ACTA ES ÉSTA.
+ *
+ * El PDF se escribió para las actas de reunión de un cuerpo. Las de asamblea son
+ * el mismo documento con distinto dueño y necesitan el mismo PDF, así que en vez
+ * de un segundo generador —que habría que arreglar dos veces— acá van las pocas
+ * cosas que cambian: cómo se llama, de quién es, y cómo se llama la sesión en
+ * los títulos y en el sello. Todo lo demás lo comparten.
+ *
+ * Los rótulos siguen los del propio módulo: el acta de un cuerpo acuerda
+ * «compromisos» y la de una asamblea, «resoluciones».
+ */
+const CLASES = {
+  actas_reuniones: {
+    titulo: 'ACTA DE REUNIÓN',
+    asunto: 'Acta de reunión de cuerpo',
+    sesion: 'la reunión',
+    desarrollo: 'Desarrollo de la reunión',
+    acuerdos: 'Acuerdos y compromisos',
+    // De quién es: de su iglesia y de su cuerpo
+    deQuien: (fila) => [
+      fila.iglesia_id && (db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(fila.iglesia_id) || {}).nombre,
+      fila.cuerpo_id && (db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(fila.cuerpo_id) || {}).nombre,
+    ].filter(Boolean).join(' — '),
+    conAsistencia: true,
+  },
+  actas_asambleas: {
+    titulo: 'ACTA DE ASAMBLEA',
+    asunto: 'Acta de asamblea general',
+    sesion: 'la asamblea',
+    desarrollo: 'Desarrollo de la asamblea',
+    acuerdos: 'Acuerdos y resoluciones',
+    // De la congregación entera, que es de quien es una asamblea general
+    deQuien: (fila) => (fila.iglesia_id
+      ? (db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(fila.iglesia_id) || {}).nombre || ''
+      : ''),
+    conAsistencia: false,
+  },
+};
+
+function generar(actaFila, { quien, modulo = 'actas_reuniones' } = {}) {
+  const ES = CLASES[modulo] || CLASES.actas_reuniones;
   const doc = new PDFDocument({
     size: 'LETTER',
     margins: { top: 56, bottom: 64, left: 56, right: 56 },
     info: {
-      Title: `Acta de Reunión N.º ${actaFila.numero_acta || ''}`,
+      Title: `${ES.titulo.charAt(0) + ES.titulo.slice(1).toLowerCase()} N.º ${actaFila.numero_acta || ''}`,
       Author: ajustes.obtener('iglesia_nombre') || 'Sistema de Gestión de Iglesias',
-      Subject: 'Acta de reunión de cuerpo',
+      Subject: ES.asunto,
     },
     // El pie se dibuja a mano en cada página (ver más abajo), así que pdfkit no
     // debe agregar la página nueva por su cuenta antes de que se pinte.
@@ -159,15 +200,9 @@ function generar(actaFila, { quien } = {}) {
 
   // ── Título ─────────────────────────────────────────────────────────────
   doc.font('Helvetica-Bold').fontSize(16).fillColor(TINTA)
-    .text(`ACTA DE REUNIÓN N.º ${actaFila.numero_acta || ''}`, izq, doc.y, { width: ancho, align: 'center' });
+    .text(`${ES.titulo} N.º ${actaFila.numero_acta || ''}`, izq, doc.y, { width: ancho, align: 'center' });
 
-  const iglesia = actaFila.iglesia_id
-    ? (db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(actaFila.iglesia_id) || {}).nombre
-    : null;
-  const cuerpo = actaFila.cuerpo_id
-    ? (db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(actaFila.cuerpo_id) || {}).nombre
-    : null;
-  const bajada = [iglesia, cuerpo].filter(Boolean).join(' — ');
+  const bajada = ES.deQuien(actaFila);
   if (bajada) {
     doc.moveDown(0.25);
     doc.font('Helvetica').fontSize(10.5).fillColor(SUAVE)
@@ -186,7 +221,7 @@ function generar(actaFila, { quien } = {}) {
   if (actaFila.estado !== 'Firmada') {
     const que = String(actaFila.estado || 'Borrador').toUpperCase();
     const porque = actaFila.estado === 'Aprobada'
-      ? 'Aprobada en la reunión y todavía sin firmar: no es el documento definitivo.'
+      ? `Aprobada en ${ES.sesion} y todavía sin firmar: no es el documento definitivo.`
       : 'Documento de trabajo: no ha sido aprobado ni firmado.';
     doc.moveDown(0.8);
     const arriba = doc.y;
@@ -223,6 +258,18 @@ function generar(actaFila, { quien } = {}) {
   dato('Tipo', actaFila.tipo);
   dato('Presidida por', actaFila.presidida_por);
   dato('Secretario(a)', actaFila.secretario);
+  /*
+   * Lo propio de una asamblea. Va junto a los demás datos y NO reemplaza al
+   * recuadro de más arriba: el quórum decide si lo que se acordó vale, así que
+   * se dice en los dos lados, igual que en la hoja de la pantalla.
+   */
+  if (modulo === 'actas_asambleas') {
+    const cuantos = actaFila.total_asistentes;
+    const gente = cuantos === null || cuantos === undefined || cuantos === ''
+      ? 'No se anotó cuántos asistieron'
+      : `${cuantos} asistentes`;
+    dato('Asistentes / Quórum', `${gente} — ${actaFila.hubo_quorum ? 'hubo quórum' : 'sin quórum'}`);
+  }
   dato('Estado', actaFila.estado);
   // Quién la firmó y cuándo, desde la 1.272.0. Un acta sin firmar no los trae
   // y `dato` se salta solo lo que viene vacío.
@@ -239,7 +286,7 @@ function generar(actaFila, { quien } = {}) {
     doc.moveDown(0.5);
   };
 
-  const asistencia = laAsistencia(actaFila);
+  const asistencia = ES.conAsistencia ? laAsistencia(actaFila) : null;
   if (asistencia) {
     titulo('Asistencia');
     doc.font('Helvetica').fontSize(9.5).fillColor(SUAVE).text(
@@ -281,11 +328,11 @@ function generar(actaFila, { quien } = {}) {
       .text(String(actaFila.agenda), izq, doc.y, { width: ancho });
   }
   if ((actaFila.desarrollo || '').trim()) {
-    titulo('Desarrollo de la reunión');
+    titulo(ES.desarrollo);
     textoRico.dibujar(doc, actaFila.desarrollo);
   }
   if ((actaFila.acuerdos || '').trim()) {
-    titulo('Acuerdos y compromisos');
+    titulo(ES.acuerdos);
     textoRico.dibujar(doc, actaFila.acuerdos);
   }
 
@@ -353,10 +400,13 @@ function generar(actaFila, { quien } = {}) {
 }
 
 /** Cómo se va a llamar el archivo que baja. */
-function nombreDelArchivo(actaFila) {
+function nombreDelArchivo(actaFila, modulo = 'actas_reuniones') {
   const numero = String(actaFila.numero_acta || actaFila.id).replace(/[^\w.-]+/g, '-');
   const fecha = (actaFila.fecha || '').slice(0, 10);
-  return `Acta ${numero}${fecha ? ` ${fecha}` : ''}.pdf`.replace(/\s+/g, ' ').trim();
+  // «Acta de asamblea 003-2026.pdf»: en una carpeta de descargas conviene que se
+  // distinga de las de reunión sin tener que abrirla
+  const que = modulo === 'actas_asambleas' ? 'Acta de asamblea' : 'Acta';
+  return `${que} ${numero}${fecha ? ` ${fecha}` : ''}.pdf`.replace(/\s+/g, ' ').trim();
 }
 
 module.exports = { generar, nombreDelArchivo };

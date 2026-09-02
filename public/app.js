@@ -7290,6 +7290,7 @@ async function viewForm(name, id, precarga) {
    */
   if (name === 'actas_asambleas') {
     ponerBotonDeTranscribir(id, row, isNew, 'actas_asambleas');
+    ponerBotonDePdf(id, isNew, 'actas_asambleas');
     proponerElNumeroDeActa(isNew, {
       ruta: '/actas_asambleas/proximo-numero',
       depende: ['iglesia_id', 'fecha'],
@@ -10227,13 +10228,13 @@ async function viewPrint(name, id) {
   content().innerHTML = `
     <div class="print-actions no-print">
       <button class="btn secondary" data-ir="#/m/${name}">← Volver</button>
-      ${name === 'actas_reuniones' ? `<button class="btn secondary" id="actaPDF">⬇️ Descargar PDF</button>` : ''}
+      ${name === 'actas_reuniones' || name === 'actas_asambleas' ? `<button class="btn secondary" id="actaPDF">⬇️ Descargar PDF</button>` : ''}
       <button class="btn" data-imprimir="1">🖨️ Imprimir</button>
     </div>
     ${sheet}`;
 
   const bajarPdf = document.getElementById('actaPDF');
-  if (bajarPdf) bajarPdf.addEventListener('click', () => descargarActaEnPdf(id, bajarPdf));
+  if (bajarPdf) bajarPdf.addEventListener('click', () => descargarActaEnPdf(id, bajarPdf, name));
 }
 
 /**
@@ -11389,8 +11390,11 @@ function printActa(m, row, esAsamblea, asistencia) {
   const avisoDelEstado = firmada ? '' : `
       <div class="acta-sin-firmar">
         <b>${esc((row.estado || 'Borrador').toUpperCase())}</b>
+        ${/* «en la asamblea» cuando lo es: el texto se escribió en la v1.272.0
+             para el libro de reuniones y se comparte, y en una asamblea la
+             frase decía que se había aprobado en una reunión que no hubo. */''}
         ${row.estado === 'Aprobada'
-          ? 'Aprobada en la reunión y todavía sin firmar: no es el documento definitivo.'
+          ? `Aprobada en ${esAsamblea ? 'la asamblea' : 'la reunión'} y todavía sin firmar: no es el documento definitivo.`
           : 'Documento de trabajo: no ha sido aprobado ni firmado.'}
       </div>`;
 
@@ -16962,11 +16966,12 @@ async function renderDirectivasCuerpo(cuerpoId, caja) {
  * PDF» es un trámite— y con el membrete, la asistencia y el pie que
  * corresponden (ver server/pdf/acta.js).
  */
-async function descargarActaEnPdf(id, boton) {
+async function descargarActaEnPdf(id, boton, modulo = 'actas_reuniones') {
   const decia = boton ? boton.textContent : '';
   if (boton) { boton.disabled = true; boton.textContent = 'Preparando…'; }
   try {
-    const nombre = await bajarArchivoConSesion(`/api/actas_reuniones/${id}/pdf`, `Acta ${id}.pdf`);
+    const comoSeLlama = modulo === 'actas_asambleas' ? `Acta de asamblea ${id}.pdf` : `Acta ${id}.pdf`;
+    const nombre = await bajarArchivoConSesion(`/api/${modulo}/${id}/pdf`, comoSeLlama);
     toast(`Se descargó «${nombre}»`);
   } catch (e) {
     toast(e.message, true);
@@ -17334,14 +17339,14 @@ function proponerElNumeroDeActa(isNew, { ruta, depende, clave, campo: cual = 'nu
  * En un acta que no se ha guardado no se ofrece: no hay nada que bajar
  * todavía, y un botón que solo sabe fallar es peor que no tenerlo.
  */
-function ponerBotonDePdf(id, isNew) {
+function ponerBotonDePdf(id, isNew, modulo = 'actas_reuniones') {
   if (isNew || !tieneLlave('datos_impresion')) return;
   const acciones = content().querySelector('.page-head .actions');
   if (!acciones || document.getElementById('actaPDF')) return;
   acciones.insertAdjacentHTML('afterbegin',
     '<button class="btn secondary" id="actaPDF">⬇️ Descargar PDF</button>');
   const boton = document.getElementById('actaPDF');
-  boton.addEventListener('click', () => descargarActaEnPdf(id, boton));
+  boton.addEventListener('click', () => descargarActaEnPdf(id, boton, modulo));
 }
 
 /**

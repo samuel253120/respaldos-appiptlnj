@@ -788,9 +788,41 @@ function otroUOtra(def) {
   return /(a|ción|sión|dad|tad|ud|umbre|triz)$/.test(cabeza) ? 'otra' : 'otro';
 }
 
+/**
+ * DENTRO DE QUÉ es único este valor, dicho con el nombre de la cosa.
+ *
+ * Un número acotado no está tomado «en el sistema»: está tomado en un cuerpo o
+ * en una congregación en particular, y decir cuál es la diferencia entre un
+ * aviso que se entiende y uno que confunde. Antes solo se nombraba el caso de
+ * la iglesia —«en esta iglesia»— y para los demás no se decía nada, así que el
+ * aviso de un acta de reunión se leía como si el número estuviera tomado en
+ * todo el sistema cuando solo lo estaba en ese cuerpo.
+ *
+ * Se nombra la cosa CONCRETA y no su clase: «en «Coro de jóvenes»» dice más que
+ * «en este cuerpo», y de paso esquiva el género del sustantivo, que en español
+ * obligaría a escribir un artículo distinto por módulo.
+ */
+function dondeEsUnico(def, campo, datos, existing) {
+  if (typeof campo.unique !== 'string') return '';
+  const columna = campo.unique;
+  const valor = datos[columna] !== undefined ? datos[columna] : (existing ? existing[columna] : null);
+  if (!valor) return '';
+
+  // De qué módulo es esa columna, para poder leerle el nombre a la fila
+  const suyo = (def.fields || []).find((f) => f.name === columna);
+  if (!suyo || !suyo.ref) return '';
+  try {
+    const fila = db.prepare(`SELECT * FROM "${suyo.ref}" WHERE id = ?`).get(valor);
+    if (!fila) return '';
+    const como = fila.nombre || fila.titulo || fila.numero || '';
+    return como ? ` en «${como}»` : '';
+  } catch (e) {
+    return ''; // un aviso sin el nombre sigue sirviendo; uno que revienta, no
+  }
+}
+
 /** Cómo se le dice a alguien que ese valor ya está usado. */
-function avisoDeDuplicado(def, campo) {
-  const donde = campo.unique === 'iglesia_id' ? ' en esta iglesia' : '';
+function avisoDeDuplicado(def, campo, donde = '') {
   return `Ya existe ${otroUOtra(def)} ${def.labelSingular.toLowerCase()} con ese ${campo.label}${donde}`;
 }
 
@@ -1425,16 +1457,43 @@ function buildRouter() {
           if (seContradicen) return res.status(400).json({ error: seContradicen });
         }
 
-        // Validación de RUT (dígito verificador) y de campos únicos
+        /*
+         * Validación de RUT (dígito verificador) y de campos únicos.
+         *
+         * El RUT se mira SOLO SI VIENE, porque lo que no viene no cambia. Lo
+         * único NO se puede mirar así, y ahí estaba el error: un número puede
+         * ser único «dentro de» algo —el de un acta lo es dentro de su iglesia,
+         * el de un acta de reunión dentro de su cuerpo— y entonces lo que se
+         * mueve puede ser ESE ALGO, con el número quieto.
+         *
+         * Medido en la v1.282.0: mover un acta a una iglesia donde su número ya
+         * estaba usado, SIN mandar el número en la petición, contestaba 500 con
+         * un número de incidencia —lo frenaba el índice de la base— en vez del
+         * aviso que el sistema ya tenía escrito. Mandando el número, el mismo
+         * caso contestaba 400 y lo explicaba bien.
+         *
+         * Así que para un campo único se mira CÓMO VA A QUEDAR el registro: lo
+         * que llega si llega, y lo que ya tenía si no. Alcanza a los cuatro
+         * módulos con número acotado —Actas de Asambleas y Certificados por
+         * iglesia, Actas de Reuniones por cuerpo, y la Oficina de Partes por
+         * iglesia y flujo—. Cuesta una consulta por campo único y por guardado,
+         * contra un índice que ya existe.
+         */
         for (const f of def.fields) {
           const val = data[f.name];
-          if (val === undefined || val === null || val === '') continue;
-          if (f.type === 'rut' && !rut.validar(val)) {
+          const llega = val !== undefined && val !== null && val !== '';
+
+          if (f.type === 'rut' && llega && !rut.validar(val)) {
             return res.status(400).json({ error: `El ${f.label} ingresado no es válido: revise el número y su dígito verificador` });
           }
+
           if (f.unique) {
-            const dup = buscarDuplicado(def, f, val, id, data, existing);
-            if (dup) return res.status(400).json({ error: avisoDeDuplicado(def, f) });
+            const queda = llega ? val : (existing ? existing[f.name] : undefined);
+            if (queda === undefined || queda === null || queda === '') continue;
+            const dup = buscarDuplicado(def, f, queda, id, data, existing);
+            if (dup) {
+              return res.status(400).json({ error: avisoDeDuplicado(def, f, dondeEsUnico(def, f, data, existing)) });
+            }
           }
         }
 
@@ -1702,7 +1761,7 @@ function buildRouter() {
 module.exports = {
   consultaDeUnListado,
   buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara,
-  revisarLimites, buscarDuplicado, avisoDeDuplicado, TECHO,
+  revisarLimites, buscarDuplicado, avisoDeDuplicado, dondeEsUnico, TECHO,
   referenciasRotas, referenciasFueraDeAlcance,
   // Se exporta para que las pruebas puedan exigir que un dato mal escrito se
   // le explique a la persona (400) en vez de salir como avería del sistema.

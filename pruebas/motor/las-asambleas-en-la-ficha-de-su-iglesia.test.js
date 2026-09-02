@@ -137,11 +137,17 @@ test('confirmando, se mueve', async () => {
   assert.equal(f.json.iglesia_id, e.B);
 });
 
-test('si el número ya está usado en el libro de destino, el aviso lo dice antes', async () => {
+test('si el número ya está usado en el libro de destino, el traslado se RECHAZA', async () => {
   /*
    * El número es único DENTRO de cada iglesia, así que el mismo puede existir en
-   * las dos. Al mover, el guardado se cae contra el índice de la base; decirlo
-   * antes es lo que convierte un tropiezo en una advertencia.
+   * las dos, y el traslado no puede ocurrir.
+   *
+   * Esto cambió de forma en la v1.283.0 y a mejor: antes, el aviso del traslado
+   * traía adentro una advertencia de que el número estaba tomado y ofrecía
+   * confirmar —y al confirmar, el guardado se caía igual contra el índice de la
+   * base—. Ahora el motor lo revisa ANTES de este gancho y lo rechaza con su
+   * propio aviso, nombrando el libro. Un traslado que no va a poder ocurrir se
+   * rechaza; no se pregunta.
    */
   const api = await elSistemaAndando();
   const e = dosIglesias();
@@ -150,8 +156,15 @@ test('si el número ya está usado en el libro de destino, el aviso lo dice ante
   await unActa(api, e.B, e, { numero_acta: numero });
 
   const g = await api('PUT', `/actas_asambleas/${aca.json.id}`, { iglesia_id: e.B });
-  assert.equal(g.json.confirmar, 'acta_que_cambia_de_iglesia');
-  assert.match(g.json.error, /ese número YA ESTÁ USADO/);
+  assert.equal(g.estado, 400);
+  assert.equal(g.json.confirmar, undefined, 'no se ofrece confirmar algo que no puede pasar');
+  assert.match(g.json.error, /Ya existe otra acta de asamblea con ese Número de acta/);
+  assert.match(g.json.error, new RegExp(`en «Iglesia B ${e.m}»`), 'y dice en qué libro');
+
+  // Y confirmando tampoco: el rechazo del motor no se salta con «guardar igual»
+  const igual = await api('PUT', `/actas_asambleas/${aca.json.id}`,
+    { iglesia_id: e.B, igual_asi: true });
+  assert.equal(igual.estado, 400);
 });
 
 test('cambiarle cualquier otra cosa no pregunta nada', async () => {

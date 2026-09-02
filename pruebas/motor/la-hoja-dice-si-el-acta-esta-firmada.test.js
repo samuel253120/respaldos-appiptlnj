@@ -31,6 +31,7 @@ exigirBaseDescartable();
 
 const { db } = require('../../server/db');
 const { elSistemaAndando, cerrarElSistema } = require('./andando');
+const { loQueDiceElPdf } = require('./lo-que-dice-el-pdf');
 
 test.after(cerrarElSistema);
 
@@ -63,7 +64,7 @@ test('las dos hojas se fijan en lo mismo: si está firmada o no', () => {
 
 const LAS_FRASES = [
   'Documento de trabajo: no ha sido aprobado ni firmado.',
-  'Aprobada en la reunión y todavía sin firmar: no es el documento definitivo.',
+  'y todavía sin firmar: no es el documento definitivo.',
   'Pendiente de firma',
 ];
 
@@ -71,11 +72,28 @@ test('y las dos dicen las mismas palabras', () => {
   /*
    * Es el corazón del hallazgo. Si mañana alguien cambia el texto en un lado y
    * no en el otro, vuelven a decir cosas distintas de la misma acta.
+   *
+   * La frase de «Aprobada» se compara por su cola desde la v1.283.0: la cabeza
+   * dice de qué sesión se trata —«en la reunión», «en la asamblea»— porque el
+   * mismo texto sirve ahora a los dos libros de actas, y eso se comprueba
+   * aparte, en la prueba de abajo.
    */
   for (const frase of LAS_FRASES) {
     assert.ok(laHoja.includes(frase), `falta en la hoja: «${frase}»`);
     assert.ok(pdf.includes(frase), `falta en el PDF: «${frase}»`);
   }
+});
+
+test('y las dos nombran la sesión que corresponde, sin inventar una reunión', () => {
+  /*
+   * El texto se escribió para el libro de reuniones y se comparte con el de
+   * asambleas. Dicho tal cual, la hoja de un acta de asamblea afirmaba que se
+   * había aprobado «en la reunión», que es una reunión que no hubo.
+   */
+  assert.match(laHoja, /esAsamblea \? 'la asamblea' : 'la reunión'/, 'la hoja de la pantalla');
+  assert.match(pdf, /Aprobada en \$\{ES\.sesion\}/, 'y el PDF');
+  assert.match(pdf, /sesion: 'la reunión'/);
+  assert.match(pdf, /sesion: 'la asamblea'/);
 });
 
 test('las dos distinguen el borrador de la aprobada', () => {
@@ -94,45 +112,6 @@ test('y el PDF también, con el mismo rótulo', () => {
   assert.match(pdf, /dato\('Firmada por'/);
 });
 
-/**
- * Lo que un PDF de pdfkit DICE de verdad.
- *
- * Hace falta porque comprobar el código fuente no distingue una regla escrita
- * de una regla conectada: se probó rompiendo a propósito el `if` del sello
- * —dejándolo escrito pero apagado— y ninguna prueba de las de arriba se puso
- * roja. Es exactamente el defecto contra el que existe pruebas/motor/andando.js,
- * en el otro extremo del sistema.
- *
- * El texto va comprimido y escrito en hexadecimal, con la separación entre
- * letras metida como números entre los trozos: «APROBADA» se escribe
- * `<APR> 10 <OB> 10 <AD> 10 <A>`. Así que se inflan los flujos, se juntan SOLO
- * los trozos de cada arreglo —tirando los números y los espacios que los
- * separan, que no son del texto— y se decodifican. Los espacios de verdad
- * viajan dentro del hexadecimal y sobreviven.
- */
-function loQueDiceElPdf(buf) {
-  const zlib = require('zlib');
-  const s = buf.toString('latin1');
-  const re = /stream\r?\n/g;
-  let m; let crudo = '';
-  while ((m = re.exec(s))) {
-    const ini = m.index + m[0].length;
-    const fin = s.indexOf('endstream', ini);
-    if (fin < 0) continue;
-    let d;
-    try { d = zlib.inflateSync(buf.slice(ini, fin)).toString('latin1'); } catch (e) { continue; }
-    if (/T[jJ]/.test(d)) crudo += d;
-  }
-  const hex = (x) => Buffer.from(x, 'hex').toString('latin1');
-  const lineas = [];
-  crudo.replace(/\[([^\]]*)\]\s*TJ|<([0-9A-Fa-f]*)>\s*Tj/g, (_, arreglo, suelto) => {
-    lineas.push(arreglo !== undefined
-      ? (arreglo.match(/<[0-9A-Fa-f]*>/g) || []).map((t) => hex(t.slice(1, -1))).join('')
-      : hex(suelto));
-    return '';
-  });
-  return lineas.join('\n');
-}
 
 /**
  * Un acta en el estado que se pida, y el texto de su PDF.

@@ -155,17 +155,17 @@ function loDeLaIglesiaQueCambia(data, existing, db) {
   const cual = existing.numero_acta ? ` n.º ${existing.numero_acta}` : '';
 
   /*
-   * El número va con el acta, y es único DENTRO de cada iglesia: en el libro
-   * nuevo puede estar tomado —y ahí el guardado se cae— y en el viejo queda el
-   * hueco. Se dice antes, que es cuando sirve.
+   * El número va con el acta, y es único DENTRO de cada iglesia, así que en el
+   * libro nuevo el suyo puede estar tomado. Eso NO se dice acá: desde la
+   * v1.283.0 el motor lo revisa antes que este gancho y RECHAZA el traslado con
+   * su propio aviso, nombrando el libro —«Ya existe otra acta de asamblea con
+   * ese Número de acta en «Iglesia Norte»»—. Preguntar «¿está seguro?» por un
+   * traslado que después no va a poder ocurrir sería peor que rechazarlo: se
+   * probó, y la primera versión de este aviso traía esa advertencia adentro
+   * hasta que el arreglo del motor la dejó sin alcanzar nunca.
    */
-  const chocado = db.prepare(
-    'SELECT id FROM actas_asambleas WHERE lower(numero_acta) = lower(?) AND iglesia_id = ? AND id != ?'
-  ).get(String(existing.numero_acta || ''), despues, existing.id);
-
   return `El acta${cual} está en el libro de ${nombre(antes)} y va a pasar al de ${nombre(despues)}. `
-    + `El número se va con ella${chocado ? `, y en ese libro ese número YA ESTÁ USADO` : ''}, `
-    + `y en el libro de ${nombre(antes)} queda el hueco. `
+    + `El número se va con ella, y en el libro de ${nombre(antes)} queda el hueco. `
     + 'Cambia también quién puede verla: pasa a estar entre lo de esa otra congregación.';
 }
 
@@ -234,7 +234,7 @@ module.exports = {
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
     {
-      name: 'numero_acta', label: 'Número de acta', type: 'text', required: true,
+      name: 'numero_acta', label: 'Número de acta', type: 'text', required: true, seccion: 'Identificación',
       // Único dentro de la iglesia: la asamblea es de la congregación entera,
       // así que su libro es uno por iglesia.
       unique: 'iglesia_id',
@@ -246,7 +246,7 @@ module.exports = {
       options: ['Ordinaria', 'Extraordinaria'],
     },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
-    { name: 'lugar', label: 'Lugar', type: 'text' },
+    { name: 'lugar', label: 'Lugar', type: 'text', seccion: 'Dónde y quiénes' },
     { name: 'hora_inicio', label: 'Hora de inicio', type: 'time' },
     { name: 'hora_fin', label: 'Hora de finalización', type: 'time' },
     { name: 'presidida_por', label: 'Presidida por', type: 'text' },
@@ -268,14 +268,14 @@ module.exports = {
      */
     { name: 'total_asistentes', label: 'Total de asistentes', type: 'number', min: 0 },
     { name: 'hubo_quorum', label: '¿Hubo quórum?', type: 'boolean', default: 1 },
-    { name: 'agenda', label: 'Agenda / Orden del día', type: 'textarea' },
+    { name: 'agenda', label: 'Agenda / Orden del día', type: 'textarea', seccion: 'El acta' },
     // Con formato, como en las actas de reunión: un acta de asamblea se escribe
     // con sus acuerdos numerados. Y de paso se limpia al guardar.
     { name: 'desarrollo', label: 'Desarrollo de la asamblea', type: 'richtext' },
     { name: 'acuerdos', label: 'Acuerdos y resoluciones', type: 'richtext' },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Borrador',
-      options: ['Borrador', 'Aprobada', 'Firmada'],
+      options: ['Borrador', 'Aprobada', 'Firmada'], seccion: 'Documento y estado',
     },
     { name: 'documento', label: 'Documento adjunto (escaneada/firmada)', type: 'file' },
     // Los declara el compartido, para que los dos libros de actas los lleven
@@ -299,6 +299,23 @@ module.exports = {
   camposAlBorrar: ['lugar', 'hora_inicio', 'hora_fin', 'presidida_por', 'secretario',
     'hubo_quorum', 'firmada_por', 'fecha_firma', 'agenda', 'desarrollo', 'acuerdos', 'documento'],
 
+  /*
+   * LAS CUATRO SECCIONES DEL FORMULARIO.
+   *
+   * Eran dieciocho campos en una sola tirada, sin un título que los separara,
+   * mientras el formulario del acta de reunión —el mismo motor, el mismo tipo de
+   * documento— declara sus cuatro desde hace tiempo. Un campo CONTINÚA la última
+   * sección declarada, así que basta con nombrarla en el primero de cada grupo:
+   * repetirla en los demás abriría una sección nueva con el mismo título, que es
+   * lo que ya pasó una vez y se vio en la pantalla y no en una prueba.
+   *
+   *   Identificación ...... número, fecha, tipo, iglesia
+   *   Dónde y quiénes ..... lugar, horas, quién presidió, secretario,
+   *                         asistentes y quórum
+   *   El acta ............. agenda, desarrollo, acuerdos
+   *   Documento y estado .. estado, adjunto, y la constancia de la firma
+   */
+
   extraRoutes(router, { db, requirePerm }) {
     /**
      * Qué número le toca a la próxima acta de asamblea de esta iglesia.
@@ -314,6 +331,43 @@ module.exports = {
         return res.status(403).json({ error: 'Esa iglesia no está entre las que tiene asignadas' });
       }
       res.json({ numero: require('../numeracion').proximoNumero('actas_asambleas', iglesiaId, req.query.fecha) });
+    });
+
+    /**
+     * El acta de asamblea, en PDF.
+     *
+     * La misma pieza que las actas de reunión —server/pdf/acta.js sabe hacer las
+     * dos desde la v1.283.0— y por el mismo motivo: de los dos caminos para
+     * sacar un acta del sistema, la vista de impresión depende de que el
+     * navegador imprima bien, y el PDF sale igual siempre y se baja de una. Es
+     * el documento que se manda a un banco o a un notario.
+     *
+     * Pide el permiso de IMPRIMIR y no el de ver, porque esto es sacar el
+     * documento del sistema; y el acta tiene que estar dentro de lo que esa
+     * persona alcanza, como cualquier otra consulta.
+     */
+    router.get('/actas_asambleas/:id(\\d+)/pdf', requirePerm('actas_asambleas', 'view'), (req, res, next) => {
+      if (!require('../permissions').can(req.user, 'datos_impresion', 'view')) {
+        return res.status(403).json({ error: 'No tiene permiso para imprimir ni descargar documentos.' });
+      }
+      const acta = require('../alcance').registroSuyo(req, res, 'actas_asambleas', req.params.id, 'Esa acta');
+      if (!acta) return;
+      try {
+        const { generar, nombreDelArchivo } = require('../pdf/acta');
+        const archivo = nombreDelArchivo(acta, 'actas_asambleas');
+        res.setHeader('Content-Type', 'application/pdf');
+        // El nombre va dos veces a propósito: la primera la entiende cualquier
+        // navegador, la segunda lleva las tildes y las eñes sin romperse.
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${archivo.replace(/[^\x20-\x7E]/g, '_')}"; `
+          + `filename*=UTF-8''${encodeURIComponent(archivo)}`
+        );
+        res.setHeader('Cache-Control', 'private, no-store');
+        generar(acta, { quien: req.user && req.user.nombre, modulo: 'actas_asambleas' }).pipe(res);
+      } catch (e) {
+        next(e);
+      }
     });
 
     /**

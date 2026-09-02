@@ -27,7 +27,7 @@ const { db } = require('./db');
 const { getModule, displayOf } = require('./registry');
 const { authRequired, requirePerm } = require('./auth');
 const {
-  coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, revisarLimites,
+  coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, revisarLimites, dondeEsUnico,
   buscarDuplicado, avisoDeDuplicado, referenciasFueraDeAlcance,
 } = require('./crud');
 const rut = require('./rut');
@@ -226,7 +226,9 @@ function prepararFila(def, fila, user) {
       // La misma regla que el formulario, incluida la unicidad acotada a la
       // iglesia (ver buscarDuplicado en server/crud.js).
       const dup = buscarDuplicado(def, f, valor, null, datos, null);
-      if (dup) errores.push(`${avisoDeDuplicado(def, f)}: "${valor}" (registro #${dup.id})`);
+      if (dup) {
+        errores.push(`${avisoDeDuplicado(def, f, dondeEsUnico(def, f, datos, null))}: "${valor}" (registro #${dup.id})`);
+      }
     }
   }
 
