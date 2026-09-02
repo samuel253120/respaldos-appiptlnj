@@ -634,9 +634,29 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     ? require('./cuerpo-sin-quien-lo-dirija').losQueSeQuedanSinDirectiva(db, req.user)
     : [];
 
+  /*
+   * Los cuerpos que dejaron de levantar actas.
+   *
+   * El libro de actas era una bodega: se guardaba mucho y no lo miraba nadie
+   * —ni el cumplimiento del cuerpo ni el panel—, y un cuerpo que llevaba dos
+   * años sin anotar una no aparecía en ninguna parte. Medido: de los diecisiete
+   * cuerpos de la base, tres tenían alguna acta.
+   *
+   * Va al panel y NO al cumplimiento, y es una decisión tomada: levantar actas
+   * es una práctica que se cuida, no un papel que se exige, así que esto avisa
+   * y no reprocha (ver server/cuerpo-que-no-levanta-actas.js).
+   *
+   * Pide ver Cuerpos y no ver Actas: lo que la línea abre es la ficha del
+   * cuerpo, que es donde se miran las suyas y desde donde se le registra una.
+   */
+  const cuerposSinActas = can(req.user, 'cuerpos', 'view')
+    ? require('./cuerpo-que-no-levanta-actas').losQueNoLevantanActas(db, req.user)
+    : [];
+
   res.json({
     counts, finanzas, cumpleanos, solicitudesRecientes,
     credencialesPorVencer, credencialesSinTitular, cuerposSinCuota, cuerposSinDirectiva,
+    cuerposSinActas,
   });
 });
 

@@ -540,6 +540,16 @@ const OPCIONES = [
           + 'salen en ese mismo aviso, no importa cuánto haga.',
       },
       {
+        clave: 'actas_esperadas_al_anio', label: 'Cuántas actas al año se esperan de un cuerpo',
+        tipo: 'number', defecto: '12', min: 1, max: 52,
+        ayuda:
+          'Cuántas actas de reunión se espera que levante un cuerpo en un año. Doce es una al mes. '
+          + 'De acá sale el aviso del panel que dice qué cuerpos dejaron de anotar y desde cuándo: se '
+          + 'avisa al DOBLE del intervalo esperado —con una al mes, a los dos meses de silencio—, '
+          + 'para que una reunión que se corrió o un mes de vacaciones no salten en el panel. '
+          + 'NO es un requisito de cumplimiento: un cuerpo no queda «Pendiente» por esto.',
+      },
+      {
         clave: 'mensajes_por_hora', label: 'Cuántos mensajes puede mandar una persona por hora',
         tipo: 'number', defecto: '10', min: 1, max: 200,
         ayuda:

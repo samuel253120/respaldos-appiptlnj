@@ -1613,7 +1613,7 @@ function renderSeguridad(zona) {
         <div class="toolbar">
           <b>🔑 Pregunta de recuperación</b>
           <span class="spacer"></span>
-          <span class="badge ${estado.tiene_pregunta ? 'green' : 'amber'}">${estado.tiene_pregunta ? 'Definida' : 'Sin definir'}</span>
+          <span class="badge ${estado.tiene_pregunta ? 'green' : 'yellow'}">${estado.tiene_pregunta ? 'Definida' : 'Sin definir'}</span>
         </div>
         <div style="padding:16px 18px">
           <p style="margin-top:0;font-size:13.5px;color:var(--muted)">
@@ -2010,7 +2010,12 @@ async function viewDashboard() {
           ${porRenovar.slice(0, CUANTAS_SE_MUESTRAN).map((c) => `
             <li data-ir="#/m/credenciales/ficha/${c.id}">
               <span>${esc(c.titular)} <span class="mut mono">— N.º ${esc(c.serie)}</span></span>
-              <span class="badge ${c.situacion === 'Vencida' ? 'gray' : 'amber'}">
+              ${/* «gray» y «amber» no existen en la hoja de estilos, así que las dos
+                    situaciones salían con la misma marca gris y la tarjeta no distinguía
+                    la credencial ya vencida de la que está por vencer, que es de lo único
+                    que trata. Roja la vencida —su título ya la nombra primero— y amarilla
+                    la que se acerca. */''}
+              <span class="badge ${c.situacion === 'Vencida' ? 'red' : 'yellow'}">
                 ${esc(c.situacion)}${c.vence ? ` · ${fechaCorta(c.vence)}` : ''}
               </span>
             </li>`).join('')}
@@ -2081,7 +2086,7 @@ async function viewDashboard() {
           ${sinCuota.slice(0, CUANTAS_SE_MUESTRAN).map((c) => `
             <li data-ir="#/m/cuerpos/ficha/${c.id}">
               <span>${esc(c.nombre)}${c.iglesia ? ` <span class="mut">— ${esc(iglesiaDeTrabajo(c.iglesia) || c.iglesia)}</span>` : ''}</span>
-              <span class="badge amber">${c.integrantes ? `${fmtNumero(c.integrantes)} integrante${c.integrantes === 1 ? '' : 's'}` : 'sin integrantes'}</span>
+              <span class="badge yellow">${c.integrantes ? `${fmtNumero(c.integrantes)} integrante${c.integrantes === 1 ? '' : 's'}` : 'sin integrantes'}</span>
             </li>`).join('')}
           ${sinCuota.length > CUANTAS_SE_MUESTRAN
             ? `<li class="mut" data-ir="#/m/cuerpos">y ${sinCuota.length - CUANTAS_SE_MUESTRAN} más — ver todos</li>`
@@ -2134,10 +2139,57 @@ async function viewDashboard() {
             <li data-ir="#/m/cuerpos/ficha/${c.id}">
               <span>${esc(c.nombre)}${c.iglesia ? ` <span class="mut">— ${esc(iglesiaDeTrabajo(c.iglesia) || c.iglesia)}</span>` : ''}
                 <span class="mut">· ${esc(c.situacion)}</span></span>
-              <span class="badge ${c.nivel === 'sin' ? 'red' : 'amber'}">${c.nivel === 'sin' ? 'sin directiva' : 'por vencer'}</span>
+              ${/* «yellow» y no «amber»: la hoja de estilos tiene green, red, yellow y blue,
+                    y con un nombre que no existe la marca sale gris como cualquier otra.
+                    Se vio comparándola con la del libro de actas. */''}
+              <span class="badge ${c.nivel === 'sin' ? 'red' : 'yellow'}">${c.nivel === 'sin' ? 'sin directiva' : 'por vencer'}</span>
             </li>`).join('')}
           ${sinDirectiva.length > CUANTAS_SE_MUESTRAN
             ? `<li class="mut" data-ir="#/m/cuerpos">y ${sinDirectiva.length - CUANTAS_SE_MUESTRAN} más — ver todos</li>`
+            : ''}
+        </ul>
+      </div>`
+    : '';
+
+  /*
+   * Los cuerpos que dejaron de levantar actas.
+   *
+   * Es el único aviso del panel que NO habla de un incumplimiento, y el texto
+   * lo dice con todas sus letras: la corporación decidió que el libro de actas
+   * no pese en si un cuerpo está «Al día», así que esta tarjeta avisa para que
+   * alguien pregunte, no para que alguien quede mal. Sin esa frase, entre los
+   * otros tres avisos se lee como un reproche más.
+   */
+  const sinActas = d.cuerposSinActas || [];
+  const nunca = sinActas.filter((c) => c.nivel === 'nunca');
+  const avisoActas = sinActas.length
+    ? `
+      <div class="card aviso-credenciales">
+        <h3>📝 Cuerpos que no están levantando actas</h3>
+        <p class="mut">
+          ${nunca.length
+            ? `Hay <b>${nunca.length}</b> cuerpo${nunca.length === 1 ? '' : 's'} sin ninguna acta anotada.`
+            : ''}
+          ${sinActas.length - nunca.length
+            ? `${nunca.length ? 'Y otro' : 'Hay'}${sinActas.length - nunca.length === 1
+                ? `${nunca.length ? '' : ' <b>1</b> cuerpo'} que hace tiempo no anota una`
+                : `${nunca.length ? 's' : ''} <b>${sinActas.length - nunca.length}</b> ${nunca.length ? '' : 'cuerpos '}que hace tiempo no anotan una`}.`
+            : ''}
+          Esto <b>no cuenta para el estado de cumplimiento</b> del cuerpo: es para preguntar, no para
+          reprochar. El libro se lleva desde la ficha del cuerpo.
+        </p>
+        <ul class="mini-list">
+          ${sinActas.slice(0, CUANTAS_SE_MUESTRAN).map((c) => `
+            <li data-ir="#/m/cuerpos/ficha/${c.id}">
+              <span>${esc(c.nombre)}${c.iglesia ? ` <span class="mut">— ${esc(iglesiaDeTrabajo(c.iglesia) || c.iglesia)}</span>` : ''}
+                <span class="mut">· ${esc(c.situacion)}</span></span>
+              ${/* Amarillo el que nunca anotó, y la marca neutra para el atrasado: esto
+                    avisa, no reprocha, así que el rojo —que en este panel significa que
+                    algo está incumplido— no le corresponde a ninguno de los dos. */''}
+              <span class="badge ${c.nivel === 'nunca' ? 'yellow' : ''}">${c.nivel === 'nunca' ? 'sin actas' : 'sin anotar'}</span>
+            </li>`).join('')}
+          ${sinActas.length > CUANTAS_SE_MUESTRAN
+            ? `<li class="mut" data-ir="#/m/cuerpos">y ${sinActas.length - CUANTAS_SE_MUESTRAN} más — ver todos</li>`
             : ''}
         </ul>
       </div>`
@@ -2150,6 +2202,7 @@ async function viewDashboard() {
     ${avisoSinTitular}
     ${avisoCredenciales}
     ${avisoDirectivas}
+    ${avisoActas}
     ${avisoCuota}
     <div class="stats">
       ${statDefs.map(([name, ic, lbl, num, alerta, adonde, nota]) => `
@@ -5423,10 +5476,16 @@ async function montarEncuadreDeLaFoto(c) {
   }
 }
 
-/** El estado de una credencial, con su color. */
+/**
+ * El estado de una credencial, con su color.
+ *
+ * Los nombres tienen que salir de los que la hoja de estilos define —green,
+ * red, yellow, blue, gray y agendado—: uno inventado no da error, deja la
+ * píldora en gris, y tres de estos seis estados salían iguales.
+ */
 function insigniaDeCredencial(situacion) {
   const colores = {
-    Vigente: 'green', 'Por vencer': 'amber', Vencida: 'gray',
+    Vigente: 'green', 'Por vencer': 'yellow', Vencida: 'gray',
     Revocada: 'red', Reemplazada: 'gray', Borrador: 'blue',
   };
   return `<span class="badge ${colores[situacion] || ''}">${esc(situacion || '')}</span>`;
@@ -5630,7 +5689,7 @@ async function renderMisAvisos(caja) {
             <tr>
               <td>
                 <b>${esc(t.label)}</b>
-                ${t.urgente ? '<span class="badge orange" style="margin-left:6px">al momento</span>' : '<span class="badge" style="margin-left:6px">en el resumen</span>'}
+                ${t.urgente ? '<span class="badge yellow" style="margin-left:6px">al momento</span>' : '<span class="badge" style="margin-left:6px">en el resumen</span>'}
                 <div class="mut" style="font-size:12.5px">${esc(t.ayuda)}</div>
               </td>
               <td style="text-align:center">

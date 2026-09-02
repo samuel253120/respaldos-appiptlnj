@@ -419,6 +419,17 @@ a.badge:hover, a.badge:focus-visible { filter: brightness(0.94); text-decoration
 .badge.red { background: #fee2e2; color: #991b1b; }
 .badge.yellow { background: #fef3c7; color: #92400e; }
 .badge.blue { background: #dbeafe; color: #1e40af; }
+/* Un estado que ya pasó y no reprocha nada: una credencial vencida o una que se
+   reemplazó al renovarla —que es lo que corresponde que le ocurra, no una falla—.
+   Se pedía en dos lugares desde antes de existir, y sin ella las tres situaciones
+   finales de una credencial se veían iguales entre sí y iguales a las demás.
+   Los nombres válidos son éstos y ninguno más: uno inventado no da error, deja la
+   píldora sin color, y el estado deja de distinguirse en silencio.
+   Va MÁS marcada que la píldora sin color, no menos: el gris de fábrica quiere
+   decir «esto no es un estado» —el número de serie de la credencial, por
+   ejemplo— y éste quiere decir «el estado es: ya terminó». Una versión más
+   pálida se confundiría justamente con la de al lado. */
+.badge.gray { background: #cbd5e1; color: #334155; }
 /* Plata ya anotada con fecha de más adelante: no está en la caja todavía, así
    que se dice en un tono que no se confunda con un saldo (ver server/saldos.js) */
 .badge.agendado { background: #ede9fe; color: #5b21b6; font-weight: 500; }
