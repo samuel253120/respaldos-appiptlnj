@@ -52,6 +52,9 @@ const ESTADOS = ['Ingresado', 'Derivado', 'En trámite', 'Respondido', 'Despacha
 /** Los tres en que el asunto sigue abierto. Los otros tres dicen que terminó. */
 const ABIERTOS_DEL_TRAMITE = ESTADOS.slice(0, 3);
 
+/** El estado que se ofrece cuando un documento ya tiene su respuesta despachada. */
+const RESPONDIDO = ESTADOS[3];
+
 /**
  * QUÉ CAMPO ES DE QUÉ FLUJO.
  *
@@ -564,7 +567,23 @@ module.exports = {
         'No es el de nuestra oficina.',
     },
     {
+      /*
+       * FOLIOS: hojas contadas, y por eso enteras y al menos una.
+       *
+       * Medido en la v1.289.0: «−8» entraba con 201 y quedaba en blanco, «2,7»
+       * se guardaba como 3, y «ocho» desaparecía sin una palabra. Los tres
+       * salían del mismo lado: el dato se arreglaba en silencio en vez de
+       * decirse. Y el cierre del libro suma esta columna, así que un descarte
+       * callado deja la suma corta sin que nadie se entere.
+       *
+       * El informe proponía un mínimo de CERO, por analogía con los asistentes
+       * de una asamblea. Acá es UNO, y la diferencia importa: que a una
+       * asamblea no llegara nadie es un dato verdadero, pero un documento de
+       * cero hojas no es un documento. Con cero, el aviso del motor sería «no
+       * puede ser negativo» y un 0 entraría a sumar nada al libro.
+       */
       name: 'folios', label: 'Folios', type: 'number', seccion: 'El documento',
+      min: 1, entero: true,
       help: 'Cuántas hojas se recibieron o se despacharon, contando anexos.',
     },
     { name: 'descripcion', label: 'Descripción', type: 'textarea', seccion: 'El documento' },
@@ -775,11 +794,13 @@ module.exports = {
         }
       }
 
-      const folios = dato('folios');
-      if (folios !== null && folios !== undefined && folios !== '') {
-        const n = Number(folios);
-        data.folios = Number.isFinite(n) && n > 0 ? Math.round(n) : null;
-      }
+      /*
+       * Acá estaba el arreglo callado de los folios: lo que no fuera un número
+       * mayor que cero se guardaba como nulo, y lo demás se redondeaba. Desde
+       * la v1.290.0 no hace falta —el campo declara su mínimo y que es entero,
+       * y el motor lo dice en vez de arreglarlo—, que es donde tiene que estar
+       * para que valga igual por la planilla y por el formulario.
+       */
       return null;
     },
 
@@ -834,6 +855,47 @@ module.exports = {
       const serie = flujo === 'Emitido' ? 'documentos_emitidos' : 'documentos_recibidos';
       res.json({
         numero: require('../numeracion').proximoNumero(serie, iglesiaId, req.query.fecha_registro),
+      });
+    });
+
+    /**
+     * EL HILO DE ESTE DOCUMENTO: a qué contesta, y quién lo contesta.
+     *
+     * De acá sale lo que la ficha ofrece. Medido en la v1.289.0: se registraba
+     * la respuesta a un oficio, quedaba enlazada con un 201, y el oficio seguía
+     * diciendo «Ingresado». Los seis estados incluyen «Respondido», que está
+     * ahí para este momento exacto, y no lo ponía nadie.
+     *
+     * SE OFRECE, NO SE HACE. El estado es de quien lleva el trámite: hay
+     * respuestas parciales —se contesta lo que se puede y el asunto sigue
+     * abierto—, y un sistema que cierre el trámite solo porque se despachó una
+     * carta estaría afirmando algo que no le consta. Es lo mismo que hace el
+     * módulo de Solicitudes al aprobar una: ofrece el paso siguiente con lo
+     * que ya sabe, y lo da quien corresponde.
+     */
+    router.get('/documentos/:id/el-hilo', requirePerm('documentos', 'view'), (req, res) => {
+      const db = require('../db').db;
+      const fila = require('../alcance')
+        .registroSuyo(req, res, 'documentos', Number(req.params.id), 'Ese documento');
+      if (!fila) return undefined; // registroSuyo ya contestó 404 o 403
+
+      const columnas = 'id, numero, titulo, flujo, estado, fecha_registro';
+      const contesta = fila.responde_a
+        ? db.prepare(`SELECT ${columnas} FROM documentos WHERE id = ?`).get(fila.responde_a)
+        : null;
+      const loContestan = db
+        .prepare(`SELECT ${columnas} FROM documentos WHERE responde_a = ? ORDER BY COALESCE(fecha_registro, fecha), id`)
+        .all(fila.id);
+
+      res.json({
+        estado: fila.estado,
+        abierto: ABIERTOS_DEL_TRAMITE.includes(String(fila.estado || '')),
+        contesta: contesta
+          ? { ...contesta, abierto: ABIERTOS_DEL_TRAMITE.includes(String(contesta.estado || '')) }
+          : null,
+        loContestan,
+        // Qué estado propone la ficha, para que la pantalla no lo invente.
+        seMarcaComo: RESPONDIDO,
       });
     });
 

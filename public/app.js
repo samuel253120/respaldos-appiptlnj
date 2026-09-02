@@ -4616,6 +4616,13 @@ async function viewFicha(name, id, pestana) {
    */
   if (name === 'iglesias') renderResumenDeIglesia(id, document.getElementById('fichaResumen'));
   if (name === 'cuerpos') renderResumenDeCuerpo(id, document.getElementById('fichaResumen'));
+  /*
+   * Y el hilo de un documento: a qué contesta, quién lo contesta, y el paso
+   * que queda por dar. Va arriba y sin abrir ninguna pestaña porque es lo que
+   * hay que ver al abrirlo; se pide aparte y llega después, y si no llega la
+   * ficha se ve igual que siempre.
+   */
+  if (name === 'documentos') renderElHiloDelDocumento(id, row, document.getElementById('fichaResumen'));
 
   if (name === 'no_miembros' && row.miembro_id && MOD['miembros']) {
     const caja = document.getElementById('fcInsignias');
@@ -8376,7 +8383,9 @@ function fieldHtml(f, row, isNew, campos) {
       // caja es de texto: la del navegador para números no deja ponerles
       // puntos. Al guardar se manda el número pelado.
       const escrito = val === '' || val == null ? '' : conMiles(String(val).replace('.', ','));
-      const caja = `<input type="text" inputmode="decimal" class="numero" name="${f.name}"
+      // El teclado que se abre en el teléfono dice de qué campo se trata: con
+      // coma donde caben decimales, sin ella donde se cuentan cosas enteras.
+      const caja = `<input type="text" inputmode="${f.entero ? 'numeric' : 'decimal'}" class="numero" name="${f.name}"
              value="${esc(escrito)}" autocomplete="off" ${f.required ? 'required' : ''} />`;
       input = f.type === 'money'
         ? `<div class="conplata"><span class="signo">$</span>${caja}</div>`
@@ -8580,6 +8589,10 @@ function avisarSiNoCabe(f, el, n) {
     problema = `No puede pasar de ${fmtNumero(f.max)}.`;
   } else if (Math.abs(n) > 9999999999) {
     problema = 'Ese número es imposible. Revise si se le fue un dígito.';
+  } else if (f.entero && !Number.isInteger(n)) {
+    // Lo mismo que contesta el servidor (ver revisarLimites en server/crud.js),
+    // dicho mientras se escribe: media hoja no es una hoja.
+    problema = 'Tiene que ser un número entero, sin decimales.';
   }
   if (!problema) return;
 
@@ -16832,6 +16845,95 @@ async function renderResumenDeIglesia(id, caja) {
  * el servidor solo si esa persona puede verla, así que acá no se decide nada
  * de permisos: lo que no viene, no se dibuja.
  */
+/**
+ * EL HILO DE UN DOCUMENTO, Y EL PASO QUE QUEDA POR DAR.
+ *
+ * Un emitido puede decir a qué recibido contesta. Hasta la v1.289.0 eso se
+ * guardaba y ahí terminaba: el documento contestado seguía diciendo
+ * «Ingresado», y de los seis estados el que existe para este momento —
+ * «Respondido»— no lo ponía nadie. Quien lleva el trámite no tenía cómo saber,
+ * abriendo el oficio, que la respuesta ya se había despachado.
+ *
+ * SE OFRECE, NO SE HACE. Hay respuestas parciales, y el estado es de quien
+ * lleva el trámite: es la misma decisión que tomó el módulo de Solicitudes con
+ * su paso siguiente. Acá el botón está, y lo aprieta una persona.
+ */
+async function renderElHiloDelDocumento(id, row, caja) {
+  const d = await api('GET', `/documentos/${id}/el-hilo`).catch(() => null);
+  if (!d || !caja) return;
+
+  const puedeEditar = MOD['documentos'] && MOD['documentos'].perms.edit;
+  const comoSeLlama = (o) => `${o.numero || 's/n'} · ${o.titulo || 'Sin título'}`;
+  const cuando = (o) => (o.fecha_registro ? ` · registrado el ${fechaLarga(o.fecha_registro)}` : '');
+  const bloques = [];
+
+  /*
+   * Lo que este documento contesta. El botón cierra el OTRO —el que está
+   * esperando respuesta—, así que se dice con todas sus letras a cuál.
+   */
+  if (d.contesta) {
+    const o = d.contesta;
+    bloques.push(`
+      <div class="card paso-sig${o.abierto ? '' : ' hecho'}" style="margin-top:14px">
+        <div class="toolbar">
+          <b>↩️ Contesta a ${esc(comoSeLlama(o))}</b>
+          <span class="spacer"></span>
+          <a class="btn secondary sm" href="#/m/documentos/ficha/${o.id}">Ver ese documento</a>
+          ${o.abierto && puedeEditar
+            ? `<button class="btn sm" data-cerrar="${o.id}">Marcarlo como ${esc(d.seMarcaComo)}</button>`
+            : ''}
+        </div>
+        <div class="respaldo">
+          <p class="mut">${o.abierto
+            ? `Ese documento sigue en «${esc(o.estado)}»: la respuesta está despachada y el trámite,
+               abierto. Márquelo usted, cuando la respuesta lo cierre de verdad — hay respuestas
+               parciales, y el sistema no puede saberlo.`
+            : `Ese documento está en «${esc(o.estado)}».`}</p>
+        </div>
+      </div>`);
+  }
+
+  // Y lo que lo contesta a él, con el botón sobre ESTE documento
+  if (d.loContestan.length) {
+    const cuales = d.loContestan.map((o) => `<li>${esc(comoSeLlama(o))}${esc(cuando(o))}</li>`).join('');
+    bloques.push(`
+      <div class="card paso-sig${d.abierto ? '' : ' hecho'}" style="margin-top:14px">
+        <div class="toolbar">
+          <b>📤 Ya tiene respuesta despachada</b>
+          <span class="spacer"></span>
+          ${d.abierto && puedeEditar
+            ? `<button class="btn sm" data-cerrar="${id}">Marcar este documento como ${esc(d.seMarcaComo)}</button>`
+            : ''}
+        </div>
+        <div class="respaldo">
+          <ul class="hilo-doc">${cuales}</ul>
+          <p class="mut">${d.abierto
+            ? `Este documento sigue en «${esc(d.estado)}».`
+            : `Este documento está en «${esc(d.estado)}».`}</p>
+        </div>
+      </div>`);
+  }
+
+  if (!bloques.length || !caja.isConnected) return;
+  caja.insertAdjacentHTML('beforeend', bloques.join(''));
+
+  caja.querySelectorAll('[data-cerrar]').forEach((boton) => {
+    boton.addEventListener('click', async () => {
+      boton.disabled = true;
+      try {
+        await api('PUT', `/documentos/${boton.dataset.cerrar}`, { estado: d.seMarcaComo });
+        toast(`Marcado como ${d.seMarcaComo}`);
+        // Se vuelve a pintar la ficha entera: el estado sale también en la
+        // cabecera, y dejarlo viejo ahí sería peor que no haberlo movido.
+        viewFicha('documentos', id);
+      } catch (e) {
+        boton.disabled = false;
+        toast(e.message || 'No se pudo cambiar el estado');
+      }
+    });
+  });
+}
+
 async function renderResumenDeCuerpo(id, caja) {
   const d = await api('GET', `/cuerpos/${id}/resumen`).catch(() => null);
   if (!d || !caja) return;

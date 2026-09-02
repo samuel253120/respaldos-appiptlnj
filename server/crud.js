@@ -298,6 +298,21 @@ function referenciasFueraDeAlcance(def, data, usuario) {
 function coerce(field, value) {
   if (value === undefined) return undefined;
   if (value === '' || value === null) return null;
+  /*
+   * Y unos espacios tampoco son un número.
+   *
+   * `Number('   ')` es CERO —no es un error, es cero—, así que una casilla
+   * numérica con espacios entraba a la base como un 0 escrito por alguien: 0
+   * folios, 0 asistentes, un monto de 0. Se encontró en la v1.290.0 probando
+   * el otro lado de esta misma revisión: pedirle al servidor que vaciara los
+   * folios con «   » contestaba «tiene que ser mayor que cero», que para una
+   * casilla que se ve vacía no quiere decir nada.
+   *
+   * Es la misma regla que el motor ya aplica a los campos de texto
+   * obligatorios desde la v1.230.0: puros espacios no es un campo lleno.
+   */
+  if ((field.type === 'number' || field.type === 'money')
+      && typeof value === 'string' && value.trim() === '') return null;
   switch (field.type) {
     case 'number': {
       const n = Number(value);
@@ -698,6 +713,23 @@ function revisarLimites(campo, valor) {
     return maximo === TECHO
       ? `El campo "${campo.label}" tiene un valor imposible (${enPesos(n)}). Revise si se le fue un dígito.`
       : `El campo "${campo.label}" no puede pasar de ${enPesos(maximo)}.`;
+  }
+
+  /*
+   * Y que sea entero, donde contar en mitades no quiere decir nada.
+   *
+   * Un campo puede declarar `entero: true`: las hojas de un documento, el
+   * número de una cuota, la gente que asistió. Antes esto lo arreglaba cada
+   * módulo por su cuenta —la oficina de partes redondeaba los folios en su
+   * gancho de guardado— y redondear en silencio es lo que este sistema viene
+   * corrigiendo desde hace veinte revisiones: 2,7 folios se guardaban como 3
+   * sin que nadie lo supiera, y ese 3 después lo suma el cierre del libro.
+   *
+   * Va al final a propósito: si además está fuera de rango, lo que hay que
+   * decir primero es el rango.
+   */
+  if (campo.entero && !Number.isInteger(n)) {
+    return `El campo "${campo.label}" tiene que ser un número entero, sin decimales.`;
   }
 
   return null;
@@ -1406,10 +1438,33 @@ function buildRouter() {
           }
         }
 
-        // Validación de los límites de los números y del dinero
+        /*
+         * Validación de los límites de los números y del dinero.
+         *
+         * SE MIRA LO QUE LLEGÓ, NO LO QUE QUEDÓ. `coerce` convierte un campo
+         * numérico con `Number(...)`, y lo que no es un número lo deja en
+         * nulo; mirando el valor ya convertido, esta revisión no llegaba a ver
+         * nunca un valor no numérico —su propio aviso, «tiene que ser un
+         * número», era inalcanzable para los campos de tipo número— y el dato
+         * se borraba con un 200 y sin una palabra.
+         *
+         * Medido en la v1.289.0 sobre los folios de un documento: mandando
+         * «ocho» y «2,7» el servidor contestaba 201 y el campo quedaba vacío.
+         * Vale para los 39 módulos, no solo para ése.
+         *
+         * La otra puerta de este sistema ya lo hacía bien: la importación por
+         * planilla contesta «"ocho" no es un número válido» y nombra la fila
+         * (ver server/importar.js). Era el formulario el que callaba.
+         *
+         * Vaciar a propósito sigue siendo vaciar: lo que llega en blanco —«»,
+         * nulo, o el campo que no viene— no se revisa ni se reclama.
+         */
         for (const f of def.fields) {
           if (f.type !== 'money' && f.type !== 'number') continue;
-          const val = data[f.name];
+          if (!(f.name in data)) continue; // no se está tocando (o es de solo lectura)
+          const crudo = req.body[f.name];
+          const llegoAlgo = crudo !== undefined && crudo !== null && String(crudo).trim() !== '';
+          const val = data[f.name] === null && llegoAlgo ? crudo : data[f.name];
           if (val === undefined || val === null || val === '') continue;
           const problema = revisarLimites(f, val);
           if (problema) return res.status(400).json({ error: problema });

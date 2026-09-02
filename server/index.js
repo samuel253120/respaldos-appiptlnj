@@ -224,12 +224,15 @@ app.get('/api/meta', authRequired, (req, res) => {
       fields: [
         ...m.fields
           .filter((f) => !f.oculto)
-          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, sensible, reservado, futuro, placeholder, enElPapel }) => ({
+          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, entero, sensible, reservado, futuro, placeholder, enElPapel }) => ({
             name, label, type, required: !!required, options: options || null,
             // Los límites viajan para que el formulario avise antes de mandar.
             // Quien manda igual —o escribe la dirección a mano— se topa con la
             // misma comprobación en el servidor, que es la que manda.
             min: min === undefined ? null : min, max: max === undefined ? null : max,
+            // Y si se cuenta en enteros: el teclado del teléfono se abre sin
+            // coma, y el aviso sale mientras se escribe en vez de al guardar.
+            entero: !!entero,
             // Si el campo admite fecha adelante, el calendario no le pone tope de hoy
             futuro: !!futuro,
             // Para que la pantalla sepa cuáles esconder cuando el servidor no
