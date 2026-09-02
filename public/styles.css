@@ -1199,6 +1199,17 @@ dialog.dlg .btn.peligro:hover { filter: brightness(1.06); }
 .cert-firmas .firma .pend {
   display: block; margin-top: 3px; font-size: 11px; color: #9f1239; letter-spacing: 0.4px;
 }
+/*
+ * Y el aviso de la hoja que salió sin lo que certifica. Mismas dos decisiones
+ * que el sello de anulado —borde en vez de fondo, color fijo y no el del
+ * formato—, porque también es algo que tiene que verse en el papel y no puede
+ * quedar invisible por el diseño que le tocó a la hoja.
+ */
+.cert-falta {
+  border: 2px dashed #b45309; border-radius: 3px; padding: 10px 14px; margin: 18px auto;
+  max-width: 78%; text-align: center; font-size: 12.5px; color: #b45309; line-height: 1.5;
+}
+.cert-falta b { display: block; font-size: 13px; letter-spacing: 1.2px; margin-bottom: 3px; }
 .cert-fecha { margin-top: 30px; font-size: 13px; color: #78716c; }
 
 .cred-card {

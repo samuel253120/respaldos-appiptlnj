@@ -73,10 +73,22 @@ test('el matrimonio nombra a los dos cónyuges y lleva su versículo al pie', ()
   assert.ok(f.texto_fecha.includes('{ciudad}'));
 });
 
+/**
+ * Los otros SEIS que trae el sistema, por su nombre.
+ *
+ * Preguntados como «todos los que no son la presentación ni el matrimonio»,
+ * la cuenta se llevaba por delante cualquier formato que un archivo vecino
+ * hubiera creado para lo suyo —el motor comparte UNA base y corre a la vez— y
+ * la prueba se ponía roja sin que nada del sistema estuviera mal. Lo que acá
+ * se comprueba es que la migración no le haya cambiado la hoja a ESTOS SEIS.
+ */
+const LOS_OTROS_SEIS = ['Bautismo', 'Membresía', 'Traslado', 'Buena conducta', 'Reconocimiento', 'Otro'];
+
 test('los demás formatos siguen siendo los de siempre', () => {
   const otros = db
-    .prepare("SELECT nombre, disposicion FROM formatos_certificado WHERE nombre NOT IN ('Presentación de niños', 'Matrimonio')")
-    .all();
+    .prepare(`SELECT nombre, disposicion FROM formatos_certificado
+                WHERE nombre IN (${LOS_OTROS_SEIS.map(() => '?').join(',')})`)
+    .all(...LOS_OTROS_SEIS);
   assert.equal(otros.length, 6);
   for (const f of otros) assert.equal(f.disposicion, 'Clásica', `${f.nombre} no debía cambiar`);
 });

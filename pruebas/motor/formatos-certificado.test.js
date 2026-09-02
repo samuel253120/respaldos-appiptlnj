@@ -31,17 +31,29 @@ const { formatosDeCertificadoQueTraiaElSistema } = require('../../server/migraci
 /* ── Los que traía el sistema ──────────────────────────────────────── */
 
 formatosDeCertificadoQueTraiaElSistema();
-const sembrados = db.prepare('SELECT * FROM formatos_certificado ORDER BY orden').all();
+
+/**
+ * Los ocho por su nombre, y no «todo lo que haya en la tabla».
+ *
+ * Los archivos del motor comparten UNA base y corren a la vez, así que un
+ * archivo vecino que cree un formato para lo suyo hacía fallar estas dos
+ * pruebas sin que nada del sistema estuviera mal. Lo que acá se comprueba es
+ * que los OCHO que trae el sistema queden puestos y no se dupliquen; que la
+ * tabla no tenga ninguno más no es asunto de esta prueba.
+ */
+const LOS_OCHO = ['Bautismo', 'Presentación de niños', 'Matrimonio', 'Membresía', 'Traslado',
+  'Buena conducta', 'Reconocimiento', 'Otro'];
+const losSembrados = () => db
+  .prepare(`SELECT * FROM formatos_certificado
+              WHERE nombre IN (${LOS_OCHO.map(() => '?').join(',')}) ORDER BY orden`)
+  .all(...LOS_OCHO);
+const sembrados = losSembrados();
 
 test('al actualizar quedan los ocho tipos que traía el sistema', () => {
   // Si no, una iglesia que ya venía emitiendo se queda sin ningún tipo para
   // elegir, y el módulo de certificados deja de servir de un día para otro.
   assert.equal(sembrados.length, 8);
-  assert.deepEqual(
-    sembrados.map((f) => f.nombre),
-    ['Bautismo', 'Presentación de niños', 'Matrimonio', 'Membresía', 'Traslado',
-      'Buena conducta', 'Reconocimiento', 'Otro']
-  );
+  assert.deepEqual(sembrados.map((f) => f.nombre), LOS_OCHO);
 });
 
 test('todos vienen en uso y con su texto', () => {
@@ -53,7 +65,7 @@ test('todos vienen en uso y con su texto', () => {
 
 test('correrla de nuevo no duplica los formatos', () => {
   formatosDeCertificadoQueTraiaElSistema();
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM formatos_certificado').get().c, 8);
+  assert.equal(losSembrados().length, 8, 'ocho, no dieciséis');
 });
 
 /* ── Los números del diseño ────────────────────────────────────────── */

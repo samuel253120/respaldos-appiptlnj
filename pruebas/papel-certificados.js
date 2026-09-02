@@ -313,6 +313,87 @@ print(chr(10).join(x.get_textpage().get_text_range() for x in d))
   }
 
   /* ------------------------------------------------------------------
+   * LA HOJA A LA QUE LE FALTA LO QUE CERTIFICA.
+   *
+   * El cuerpo del certificado sale de su formato, y el formato se busca por el
+   * NOMBRE que el certificado guardó en «tipo». Cuando ese nombre no encuentra
+   * su formato —lo renombraron—, la hoja salía con su orla, su número, el
+   * nombre del titular y las dos rayas de firma, y un hueco en el medio.
+   * Medido en la v1.292.0. Firmada y entregada, esa hoja parece un
+   * certificado y no certifica nada.
+   *
+   * Se mira acá, sobre el PDF, y no en el HTML, por lo mismo que el sello de
+   * anulado: lo que importa es lo que queda en el papel que alguien se lleva.
+   *
+   * Las dos maneras de quedarse sin texto se prueban por separado, porque la
+   * hoja dice una cosa distinta en cada una:
+   *
+   *   · SIN FORMATO. Va sobre un certificado de mentira que se borra al
+   *     terminar, y sale en la hoja clásica: sin formato no hay disposición
+   *     que valga, así que esa es la única forma posible.
+   *   · CON EL FORMATO EN BLANCO. Va sobre los tres de arriba, que sí tienen
+   *     su disposición, y cubre las tres hojas —son tres trozos de código
+   *     distintos—. El texto se devuelve al terminar.
+   * ------------------------------------------------------------------ */
+  console.log('\n── La hoja sin lo que certifica');
+  const DICE_QUE_FALTA = /FALTA\s*EL\s*TEXTO\s*DE\s*ESTE\s*CERTIFICADO/;
+  const comoSaleEnPapel = async (certId, nombre) => {
+    await ir('#/m/certificados');
+    await ir(`#/print/certificados/${certId}`);
+    await pagina.waitForSelector('.cert-sheet', { timeout: 25000 });
+    await pagina.waitForTimeout(250);
+    const archivo = path.join(carpeta, `${nombre}.pdf`);
+    fs.writeFileSync(archivo, await pagina.pdf({ preferCSSPageSize: true, printBackground: true }));
+    return { texto: loQueDiceElPdf(archivo).replace(/\s+/g, ' '), hojas: medirElPdf(archivo).hojas };
+  };
+
+  let elHuerfano = null;
+  try {
+    elHuerfano = await api('POST', '/certificados', {
+      numero: `PAPEL-${marca}-SIN`, tipo: 'Membresía', iglesia_id: iglesia.id,
+      nombre_titular: 'Sin Formato Prueba', fecha_emision: HOY,
+    });
+    const conFormato = await comoSaleEnPapel(elHuerfano.id, 'falta-antes');
+    revisar('con su formato, la hoja no dice que falte nada',
+      !DICE_QUE_FALTA.test(conFormato.texto));
+    revisar('y sí trae lo que certifica', /[Cc]ertific/.test(conFormato.texto),
+      conFormato.texto.slice(0, 160));
+
+    /*
+     * Se le cambia el tipo a un nombre que ningún formato tiene: es como queda
+     * un certificado cuando su formato se renombra por fuera del sistema, o el
+     * día que alguien escriba ese dato a mano. Antes salía el hueco.
+     */
+    await api('PUT', `/certificados/${elHuerfano.id}`, { tipo: `Tipo sin formato ${marca}` });
+    const huerfano = await comoSaleEnPapel(elHuerfano.id, 'falta-sin-formato');
+    revisar('sin formato, la hoja DICE que le falta el texto', DICE_QUE_FALTA.test(huerfano.texto),
+      'salía la orla, el número y las firmas, con un hueco donde va lo que certifica');
+    revisar('y dice por qué', /No se encontró el formato/.test(huerfano.texto),
+      huerfano.texto.slice(0, 200));
+    revisar('y qué hacer', /Revíselo en Formatos de Certificado/.test(huerfano.texto),
+      huerfano.texto.slice(0, 200));
+    revisar('y sigue cabiendo en una hoja', huerfano.hojas === 1);
+  } finally {
+    if (elHuerfano) await api('DELETE', `/certificados/${elHuerfano.id}`).catch(() => {});
+  }
+
+  for (const { tipo, cert, formatoId } of suyos) {
+    const antes = await api('GET', `/formatos_certificado/${formatoId}`);
+    try {
+      await api('PUT', `/formatos_certificado/${formatoId}`, { ...antes, texto: '' });
+      const sinTexto = await comoSaleEnPapel(cert.id, `falta-${tipo}`);
+      revisar(`${tipo}: con el formato en blanco, la hoja lo dice`, DICE_QUE_FALTA.test(sinTexto.texto),
+        sinTexto.texto.slice(0, 200));
+      revisar(`${tipo}: y dice que es el formato el que no tiene texto`,
+        /no tiene texto escrito/.test(sinTexto.texto), sinTexto.texto.slice(0, 200));
+    } finally {
+      await api('PUT', `/formatos_certificado/${formatoId}`, {
+        ...(await api('GET', `/formatos_certificado/${formatoId}`)), texto: antes.texto,
+      });
+    }
+  }
+
+  /* ------------------------------------------------------------------
    * LA CONTRACARA: que la hoja de una página no le pase a las demás.
    *
    * Lo que hace que un certificado quepa en una hoja es una regla que aprieta

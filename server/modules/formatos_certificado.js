@@ -34,6 +34,11 @@
  * emitidos certificados que ya están firmados y entregados. Se puede sacar de
  * circulación con «En uso», y entonces deja de ofrecerse al emitir sin tocar
  * los que ya existen.
+ *
+ * Y TAMPOCO SE RENOMBRA SIN AVISAR, por lo mismo: lo que el certificado guarda
+ * de su formato es el NOMBRE, y con ese nombre lo va a buscar cada vez que se
+ * imprime. Renombrarlo se pregunta, diciendo a cuántos certificados afecta, y
+ * al contestar que sí esos certificados se van con él.
  */
 
 /** Los datos que se pueden poner entre llaves dentro del texto y del título. */
@@ -105,6 +110,33 @@ const HOJAS = {
   Circular: { ancho: 216, alto: 330 },
 };
 const TAMANOS_HOJA = Object.keys(HOJAS);
+
+/**
+ * Cuántos certificados quedaron emitidos con un nombre de formato.
+ *
+ * Es la misma cuenta que mira `beforeDelete` para no dejar borrar un formato
+ * en uso, y por el mismo motivo: el tipo del certificado es el NOMBRE del
+ * formato, no su número, y es lo único que después los ata.
+ */
+function losQueYaSeEmitieron(db, nombre) {
+  return db.prepare('SELECT COUNT(*) AS c FROM certificados WHERE tipo = ?').get(nombre).c;
+}
+
+/**
+ * El aviso de renombrar un formato que ya tiene certificados emitidos.
+ *
+ * Dice las tres cosas que quien contesta necesita: cuántos son, qué les pasa
+ * si sigue, y qué otra cosa podría hacer. Sin el número, «afecta a los
+ * certificados emitidos» se contesta que sí sin saber si son dos o doscientos.
+ */
+function avisoDelFormatoQueSeRenombra(antes, despues, cuantos) {
+  return (
+    `«${antes}» es el tipo de ${cuantos.toLocaleString('es-CL')} certificado(s) ya emitido(s). ` +
+    `Si le cambia el nombre a «${despues}», esos certificados pasan a llamarse igual y se siguen ` +
+    'imprimiendo con este formato. Si prefiere que los que ya están sigan como están, deje este ' +
+    'formato con su nombre, desmárquelo en «En uso» y cree uno nuevo con el nombre que quiere.'
+  );
+}
 
 module.exports = {
   name: 'formatos_certificado',
@@ -252,7 +284,7 @@ module.exports = {
   ],
 
   hooks: {
-    beforeSave(data, { existing }) {
+    beforeSave(data, { existing, db, confirmado }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
 
       /**
@@ -309,11 +341,62 @@ module.exports = {
       const nombre = String(dato('nombre') || '').trim();
       if (!nombre) return 'El formato necesita un nombre: es con el que se elige al emitir.';
       data.nombre = nombre;
+
+      /**
+       * RENOMBRAR UN FORMATO EN USO SE PREGUNTA, Y ARRASTRA LO YA EMITIDO.
+       *
+       * Un certificado no guarda de qué formato salió: guarda su NOMBRE, en
+       * «tipo», y con ese nombre se va a buscar el formato cada vez que la hoja
+       * se imprime. Renombrar el formato cortaba ese hilo en silencio —200, sin
+       * preguntar nada— y los certificados que ya estaban firmados y entregados
+       * quedaban apuntando a un nombre que ya no existe: la hoja salía con su
+       * orla, su número, el nombre del titular y las dos firmas, y con un hueco
+       * donde va lo que certifica. Medido en la v1.292.0.
+       *
+       * Se arregla de las dos maneras a la vez, que no se estorban:
+       *
+       *   · SE PREGUNTA, diciendo a cuántos afecta. Quien renombra «Bautismo»
+       *     por corregir una tilde no está pidiendo lo mismo que quien lo
+       *     renombra para reutilizar el formato en otra cosa, y el sistema no
+       *     puede adivinar cuál de los dos es.
+       *   · Y AL CONTESTAR QUE SÍ, LOS CERTIFICADOS SE VAN CON ÉL (en
+       *     `afterSave`, dentro del mismo guardado). Es lo que el sistema ya
+       *     promete en otras partes: «cambiar un formato altera cómo se
+       *     imprimen TAMBIÉN los certificados ya emitidos, porque la hoja se
+       *     arma al imprimir».
+       *
+       * Quien no quiera arrastrarlos tiene el otro camino escrito en el aviso, y
+       * es el que el módulo ya recomendaba para dejar de usar un formato sin
+       * tocar los emitidos: desmarcarlo en «En uso» y crear uno nuevo.
+       */
+      if (existing && nombre !== existing.nombre && !confirmado) {
+        const cuantos = losQueYaSeEmitieron(db, existing.nombre);
+        if (cuantos) {
+          return {
+            error: avisoDelFormatoQueSeRenombra(existing.nombre, nombre, cuantos),
+            confirmar: 'formato_que_se_renombra',
+          };
+        }
+      }
       return null;
     },
 
+    /**
+     * Los certificados emitidos se van con el formato que cambió de nombre.
+     *
+     * Va en `afterSave` y no en `beforeSave` porque acá el formato ya quedó
+     * guardado con su nombre nuevo, y las dos escrituras están en la misma
+     * transacción del motor: o se renombra el formato Y se mueven sus
+     * certificados, o no pasa ninguna de las dos cosas. A medias sería
+     * exactamente el problema que esto viene a arreglar.
+     */
+    afterSave(fila, { existing, db }) {
+      if (!existing || fila.nombre === existing.nombre) return;
+      db.prepare('UPDATE certificados SET tipo = ? WHERE tipo = ?').run(fila.nombre, existing.nombre);
+    },
+
     beforeDelete(row, { db }) {
-      const usos = db.prepare('SELECT COUNT(*) AS c FROM certificados WHERE tipo = ?').get(row.nombre).c;
+      const usos = losQueYaSeEmitieron(db, row.nombre);
       if (usos) {
         return (
           `«${row.nombre}» es el tipo de ${usos.toLocaleString('es-CL')} certificado(s) ya emitido(s), ` +
@@ -371,3 +454,4 @@ module.exports.HOJAS = HOJAS;
 module.exports.TAMANOS_HOJA = TAMANOS_HOJA;
 module.exports.TIPOGRAFIAS = TIPOGRAFIAS;
 module.exports.MARCOS = MARCOS;
+module.exports.avisoDelFormatoQueSeRenombra = avisoDelFormatoQueSeRenombra;

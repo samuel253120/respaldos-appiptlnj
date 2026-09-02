@@ -7875,6 +7875,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y anotar los asistentes',
       seguir: 'Guardar así',
     },
+    formato_que_se_renombra: {
+      titulo: '🎗️ Hay certificados emitidos con este nombre',
+      volver: 'Volver y dejarle el nombre',
+      seguir: 'Cambiarlo y llevármelos',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',
@@ -10543,6 +10548,31 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
   const titulo = certRellenar(puesto(f.titulo, `Certificado de ${row.tipo || ''}`), row);
   const rotulo = certRellenar(puesto(f.rotulo_titular, 'Otorgado a:'), row);
   const cuerpo = certRellenar(row.texto || f.texto || '', row);
+
+  /**
+   * LA HOJA DICE CUANDO LE FALTA LO QUE CERTIFICA.
+   *
+   * El cuerpo del certificado sale del formato, y el formato se busca por el
+   * NOMBRE que el certificado guardó en «tipo». Cuando ese nombre no encuentra
+   * su formato —lo renombraron, no hay permiso para traerlo, se cayó la
+   * señal—, `cuerpo` quedaba vacío y el bloque simplemente no se dibujaba: la
+   * hoja salía con su orla, su número, el nombre del titular y las dos rayas
+   * de firma, y un hueco en el medio. Medido en la v1.292.0. Impresa y
+   * firmada, esa hoja parece un certificado y no certifica nada.
+   *
+   * Se imprime igual —que salga es mejor que no salir cuando alguien la
+   * necesita—, pero diciéndolo, en el lugar exacto donde debería estar el
+   * texto. Con borde y color de letra, nunca con fondo, por lo mismo que el
+   * sello de anulado: los navegadores no imprimen los fondos.
+   */
+  const faltaElTexto = cuerpo ? '' : `
+    <div class="cert-falta">
+      <b>FALTA EL TEXTO DE ESTE CERTIFICADO</b>
+      ${formato
+    ? `El formato «${esc(row.tipo || '')}» no tiene texto escrito.`
+    : `No se encontró el formato «${esc(row.tipo || '')}»: puede que le hayan cambiado el nombre.`}
+      Revíselo en Formatos de Certificado antes de entregar esta hoja.
+    </div>`;
   const lineaFecha = f.muestra_fecha === 0 ? '' : certRellenar(
     puesto(f.texto_fecha, row.fecha_emision ? `Dado el ${fechaLarga(row.fecha_emision)}` : ''), row
   );
@@ -10719,7 +10749,7 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
       ${selloAnulado}
       ${rotulo ? `<div class="cn-rotulo">${esc(rotulo)}</div>` : ''}
       <div class="cn-nombre">${esc(row.nombre_titular || '')}</div>
-      ${cuerpo ? `<p class="cn-parrafo">${certRellenarMarcado(row.texto || f.texto || '', row)}</p>` : ''}
+      ${cuerpo ? `<p class="cn-parrafo">${certRellenarMarcado(row.texto || f.texto || '', row)}</p>` : faltaElTexto}
       ${row.padre || row.madre ? `<div class="cn-rotulo">SUS PADRES:</div>${par(row.padre, row.madre, 'y')}` : ''}
       ${padrinos ? `<div class="cn-rotulo">SUS PADRINOS:</div>${padrinos}` : ''}
       ${bloqueFirmas(true)}
@@ -10752,7 +10782,7 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
         ${titulo ? `<h1>${esc(titulo)}</h1>` : ''}
       </div>
       ${selloAnulado}
-      ${cuerpo ? `<p class="cb-parrafo">${certRellenarMarcado(row.texto || f.texto || '', row)}</p>` : ''}
+      ${cuerpo ? `<p class="cb-parrafo">${certRellenarMarcado(row.texto || f.texto || '', row)}</p>` : faltaElTexto}
       ${bloqueFirmas(true)}
       ${bloqueEpigrafe}
       ${lineaFecha ? `<div class="cb-emision">${certRellenarMarcado(
@@ -10770,7 +10800,7 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
         ${selloAnulado}
         ${rotulo ? `<div class="otorgado">${esc(rotulo)}</div>` : ''}
         <div class="titular">${esc(row.nombre_titular || '')}</div>
-        ${cuerpo ? `<div class="texto">${esc(cuerpo)}</div>` : ''}
+        ${cuerpo ? `<div class="texto">${esc(cuerpo)}</div>` : faltaElTexto}
         ${firmas}
         ${lineaFecha ? `<div class="cert-fecha">${esc(lineaFecha)}</div>` : ''}
         ${pie}`);
