@@ -112,7 +112,9 @@ test('un acta vacía también pregunta, pero dice que no trae nada', async () =>
   const api = await elSistemaAndando();
   const e = unCuerpo();
   const a = await api('POST', '/actas_reuniones', {
-    numero_acta: `vacia ${e.m}`, fecha: '2026-03-15', cuerpo_id: e.cuerpo,
+    // Confirmando: desde la 1.276.0 crear un acta en blanco pregunta, y acá se
+    // quiere una en blanco a propósito, para ver cómo se anuncia al borrarla.
+    numero_acta: `vacia ${e.m}`, fecha: '2026-03-15', cuerpo_id: e.cuerpo, igual_asi: true,
   });
   const r = await api('DELETE', `/actas_reuniones/${a.json.id}`);
   assert.equal(r.estado, 400);

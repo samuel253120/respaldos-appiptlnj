@@ -1504,3 +1504,10 @@ module.exports = {
  */
 module.exports.integrantesConvocados = integrantesConvocados;
 module.exports.avanceDe = avanceDe;
+/*
+ * Y cómo se leen los cuerpos convocados de una actividad. Lo pide el libro de
+ * actas para comprobar que el acta enlace la reunión a la que ese cuerpo fue;
+ * el dueño de lo que significa ese campo es este módulo, así que la lectura
+ * sale de acá y no se copia allá.
+ */
+module.exports.idsDeCuerpos = idsDeCuerpos;

@@ -53,9 +53,15 @@ function unCuerpo() {
   return { m, iglesia, cuerpo };
 }
 
+/*
+ * Con algo escrito adentro, y no es un detalle: desde la 1.276.0 un acta que no
+ * dice nada también pregunta, y esa advertencia va ANTES que la de las horas.
+ * Un acta vacía con las horas al revés contestaría con la clave del acta vacía,
+ * y estas pruebas estarían comprobando la advertencia equivocada.
+ */
 const unActa = (api, e, cambios) => api('POST', '/actas_reuniones', {
   numero_acta: `${e.m}-${Math.random().toString(36).slice(2, 7)}`,
-  fecha: '2026-03-15', cuerpo_id: e.cuerpo, ...cambios,
+  fecha: '2026-03-15', cuerpo_id: e.cuerpo, agenda: 'Punto único', ...cambios,
 });
 
 async function comoElFormulario(api, id, cambios) {

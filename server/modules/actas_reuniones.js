@@ -84,6 +84,101 @@ function avisoDeActaFirmada(existing, data, cambia) {
     + 'Registro de Cambios.';
 }
 
+/** Lo que un acta puede tener adentro: lo escrito, o el papel escaneado. */
+const LO_QUE_DICE = ['agenda', 'desarrollo', 'acuerdos'];
+
+/**
+ * Un acta que no dice nada.
+ *
+ * Lo obligatorio de un acta es su número, su fecha, su iglesia y su cuerpo:
+ * todo lo que el acta DICE es opcional. Está bien pensado a medias, y a
+ * propósito: el módulo permite que un acta vaya solo adjunta —«Se puede dejar
+ * en blanco si el acta va adjunta», dice la ayuda del campo— y también que se
+ * escriba acá sin adjuntar nada. Las dos maneras valen.
+ *
+ * Lo que faltaba es la esquina que queda: NINGUNA DE LAS DOS. Un acta sin
+ * adjunto y sin una palabra escrita no es un acta a medio llenar, es una ficha
+ * que no contiene nada, y se imprime con el membrete de la institución y dos
+ * líneas de firma al pie.
+ *
+ * Se pregunta y no se rechaza porque hay un caso legítimo y corriente: crear la
+ * ficha ahora para adjuntarle el escaneo al rato. Que pregunte una vez y siga.
+ *
+ * El texto con formato llega acá YA LIMPIO: un editor de texto rico deja
+ * «<p></p>» o «<p><br></p>» cuando se borra todo, y eso es tan vacío como el
+ * blanco aunque no lo parezca, pero de eso se encarga server/textorico.js antes
+ * del guardado —por las dos puertas, la pantalla y la importación de
+ * planillas—. Mirarlo otra vez acá sería repetir una regla que ya tiene dueño;
+ * la prueba que lo comprueba está igual, porque lo que importa es que el acta
+ * vacía se note, no en qué capa se note.
+ */
+function loDelActaVacia(data, existing) {
+  const comoQueda = (campo) => (data[campo] !== undefined ? data[campo] : existing && existing[campo]);
+  const conAlgo = (campo) => String(comoQueda(campo) || '').trim() !== '';
+  if (LO_QUE_DICE.some(conAlgo) || comoQueda('documento')) return null;
+
+  // No es lo mismo una ficha que nace en blanco que un acta que decía algo y se
+  // está quedando sin nada: la segunda es una pérdida, no un trámite pendiente.
+  const teniaAlgo = existing
+    && (LO_QUE_DICE.some((c) => String(existing[c] || '').replace(/<[^>]*>/g, '').trim() !== '')
+        || existing.documento);
+  if (teniaAlgo) {
+    return 'Este acta decía algo y va a quedar sin nada: sin agenda, sin desarrollo, sin acuerdos y '
+      + 'sin documento adjunto. Lo que decía se puede recuperar del Registro de Cambios, pero el acta '
+      + 'queda en blanco.';
+  }
+  return 'Este acta no dice nada: no tiene agenda, ni desarrollo, ni acuerdos, ni documento adjunto. '
+    + 'Se puede guardar así —para adjuntarle el escaneo más tarde—, pero mientras tanto se imprime '
+    + 'con el membrete de la institución y dos líneas de firma, y nada en medio.';
+}
+
+/**
+ * La asistencia enlazada tiene que ser de una reunión a la que ese cuerpo fue.
+ *
+ * El desplegable ofrece correctamente solo las actividades a las que el cuerpo
+ * fue convocado, y la pantalla avisa al elegirla —«X no estaba convocado a esa
+ * actividad»—. Pero la regla vivía solo ahí: por la API, un acta del cuerpo 14
+ * se guardaba con la asistencia de una actividad que convocó a los cuerpos 10 y
+ * 3, y contestaba 201.
+ *
+ * El daño es acotado y conviene decirlo: como no hay marcas de asistencia de
+ * ese cuerpo en esa actividad, el acta impresa no muestra ninguna lista. Queda
+ * un enlace que no dice nada y que afirma, en silencio, que el acta se levantó
+ * de una reunión a la que el cuerpo no fue.
+ *
+ * Se pregunta porque hay un caso legítimo: el cuerpo asistió igual y la lista
+ * de convocados quedó incompleta. Lo que no puede pasar es que el módulo se dé
+ * por bueno un dato que su propia pantalla marca en rojo.
+ */
+function loDeLaAsistenciaEnlazada(data, existing, db) {
+  const deAntes = (campo) => (data[campo] !== undefined ? data[campo] : existing && existing[campo]);
+  const asistenciaId = deAntes('asistencia_id');
+  const cuerpoId = deAntes('cuerpo_id');
+  /*
+   * Sin asistencia enlazada no hay nada que comprobar, que es el caso de la
+   * mayoría de las actas. El corte es por AHORRARSE LA CONSULTA y no porque
+   * abajo fuera a fallar —buscar el id nulo devuelve nada y la línea siguiente
+   * ya lo atiende—: se deja dicho porque una rotura a propósito de esta línea no
+   * pone roja ninguna prueba, y sin esta nota parece de más y se borra.
+   */
+  if (!asistenciaId || !cuerpoId) return null;
+
+  // Que la actividad exista ya lo comprobó el motor antes de llegar acá
+  // (referenciasRotas); si aun así no está, no hay nada que decir de ella.
+  const actividad = db.prepare('SELECT cuerpos, tipo_reunion, fecha FROM asistencias WHERE id = ?').get(asistenciaId);
+  if (!actividad) return null;
+  const convocados = require('./asistencias').idsDeCuerpos(actividad.cuerpos);
+  if (convocados.includes(Number(cuerpoId))) return null;
+
+  const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(cuerpoId);
+  const cual = [actividad.tipo_reunion, actividad.fecha ? `del ${comoSeLee(actividad.fecha)}` : '']
+    .filter(Boolean).join(' ');
+  return `La actividad enlazada${cual ? ` (${cual})` : ''} no convocó a `
+    + `"${cuerpo ? cuerpo.nombre : 'ese cuerpo'}". De ahí salen los asistentes del acta, así que no `
+    + 'va a mostrar ninguna lista. Si el cuerpo asistió igual, confirme; si no, elija la reunión que '
+    + 'corresponde.';
+}
+
 /**
  * Una reunión que termina antes de empezar.
  *
@@ -142,6 +237,20 @@ function loDeLasHoras(data, existing) {
       + `${comoSeLee(fin)}. Si de verdad terminó pasada la medianoche, confirme; si no, corrija las horas.`;
   }
   return null;
+}
+
+/**
+ * Varias advertencias en un solo aviso.
+ *
+ * Con una sola se dice tal cual. Con más, se numeran: «Y otra cosa: … Y otra
+ * cosa: …» encadenado se lee como una regañina y se pierde de vista cuántas
+ * son, y quien contesta necesita saber a cuántas cosas le está diciendo que sí.
+ */
+function enUnSoloAviso(avisos) {
+  if (avisos.length === 1) return avisos[0].texto;
+  const cuantas = avisos.length === 2 ? 'dos' : String(avisos.length);
+  return `Hay ${cuantas} cosas que revisar antes de guardar. `
+    + avisos.map((a, i) => `(${i + 1}) ${a.texto}`).join(' ');
 }
 
 /**
@@ -458,27 +567,29 @@ module.exports = {
        * carga el libro viejo, que está firmado hace años.
        */
       /*
-       * Las dos preguntas de un guardado, y por qué van juntas.
+       * TODAS LAS PREGUNTAS DE UN GUARDADO, EN UN SOLO AVISO.
        *
-       * La marca de «guardar igual» es UNA por guardado: si se preguntara
-       * primero por el acta firmada y después por las horas, quien confirma la
-       * primera pasaría la segunda sin haberla leído nunca. Así que cuando las
-       * dos aplican se dicen en el mismo aviso, y la más grave —tocar un
-       * documento ya firmado— va adelante.
+       * La marca de «guardar igual» es UNA por guardado. Preguntando de a una
+       * —la primera que aplique, y las demás en el intento siguiente— quien
+       * confirma la primera pasaría las otras sin haberlas leído nunca. Así que
+       * se juntan todas, ordenadas de la más grave a la menos, y la clave con
+       * que la pantalla decide el título es la de la más grave.
        */
-      const porLasHoras = confirmado ? null : loDeLasHoras(data, existing);
-
-      if (existing && existing.estado === FIRMADA && !confirmado) {
-        const cambia = loQueCambia(data, existing);
-        if (cambia.length) {
-          const aviso = avisoDeActaFirmada(existing, data, cambia);
-          return {
-            error: porLasHoras ? `${aviso} Y otra cosa: ${porLasHoras}` : aviso,
-            confirmar: 'acta_firmada',
-          };
+      if (!confirmado) {
+        const avisos = [];
+        if (existing && existing.estado === FIRMADA) {
+          const cambia = loQueCambia(data, existing);
+          if (cambia.length) avisos.push({ clave: 'acta_firmada', texto: avisoDeActaFirmada(existing, data, cambia) });
         }
+        const ajena = loDeLaAsistenciaEnlazada(data, existing, db);
+        if (ajena) avisos.push({ clave: 'asistencia_de_otra_reunion', texto: ajena });
+        const vacia = loDelActaVacia(data, existing);
+        if (vacia) avisos.push({ clave: 'acta_sin_nada', texto: vacia });
+        const horas = loDeLasHoras(data, existing);
+        if (horas) avisos.push({ clave: 'horas_del_acta', texto: horas });
+
+        if (avisos.length) return { error: enUnSoloAviso(avisos), confirmar: avisos[0].clave };
       }
-      if (porLasHoras) return { error: porLasHoras, confirmar: 'horas_del_acta' };
 
       anotarLaFirma(data, existing, user);
       return null;

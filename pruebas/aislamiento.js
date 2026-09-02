@@ -204,7 +204,10 @@ async function montarEscenario(admin) {
   const actaSur = await buscarOCrear('actas_reuniones', (f) => f.numero_acta === `ACTA-${MARCA}-SUR`,
     { numero_acta: `ACTA-${MARCA}-SUR`, fecha: '2026-08-02', iglesia_id: sur.id,
       cuerpo_id: cuerpoSur.id, tipo: 'Ordinaria', estado: 'Borrador',
-      presidida_por: `Preside ${MARCA}` });
+      presidida_por: `Preside ${MARCA}`,
+      // Con algo escrito: desde la 1.276.0 un acta que no dice nada pregunta
+      // antes de guardarse, y acá el acta es el señuelo, no lo que se prueba.
+      acuerdos: `<p>Acuerdo del Sur ${MARCA}.</p>` });
 
   /*
    * Un servicio del Sur con una ofrenda imposible de confundir: los totales del

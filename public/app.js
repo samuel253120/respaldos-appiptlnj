@@ -7668,6 +7668,33 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y cambiarle el nombre',
       seguir: 'Son dos congregaciones, guardar',
     },
+    // Las del libro de actas. Cuando un guardado trae varias, el servidor manda
+    // la clave de la más grave y las dice todas en el mismo aviso.
+    acta_firmada: {
+      titulo: '✍️ Esta acta ya está firmada',
+      volver: 'Volver y dejarla como está',
+      seguir: 'Lo sé, guardar el cambio',
+    },
+    acta_sin_nada: {
+      titulo: '📄 Esta acta no dice nada',
+      volver: 'Volver y escribirla',
+      seguir: 'Adjunto el escaneo después, guardar',
+    },
+    horas_del_acta: {
+      titulo: '🕐 Las horas de la reunión',
+      volver: 'Volver y corregirlas',
+      seguir: 'Terminó pasada la medianoche, guardar',
+    },
+    asistencia_de_otra_reunion: {
+      titulo: '🖐️ Ese cuerpo no estaba convocado',
+      volver: 'Volver y elegir otra reunión',
+      seguir: 'Asistió igual, guardar',
+    },
+    acta_que_se_borra: {
+      titulo: '🗑️ Va a eliminar un acta',
+      volver: 'No, dejarla donde está',
+      seguir: 'Eliminarla igual',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',

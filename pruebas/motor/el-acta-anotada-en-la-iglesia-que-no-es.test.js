@@ -55,9 +55,11 @@ function dosIglesias() {
   return { m, A, B, cuerpoA: cuerpo(A, 'A'), cuerpoB: cuerpo(B, 'B') };
 }
 
+// Con algo escrito adentro: desde la 1.276.0 un acta que no dice nada pregunta
+// antes de guardarse, y lo que se prueba acá es de qué iglesia queda, no eso.
 const unActa = (api, e, cambios) => api('POST', '/actas_reuniones', {
   numero_acta: `${e.m}-${Math.random().toString(36).slice(2, 7)}`,
-  fecha: '2026-03-15', cuerpo_id: e.cuerpoA, ...cambios,
+  fecha: '2026-03-15', cuerpo_id: e.cuerpoA, agenda: 'Punto único', ...cambios,
 });
 
 /** Como la manda la pantalla: la ficha entera, con lo que ya tenía cargado. */

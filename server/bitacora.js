@@ -323,6 +323,37 @@ function resumenDe(def, fila, alBorrar) {
  * nota importante— solo se deja constancia de que cambiaron: su contenido no
  * se copia al historial.
  */
+/**
+ * ¿Estos dos valores dicen lo mismo?
+ *
+ * Comparados como texto a secas, una LISTA MÚLTIPLE vacía no se parece a sí
+ * misma: en la base está en blanco y el formulario la manda como «[]», y el
+ * registro anotaba un cambio que no ocurrió. Medido en un acta de reunión: su
+ * primera edición —cualquiera, aunque solo se corrigiera una coma— dejaba la
+ * línea «Asistentes (escritos a mano): (vacío) → (ninguno)», de un campo que ya
+ * ni siquiera se muestra en el formulario. Quien lee el registro entiende que
+ * alguien tocó los asistentes; no cambió nada, cambió la manera de escribir
+ * «nada».
+ *
+ * Es menor y corroe justo lo que hace útil a un registro de cambios: que cada
+ * línea signifique algo. Si la mitad son ruido, se deja de leer.
+ *
+ * Se comparan los ids y no el texto, así que «[]», el blanco y el nulo son lo
+ * mismo. El ORDEN se conserva a propósito: ninguna de las listas de este
+ * sistema lo usa hoy, pero ordenarlas acá escondería un cambio real el día que
+ * alguna sí lo use, y ese es el error caro de los dos.
+ */
+function mismoValor(campo, uno, otro) {
+  if (campo.type === 'multiref') {
+    const ids = (v) => {
+      if (Array.isArray(v)) return v.map(Number).filter(Boolean).join(',');
+      try { return JSON.parse(v || '[]').map(Number).filter(Boolean).join(','); } catch (e) { return String(v ?? ''); }
+    };
+    return ids(uno) === ids(otro);
+  }
+  return String(uno ?? '') === String(otro ?? '');
+}
+
 function cambios(def, antes, despues) {
   const lista = [];
   for (const f of def.fields) {
@@ -330,7 +361,7 @@ function cambios(def, antes, despues) {
     if (!(f.name in despues)) continue;
     const previo = antes[f.name];
     const nuevo = despues[f.name];
-    if (String(previo ?? '') === String(nuevo ?? '')) continue;
+    if (mismoValor(f, previo, nuevo)) continue;
     if (f.sensible) {
       lista.push(`${f.label}: ${nuevo ? 'actualizada' : 'borrada'}`);
       continue;
