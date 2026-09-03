@@ -42,6 +42,7 @@ const { elSistemaAndando, comoOtroUsuario, cerrarElSistema } = require('./andand
 const { loQueDiceElPdf } = require('./lo-que-dice-el-pdf');
 const pdf = require('../../server/pdf/certificados');
 const palabras = require('../../server/certificado-en-palabras');
+const formatos = require('../../server/modules/formatos_certificado');
 
 require('../../server/migraciones').formatosDeCertificadoQueTraiaElSistema();
 
@@ -254,11 +255,63 @@ test('y las llaves que el módulo OFRECE están todas', () => {
    * llaves. Ofrecer una que nadie rellena es prometer un dato que va a salir
    * impreso tal cual.
    */
-  const ofrecidas = require('../../server/modules/formatos_certificado').DATOS.map(([d]) => d);
+  const ofrecidas = formatos.TODAS_LAS_LLAVES.map(([d]) => d);
   const rellenables = palabras.lasLlaves();
   for (const llave of ofrecidas) {
     assert.ok(rellenables.includes(llave), `se ofrece «{${llave}}» y nadie la rellena`);
   }
+});
+
+test('LA DE VUELTA: y no se rellena ninguna que el módulo no ofrezca', () => {
+  /*
+   * ESTA ERA LA QUE FALTABA, y la que se miraba en una sola dirección. El
+   * sistema rellenaba veintitrés llaves y la ayuda nombraba catorce: las nueve
+   * que faltaban eran las fechas partidas en día, mes y año, que son
+   * justamente las que usan las dos hojas que la iglesia más cuida —la de
+   * presentación de niños las usa las nueve, la de matrimonio seis—.
+   *
+   * O sea que quien abría «Presentación de niños» para corregirle una coma se
+   * encontraba con un texto lleno de llaves que la ayuda de ese mismo campo no
+   * mencionaba, y la conclusión razonable —y equivocada— era que estaban mal
+   * escritas. Medido en la v1.309.0.
+   */
+  const ofrecidas = formatos.TODAS_LAS_LLAVES.map(([d]) => d);
+  const sinNombrar = palabras.lasLlaves().filter((k) => !ofrecidas.includes(k));
+  assert.deepEqual(sinNombrar, [],
+    'el sistema rellena llaves que la ayuda no nombra: ' + sinNombrar.map((k) => `{${k}}`).join(' '));
+});
+
+test('cada llave que se ofrece viene con su explicación, no solo con su nombre', () => {
+  for (const [llave, dice] of formatos.TODAS_LAS_LLAVES) {
+    assert.ok(typeof dice === 'string' && dice.length > 10,
+      `«{${llave}}» se ofrece sin decir qué es`);
+  }
+});
+
+test('y la ayuda del campo las nombra a las veintitrés', () => {
+  /*
+   * La lista puede estar completa y la ayuda seguir armándose con la mitad,
+   * que es exactamente como estaba: `AYUDA_DATOS` recorría solo el primer
+   * grupo.
+   */
+  const texto = formatos.fields.find((f) => f.name === 'texto');
+  for (const [llave] of formatos.TODAS_LAS_LLAVES) {
+    assert.ok(texto.help.includes(`{${llave}}`),
+      `la ayuda del campo no nombra «{${llave}}»`);
+  }
+});
+
+test('y avisa de lo que pasa con una llave mal escrita', () => {
+  /*
+   * «El que no tenga dato queda en blanco» es cierto para una llave conocida
+   * sin dato. Para una mal escrita no: se deja a la vista, a propósito, para
+   * que se note. Es la decisión correcta y no estaba dicha en ninguna parte de
+   * la ayuda, que es donde alguien la buscaría.
+   */
+  const texto = formatos.fields.find((f) => f.name === 'texto');
+  assert.match(texto.help, /queda en blanco/);
+  assert.match(texto.help, /mal escrit\w+ sale impres\w+ tal cual/i,
+    'la ayuda tiene que decir que una llave mal escrita sale impresa');
 });
 
 test('una llave que nadie conoce se deja a la vista, no se borra', () => {

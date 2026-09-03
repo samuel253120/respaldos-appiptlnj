@@ -41,7 +41,24 @@
  * al contestar que sí esos certificados se van con él.
  */
 
-/** Los datos que se pueden poner entre llaves dentro del texto y del título. */
+/**
+ * Los datos que se pueden poner entre llaves dentro del texto y del título.
+ *
+ * ESTA LISTA ES LO QUE LA IGLESIA VE, así que tiene que nombrarlos TODOS. Y
+ * durante un tiempo nombró catorce de veintitrés: faltaban las nueve fechas
+ * partidas en día, mes y año, que son justamente las que usan las dos hojas que
+ * la iglesia más cuida —la de presentación de niños las usa las nueve, la de
+ * matrimonio seis—. Quien abría «Presentación de niños» para corregirle una
+ * coma se encontraba con un texto lleno de llaves que la ayuda de ese mismo
+ * campo no mencionaba, y la conclusión razonable —y equivocada— era que estaban
+ * mal escritas.
+ *
+ * Van en dos grupos porque son dos cosas distintas y se usan en dos clases de
+ * frase. Hay una prueba que comprueba que la lista y lo que el sistema rellena
+ * digan lo mismo EN LAS DOS DIRECCIONES: ofrecer una que nadie rellena sería
+ * prometer un dato que sale impreso tal cual, y rellenar una que no se ofrece
+ * es lo que pasaba acá.
+ */
 const DATOS = [
   ['titular', 'El nombre del titular, como quedó escrito en el certificado'],
   ['conyuge', 'El otro cónyuge, en el certificado de matrimonio'],
@@ -59,9 +76,38 @@ const DATOS = [
   ['rut', 'El RUT del titular, si está registrado'],
 ];
 
+/**
+ * Las fechas partidas en día, mes y año.
+ *
+ * Existen para la frase con espacios en blanco —«con fecha __ de ______ del
+ * año ____»—, que es como están hechas en papel las hojas de presentación de
+ * niños y de matrimonio. Escribir ahí la fecha entera obligaría a la iglesia a
+ * redactar dos textos distintos para la misma frase.
+ *
+ * El mes sale en MAYÚSCULAS y sin abreviar —«OCTUBRE»—, como en el formulario
+ * impreso de siempre.
+ */
+const DATOS_EN_PARTES = [
+  ['nac_dia', 'El día en que nació, en número'],
+  ['nac_mes', 'El mes en que nació, en letras y mayúsculas'],
+  ['nac_anio', 'El año en que nació'],
+  ['ev_dia', 'El día del bautismo, la boda o la presentación, en número'],
+  ['ev_mes', 'El mes de ese mismo día, en letras y mayúsculas'],
+  ['ev_anio', 'El año de ese mismo día'],
+  ['em_dia', 'El día en que se emite, en número'],
+  ['em_mes', 'El mes en que se emite, en letras y mayúsculas'],
+  ['em_anio', 'El año en que se emite'],
+];
+
+/** Todo lo que se puede poner entre llaves, que es lo que el sistema rellena. */
+const TODAS_LAS_LLAVES = [...DATOS, ...DATOS_EN_PARTES];
+
 const AYUDA_DATOS =
   'Entre llaves se pueden poner: ' + DATOS.map(([d]) => `{${d}}`).join(', ') +
-  '. Cada uno se reemplaza al imprimir; el que no tenga dato queda en blanco.';
+  '. Y la fecha partida, para la frase con espacios en blanco: ' +
+  DATOS_EN_PARTES.map(([d]) => `{${d}}`).join(', ') +
+  '. Cada uno se reemplaza al imprimir; el que no tenga dato queda en blanco, y ' +
+  'el que esté mal escrito sale impreso tal cual —entre llaves— para que se note.';
 
 const TIPOGRAFIAS = ['Con serifa (Georgia)', 'Sin serifa', 'Manuscrita'];
 const MARCOS = ['Doble línea', 'Línea simple', 'Sin marco'];
@@ -476,6 +522,8 @@ module.exports = {
 };
 
 module.exports.DATOS = DATOS;
+module.exports.DATOS_EN_PARTES = DATOS_EN_PARTES;
+module.exports.TODAS_LAS_LLAVES = TODAS_LAS_LLAVES;
 
 module.exports.DISPOSICIONES = DISPOSICIONES;
 module.exports.SIEMPRE_APAISADAS = SIEMPRE_APAISADAS;
