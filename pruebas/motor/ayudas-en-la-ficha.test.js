@@ -226,7 +226,7 @@ test('el resumen cuenta todas sus ayudas, no las que caben en la tabla', () => {
   const meter = db.transaction((cuantas) => {
     for (let i = 0; i < cuantas; i++) entregar({ no_miembro_id: muchas }, '2026-01-01', 'Entregada', 1000);
   });
-  meter(210);
+  meter.immediate(210); // inmediata: los del motor escriben en la misma base a la vez
 
   const { d } = suHistorial({ tipo: 'No miembro', id: muchas });
   assert.equal(d.registradas, 210, 'las 210 están, aunque no quepan');

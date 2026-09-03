@@ -469,7 +469,7 @@ test('a más de quinientos de una vez no se manda: se pide acotar', () => {
   );
   db.transaction(() => {
     for (let i = 0; i < cuantos; i++) meter.run(`Del Tope ${i}`, `${cuantosRut++}-0`, muchos);
-  })();
+  }).immediate(); // inmediata: los del motor escriben en la misma base a la vez
 
   const antes = cuantosMensajes();
   const salida = mensajes.enviar(jefe, { titulo: 'A todos', cuerpo: 'De una vez', destino: 'todos' });

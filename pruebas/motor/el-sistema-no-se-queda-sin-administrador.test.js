@@ -61,7 +61,20 @@ function unRut() {
  * quedan del lado de adentro y lo que se confirma al final no cambia nada.
  */
 function conSoloEstosAdministradores(cuantos, hacer) {
-  return db.transaction(() => soloEstos(cuantos, hacer))();
+  /*
+   * `.immediate()`, no suelta. Es la regla que el sistema tiene escrita para
+   * TODA transacción que escribe (ver el comentario de afinar(), en
+   * server/db.js), y esta se escribió suelta en la v1.325.0: parte leyendo y
+   * pide el permiso de escribir recién en el primer UPDATE, así que si otro
+   * proceso escribió mientras tanto, SQLite la rechaza en el acto y el
+   * busy_timeout ni se consulta.
+   *
+   * No se notó hasta que las pruebas nuevas de Perfiles de Permisos —que
+   * crean cuentas y perfiles de verdad— agregaron escrituras al mismo rato:
+   * entonces las once comprobaciones de este archivo empezaron a caer todas
+   * juntas con SQLITE_BUSY, y ninguna era culpa de lo que estaban probando.
+   */
+  return db.transaction(() => soloEstos(cuantos, hacer)).immediate();
 }
 
 function soloEstos(cuantos, hacer) {
