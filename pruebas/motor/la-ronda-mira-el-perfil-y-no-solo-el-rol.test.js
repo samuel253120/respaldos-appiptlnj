@@ -157,6 +157,45 @@ test('y la revisión se calla de verdad: no arma el aviso con el nombre adentro'
     'a quien el perfil se las cerró no se le manda el nombre de nadie');
 });
 
+/* ------------------------------------------------- y la pasada entera */
+
+test('la pasada del día completa respeta el perfil, no solo la revisión suelta', () => {
+  /*
+   * Las nueve pruebas que llamaban al vigía lo hacían con una revisión suelta y
+   * un usuario escrito a mano, y la única que pasaba por `pasada()` entera
+   * creaba una cuenta de rol `admin` —que tiene '*': ALL—. Con un
+   * administrador, un can() que decide por el rol contesta lo mismo que uno que
+   * decide bien, así que el hueco no tenía cómo salir. Ésta pasa por la pasada
+   * entera y con una cuenta que NO es administradora.
+   *
+   * El empujón al teléfono se desconecta antes: no hay a quién mandarle nada y
+   * cada archivo de prueba corre en su propio proceso, así que esto no le toca
+   * el navegador a nadie más.
+   */
+  const navegador = require('../../server/avisos/navegador');
+  const comoEra = navegador.empujar;
+  navegador.empujar = async () => ({ mandados: 0, borrados: 0, fallados: 0, porque: null });
+
+  try {
+    const perfil = perfilCon('Encargada de ayudas de la pasada', { ayudas_sociales: ['view'] });
+    const quien = cuentaCon({ rol: 'consulta', perfil_id: perfil });
+    db.prepare(
+      `INSERT INTO ayudas_sociales (fecha, tipo_ayuda, beneficiario, estado, iglesia_id)
+       VALUES (date('now','localtime','-120 days'), 'Mercadería', ?, 'Solicitada', ?)`
+    ).run(`Quien Espera En La Pasada ${MARCA}`, IGLESIA);
+
+    vigia.pasada();
+
+    const suyos = db
+      .prepare("SELECT tipo FROM notificaciones WHERE usuario_id = ? AND tipo = 'ayuda_sin_entregar'")
+      .all(quien);
+    assert.equal(suyos.length, 1,
+      'con el perfil puesto, la pasada entera tiene que dejarle el aviso de la ayuda');
+  } finally {
+    navegador.empujar = comoEra;
+  }
+});
+
 test('la llave del respaldo concedida a mano hace llegar su aviso', () => {
   /*
    * El caso que el propio comentario de `respaldoYDisco` dice haber arreglado:

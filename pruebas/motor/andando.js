@@ -66,6 +66,20 @@ async function elSistemaAndando() {
 
   const app = express();
   app.use(express.json());
+  /*
+   * Y las rutas de los avisos, que van ANTES del motor.
+   *
+   * El orden importa y es el mismo que en server/index.js: si el motor tomara
+   * «/api/avisos» primero, lo buscaría como si fuera un módulo llamado «avisos»
+   * y contestaría que no existe. Está escrito allá con el mismo comentario.
+   *
+   * Se montan acá desde la v1.341.0. Antes, esas nueve rutas —la campanita, las
+   * preferencias, los aparatos, el aviso de prueba— no tenían NINGUNA prueba por
+   * HTTP: no se podía escribir una, porque acá contestaban 404. Que se pudiera
+   * enganchar como aparato la dirección de la propia máquina, y pedir el envío
+   * cuarenta veces seguidas, no tenía cómo salir a la luz.
+   */
+  app.use('/api', require('../../server/avisos/rutas'));
   app.use('/api', buildRouter());
   /*
    * Y la importación de planillas, que es el OTRO camino por el que entran
