@@ -43,7 +43,11 @@ const path = require('path');
 const { exigirBaseDescartable } = require('./aislada');
 exigirBaseDescartable();
 
-const { NUMEROS, acotar } = require('../../server/modules/formatos_certificado');
+const formatos = require('../../server/modules/formatos_certificado');
+const { NUMEROS, acotar } = formatos;
+const { elSistemaAndando, cerrarElSistema } = require('./andando');
+
+test.after(cerrarElSistema);
 
 /** La copia de la pantalla, sacada del archivo y puesta a funcionar de verdad. */
 function laDeLaPantalla() {
@@ -179,4 +183,98 @@ test('la hoja se dibuja con esa tabla y no con números sueltos', () => {
   }
   assert.ok(!/entre\(f\.\w+, \d+, \d+, \d+\)/.test(trozo),
     'no puede quedar ningún número suelto: es lo que dejaba a las dos copias diciendo cosas distintas');
+});
+
+/* --------------------------------------------------------------------- */
+/* Y el rango se DECLARA, que es lo que hace que alguien se entere        */
+/* --------------------------------------------------------------------- */
+
+test('los seis campos declaran su rango, sacado de la tabla', () => {
+  /**
+   * NO SE DECLARABA, y por eso el aviso no ocurría en ninguna de las dos
+   * puntas. Medido en la v1.309.0: pedir un título de 500 px respondía HTTP 200
+   * sin ningún mensaje y guardaba 96, la versión de la ficha subía igual, y la
+   * casilla del formulario llegaba al navegador sin min ni max, así que tampoco
+   * avisaba mientras se escribía. Quien escribió 500 se iba creyendo que había
+   * guardado 500, y para enterarse tenía que volver a abrir la ficha: el
+   * listado de formatos no muestra esos campos.
+   */
+  for (const [cual, r] of Object.entries(NUMEROS)) {
+    const campo = formatos.fields.find((f) => f.name === cual);
+    assert.ok(campo, `falta el campo ${cual}`);
+    assert.equal(campo.min, r.min, `${cual} tiene que declarar su mínimo`);
+    assert.equal(campo.max, r.max, `${cual} tiene que declarar su máximo`);
+    assert.equal(campo.default, r.deFabrica, `${cual} tiene que declarar su valor de fábrica`);
+    assert.equal(campo.entero, true, `${cual} se cuenta en enteros: medio píxel no es nada`);
+  }
+});
+
+test('y el rango llega a la pantalla, que si no la casilla no avisa', () => {
+  /**
+   * Declararlo y que no viaje sería el mismo agujero por el que se cayó el
+   * color de fábrica (FC-02). El motor tiene ese canal justamente para que el
+   * formulario avise antes de mandar.
+   */
+  const { comoLoVeLaPantalla, sinLoQueNoDiceNada } = require('../../server/meta-liviana');
+  for (const [cual, r] of Object.entries(NUMEROS)) {
+    const campo = formatos.fields.find((f) => f.name === cual);
+    const comoLoRecibe = sinLoQueNoDiceNada(comoLoVeLaPantalla(campo));
+    assert.equal(comoLoRecibe.min, r.min, `la pantalla tiene que recibir el mínimo de ${cual}`);
+    assert.equal(comoLoRecibe.max, r.max, `y el máximo de ${cual}`);
+    assert.equal(comoLoRecibe.entero, true, `y que ${cual} se cuenta en enteros`);
+  }
+});
+
+test('la ayuda de cada uno dice su rango con los mismos números', () => {
+  /**
+   * La ayuda es lo que se lee ANTES de escribir. Si dijera otro número que el
+   * que se hace cumplir, quien la lee aprendería a desconfiar de ella.
+   */
+  for (const [cual, r] of Object.entries(NUMEROS)) {
+    const campo = formatos.fields.find((f) => f.name === cual);
+    assert.ok(campo.help.startsWith(`Entre ${r.min} y ${r.max}.`),
+      `la ayuda de ${cual} tiene que decir «Entre ${r.min} y ${r.max}», y dice «${campo.help}»`);
+  }
+});
+
+test('el motor frena un número fuera de rango, y dice el límite', async () => {
+  /**
+   * Es lo que reemplaza al acotado en silencio. La respuesta nombra el campo
+   * como se llama en la pantalla y dice hasta dónde llega, que es lo que hace
+   * falta para corregirlo.
+   */
+  const api = await elSistemaAndando();
+  const m = `${process.pid}-${Math.random().toString(36).slice(2, 7)}`;
+  const creado = await api('POST', '/formatos_certificado', { nombre: `Rango ${m}`, texto: 'De {iglesia}.' });
+  assert.equal(creado.estado, 201, JSON.stringify(creado.json));
+
+  const r = await api('PUT', `/formatos_certificado/${creado.json.id}`, {
+    ...creado.json, tamano_titulo: 500,
+  });
+  assert.equal(r.estado, 400, `se esperaba un aviso y llegó ${r.estado}`);
+  assert.match(r.json.error, /Tamaño del título/);
+  assert.match(r.json.error, /96/, 'el aviso tiene que decir el límite, no solo que se pasó');
+
+  // Y no se guardó nada: ni el número ni la versión
+  const sigue = await api('GET', `/formatos_certificado/${creado.json.id}`);
+  assert.equal(sigue.json.tamano_titulo, 34);
+  assert.equal(sigue.json.version, creado.json.version,
+    'una petición rechazada no puede subir la versión de la ficha');
+});
+
+test('y el vacío sigue guardándose sin reclamar: es el de fábrica, no un error', async () => {
+  /**
+   * La otra mitad. Vaciar la casilla es decir «déjelo como viene de fábrica»,
+   * y eso no es un número fuera de rango: no puede contestar un aviso.
+   */
+  const api = await elSistemaAndando();
+  const m = `${process.pid}-${Math.random().toString(36).slice(2, 7)}`;
+  const creado = await api('POST', '/formatos_certificado', { nombre: `Vacío ${m}`, texto: 'De {iglesia}.' });
+  const r = await api('PUT', `/formatos_certificado/${creado.json.id}`, {
+    ...creado.json, tamano_titulo: '', margen: '', grosor_marco: '',
+  });
+  assert.equal(r.estado, 200, JSON.stringify(r.json));
+  assert.equal(r.json.tamano_titulo, 34);
+  assert.equal(r.json.margen, 18);
+  assert.equal(r.json.grosor_marco, 3);
 });

@@ -201,6 +201,29 @@ function acotar(cual, crudo) {
 }
 
 /**
+ * Un campo de número del diseño, con su rango declarado.
+ *
+ * El rango sale de la tabla y no se escribe otra vez: declararlo a mano en el
+ * campo y acotarlo con la tabla al guardar serían dos números que un día dicen
+ * cosas distintas.
+ *
+ * DECLARARLO SIRVE PARA DOS COSAS, y las dos faltaban. La casilla del
+ * formulario avisa mientras se escribe —«No puede pasar de 96»—, en vez de
+ * dejar apretar Guardar; y si igual llega un número fuera de rango, el motor
+ * contesta 400 diciendo el límite. Antes no pasaba ninguna de las dos: pedir un
+ * título de 500 px respondía HTTP 200 sin mensaje y guardaba 96, y quien lo
+ * escribió se iba creyendo que había guardado 500. Medido en la v1.309.0.
+ */
+function campoDeNumero(cual, label, seccion, ayuda) {
+  const { min, max, deFabrica } = NUMEROS[cual];
+  return {
+    name: cual, label, type: 'number', default: deFabrica, seccion,
+    min, max, entero: true,
+    help: `Entre ${min} y ${max}.${ayuda ? ` ${ayuda}` : ''}`,
+  };
+}
+
+/**
  * Cuántos certificados quedaron emitidos con un nombre de formato.
  *
  * Es la misma cuenta que mira `beforeDelete` para no dejar borrar un formato
@@ -255,10 +278,8 @@ module.exports = {
       name: 'activo', label: 'En uso', type: 'boolean', default: 1, seccion: 'El formato',
       help: 'Al desmarcarlo deja de ofrecerse al emitir. Los certificados que ya lo usan no se tocan.',
     },
-    {
-      name: 'orden', label: 'Orden en la lista', type: 'number', default: 100, seccion: 'El formato',
-      help: 'Los más chicos salen primero. Con el mismo número se ordenan por nombre.',
-    },
+    campoDeNumero('orden', 'Orden en la lista', 'El formato',
+      'Los más chicos salen primero; con el mismo número se ordenan por nombre.'),
     { name: 'notas', label: 'Para qué es', type: 'text', seccion: 'El formato', help: 'Opcional: cuándo se usa este formato.' },
 
     /* ── El texto ───────────────────────────────────────────────── */
@@ -332,11 +353,8 @@ module.exports = {
       name: 'fondo', label: 'Imagen de fondo', type: 'file', accept: 'image/*', seccion: 'El diseño de la hoja',
       help: 'Opcional: una orla o marca de agua. Se ve detrás del texto, a página completa.',
     },
-    {
-      name: 'fondo_opacidad', label: 'Intensidad del fondo (%)', type: 'number', default: 100,
-      seccion: 'El diseño de la hoja',
-      help: 'Bájela para que el fondo no compita con el texto. 100 es la imagen tal cual.',
-    },
+    campoDeNumero('fondo_opacidad', 'Intensidad del fondo (%)', 'El diseño de la hoja',
+      'Bájela para que el fondo no compita con el texto; 100 es la imagen tal cual.'),
     { name: 'color_titulo', label: 'Color del título', type: 'color', seccion: 'El diseño de la hoja', porDefecto: '#16265c' },
     { name: 'color_texto', label: 'Color del texto', type: 'color', seccion: 'El diseño de la hoja', porDefecto: '#44403c' },
     { name: 'color_marco', label: 'Color del marco', type: 'color', seccion: 'El diseño de la hoja', porDefecto: '#e8b52c' },
@@ -348,26 +366,17 @@ module.exports = {
       name: 'tipografia_texto', label: 'Tipografía del texto', type: 'select', default: 'Sin serifa',
       options: TIPOGRAFIAS, seccion: 'El diseño de la hoja',
     },
-    {
-      name: 'tamano_titulo', label: 'Tamaño del título (px)', type: 'number', default: 34,
-      seccion: 'El diseño de la hoja', help: 'Entre 12 y 96.',
-    },
-    {
-      name: 'tamano_texto', label: 'Tamaño del texto (px)', type: 'number', default: 15,
-      seccion: 'El diseño de la hoja', help: 'Entre 8 y 40.',
-    },
-    {
-      name: 'margen', label: 'Margen de la hoja (mm)', type: 'number', default: 18,
-      seccion: 'El diseño de la hoja', help: 'Entre 0 y 40. Es el aire entre el borde del papel y el marco.',
-    },
+    campoDeNumero('tamano_titulo', 'Tamaño del título (px)', 'El diseño de la hoja'),
+    campoDeNumero('tamano_texto', 'Tamaño del texto (px)', 'El diseño de la hoja'),
+    campoDeNumero('margen', 'Margen de la hoja (mm)', 'El diseño de la hoja',
+      'Es el aire entre el borde del papel y el marco.'),
     {
       name: 'marco', label: 'Marco', type: 'select', default: 'Doble línea',
       options: MARCOS, seccion: 'El diseño de la hoja',
     },
     {
-      name: 'grosor_marco', label: 'Grosor del marco (px)', type: 'number', default: 3,
-      seccion: 'El diseño de la hoja',
-      help: 'Entre 1 y 12. Los certificados con orla llevan un marco grueso; los sobrios, uno fino.',
+      ...campoDeNumero('grosor_marco', 'Grosor del marco (px)', 'El diseño de la hoja',
+        'Los certificados con orla llevan un marco grueso; los sobrios, uno fino.'),
       showIf: { field: 'marco', in: ['Doble línea', 'Línea simple'] },
     },
   ],
@@ -377,12 +386,18 @@ module.exports = {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
 
       /**
-       * Los números se acotan al guardar, con la tabla de más arriba.
+       * Los números del diseño quedan en algo que se pueda imprimir.
        *
        * Un tamaño de título de 4000 px no rompe nada, pero deja la hoja
        * ilegible y a quien la emitió sin entender qué pasó. Y el margen es
        * peor: uno de 300 mm no deja lugar para el texto en una hoja carta.
-       * Se guarda lo que se puede imprimir.
+       *
+       * DESDE QUE LOS CAMPOS DECLARAN SU RANGO, un número fuera de rango ya no
+       * llega hasta acá: el motor lo frena antes y contesta diciendo el límite,
+       * que es lo que hay que hacer —acotar en silencio dejaba a quien escribió
+       * 500 creyendo que había guardado 500—. Lo que sigue haciendo esta línea
+       * es lo que el motor no mira: que el VACÍO valga el de fábrica y no cero,
+       * que lo que no es número también, y que se guarde redondeado.
        */
       for (const cual of Object.keys(NUMEROS)) data[cual] = acotar(cual, dato(cual));
 
