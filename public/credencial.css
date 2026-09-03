@@ -378,6 +378,51 @@
   /* «WhatsApp» va encima del número y en chico: el que manda es el número */
   .cred-disenio .barra .wa-lbl{display:block; font-size:3.9pt; font-weight:700; letter-spacing:.1em; color:#C8CEE0;}
 
+  /**
+   * La banda de BORRADOR, cruzando las dos caras.
+   *
+   * Un borrador se puede mandar a la impresora igual que una credencial
+   * emitida, y hay una razón legítima para hacerlo: mirar cómo va a quedar
+   * antes de gastar el número de serie, que no se reutiliza. Lo que no puede
+   * pasar es que salga del sistema una tarjeta con el logo, el guilloché, la
+   * firma del Pastor Presidente, el sello oficial y el sello de seguridad, y
+   * que nada diga que no vale. MEDIDO sobre un borrador impreso: salía todo
+   * eso, la línea del número de serie en blanco y el recuadro del QR rayado, y
+   * ni una palabra que dijera lo que era. El único aviso —«⚠️ Sin código QR»—
+   * lleva `no-print` y se queda en el monitor.
+   *
+   * Dos decisiones, las mismas que el sello de ANULADO de los certificados:
+   *
+   *   BORDE Y LETRA, NUNCA FONDO. Los navegadores no imprimen los colores de
+   *   fondo salvo que se les marque, así que una banda rellena podría salir
+   *   en blanco justo en el papel, que es donde tiene que verse.
+   *
+   *   COLOR FIJO, no una variable del diseño. Esto no se adapta a la tarjeta:
+   *   tiene que gritar en cualquier caso.
+   *
+   * Va cruzada, y NO en el medio de cada cara. El medio del anverso es donde
+   * están el grado y el nombre, y un borrador se imprime justamente para leer
+   * esos datos antes de emitir: taparlos sería quitarle el sentido a la hoja.
+   * Se pone sobre el logo en el anverso y sobre el bloque de la firma en el
+   * reverso, que son las dos zonas donde no hay ningún dato que leer.
+   */
+  .cred-disenio .marca-borrador{
+    position:absolute; z-index:9; left:50%; top:24%;
+    transform:translate(-50%,-50%) rotate(-24deg);
+    padding:0.7mm 2.4mm;
+    border:0.45mm solid #9F1239; border-radius:0.8mm;
+    color:#9F1239; background:transparent;
+    font-size:6.4pt; font-weight:800; letter-spacing:.14em; line-height:1.2;
+    text-align:center; white-space:nowrap;
+    opacity:.82; pointer-events:none;
+  }
+  /* En el reverso, sobre el bloque de la firma y el sello */
+  .cred-disenio .reverso .marca-borrador{top:52%;}
+  .cred-disenio .marca-borrador small{
+    display:block; font-size:3.6pt; font-weight:700; letter-spacing:.1em;
+    margin-top:0.4mm; opacity:.95;
+  }
+
   /* Foto fantasma: segunda imagen de control, tenue, en el reverso (anti-sustitución) */
   .cred-disenio .ghost-marco{
     position:absolute; top:4.6mm; right:2.8mm;

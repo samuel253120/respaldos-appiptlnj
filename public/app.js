@@ -11649,6 +11649,21 @@ async function viewImprimirCredencial(id) {
   // cruzado con el del reverso (elemento de seguridad del punto 11.9)
   const serieVertical = c.serie_completa ? `N°${c.serie_completa}  `.repeat(6) : '';
 
+  /**
+   * Un borrador sale marcado, en las dos caras.
+   *
+   * Se puede imprimir a propósito —mirar cómo va a quedar antes de gastar el
+   * número de serie, que no se reutiliza—, pero entonces la tarjeta lleva el
+   * logo, el guilloché, la firma del Pastor Presidente y los dos sellos, y
+   * hasta acá no decía en ninguna parte que no valía: la línea del número
+   * salía en blanco, el QR salía rayado, y eso era todo. El aviso de la
+   * pantalla no cuenta, porque lleva `no-print` y no llega al papel.
+   */
+  const esBorrador = (c.estado || 'Borrador') === 'Borrador';
+  const marcaDeBorrador = esBorrador
+    ? '<div class="marca-borrador" aria-label="Borrador, sin valor">BORRADOR<small>SIN VALOR COMO DOCUMENTO</small></div>'
+    : '';
+
   const qr = d.qr.hay
     ? `<svg viewBox="0 0 ${d.qr.size} ${d.qr.size}" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
          <rect width="${d.qr.size}" height="${d.qr.size}" fill="#fff"/>
@@ -11678,6 +11693,9 @@ async function viewImprimirCredencial(id) {
       </ul>
       Después: <b>recorte</b> por la línea exterior, <b>doble</b> por la del centro, <b>pegue</b> las dos caras
       entre sí y <b>plastifique</b>. La tarjeta terminada mide 54 × 86 mm.
+      ${esBorrador ? `<br><b>📝 Es un borrador.</b> Sale con la banda «BORRADOR · SIN VALOR» cruzando las dos
+      caras, sin número de serie y sin código QR. Sirve para ver cómo va a quedar; para entregarla hay que
+      emitirla, y ahí se le asigna su número.` : ''}
       ${!d.qr.hay ? `<br><b>⚠️ Sin código QR:</b> falta ${esc((d.qr.falta || []).join(', '))}.` : ''}
       <br><span class="mut">Para guardarla como PDF, elija «Guardar como PDF» en el destino de la impresora:
       sale idéntica, porque la produce el mismo motor que imprime.</span>
@@ -11699,6 +11717,7 @@ async function viewImprimirCredencial(id) {
           <div class="etiqueta">ANVERSO</div>
           <article class="card frente">
             <svg class="ondas" viewBox="0 0 540 860" preserveAspectRatio="none" aria-hidden="true"></svg>
+            ${marcaDeBorrador}
             <img class="logo-img marca-agua" src="${logo}" alt="" aria-hidden="true">
 
             <div class="logoc"><img class="logo-img" src="${logo}" alt="${esc(IGLESIA.nombre)}"></div>
@@ -11762,6 +11781,7 @@ async function viewImprimirCredencial(id) {
           <div class="etiqueta">REVERSO</div>
           <article class="card reverso">
             <svg class="ondas" viewBox="0 0 540 860" preserveAspectRatio="none" aria-hidden="true"></svg>
+            ${marcaDeBorrador}
             <div class="ghost-marco ${c.snap_foto ? 'activa' : ''}" aria-hidden="true">
               <div class="foto-ghost" id="credFotoGhost"></div>
             </div>

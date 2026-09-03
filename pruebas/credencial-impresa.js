@@ -775,6 +775,95 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
       `el bloque de datos sigue midiendo ${sinCargo.altoDatos.toFixed(0)} px`);
   }
 
+  /* 9 · El borrador sale marcado (CR-03) ---------------------------------- */
+  console.log('\n9 · Un borrador, en el papel');
+  /**
+   * Un borrador se puede mandar a la impresora, y hay una razón legítima para
+   * hacerlo: mirar cómo va a quedar antes de gastar el número de serie, que no
+   * se reutiliza. Lo que no puede pasar es que salga una tarjeta con el logo,
+   * el guilloché, la firma del Pastor Presidente y los dos sellos, y que nada
+   * diga que no vale.
+   *
+   * MEDIDO antes de este arreglo: salía todo eso, con la línea del número en
+   * blanco y el recuadro del QR rayado, y ni una palabra más. El único aviso
+   * llevaba `no-print` y se quedaba en el monitor.
+   *
+   * Se comprueban las tres cosas que importan: que la marca esté en LAS DOS
+   * caras, que se vaya a ver en el papel —borde y letra, no fondo, porque los
+   * navegadores no imprimen los fondos— y que no tape ningún dato, que es
+   * justamente para lo que se imprime un borrador.
+   */
+  const elBorrador = await pagina.evaluate(async (pastor) => {
+    const r = await api('POST', '/credenciales', {
+      pastor_id: pastor, fecha_emision: '2026-09-01', fecha_vencimiento: '2028-09-01',
+    });
+    return r && r.id ? r.id : null;
+  }, await pagina.evaluate(async () => {
+    const r = await api('GET', '/pastores?limit=20');
+    const con = (r.rows || []).find((p) => p.foto) || (r.rows || [])[0];
+    return con ? con.id : null;
+  }));
+
+  if (!elBorrador) {
+    revisar('se pudo crear un borrador con el que probar', false, 'no hay ningún pastor con el que crearlo');
+  } else {
+    await pagina.goto(`${URL}/#/print/credenciales/${elBorrador}`);
+    await pagina.waitForSelector('.plegable .card.frente', { timeout: 15000 });
+    await pagina.waitForTimeout(900);
+    await pagina.emulateMedia({ media: 'print' });
+    await pagina.evaluate(() => document.body.classList.add('imprimiendo-credencial'));
+    await pagina.waitForTimeout(400);
+
+    const marca = await pagina.evaluate(() => {
+      const caras = ['.pieza-frente', '.pieza-reverso'];
+      const seVe = (el) => !!(el && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
+      const laDe = (cual) => document.querySelector(`${cual} .marca-borrador`);
+
+      // ¿Tapa algún dato? Se mide el solapamiento con cada campo del anverso
+      const banda = laDe('.pieza-frente');
+      const encimados = [];
+      if (banda) {
+        const b = banda.getBoundingClientRect();
+        for (const campo of document.querySelectorAll('.pieza-frente .datos .valor, .pieza-frente .datos .lbl')) {
+          if (!campo.getClientRects().length) continue;
+          const c = campo.getBoundingClientRect();
+          const ancho = Math.min(b.right, c.right) - Math.max(b.left, c.left);
+          const alto = Math.min(b.bottom, c.bottom) - Math.max(b.top, c.top);
+          if (ancho > 0 && alto > 0) encimados.push(`${campo.className}: «${campo.textContent.trim().slice(0, 16)}»`);
+        }
+      }
+      const estilo = banda ? getComputedStyle(banda) : null;
+      const fondo = estilo ? estilo.backgroundColor : '';
+      return {
+        enLasDos: caras.every((c) => seVe(laDe(c))),
+        dice: banda ? banda.textContent.replace(/\s+/g, ' ').trim() : '',
+        conFondo: !!(fondo && fondo !== 'transparent' && !/rgba\(0, 0, 0, 0\)/.test(fondo)),
+        conBorde: estilo ? parseFloat(estilo.borderTopWidth) > 0 : false,
+        encimados,
+        // Y lo que ya no puede pasar: que una emitida salga marcada
+        soloEnBorradores: true,
+      };
+    });
+
+    revisar('la marca de borrador está en LAS DOS caras', marca.enLasDos, marca.dice || '(no está)');
+    revisar('dice que no vale como documento', /BORRADOR/.test(marca.dice) && /SIN VALOR/i.test(marca.dice),
+      marca.dice);
+    revisar('se va a ver en el papel: borde y letra, no fondo',
+      marca.conBorde && !marca.conFondo,
+      `borde ${marca.conBorde ? 'sí' : 'no'} · fondo ${marca.conFondo ? 'sí (no se imprimiría)' : 'ninguno'}`);
+    revisar('y no tapa ningún dato', marca.encimados.length === 0,
+      marca.encimados.length ? marca.encimados.join(' · ') : 'no se encima con ninguno');
+
+    // Y la credencial EMITIDA no lleva la marca
+    await pagina.goto(`${URL}/#/print/credenciales/${id}`);
+    await pagina.waitForSelector('.plegable .card.frente', { timeout: 15000 });
+    await pagina.waitForTimeout(900);
+    const enLaEmitida = await pagina.evaluate(() => document.querySelectorAll('.marca-borrador').length);
+    revisar('una credencial emitida NO la lleva', enLaEmitida === 0, `${enLaEmitida} marca(s)`);
+
+    await pagina.evaluate((cual) => api('DELETE', `/credenciales/${cual}`), elBorrador);
+  }
+
   console.log(`\n   El PDF quedó en ${pdf}`);
   console.log(`   errores de consola: ${errores.length ? errores.join(' | ') : 'ninguno'}`);
   if (errores.length) fallas++;
