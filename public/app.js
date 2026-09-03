@@ -11743,7 +11743,7 @@ async function viewImprimirCredencial(id) {
               <div class="barra-txt">
                 <span class="mini">ESCANEE PARA VERIFICAR LOS DATOS</span>
                 <span class="mini-cod">El c&oacute;digo &laquo;C:&raquo; valida su contenido</span>
-                <span class="mini-wa">WhatsApp&nbsp;+56&nbsp;9&nbsp;7172&nbsp;7872</span>
+                <span class="mini-wa"><span class="wa-lbl">WhatsApp</span>+56&nbsp;9&nbsp;7172&nbsp;7872</span>
               </div>
             </div>
           </article>

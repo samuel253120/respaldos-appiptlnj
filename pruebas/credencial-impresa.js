@@ -123,6 +123,27 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
       pieza: caja('.plegable'),
       qr: caja('.qr-holder'),
       barra: caja('.barra'),
+      barraTxt: caja('.barra-txt'),
+      logoFrente: caja('.pieza-frente .logoc'),
+      logoReverso: caja('.pieza-reverso .logoc'),
+      /**
+       * La firma se mide con `offsetTop`, no con el rectángulo en pantalla.
+       *
+       * El reverso se imprime girado 180°, así que en coordenadas de pantalla
+       * su borde inferior es el de arriba y una resta hecha con
+       * getBoundingClientRect da el hueco al revés. `offsetTop` y
+       * `offsetHeight` son medidas de maquetación: no las toca la rotación.
+       */
+      firmaApoyo: (() => {
+        const bloque = document.querySelector('.pieza-reverso .firma');
+        const img = document.querySelector('.pieza-reverso .firma-img');
+        if (!bloque || !img) return null;
+        return (bloque.offsetHeight - (img.offsetTop + img.offsetHeight)) / pxPorMm;
+      })(),
+      firmaAncho: (() => {
+        const img = document.querySelector('.pieza-reverso .firma-img');
+        return img ? img.offsetWidth / pxPorMm : null;
+      })(),
       foto: caja('.foto'),
     };
   });
@@ -136,6 +157,39 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
   revisar('el recuadro del QR mide 20 mm de ancho', casi(medidas.qr.ancho, 20, 0.3), `${medidas.qr.ancho.toFixed(2)} mm`);
   revisar('el recuadro del QR mide 20 mm de alto', casi(medidas.qr.alto, 20, 0.3), `${medidas.qr.alto.toFixed(2)} mm`);
   revisar('la barra inferior mide 21,6 mm de alto', casi(medidas.barra.alto, 21.6, 0.3), `${medidas.barra.alto.toFixed(2)} mm`);
+
+  /**
+   * Las proporciones del reverso (punto 2 de las modificaciones).
+   *
+   * No son adorno: son el sitio que se le quitó al logo y a la firma para que
+   * la barra de 21,6 mm quepa en los mismos 86 mm de tarjeta. Si alguien las
+   * devuelve a lo de antes, el QR vuelve a salirse por el borde y deja de
+   * leerse, que es lo que esta prueba midió cuando el cambio 1 iba solo.
+   */
+  revisar('el logo del anverso sigue en 22,5 mm (punto 2.5)',
+    casi(medidas.logoFrente.ancho, 22.5, 0.3), `${medidas.logoFrente.ancho.toFixed(2)} mm`);
+  revisar('el logo del reverso mide 11 mm',
+    casi(medidas.logoReverso.ancho, 11, 0.3), `${medidas.logoReverso.ancho.toFixed(2)} mm`);
+  revisar('la firma mide 24 mm de ancho',
+    casi(medidas.firmaAncho, 24, 0.3), `${medidas.firmaAncho.toFixed(2)} mm`);
+  revisar('y se apoya a 3,4 mm del borde de su bloque',
+    casi(medidas.firmaApoyo, 3.4, 0.3), `${medidas.firmaApoyo.toFixed(2)} mm`);
+  revisar('la columna de texto de la barra no pasa de 26,5 mm',
+    medidas.barraTxt.ancho <= 26.5 + 0.3, `${medidas.barraTxt.ancho.toFixed(2)} mm`);
+
+  /**
+   * Y el QR, entero dentro de la tarjeta.
+   *
+   * Es la comprobación que de verdad importa del punto 1.6: no basta con que
+   * el recuadro mida 20 mm si un trozo queda fuera del papel. Un código al que
+   * le falta un pedazo no se lee, y en pantalla no se nota.
+   */
+  const qrDentro = Math.min(
+    medidas.qr.top - medidas.reverso.top,
+    (medidas.reverso.top + medidas.reverso.alto) - (medidas.qr.top + medidas.qr.alto)
+  );
+  revisar('el QR queda entero dentro de la tarjeta', qrDentro >= -0.1,
+    qrDentro >= 0 ? `${qrDentro.toFixed(2)} mm de margen` : `se sale ${Math.abs(qrDentro).toFixed(2)} mm`);
 
   // La pieza entera: dos caras de 86 mm, una encima de la otra
   revisar('la pieza plegable mide 54 mm de ancho', casi(medidas.pieza.ancho, 54, 1.5), `${medidas.pieza.ancho.toFixed(2)} mm`);
@@ -189,7 +243,17 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
         // Sin esta línea la prueba lo acusaba de salirse por la izquierda.
         if (!el.getClientRects().length) continue;
         const r = el.getBoundingClientRect();
-        if (r.right > c.right + 1 || r.left < c.left - 1 || r.bottom > c.bottom + 1) {
+        /**
+         * Los CUATRO bordes, y el de arriba no es adorno.
+         *
+         * Esta comprobación miraba la derecha, la izquierda y abajo, pero no
+         * arriba. Y el reverso se imprime GIRADO 180°: lo que en el diseño se
+         * sale por abajo aparece en pantalla saliéndose por arriba. Medido: la
+         * barra del QR se salía 1,77 mm de la tarjeta —casi un milímetro del
+         * código quedaba cortado— y esta prueba la daba por buena.
+         */
+        if (r.right > c.right + 1 || r.left < c.left - 1
+            || r.bottom > c.bottom + 1 || r.top < c.top - 1) {
           salidas.push(el.className + ': «' + el.textContent.trim().slice(0, 24) + '»');
         }
       }
