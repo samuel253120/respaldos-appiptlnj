@@ -514,8 +514,22 @@ async function loAjenoNoSeToca(E) {
     !(puesto.json && puesto.json.puestos > 0),
     puesto.json && puesto.json.puestos > 0 ? `se le puso el perfil: ${puesto.texto.slice(0, 120)}` : null);
 
+  /*
+   * Esta comprobación estaba escrita solo como una negación —«que no aparezca
+   * su nombre»— y una negación la cumple cualquier respuesta que no lo traiga,
+   * incluida una avería. Se midió en la v1.327.0: rota a propósito la línea
+   * que acota esa lista, la ruta contestaba 500 y esto seguía en verde.
+   *
+   * Así que ahora se exige que la ruta FUNCIONE y traiga lo que le toca: la
+   * cuenta de su propia iglesia sí, la de la otra no. Una comprobación que no
+   * distingue «bien acotado» de «reventado» no comprueba el acotado.
+   */
   const delPerfil = await norte('GET', `/api/perfiles_permisos/${E.perfil.id}/usuarios`);
-  revisar('ni verla en la lista del perfil, con su RUT y su iglesia',
+  revisar('la lista del perfil le responde, y con lo suyo',
+    delPerfil.estado === 200 && delPerfil.json && Array.isArray(delPerfil.json.disponibles)
+      && delPerfil.json.disponibles.some((u) => u.id === E.ayudante.id),
+    `respondió ${delPerfil.estado}: ${delPerfil.texto.slice(0, 160).replace(/\s+/g, ' ')}`);
+  revisar('y no le muestra la cuenta ajena, con su RUT y su iglesia',
     !delPerfil.texto.includes(ajena.nombre));
 
   const responsables = await norte('GET', '/api/solicitudes/responsables');
