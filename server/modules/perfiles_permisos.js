@@ -96,6 +96,56 @@ module.exports = {
   ],
 
   hooks: {
+    /**
+     * LO QUE SE GUARDA ES LO QUE EL SISTEMA COMPRUEBA.
+     *
+     * El editor de permisos existe para que «lo que se ve ahí sea exactamente
+     * lo que el sistema comprueba, sin nada escondido», y la pantalla cumple:
+     * solo ofrece los módulos y las llaves que existen, con sus cuatro
+     * acciones. Lo que no había era nada que revisara lo que LLEGA.
+     *
+     * MEDIDO EN LA v1.327.0, por la API:
+     *
+     *   {"modulo_que_no_existe":["view"], "miembros":["volar","view"],
+     *    "*":["view","create","edit","delete"]}   →  201, guardado tal cual
+     *
+     * Los dos primeros son inofensivos: nadie pregunta por un módulo que no
+     * existe ni por una acción que no existe. El tercero no lo es tanto. En la
+     * tabla de los ROLES, «*» significa «todo»; en un perfil NO SE MIRA NUNCA
+     * —`can` pregunta por el nombre del módulo y nada más—, así que quien lo
+     * escriba creerá que concedió el sistema entero y no habrá concedido nada.
+     * Un perfil que miente hacia el lado seguro sigue siendo un perfil que
+     * miente.
+     *
+     * Se limpia en vez de negarse, y por una razón: los nombres de los módulos
+     * cambian con los años, y negarse dejaría un perfil viejo imposible de
+     * volver a guardar. Lo que sobra se cae, y lo que queda guardado se
+     * devuelve en la respuesta, que es donde quien lo mandó lo ve.
+     */
+    beforeSave(data) {
+      if (data.permisos === undefined || data.permisos === null) return null;
+      const { todoLoQueSePuedePermitir } = require('../permissions');
+      let tabla;
+      try {
+        tabla = typeof data.permisos === 'string' ? JSON.parse(data.permisos) : data.permisos;
+      } catch (e) {
+        tabla = null;
+      }
+      if (!tabla || typeof tabla !== 'object') return null;
+
+      const limpia = {};
+      for (const cosa of todoLoQueSePuedePermitir()) {
+        if (!Array.isArray(tabla[cosa.name])) continue;
+        // Solo las acciones que ESA cosa admite: una llave que solo se ve no
+        // tiene «eliminar», y guardárselo sería otra vez decir algo que no es
+        limpia[cosa.name] = cosa.acciones.filter((a) => tabla[cosa.name].includes(a));
+      }
+      // Como texto: acá el motor ya convirtió el campo a JSON, y devolverle un
+      // objeto deja la escritura sin poder guardar
+      data.permisos = Object.keys(limpia).length ? JSON.stringify(limpia) : null;
+      return null;
+    },
+
     beforeDelete(fila, { db }) {
       const usando = db.prepare('SELECT COUNT(*) c FROM usuarios WHERE perfil_id = ?').get(fila.id).c;
       if (usando) {
