@@ -112,6 +112,49 @@ const HOJAS = {
 const TAMANOS_HOJA = Object.keys(HOJAS);
 
 /**
+ * Los seis números del diseño, con lo que se puede pedir y con el de fábrica.
+ *
+ * Están acá y también en el navegador (CERT_NUMEROS, en public/app.js), por lo
+ * mismo que las medidas del papel: el servidor los necesita para guardar y la
+ * pantalla para dibujar la hoja y la vista previa. Tienen que decir lo mismo en
+ * los dos lados, y hay una prueba que lo comprueba
+ * (pruebas/motor/los-numeros-del-diseno.test.js).
+ *
+ * VACÍO ES «EL DE FÁBRICA», NO CERO, y esa es la parte que se olvida. En el
+ * navegador una casilla de número vacía llega como texto vacío, y `Number('')`
+ * da 0, que es un número finito: acotado sin más, cae al MÍNIMO del rango.
+ * Medido en la v1.309.0, con las cinco casillas en blanco la vista previa
+ * dibujaba título de 12 px, texto de 8 px, margen de 0 mm, marco de 1 px y
+ * fondo al 5 %, mientras el servidor guardaba 34, 15, 18, 3 y 100. La muestra
+ * que existe para revisar una hoja antes de imprimirla mostraba otra hoja.
+ *
+ * `orden` no es del diseño —es el lugar en la lista de tipos— pero se acota
+ * igual y por el mismo camino, así que vive con los demás.
+ */
+const NUMEROS = {
+  tamano_titulo: { min: 12, max: 96, deFabrica: 34 },
+  tamano_texto: { min: 8, max: 40, deFabrica: 15 },
+  margen: { min: 0, max: 40, deFabrica: 18 },
+  fondo_opacidad: { min: 5, max: 100, deFabrica: 100 },
+  orden: { min: 0, max: 9999, deFabrica: 100 },
+  grosor_marco: { min: 1, max: 12, deFabrica: 3 },
+};
+
+/**
+ * Un número del diseño, acotado a lo que se puede imprimir.
+ *
+ * La escriben los dos lados y tiene que decidir igual en los dos: el vacío al
+ * de fábrica, lo que no es número también, y el resto acotado al rango.
+ */
+function acotar(cual, crudo) {
+  const { min, max, deFabrica } = NUMEROS[cual];
+  if (crudo === null || crudo === undefined || crudo === '') return deFabrica;
+  const v = Number(crudo);
+  if (!Number.isFinite(v)) return deFabrica;
+  return Math.min(max, Math.max(min, Math.round(v)));
+}
+
+/**
  * Cuántos certificados quedaron emitidos con un nombre de formato.
  *
  * Es la misma cuenta que mira `beforeDelete` para no dejar borrar un formato
@@ -288,28 +331,14 @@ module.exports = {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
 
       /**
-       * Los números se acotan acá y no en la pantalla.
+       * Los números se acotan al guardar, con la tabla de más arriba.
        *
        * Un tamaño de título de 4000 px no rompe nada, pero deja la hoja
        * ilegible y a quien la emitió sin entender qué pasó. Y el margen es
        * peor: uno de 300 mm no deja lugar para el texto en una hoja carta.
        * Se guarda lo que se puede imprimir.
        */
-      const entre = (n, min, max, porDefecto) => {
-        const crudo = dato(n);
-        // Vacío es «el de fábrica», no cero: `Number(null)` da 0, y un margen
-        // de 0 mm es un valor legítimo que nadie eligió
-        if (crudo === null || crudo === undefined || crudo === '') return porDefecto;
-        const v = Number(crudo);
-        if (!Number.isFinite(v)) return porDefecto;
-        return Math.min(max, Math.max(min, Math.round(v)));
-      };
-      data.tamano_titulo = entre('tamano_titulo', 12, 96, 34);
-      data.tamano_texto = entre('tamano_texto', 8, 40, 15);
-      data.margen = entre('margen', 0, 40, 18);
-      data.fondo_opacidad = entre('fondo_opacidad', 5, 100, 100);
-      data.orden = entre('orden', 0, 9999, 100);
-      data.grosor_marco = entre('grosor_marco', 1, 12, 3);
+      for (const cual of Object.keys(NUMEROS)) data[cual] = acotar(cual, dato(cual));
 
       /**
        * El fondo tiene que ser un archivo de los que subió el sistema.
@@ -451,6 +480,8 @@ module.exports.DATOS = DATOS;
 module.exports.DISPOSICIONES = DISPOSICIONES;
 module.exports.SIEMPRE_APAISADAS = SIEMPRE_APAISADAS;
 module.exports.HOJAS = HOJAS;
+module.exports.NUMEROS = NUMEROS;
+module.exports.acotar = acotar;
 module.exports.TAMANOS_HOJA = TAMANOS_HOJA;
 module.exports.TIPOGRAFIAS = TIPOGRAFIAS;
 module.exports.MARCOS = MARCOS;

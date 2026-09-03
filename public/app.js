@@ -10701,6 +10701,46 @@ const CERT_HOJAS = {
 };
 
 /**
+ * Los seis números del diseño, con lo que se puede pedir y con el de fábrica.
+ *
+ * La misma tabla está en server/modules/formatos_certificado.js (NUMEROS), y
+ * una prueba comprueba que digan lo mismo. Vive en los dos lados por lo mismo
+ * que las medidas del papel: el servidor la necesita para guardar y la pantalla
+ * para dibujar la hoja y, sobre todo, la VISTA PREVIA.
+ *
+ * VACÍO ES «EL DE FÁBRICA», NO CERO. Es la línea que faltaba acá. Una casilla
+ * de número vacía llega como texto vacío, y `Number('')` da 0, que es un número
+ * finito: acotarlo sin más lo deja en el MÍNIMO del rango. Medido en la
+ * v1.309.0, vaciadas las cinco casillas de la ficha —lo que hace cualquiera que
+ * va a escribir otro número— la vista previa dibujaba título de 12 px, texto de
+ * 8 px, margen de 0 mm, marco de 1 px y fondo al 5 %, y el servidor guardaba
+ * 34, 15, 18, 3 y 100. Los cinco fallaban, y hacia el mismo lado: la muestra
+ * salía con el título diminuto, la letra ilegible, sin margen, el marco al hilo
+ * y el fondo casi borrado. Quien la miraba concluía que el formato se había
+ * echado a perder, o que así iba a salir; las dos cosas estaban mal.
+ *
+ * Es justamente lo que la vista previa existe para evitar: un certificado se
+ * firma y se entrega, y lo que salió impreso no se corrige después.
+ */
+const CERT_NUMEROS = {
+  tamano_titulo: { min: 12, max: 96, deFabrica: 34 },
+  tamano_texto: { min: 8, max: 40, deFabrica: 15 },
+  margen: { min: 0, max: 40, deFabrica: 18 },
+  fondo_opacidad: { min: 5, max: 100, deFabrica: 100 },
+  orden: { min: 0, max: 9999, deFabrica: 100 },
+  grosor_marco: { min: 1, max: 12, deFabrica: 3 },
+};
+
+/** Un número del diseño, acotado igual que lo acota el servidor al guardar. */
+function certAcotar(cual, crudo) {
+  const { min, max, deFabrica } = CERT_NUMEROS[cual];
+  if (crudo === null || crudo === undefined || crudo === '') return deFabrica;
+  const v = Number(crudo);
+  if (!Number.isFinite(v)) return deFabrica;
+  return Math.min(max, Math.max(min, Math.round(v)));
+}
+
+/**
  * La hoja del certificado, armada con su formato.
  *
  * El formato manda sobre lo que dice, sobre qué partes aparecen y sobre cómo
@@ -10748,12 +10788,11 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
   const firma1 = certRellenar(puesto(f.firma_izquierda, row.oficiante_id_label || 'Oficiante'), row);
   const firma2 = certRellenar(puesto(f.firma_derecha, 'Secretaría'), row);
 
-  /* El diseño, acotado a lo que se puede imprimir (el servidor ya lo acotó al
-     guardar; acá se repite porque un formato viejo puede traer cualquier cosa) */
-  const entre = (v, min, max, sino) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : sino;
-  };
+  /* El diseño, acotado a lo que se puede imprimir. El servidor ya lo acotó al
+     guardar; acá se repite porque un formato viejo puede traer cualquier cosa y
+     porque la VISTA PREVIA se arma con lo que hay en el formulario, sin
+     guardar: ahí es donde llegan las casillas vacías (ver CERT_NUMEROS). */
+  const entre = (v, cual) => certAcotar(cual, v);
   const color = (v, sino) => (/^#[0-9a-f]{6}$/i.test(String(v || '')) ? v : sino);
 
   /*
@@ -10772,15 +10811,15 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
     `--cert-color-marco:${color(f.color_marco, '#e8b52c')}`,
     `--cert-fuente-titulo:${CERT_TIPOGRAFIAS[f.tipografia_titulo] || CERT_TIPOGRAFIAS['Con serifa (Georgia)']}`,
     `--cert-fuente-texto:${CERT_TIPOGRAFIAS[f.tipografia_texto] || CERT_TIPOGRAFIAS['Sin serifa']}`,
-    `--cert-tam-titulo:${entre(f.tamano_titulo, 12, 96, 34)}px`,
-    `--cert-tam-texto:${entre(f.tamano_texto, 8, 40, 15)}px`,
-    `--cert-margen:${entre(f.margen, 0, 40, 18)}mm`,
+    `--cert-tam-titulo:${entre(f.tamano_titulo, 'tamano_titulo')}px`,
+    `--cert-tam-texto:${entre(f.tamano_texto, 'tamano_texto')}px`,
+    `--cert-margen:${entre(f.margen, 'margen')}mm`,
     // El grosor va aparte del estilo: la misma doble línea sirve para una orla
     // gruesa y para un marco sobrio, y es lo que distingue una hoja de otra
     `--cert-marco:${f.marco === 'Sin marco'
       ? CERT_MARCOS['Sin marco']
-      : `${entre(f.grosor_marco, 1, 12, 3)}px ${f.marco === 'Línea simple' ? 'solid' : 'double'}`}`,
-    `--cert-fondo-opacidad:${entre(f.fondo_opacidad, 5, 100, 100) / 100}`,
+      : `${entre(f.grosor_marco, 'grosor_marco')}px ${f.marco === 'Línea simple' ? 'solid' : 'double'}`}`,
+    `--cert-fondo-opacidad:${entre(f.fondo_opacidad, 'fondo_opacidad') / 100}`,
     `--cert-ancho:${anchoHoja}mm`,
     `--cert-alto:${altoHoja}mm`,
   ].join(';');
