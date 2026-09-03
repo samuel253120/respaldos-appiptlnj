@@ -75,10 +75,28 @@ function sincronizarUsuario(fila, db) {
   const nombre = `${fila.nombres || ''} ${fila.apellidos || ''}`.trim();
   const cambios = [];
   const valores = [];
+
+  /**
+   * Lo que la cuenta no puede perder aunque en la ficha quede vacío.
+   *
+   * El RUT es con lo que se entra al sistema y el nombre es con lo que se la
+   * reconoce: los dos son obligatorios en Usuarios, así que un vacío no es un
+   * valor que esa cuenta pueda tener. El resto —correo, teléfono, foto— sí se
+   * puede borrar, y borrarlo en un lado tiene que borrarlo en el otro.
+   *
+   * La regla que impide dejar el RUT en blanco está en el gancho de guardado,
+   * que es donde se le puede explicar a quien lo intenta. Esto es el seguro de
+   * abajo, para lo que no pasa por ahí: una importación, una ficha que quedó
+   * sin RUT antes de que la regla existiera, un arreglo hecho a mano en la
+   * base. Ninguno de esos tiene por qué dejar a nadie fuera del sistema.
+   */
+  const NO_SE_VACIAN = ['rut', 'nombre'];
   const igualar = (columna, valor) => {
-    if ((valor || null) === (usuario[columna] || null)) return;
+    const limpio = valor || null;
+    if (limpio === (usuario[columna] || null)) return;
+    if (limpio === null && NO_SE_VACIAN.includes(columna)) return;
     cambios.push(`"${columna}" = ?`);
-    valores.push(valor || null);
+    valores.push(limpio);
   };
   igualar('nombre', nombre);
   igualar('rut', fila.rut);
@@ -993,6 +1011,32 @@ module.exports = {
             ? 'por su cargo en Pastores / Guías'
             : 'por su ficha en Pastores / Guías o por su cónyuge';
           return `A esta persona le corresponde el trato de ${impuesto} —${porque}—, así que no puede quedar como "${manual}".`;
+        }
+      }
+
+      /*
+       * EL RUT DE QUIEN ENTRA AL SISTEMA NO SE BORRA DESDE ACÁ.
+       *
+       * Las dos fichas enlazadas —la de miembro y la cuenta de acceso— son la
+       * misma persona, así que el RUT, el nombre, el correo, el teléfono y la
+       * foto se mantienen iguales en las dos y da igual por dónde se cambien.
+       * Eso funciona. Lo que no estaba previsto es el BORRADO.
+       *
+       * MEDIDO: ficha enlazada a una cuenta, se deja el RUT en blanco desde
+       * Miembros, y la copia hacia la cuenta escribe ese vacío. La cuenta queda
+       * {"id":2,"rut":null}, y el RUT es con lo que se entra al sistema: esa
+       * persona no puede volver a entrar, y nada lo dice.
+       *
+       * Por el formulario de Usuarios no se puede llegar a eso —ahí el RUT es
+       * obligatorio—; se cuela por el otro lado. Un RUT no se quita: se
+       * corrige. Así que acá se dice que no, y se dice por qué.
+       */
+      if (id && existing && existing.rut && data.rut !== undefined && !String(data.rut || '').trim()) {
+        const cuenta = db.prepare('SELECT nombre FROM usuarios WHERE miembro_id = ?').get(id);
+        if (cuenta) {
+          return `Esta ficha está enlazada a la cuenta de acceso de ${cuenta.nombre}, y el RUT es con lo que `
+            + 'se entra al sistema: dejándolo en blanco, esa persona no podría volver a entrar. Si está '
+            + 'equivocado, escriba el correcto; si de verdad hay que dejarlo vacío, desenlace antes la cuenta.';
         }
       }
 
