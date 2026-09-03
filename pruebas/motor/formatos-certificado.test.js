@@ -128,7 +128,16 @@ test('un formato con certificados emitidos no se borra, y se explica qué hacer'
 });
 
 test('uno que nadie usó se borra sin más', () => {
-  assert.equal(def.hooks.beforeDelete({ nombre: 'Reconocimiento' }, { db }), null);
+  /*
+   * Con un formato propio y de nombre único, no con uno de los ocho que trae el
+   * sistema. Los archivos del motor comparten UNA base: preguntando por
+   * «Reconocimiento», bastaba con que un archivo vecino emitiera un certificado
+   * de ese tipo —cosa perfectamente legítima— para que esta prueba se pusiera
+   * roja sin que nada del sistema estuviera mal. Lo que se comprueba es la
+   * regla: sin usos, no hay nada que impedir.
+   */
+  const nombre = `Sin uso ${process.pid}-${Math.random().toString(36).slice(2, 7)}`;
+  assert.equal(def.hooks.beforeDelete({ nombre }, { db }), null);
 });
 
 /* ── El color que se guarda ────────────────────────────────────────── */

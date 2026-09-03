@@ -46,8 +46,10 @@ function unaIglesia() {
 
 async function unCertificado(api, campos) {
   const r = await api('POST', '/certificados', {
+    // Con la fecha del evento, que desde la v1.297.0 un certificado cuyo texto
+    // nombra el día no se emite sin él (CE-06): la hoja saldría con el hueco.
     tipo: 'Bautismo', iglesia_id: unaIglesia(), nombre_titular: 'Ana Soto Vera',
-    fecha_emision: '2026-03-10', numero: `CERT-${marca()}`, ...campos,
+    fecha_emision: '2026-03-10', fecha_evento: '2026-02-01', numero: `CERT-${marca()}`, ...campos,
   });
   assert.equal(r.estado, 201, JSON.stringify(r.json));
   return r.json;

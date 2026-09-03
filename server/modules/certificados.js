@@ -416,7 +416,7 @@ module.exports = {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
 
       const formato = db
-        .prepare('SELECT disposicion FROM formatos_certificado WHERE nombre = ?')
+        .prepare('SELECT * FROM formatos_certificado WHERE nombre = ?')
         .get(dato('tipo'));
       const { DISPOSICIONES } = require('./formatos_certificado');
       const como = formato && DISPOSICIONES.includes(formato.disposicion)
@@ -458,6 +458,42 @@ module.exports = {
       }
       if (como === 'Matrimonio' && !limpio('conyuge')) {
         return 'Un certificado de matrimonio nombra a los dos cónyuges. Falta escribir el otro.';
+      }
+
+      /**
+       * Y NO SE EMITE SIN EL DÍA, cuando la hoja lo va a nombrar.
+       *
+       * MEDIDO en la v1.296.0: un certificado de bautismo sin fecha del evento
+       * se emitía con un 201, y su hoja salía diciendo «Certifica que fue
+       * bautizado(a) en las aguas […] el día , en Iglesia Central». La frase se
+       * cierra sola y el hueco pasa desapercibido hasta que el papel está
+       * firmado.
+       *
+       * LA REGLA NO ES «LA FECHA DEL EVENTO ES OBLIGATORIA», y no puede serlo:
+       * un certificado de membresía dice «es miembro en plena comunión de tal
+       * iglesia» y no nombra ningún día. La regla es la que se puede comprobar
+       * mirando lo que ESTA hoja va a imprimir: si su texto nombra la fecha del
+       * evento —de cualquiera de las cuatro maneras en que se puede escribir— y
+       * la fecha está en blanco, no se emite. Así vale también para los
+       * formatos que la iglesia escriba mañana.
+       *
+       * Vale para las tres hojas: la clásica la nombra entera y las de
+       * presentación y matrimonio la nombran partida en día, mes y año, que es
+       * lo que hace la frase con los espacios en blanco.
+       */
+      if (!limpio('fecha_evento')) {
+        const loQueSeImprime = [
+          dato('texto') || (formato && formato.texto),
+          formato && formato.titulo,
+          formato && formato.texto_fecha,
+          formato && formato.epigrafe,
+          formato && formato.rotulo_titular,
+        ].filter(Boolean).join(' ');
+        if (/\{(fecha_evento|ev_dia|ev_mes|ev_anio)\}/.test(loQueSeImprime)) {
+          return 'El texto de este certificado nombra el día del evento, y está en blanco: la hoja '
+            + 'saldría con un hueco en esa frase —«… el día , en …»—. Escriba la fecha del evento, o '
+            + `saque ese dato del texto del formato «${dato('tipo')}».`;
+        }
       }
 
       /*

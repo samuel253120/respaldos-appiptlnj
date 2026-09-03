@@ -70,11 +70,15 @@ function unFormatoCon(disposicion) {
 
 const PRESENTACION = unFormatoCon('Presentación de niños');
 const MATRIMONIO = unFormatoCon('Matrimonio');
+/* Uno cuyo texto no nombra ningún día, para poder emitir una ficha pelada */
+const SIN_DIA = unFormatoCon('Clásica');
 
 async function unCertificado(api, campos = {}) {
   const r = await api('POST', '/certificados', {
+    // Con la fecha del evento, que desde la v1.297.0 un certificado cuyo texto
+    // nombra el día no se emite sin él (CE-06): la hoja saldría con el hueco.
     tipo: 'Bautismo', iglesia_id: unaIglesia(), nombre_titular: 'Ana Soto Vera',
-    fecha_emision: '2026-03-10', numero: `CERT-${marca()}`, ...campos,
+    fecha_emision: '2026-03-10', fecha_evento: '2026-02-01', numero: `CERT-${marca()}`, ...campos,
   });
   assert.equal(r.estado, 201, JSON.stringify(r.json));
   return r.json;
@@ -148,8 +152,13 @@ test('dice QUÉ SE LLEVA, dato por dato', async () => {
 });
 
 test('y una ficha sin nada más lo dice, en vez de inventar una lista', async () => {
+  /*
+   * Con un formato cuyo texto no nombra ningún día: desde la v1.297.0, uno que
+   * sí lo nombra no se puede emitir sin la fecha del evento (CE-06), y con la
+   * fecha puesta esta ficha ya no estaría pelada.
+   */
   const api = await elSistemaAndando();
-  const cert = await unCertificado(api);
+  const cert = await unCertificado(api, { tipo: SIN_DIA, fecha_evento: null });
   assert.match(await loQueDiceAlBorrar(api, cert.id), /No tiene nada más escrito/);
 });
 

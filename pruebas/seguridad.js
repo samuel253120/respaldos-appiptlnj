@@ -1368,6 +1368,9 @@ async function entrar(rut = RUT, clave = CLAVE) {
     const base = {
       numero, tipo: 'Bautismo', iglesia_id: iglesiaDelNumero.id,
       nombre_titular: 'Titular de prueba', fecha_emision: '2026-01-10',
+      // Con la fecha del evento: desde la v1.297.0, un certificado cuyo texto
+      // nombra el día no se emite sin él (CE-06), y el de bautismo lo nombra
+      fecha_evento: '2026-01-05',
     };
     const primero = await api('POST', '/api/certificados', base);
     if (primero.estado === 201 || primero.estado === 200) {
