@@ -15,17 +15,16 @@
  *
  * EL TAMAÑO NO ES NEGOCIABLE
  *
- * El recuadro mide 12,2 mm y cada módulo —cada cuadradito— tiene que medir
- * 0,25 mm o más, o un teléfono no lo lee impreso. Eso da 41 módulos como
- * máximo. Cuando el contenido no cabe, NO se achica el recuadro ni se bajan
- * los módulos: se acorta el contenido por niveles (punto 8.6). El modo en
- * línea casi nunca lo necesita, por ser corto.
+ * El recuadro mide 20 mm y cada módulo —cada cuadradito— tiene que medir
+ * 0,25 mm o más, o un teléfono no lo lee impreso. Cuando el contenido no cabe,
+ * NO se achica el recuadro ni se bajan los módulos: se acorta el contenido por
+ * niveles (punto 8.6). El modo en línea casi nunca lo necesita, por ser corto.
  *
- * El recuadro no se llena hasta el borde: tiene un relleno de 0,25 mm por
- * lado, así que el código dispone de 11,7 mm y no de 12,2. Parece un detalle
- * y no lo es: contar los 12,2 completos da un módulo un 4 % más grande del
- * que sale impreso, y ese 4 % es justo el margen con el que se decide si un
- * código pasa o no pasa el mínimo. Se descuenta.
+ * El recuadro no se llena hasta el borde: tiene un relleno de 0,3 mm por lado,
+ * así que el código dispone de 19,4 mm y no de 20. Parece un detalle y no lo
+ * es: contar los 20 completos da un módulo un 3 % más grande del que sale
+ * impreso, y ese margen es justo con el que se decide si un código pasa o no
+ * pasa el mínimo. Se descuenta.
  *
  * Y SIN LOS DATOS COMPLETOS NO HAY QR
  *
@@ -46,20 +45,25 @@ const serie = require('./serie');
  * pruebas/credencial-impresa.js mide el código sobre el papel y avisa si los
  * dos lados dejaron de decir lo mismo.
  */
-const RECUADRO_MM = 12.2;
-const RELLENO_MM = 0.25;
-/** Lo que le queda al código después del relleno: 11,7 mm. */
+const RECUADRO_MM = 20;
+const RELLENO_MM = 0.3;
+/** Lo que le queda al código después del relleno: 19,4 mm. */
 const LADO_UTIL_MM = RECUADRO_MM - RELLENO_MM * 2;
 /** Lo que mide un módulo como mínimo para que un teléfono lo lea impreso. */
 const MINIMO_POR_MODULO_MM = 0.25;
 /**
  * El máximo de módulos que caben conservando 0,25 mm cada uno.
  *
- * En los 11,7 mm útiles entrarían 46 módulos con zona de silencio incluida
- * —42 de código—, pero se deja en 41: un código más chico se lee de más lejos
- * y con peor luz, que es como se leen las credenciales de verdad.
+ * En los 19,4 mm útiles entrarían 77 módulos con zona de silencio incluida
+ * —73 de código—, pero se deja en 57: un código más chico se lee de más lejos
+ * y con peor luz, que es como se leen las credenciales de verdad. Con 57 cada
+ * cuadradito mide 0,318 mm, holgadamente sobre el mínimo.
+ *
+ * El número no es redondo por casualidad: 57 es el lado de la versión 10 del
+ * estándar QR, así que el techo cae justo en un escalón del formato y no en
+ * mitad de uno. El anterior —41— era el de la versión 6.
  */
-const MAX_MODULOS = 41;
+const MAX_MODULOS = 57;
 /** Nivel de corrección de errores y zona de silencio (punto 8.7). */
 const CORRECCION = 'M';
 const SILENCIO = 2;
@@ -148,9 +152,12 @@ function sinConexion(fila, nivel) {
  *   en línea ...... quien verifica es el servidor, que tiene la ficha entera,
  *                   así que el código firma los datos completos sin acortar.
  *
- * En consecuencia, cambiar el modo en Configuración no invalida las
- * credenciales ya impresas —cada una se verifica como se imprimió—, pero el
- * código impreso en una y en otra no es el mismo número.
+ * Con el recuadro de 20 mm el contenido sin conexión ya no se acorta, así que
+ * en la práctica las dos cadenas coinciden y el código de autenticidad es el
+ * MISMO número en los dos modos. Sigue siendo correcto que se calculen por
+ * separado: el día que un caso desmedido obligue a acortar, cada firma sella
+ * lo que su verificador puede leer, y cambiar el modo en Configuración no
+ * invalida las credenciales ya impresas —cada una se verifica como se imprimió—.
  */
 function enLinea(fila, dominio) {
   const numero = serie.conDigito(fila.serie, fila.serie_dv);
@@ -217,7 +224,7 @@ function para(fila, { modo, dominio } = {}) {
    *
    * Con los recortes del nivel 2 el contenido queda acotado y esto no debería
    * pasar nunca; el único dato que no tiene tope propio es el grado. Pero un
-   * código de más de 41 módulos sale con los cuadraditos por debajo de los
+   * código que pase el techo sale con los cuadraditos por debajo de los
    * 0,25 mm y NO SE LEE impreso, y un código que no se lee es peor que no
    * tener código: parece verificable y no lo es. El punto 17.2 no admite
    * excepciones, así que acá se prefiere el recuadro rayado y decir por qué.
@@ -236,7 +243,7 @@ function para(fila, { modo, dominio } = {}) {
     texto,
     nivel,
     modulos,
-    // Los 11,7 mm útiles repartidos entre todos los módulos, zona de silencio
+    // Los 19,4 mm útiles repartidos entre todos los módulos, zona de silencio
     // incluida: es la medida que hay que poder comprobar sobre el papel
     mm_por_modulo: Number((LADO_UTIL_MM / dibujo.size).toFixed(4)),
     size: dibujo.size,

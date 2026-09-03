@@ -122,6 +122,7 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
       reverso: caja('.pieza-reverso .card'),
       pieza: caja('.plegable'),
       qr: caja('.qr-holder'),
+      barra: caja('.barra'),
       foto: caja('.foto'),
     };
   });
@@ -130,7 +131,11 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
   revisar('el anverso mide 86 mm de alto', casi(medidas.frente.alto, 86), `${medidas.frente.alto.toFixed(2)} mm`);
   revisar('el reverso mide 54 mm de ancho', casi(medidas.reverso.ancho, 54), `${medidas.reverso.ancho.toFixed(2)} mm`);
   revisar('el reverso mide 86 mm de alto', casi(medidas.reverso.alto, 86), `${medidas.reverso.alto.toFixed(2)} mm`);
-  revisar('el recuadro del QR mide 12,2 mm', casi(medidas.qr.ancho, 12.2, 0.3), `${medidas.qr.ancho.toFixed(2)} mm`);
+  // El QR de 20 mm es el cambio principal del documento de modificaciones
+  // (punto 1.2), y la tolerancia de 0,3 mm la fija el punto 7.1
+  revisar('el recuadro del QR mide 20 mm de ancho', casi(medidas.qr.ancho, 20, 0.3), `${medidas.qr.ancho.toFixed(2)} mm`);
+  revisar('el recuadro del QR mide 20 mm de alto', casi(medidas.qr.alto, 20, 0.3), `${medidas.qr.alto.toFixed(2)} mm`);
+  revisar('la barra inferior mide 21,6 mm de alto', casi(medidas.barra.alto, 21.6, 0.3), `${medidas.barra.alto.toFixed(2)} mm`);
 
   // La pieza entera: dos caras de 86 mm, una encima de la otra
   revisar('la pieza plegable mide 54 mm de ancho', casi(medidas.pieza.ancho, 54, 1.5), `${medidas.pieza.ancho.toFixed(2)} mm`);
@@ -160,7 +165,9 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
   const serieEsperada = impresion.serie;
   revisar('se genera', qr.hay === true, qr.hay ? `${qr.modulos} módulos` : `falta ${(qr.falta || []).join(', ')}`);
   revisar('cada módulo mide 0,25 mm o más', qr.mm_por_modulo >= 0.25, `${qr.mm_por_modulo} mm por módulo`);
-  revisar('no pasa de 41 módulos', qr.modulos <= 41, `${qr.modulos} módulos`);
+  revisar('no pasa de 57 módulos', qr.modulos <= 57, `${qr.modulos} módulos`);
+  // Punto 1.4 y 7.4: con 20 mm de recuadro el contenido viaja completo
+  revisar('el contenido va sin abreviar', qr.nivel === 0, `nivel de acortado ${qr.nivel}`);
 
   /* 3 · Ningún texto se sale de su recuadro ------------------------------- */
   console.log('\n3 · Los textos, dentro de su recuadro');
@@ -353,9 +360,9 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
      * Si no coinciden es que la hoja de estilos y el servidor dejaron de decir
      * lo mismo del recuadro del QR —su ancho o su relleno—, y entonces el
      * número con que se decide si un código pasa el mínimo es un número
-     * inventado. Ya pasó una vez: el servidor repartía los 12,2 mm completos
-     * ignorando los 0,25 mm de relleno de cada lado, y anunciaba un módulo un
-     * 4 % más grande del que salía impreso.
+     * inventado. Ya pasó una vez: el servidor repartía los milímetros completos
+     * ignorando el relleno de cada lado, y anunciaba un módulo más grande del
+     * que salía impreso.
      */
     const desvio = Math.abs(leidoNitido.mm_por_modulo - qr.mm_por_modulo) / qr.mm_por_modulo;
     revisar('el tamaño que anuncia el servidor es el que sale impreso', desvio < 0.03,

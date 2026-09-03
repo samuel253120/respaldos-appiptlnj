@@ -13,10 +13,10 @@
  * mitades: que lo que dice el código sea lo que corresponde, y que la cuenta
  * del tamaño sea la de verdad.
  *
- * La cuenta del tamaño ya estuvo mal una vez: repartía los 12,2 mm del recuadro
- * entre todos los módulos sin descontar los 0,25 mm de relleno que tiene por
- * cada lado, y anunciaba un módulo un 4 % más grande del que salía impreso. Se
- * descubrió midiendo el QR sobre el PDF rasterizado (pruebas/credencial-impresa.js).
+ * La cuenta del tamaño ya estuvo mal una vez: repartía los milímetros del
+ * recuadro entre todos los módulos sin descontar el relleno que tiene por cada
+ * lado, y anunciaba un módulo más grande del que salía impreso. Se descubrió
+ * midiendo el QR sobre el PDF rasterizado (pruebas/credencial-impresa.js).
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -52,16 +52,16 @@ test('el recuadro y su relleno son los mismos que dice la hoja de estilos', () =
   // Estos tres números están también en `.qr-holder`, en public/credencial.css.
   // Si allá cambian y acá no, el sistema anuncia un tamaño de módulo que no es
   // el que sale impreso, y con ese número se decide si un código pasa o no.
-  assert.equal(qr.RECUADRO_MM, 12.2);
-  assert.equal(qr.RELLENO_MM, 0.25);
-  assert.equal(qr.LADO_UTIL_MM, 11.7, 'el relleno se descuenta por los dos lados');
+  assert.equal(qr.RECUADRO_MM, 20);
+  assert.equal(qr.RELLENO_MM, 0.3);
+  assert.equal(qr.LADO_UTIL_MM, 19.4, 'el relleno se descuenta por los dos lados');
 });
 
 test('el techo de módulos y el mínimo por módulo dicen lo mismo', () => {
   /**
-   * Son dos números que tienen que moverse juntos: en los 11,7 mm útiles, el
-   * código más grande que se permite —41 módulos más la zona de silencio— deja
-   * cada cuadradito en 0,26 mm, y eso tiene que seguir estando por encima del
+   * Son dos números que tienen que moverse juntos: en los 19,4 mm útiles, el
+   * código más grande que se permite —57 módulos más la zona de silencio— deja
+   * cada cuadradito en 0,318 mm, y eso tiene que seguir estando por encima del
    * mínimo. Si alguien sube el techo sin mirar esta cuenta, el sistema empieza
    * a emitir códigos que no se leen impresos.
    */
@@ -74,9 +74,9 @@ test('el techo de módulos y el mínimo por módulo dicen lo mismo', () => {
 
 test('si ni acortando cabe, no se emite ningún código (punto 17.2)', () => {
   // Antes que un código ilegible, el recuadro rayado diciendo qué pasa.
-  const imposible = { ...CREDENCIAL, snap_grado: 'PASTOR '.repeat(40) };
+  const imposible = { ...CREDENCIAL, snap_grado: 'PASTOR '.repeat(120) };
   const hecho = qr.para(imposible, { modo: 'sin_conexion' });
-  assert.equal(hecho.hay, false, 'un código de más de 41 módulos no se puede imprimir');
+  assert.equal(hecho.hay, false, 'un código que pasa el techo de módulos no se puede imprimir');
   assert.match(hecho.falta.join(' '), /no se leería impreso/);
 });
 
@@ -100,14 +100,44 @@ test('nunca se emite un código por debajo del mínimo que se lee impreso', () =
   }
 });
 
-test('un nombre y una iglesia larguísimos acortan el contenido, no el recuadro', () => {
-  const enorme = {
+/**
+ * Con el recuadro de 20 mm sobra sitio, así que los nombres YA NO SE ABREVIAN
+ * (punto 1.4 de las modificaciones). Un nombre largo de verdad —de los que
+ * antes salían como «FERNANDEZ DE LA TORRE J.M.»— ahora viaja entero.
+ */
+test('un nombre largo viaja completo: ya no se abrevia', () => {
+  const largo = {
     ...CREDENCIAL,
     snap_nombres: 'José Miguel Alejandro Ramón',
     snap_apellidos: 'Fernández de la Torre Etchegoyen Muñoz Peña',
     snap_iglesia: 'La Nueva Jerusalén de la Comuna de San José de Maipo',
   };
-  const hecho = qr.para(enorme, { modo: 'sin_conexion' });
+  const hecho = qr.para(largo, { modo: 'sin_conexion' });
+  assert.equal(hecho.hay, true);
+  assert.equal(hecho.nivel, 0, 'con 20 mm de recuadro no hace falta acortar');
+  assert.ok(hecho.texto.includes('JOSE MIGUEL ALEJANDRO RAMON'), 'los nombres van completos');
+  // limpiar() saca la eñe igual que las tildes: adentro del código ocupa el
+  // doble y agranda el QR. «Muñoz Peña» viaja entero, pero como MUNOZ PENA.
+  assert.ok(hecho.texto.includes('FERNANDEZ DE LA TORRE ETCHEGOYEN MUNOZ PENA'), 'los apellidos también');
+  assert.ok(hecho.texto.includes('PASTOR PRESBITERO'), 'y el grado sin abreviar');
+  assert.ok(hecho.modulos <= qr.MAX_MODULOS, `salieron ${hecho.modulos} módulos`);
+  assert.ok(hecho.mm_por_modulo >= qr.MINIMO_POR_MODULO_MM);
+});
+
+/**
+ * Y la red de seguridad sigue puesta (punto 1.5): no se borró la lógica de
+ * acortado, solo subió el umbral. Con un caso desmedido tiene que seguir
+ * acortando el contenido en vez de achicar el recuadro.
+ */
+test('ante un caso desmedido sigue acortando el contenido, no el recuadro', () => {
+  const desmedido = {
+    ...CREDENCIAL,
+    snap_nombres: 'José Miguel Alejandro Ramón Buenaventura Inmaculado',
+    snap_apellidos: 'Fernández de la Torre Etchegoyen Muñoz Peña Larraín Undurraga',
+    snap_iglesia: 'La Nueva Jerusalén de la Comuna de San José de Maipo, Provincia Cordillera',
+    snap_grado: 'Pastor Presbítero Supernumerario de la Obra Nacional',
+  };
+  const hecho = qr.para(desmedido, { modo: 'sin_conexion' });
   assert.equal(hecho.hay, true);
   assert.ok(hecho.nivel >= 1, 'con ese largo tenía que haber acortado');
   assert.ok(hecho.modulos <= qr.MAX_MODULOS, `salieron ${hecho.modulos} módulos`);
@@ -144,12 +174,42 @@ test('el código de un contenido acortado firma ese contenido, no otro', () => {
   assert.equal(firma, codigo.firmar(contenido));
 });
 
-test('los dos modos firman cosas distintas, y es a propósito', () => {
-  // En línea firma los datos completos, porque el servidor los tiene todos;
-  // sin conexión firma lo que quedó impreso. Cambiar el modo en Configuración
-  // no invalida lo ya impreso, pero el código no es el mismo número.
+test('sin acortar, los dos modos firman lo mismo', () => {
+  /**
+   * Cada modo firma lo que su verificador va a poder leer: en línea, los datos
+   * completos que el servidor tiene en la ficha; sin conexión, exactamente lo
+   * que quedó impreso dentro del código.
+   *
+   * Mientras el recuadro era de 12,2 mm eso hacía dos cadenas distintas, porque
+   * el contenido sin conexión casi siempre salía acortado. Con el recuadro de
+   * 20 mm ya no se acorta (punto 1.4), así que las dos cadenas coinciden y el
+   * código de autenticidad es el MISMO número. No es un descuido: es la misma
+   * firma sobre los mismos datos, y significa que una credencial impresa en
+   * modo sin conexión también se puede comprobar tecleando su código en la
+   * página pública.
+   */
   const enLinea = qr.para(CREDENCIAL, { modo: 'linea', dominio: 'https://iglesia.cl' });
   const sinConexion = qr.para(CREDENCIAL, { modo: 'sin_conexion' });
+  assert.equal(sinConexion.nivel, 0, 'este caso no debería acortar nada');
+  assert.equal(sinConexion.texto.split('|C:')[0], qr.datosQueSeFirman(CREDENCIAL));
+  assert.equal(enLinea.codigo, sinConexion.texto.split('|C:')[1]);
+});
+
+test('y cuando hay que acortar, entonces sí firman cosas distintas', () => {
+  // Acá el contenido impreso ya no es el de la ficha, así que las dos firmas
+  // se separan —cada una sella lo que su verificador puede leer— y cambiar el
+  // modo en Configuración no invalida lo ya impreso: cada credencial se
+  // verifica como se imprimió.
+  const desmedido = {
+    ...CREDENCIAL,
+    snap_nombres: 'José Miguel Alejandro Ramón Buenaventura Inmaculado',
+    snap_apellidos: 'Fernández de la Torre Etchegoyen Muñoz Peña Larraín Undurraga',
+    snap_iglesia: 'La Nueva Jerusalén de la Comuna de San José de Maipo, Provincia Cordillera',
+    snap_grado: 'Pastor Presbítero Supernumerario de la Obra Nacional',
+  };
+  const enLinea = qr.para(desmedido, { modo: 'linea', dominio: 'https://iglesia.cl' });
+  const sinConexion = qr.para(desmedido, { modo: 'sin_conexion' });
+  assert.ok(sinConexion.nivel >= 1, 'este caso sí tenía que acortar');
   assert.notEqual(enLinea.codigo, sinConexion.texto.split('|C:')[1]);
 });
 

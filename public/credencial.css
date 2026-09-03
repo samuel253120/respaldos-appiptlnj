@@ -297,14 +297,19 @@
     color:#181B27;
   }
   .cred-disenio .barra{
-    height:13.2mm; background:linear-gradient(90deg,#0C1430,#16224F 50%,#0C1430);
+    height:21.6mm; background:linear-gradient(90deg,#0C1430,#16224F 50%,#0C1430);
     display:flex; align-items:center; gap:2mm;
     padding:0 2.2mm;
   }
-  /* El QR debe tener módulos ≥0,25 mm para leerse impreso: recuadro amplio */
+  /* El QR debe tener módulos ≥0,25 mm para leerse impreso: recuadro amplio.
+     Estos números están también en server/credenciales/qr.js —RECUADRO_MM y
+     RELLENO_MM—, que es donde se decide cuánto texto cabe dentro del código.
+     Si acá cambian y allá no, el servidor anuncia un tamaño de módulo que no
+     es el que sale impreso. La prueba pruebas/credencial-impresa.js mide el
+     recuadro sobre el papel y avisa si los dos lados dejaron de decir lo mismo. */
   .cred-disenio .qr-holder{
-    width:12.2mm; height:12.2mm; flex:0 0 auto;
-    background:#fff; border-radius:0.5mm; padding:0.25mm;
+    width:20mm; height:20mm; flex:0 0 auto;
+    background:#fff; border-radius:0.6mm; padding:0.3mm;
     display:flex; align-items:center; justify-content:center;
   }
   .cred-disenio .qr-holder svg{width:100%; height:100%; display:block;}

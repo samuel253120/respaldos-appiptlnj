@@ -86,8 +86,8 @@
     background:radial-gradient(closest-side, #fff 60%, rgba(255,255,255,0) 100%);
   }
   .logoc img{width:100%; display:block;}
-  .reverso .logoc{width:17.5mm; margin-top:1.6mm;}
-  .reverso .logoc::before{inset:-2.8mm;}
+  .reverso .logoc{width:11mm; margin-top:1.2mm;}
+  .reverso .logoc::before{inset:-2mm;}
 
   /* ---------- ANVERSO ---------- */
   .titulo{
@@ -121,8 +121,8 @@
   /* Sello de seguridad cruzando la parte inferior de la fotografía (≈30% sobre ella) */
   .sello-foto{
     position:absolute; z-index:2;
-    width:15mm; height:15mm; object-fit:contain;
-    left:3mm; top:20mm;
+    width:17.5mm; height:17.5mm; object-fit:contain;
+    left:2.2mm; top:19.0mm;
     opacity:.5; transform:rotate(-12deg);
     pointer-events:none;
   }
@@ -205,7 +205,7 @@
     white-space:nowrap; overflow:hidden; outline:none;
     line-height:1.12;
   }
-  /* Iglesia: categoría (CENTRAL / SEDE / FILIAL / ANEXO) junto al nombre, en la misma línea */
+  /* Iglesia: categoría (MATRIZ / SEDE / FILIAL / ANEXO) junto al nombre, en la misma línea */
   .iglesia-fila{display:flex; align-items:stretch; gap:1.1mm; min-width:0;}
   .iglesia-fila .valor{flex:1 1 auto; min-width:0;}
   .cat-iglesia{
@@ -269,15 +269,15 @@
   .firma{width:24.5mm; text-align:center; position:relative;}
   .firma-img{
     position:absolute; left:50%; transform:translateX(-50%);
-    bottom:4mm; width:27mm; height:auto; z-index:2;
+    bottom:3.4mm; width:24mm; height:auto; z-index:2;
     pointer-events:none;
   }
-  .firma .espacio{height:5.6mm;}
+  .firma .espacio{height:4.4mm;}
   .firma .linea{border-top:0.32mm solid #8F6F14; padding-top:0.8mm;}
   .firma .l1{font-size:5.1pt; font-weight:700; letter-spacing:.05em; color:#20242E;}
   .firma .l2{font-size:4.2pt; font-weight:600; letter-spacing:.08em; color:#5A5F70; margin-top:0.2mm;}
   .sello-box{
-    position:relative; width:19.4mm; height:19.4mm; flex:0 0 auto;
+    position:relative; width:18.5mm; height:18.5mm; flex:0 0 auto;
     cursor:pointer;
   }
   .sello-box img{
@@ -297,27 +297,27 @@
   }
   .pj-sub{
     position:relative; z-index:1;
-    margin:0 2.4mm 0.5mm;
+    margin:0 2.4mm 1.4mm;
     text-align:center;
-    font-size:3.7pt; font-weight:700; letter-spacing:.06em;
+    font-size:3.9pt; font-weight:700; letter-spacing:.04em;
     color:var(--azul);
   }
   .leyenda{
     position:relative; z-index:1;
-    margin:0 2.2mm 0.4mm;
+    margin:0 2.2mm 1.5mm;
     text-align:center;
-    font-size:3.7pt; font-weight:700; letter-spacing:.04em; line-height:1.42;
+    font-size:4pt; font-weight:700; letter-spacing:.03em; line-height:1.5;
     color:#181B27;
   }
   .barra{
-    height:13.2mm; background:linear-gradient(90deg,#0C1430,#16224F 50%,#0C1430);
+    height:21.6mm; background:linear-gradient(90deg,#0C1430,#16224F 50%,#0C1430);
     display:flex; align-items:center; gap:2mm;
     padding:0 2.2mm;
   }
   /* El QR debe tener módulos ≥0,25 mm para leerse impreso: recuadro amplio */
   .qr-holder{
-    width:12.2mm; height:12.2mm; flex:0 0 auto;
-    background:#fff; border-radius:0.5mm; padding:0.25mm;
+    width:20mm; height:20mm; flex:0 0 auto;
+    background:#fff; border-radius:0.6mm; padding:0.3mm;
     display:flex; align-items:center; justify-content:center;
   }
   .qr-holder svg{width:100%; height:100%; display:block;}
@@ -330,10 +330,11 @@
     font-size:3.1pt; font-weight:800; letter-spacing:.04em; line-height:1.25;
     color:#6A6A78; text-align:center;
   }
-  .barra-txt{margin-left:auto; text-align:right; display:flex; flex-direction:column; gap:0.5mm;}
-  .barra .mini{font-size:4pt; font-weight:700; letter-spacing:.04em; color:#E8E8EC; line-height:1.35;}
-  .barra .mini-cod{font-size:3.4pt; font-weight:600; letter-spacing:.02em; color:#A8AEC0; line-height:1.3;}
-  .barra .mini-wa{font-size:5.2pt; font-weight:800; letter-spacing:.02em; color:#F2D98A; margin-top:0.2mm;}
+  .barra-txt{margin-left:auto; text-align:right; display:flex; flex-direction:column; gap:0.9mm; max-width:26.5mm;}
+  .barra .mini{font-size:4.6pt; font-weight:700; letter-spacing:.03em; color:#E8E8EC; line-height:1.3;}
+  .barra .mini-cod{font-size:3.8pt; font-weight:600; letter-spacing:.01em; color:#B4BACB; line-height:1.3;}
+  .barra .mini-wa{font-size:6.2pt; font-weight:800; letter-spacing:.01em; color:#F2D98A; margin-top:0.4mm; line-height:1.25; white-space:nowrap;}
+  .barra .wa-lbl{display:block; font-size:3.9pt; font-weight:700; letter-spacing:.1em; color:#C8CEE0;}
 
   /* Foto fantasma: segunda imagen de control, tenue, en el reverso (anti-sustitución) */
   .ghost-marco{
@@ -402,7 +403,7 @@
 
 <header class="toolbar">
   <h1>Credencial Pastoral · Formato imprimible</h1>
-  <p>Haz clic sobre cualquier campo para escribir los datos. En <b>Grado</b> va el grado ministerial (Gu&iacute;a de Obra, Pastor Probando, Pastor Di&aacute;cono, Pastor Presb&iacute;tero o Pastor Presidente) y en <b>Cargo</b> la funci&oacute;n que ejerce (por ejemplo, Pastor Titular o Pastor Supervisor). En la l&iacute;nea <b>Iglesia</b>, la etiqueta azul es la categor&iacute;a: escribe CENTRAL, SEDE, FILIAL o ANEXO. Haz clic en el recuadro de la fotografía para cargar una imagen y luego arrástrala y usa la rueda del ratón o el pellizco para encuadrarla (la&nbsp;× la quita, doble clic la cambia). El sello puede reemplazarse por una imagen propia haciendo clic sobre él.<br><b>Al imprimir</b> (a escala 100&nbsp;%, tamaño real, con los gráficos de fondo activados) el anverso y el reverso salen unidos en una sola pieza: <b>recorta</b> por la línea exterior, <b>dobla</b> por la línea del centro, <b>pega</b> las dos caras entre sí y <b>plastifica</b>. La tarjeta final mide 54&nbsp;×&nbsp;86&nbsp;mm.</p>
+  <p>Haz clic sobre cualquier campo para escribir los datos. En <b>Grado</b> va el grado ministerial (Gu&iacute;a de Obra, Pastor Probando, Pastor Di&aacute;cono, Pastor Presb&iacute;tero o Pastor Presidente) y en <b>Cargo</b> la funci&oacute;n que ejerce (por ejemplo, Pastor Titular o Pastor Supervisor). En la l&iacute;nea <b>Iglesia</b>, la etiqueta azul es la categor&iacute;a: escribe MATRIZ, SEDE, FILIAL o ANEXO. Haz clic en el recuadro de la fotografía para cargar una imagen y luego arrástrala y usa la rueda del ratón o el pellizco para encuadrarla (la&nbsp;× la quita, doble clic la cambia). El sello puede reemplazarse por una imagen propia haciendo clic sobre él.<br><b>Al imprimir</b> (a escala 100&nbsp;%, tamaño real, con los gráficos de fondo activados) el anverso y el reverso salen unidos en una sola pieza: <b>recorta</b> por la línea exterior, <b>dobla</b> por la línea del centro, <b>pega</b> las dos caras entre sí y <b>plastifica</b>. La tarjeta final mide 54&nbsp;×&nbsp;86&nbsp;mm.</p>
   <p class="aviso-datos" id="avisoDatos"></p>
   <button type="button" onclick="window.print()">Imprimir</button>
   <div class="foto-ajustes">
@@ -466,7 +467,7 @@
           <div class="campo campo-iglesia">
             <span class="lbl">Iglesia:</span>
             <span class="iglesia-fila">
-              <span class="cat-iglesia" contenteditable="plaintext-only" data-ph="SEDE" title="Categoría: CENTRAL, SEDE, FILIAL o ANEXO"></span>
+              <span class="cat-iglesia" contenteditable="plaintext-only" data-ph="SEDE" title="Categoría: MATRIZ, SEDE, FILIAL o ANEXO"></span>
               <span class="valor" contenteditable="plaintext-only" data-ph="I.P.T. L.N.J."></span>
             </span>
           </div>
@@ -527,20 +528,19 @@
       </div>
 
       <div class="pj">PERSONALIDAD JUR&Iacute;DICA N&deg; 7217</div>
-      <div class="pj-sub">IGLESIA CENTRAL CONCEPCI&Oacute;N</div>
+      <div class="pj-sub">IGLESIA MATRIZ &middot; CONCEPCI&Oacute;N, CHILE</div>
 
       <div class="leyenda">
-        EMITIDA EN CONCEPCI&Oacute;N, CHILE &middot; V&Aacute;LIDA PARA EL MINISTERIO RELIGIOSO.<br>
-        SE ANULA SI PRESENTA ENMIENDAS O ADULTERACIONES.<br>
-        DEVOLVER A LA IGLESIA SI ES ENCONTRADA.
+        CREDENCIAL V&Aacute;LIDA PARA EL MINISTERIO RELIGIOSO<br>
+        SE ANULA SI PRESENTA ENMIENDAS O ADULTERACIONES
       </div>
 
       <div class="barra">
         <div class="qr-holder" id="qrDinamico" title="Escanee para verificar los datos impresos en la credencial"></div>
         <div class="barra-txt">
           <span class="mini">ESCANEE PARA VERIFICAR LOS DATOS</span>
-          <span class="mini-cod">El c&oacute;digo &laquo;C:&raquo; valida su contenido</span>
-          <span class="mini-wa">WhatsApp&nbsp;+56&nbsp;9&nbsp;7172&nbsp;7872</span>
+          <span class="mini-cod">Si la encuentra, devu&eacute;lvala a la iglesia</span>
+          <span class="mini-wa"><span class="wa-lbl">WhatsApp</span>+56&nbsp;9&nbsp;7172&nbsp;7872</span>
         </div>
       </div>
     </article>
@@ -1192,7 +1192,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = QRGen;
       // Grado ministerial (se abrevia solo si el código quedaría demasiado denso)
       let grado = limpiar(val('Pastor Presbítero'));
       if (abreviar >= 1) grado = grado.replace(/^PASTOR\s+/, 'P.').replace(/^GUIA\s+DE\s+OBRA$/, 'G.OBRA');
-      // Iglesia: categoría (CENTRAL/SEDE/FILIAL/ANEXO) + nombre
+      // Iglesia: categoría (MATRIZ/SEDE/FILIAL/ANEXO) + nombre
       const catEl = document.querySelector('.cat-iglesia');
       const cat = catEl ? limpiar(catEl.textContent) : '';
       const nomIgl = limpiar(val('I.P.T. L.N.J.'));
@@ -1225,7 +1225,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = QRGen;
     }
     // Máximo de módulos admitido: con el recuadro de 12,2 mm garantiza que cada
     // módulo mida ≥0,25 mm, el mínimo para que un teléfono lo lea impreso.
-    const MAX_MODULOS = 41;
+    const MAX_MODULOS = 57;
     const aviso = document.getElementById('avisoDatos');
     function pintar(){
       if (!holder || typeof QRGen === 'undefined') return;
