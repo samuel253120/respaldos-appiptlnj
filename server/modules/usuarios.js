@@ -347,6 +347,44 @@ module.exports = {
       }
 
       /**
+       * UN ADMINISTRADOR NO LLEVA PERFIL, Y LAS DOS PUERTAS DICEN LO MISMO.
+       *
+       * El módulo de Perfiles lo tenía decidido desde siempre: su ruta para
+       * repartir un perfil termina en «AND rol != 'admin'», y la lista de
+       * cuentas a las que ofrecérselo tampoco los trae. Tiene sentido: el rol
+       * de administrador ya se lo da todo, así que un perfil solo podría
+       * QUITARLE cosas, y para eso están las excepciones de su ficha, que son
+       * de esa persona y no de un grupo.
+       *
+       * Lo que faltaba era decirlo acá. MEDIDO EN LA v1.327.0, sobre la misma
+       * cuenta de administrador y con el mismo perfil:
+       *
+       *   por la ruta del perfil → 200 {"puestos":0,"ajenas":0} · quedó en null
+       *   por su ficha ......... → 200 · quedó en 5
+       *
+       * Las dos son la misma decisión y contestaban distinto. Y lo de la ruta
+       * era peor que la contradicción: «200» es «salió bien», con un cero
+       * adentro; quien lo pedía desde la pantalla no veía ningún aviso, veía
+       * que no pasó nada y no sabía por qué.
+       *
+       * Se mira solo cuando el perfil o el rol CAMBIAN: una cuenta que ya
+       * quedó así de antes se sigue guardando, y quitarle el perfil —que es
+       * como se limpia— se puede siempre.
+       */
+      if (!isNew || data.perfil_id) {
+        const rolQueQueda = data.rol !== undefined ? data.rol : (existing || {}).rol;
+        const perfilQueQueda = data.perfil_id !== undefined ? data.perfil_id : (existing || {}).perfil_id;
+        const cambia = (campo, valor) => data[campo] !== undefined
+          && String(valor || '') !== String((existing || {})[campo] || '');
+        const seLoEstanPoniendo = cambia('perfil_id', data.perfil_id) || cambia('rol', data.rol);
+        if (String(rolQueQueda) === 'admin' && Number(perfilQueQueda) && seLoEstanPoniendo) {
+          return 'Un administrador no lleva perfil de permisos: su rol ya le da todo lo que el sistema '
+            + 'puede dar, y un perfil solo podría quitarle cosas. Si hay que recortarle algo, use las '
+            + '«Excepciones para esta persona», que son suyas y no de un grupo.';
+        }
+      }
+
+      /**
        * UN PERFIL ARCHIVADO NO SE LE PONE A NADIE NUEVO.
        *
        * La ayuda del campo «Estado» de un perfil lo dice con todas sus letras:

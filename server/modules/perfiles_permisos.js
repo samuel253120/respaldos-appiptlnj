@@ -239,6 +239,19 @@ module.exports = {
         const cuenta = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(id);
         if (!cuenta) continue;
         if (!alcance.alcanza(def, cuenta, req.user)) { ajenas++; continue; }
+        /*
+         * Un administrador no lleva perfil, y hasta la 1.327.0 esta ruta lo
+         * resolvía en el propio UPDATE —«AND rol != 'admin'»—, así que la
+         * cuenta se saltaba y la respuesta era 200 con un cero adentro: «salió
+         * bien» y no había pasado nada. Ahora se dice, con el mismo motivo que
+         * da la ficha de usuario.
+         */
+        if (cuenta.rol === 'admin') {
+          frenadas.push(`${cuenta.nombre} es administrador, y un administrador no lleva perfil de permisos: `
+            + 'su rol ya le da todo lo que el sistema puede dar, y un perfil solo podría quitarle cosas. '
+            + 'Si hay que recortarle algo, use las «Excepciones para esta persona» en su ficha.');
+          continue;
+        }
         const aviso = alGuardarElPerfil(req, cuenta, perfil.id);
         if (aviso) { frenadas.push(aviso); continue; }
         const cambio = poner.run(perfil.id, id).changes;
