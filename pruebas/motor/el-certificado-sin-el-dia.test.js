@@ -194,3 +194,133 @@ test('editar uno viejo que quedó sin el día lo hace saltar', async () => {
   });
   assert.equal(conFecha.estado, 200, 'y escribiendo la fecha, se guarda');
 });
+
+// ════════════════════ CE-12 · y tampoco sin la ciudad ══
+
+/**
+ * La ciudad se copia de la iglesia al emitir, y se congela: si mañana la
+ * congregación se muda, los certificados ya entregados tienen que seguir
+ * diciendo dónde se entregaron. Pero si la iglesia no la tiene anotada, la
+ * hoja salía diciendo «entregado en ___» y nadie lo dijo — medido en la
+ * v1.301.0, con un 201 y la ciudad guardada en nulo.
+ *
+ * Es la misma regla que la del día, con una diferencia que se ve en el aviso:
+ * la ciudad NO SE ESCRIBE EN ESTA FICHA. Es de solo lectura, así que decir
+ * «escríbala» mandaría a buscar una casilla que no existe. Lo que hay que
+ * arreglar está en la ficha de la iglesia, y ahí es donde el aviso manda.
+ */
+function unaIglesiaSinCiudad() {
+  const m = marca();
+  return db.prepare("INSERT INTO iglesias (nombre, codigo, estado, ciudad) VALUES (?, ?, 'Activa', NULL)")
+    .run(`Sin ciudad ${m}`, `SC${m}`.slice(0, 18)).lastInsertRowid;
+}
+
+function unaIglesiaCon(ciudad) {
+  const m = marca();
+  return db.prepare("INSERT INTO iglesias (nombre, codigo, estado, ciudad) VALUES (?, ?, 'Activa', ?)")
+    .run(`Con ciudad ${m}`, `CC${m}`.slice(0, 18), ciudad).lastInsertRowid;
+}
+
+test('una iglesia sin ciudad anotada NO puede emitir una hoja que la nombra', async () => {
+  const api = await elSistemaAndando();
+  const tipo = unFormato({ texto: 'Certificado entregado en {ciudad}.' });
+
+  const r = await api('POST', '/certificados', {
+    tipo, iglesia_id: unaIglesiaSinCiudad(), nombre_titular: 'Ana Soto Vera',
+    fecha_emision: '2026-03-10', numero: `CERT-${marca()}`,
+  });
+  assert.equal(r.estado, 400, 'antes contestaba 201 y la ciudad quedaba en nulo');
+  assert.match(String(r.json.error), /nombra la ciudad, y la iglesia que lo emite no la tiene anotada/);
+});
+
+test('y el aviso manda a la ficha de la IGLESIA, no a una casilla que no existe', async () => {
+  /*
+   * La ciudad del certificado es de solo lectura: se congela al emitir. Un
+   * aviso que dijera «escríbala» mandaría a buscar algo que no está.
+   */
+  const api = await elSistemaAndando();
+  const iglesia = unaIglesiaSinCiudad();
+  const nombre = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(iglesia).nombre;
+  const tipo = unFormato({ texto: 'Certificado entregado en {ciudad}.' });
+
+  const aviso = String((await api('POST', '/certificados', {
+    tipo, iglesia_id: iglesia, nombre_titular: 'Ana Soto Vera',
+    fecha_emision: '2026-03-10', numero: `CERT-${marca()}`,
+  })).json.error);
+
+  assert.match(aviso, /«entregado en ___»/, 'enseña cómo saldría');
+  assert.ok(aviso.includes(`Escriba la ciudad en la ficha de «${nombre}»`), aviso);
+  assert.match(aviso, /se copia acá al emitir/, 'y dice por qué se arregla allá');
+  assert.ok(aviso.includes(`formato «${tipo}»`), 'y ofrece la otra salida');
+});
+
+test('con la ciudad anotada se emite, y queda congelada en el certificado', async () => {
+  const api = await elSistemaAndando();
+  const tipo = unFormato({ texto: 'Certificado entregado en {ciudad}.' });
+
+  const r = await api('POST', '/certificados', {
+    tipo, iglesia_id: unaIglesiaCon('Chillán'), nombre_titular: 'Ana Soto Vera',
+    fecha_emision: '2026-03-10', numero: `CERT-${marca()}`,
+  });
+  assert.equal(r.estado, 201, JSON.stringify(r.json));
+  assert.equal(r.json.ciudad, 'Chillán');
+});
+
+test('LO QUE ESTA REGLA NO ES: si la hoja no nombra la ciudad, se emite igual', async () => {
+  /*
+   * «Certifica que es miembro en plena comunión de tal iglesia» no dice ninguna
+   * ciudad. Exigirla ahí sería pedir un dato que la hoja no va a usar.
+   */
+  const api = await elSistemaAndando();
+  const tipo = unFormato({ texto: 'Certifica que es miembro en plena comunión de {iglesia}.' });
+
+  const r = await api('POST', '/certificados', {
+    tipo, iglesia_id: unaIglesiaSinCiudad(), nombre_titular: 'Ana Soto Vera',
+    fecha_emision: '2026-03-10', numero: `CERT-${marca()}`,
+  });
+  assert.equal(r.estado, 201, JSON.stringify(r.json));
+  assert.equal(r.json.ciudad, null);
+});
+
+test('y la ciudad SIGUE CONGELÁNDOSE: mudarse la iglesia no reescribe lo entregado', async () => {
+  /*
+   * Es lo que la regla NO toca, y conviene que quede dicho: el arreglo es que
+   * no se emita sin ella, no que se vuelva a copiar cada vez.
+   */
+  const api = await elSistemaAndando();
+  const iglesia = unaIglesiaCon('Chillán');
+  const tipo = unFormato({ texto: 'Certificado entregado en {ciudad}.' });
+
+  const cert = await api('POST', '/certificados', {
+    tipo, iglesia_id: iglesia, nombre_titular: 'Ana Soto Vera',
+    fecha_emision: '2026-03-10', numero: `CERT-${marca()}`,
+  });
+  assert.equal(cert.estado, 201);
+
+  db.prepare('UPDATE iglesias SET ciudad = ? WHERE id = ?').run('Concepción', iglesia);
+  const r = await api('PUT', `/certificados/${cert.json.id}`, { notas: 'Se entregó en mano.' });
+  assert.equal(r.estado, 200, JSON.stringify(r.json));
+  assert.equal(r.json.ciudad, 'Chillán', 'el papel entregado sigue diciendo dónde se entregó');
+});
+
+test('las dos reglas se dicen de a una: primero el día, después la ciudad', async () => {
+  /*
+   * Son rechazos, no preguntas, y un rechazo se contesta arreglando el dato. El
+   * de la fecha va primero porque es el que quien emite puede arreglar ahí
+   * mismo; el de la ciudad manda a otra ficha.
+   */
+  const api = await elSistemaAndando();
+  const tipo = unFormato({ texto: 'Certifica lo ocurrido el día {fecha_evento}, entregado en {ciudad}.' });
+  const comun = {
+    tipo, iglesia_id: unaIglesiaSinCiudad(), nombre_titular: 'Ana Soto Vera',
+    fecha_emision: '2026-03-10',
+  };
+
+  const sinNada = await api('POST', '/certificados', { ...comun, numero: `A-${marca()}` });
+  assert.match(String(sinNada.json.error), /nombra el día del evento/);
+
+  const conFecha = await api('POST', '/certificados', {
+    ...comun, numero: `B-${marca()}`, fecha_evento: '2026-02-01',
+  });
+  assert.match(String(conFecha.json.error), /nombra la ciudad/);
+});

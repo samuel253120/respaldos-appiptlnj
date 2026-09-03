@@ -521,6 +521,15 @@ module.exports = {
       for (const campo of sobran) data[campo] = null;
 
       const limpio = (n) => String(dato(n) || '').trim();
+
+      // La ciudad se congela al emitir: si mañana la iglesia se muda, los
+      // certificados entregados siguen diciendo dónde se entregaron. Se
+      // resuelve acá arriba porque una de las reglas de más abajo la necesita.
+      if (!limpio('ciudad')) {
+        const iglesia = db.prepare('SELECT ciudad FROM iglesias WHERE id = ?').get(dato('iglesia_id'));
+        data.ciudad = (iglesia && iglesia.ciudad) || null;
+      }
+
       if (como === 'Presentación de niños') {
         if (!limpio('padre') && !limpio('madre')) {
           return 'Un certificado de presentación de niños nombra a sus padres. Escriba al menos uno.';
@@ -556,19 +565,45 @@ module.exports = {
        * presentación y matrimonio la nombran partida en día, mes y año, que es
        * lo que hace la frase con los espacios en blanco.
        */
-      if (!limpio('fecha_evento')) {
-        const loQueSeImprime = [
-          dato('texto') || (formato && formato.texto),
-          formato && formato.titulo,
-          formato && formato.texto_fecha,
-          formato && formato.epigrafe,
-          formato && formato.rotulo_titular,
-        ].filter(Boolean).join(' ');
-        if (/\{(fecha_evento|ev_dia|ev_mes|ev_anio)\}/.test(loQueSeImprime)) {
-          return 'El texto de este certificado nombra el día del evento, y está en blanco: la hoja '
-            + 'saldría con un hueco en esa frase —«… el día , en …»—. Escriba la fecha del evento, o '
-            + `saque ese dato del texto del formato «${dato('tipo')}».`;
-        }
+      const loQueSeImprime = [
+        dato('texto') || (formato && formato.texto),
+        formato && formato.titulo,
+        formato && formato.texto_fecha,
+        formato && formato.epigrafe,
+        formato && formato.rotulo_titular,
+      ].filter(Boolean).join(' ');
+
+      if (!limpio('fecha_evento') && /\{(fecha_evento|ev_dia|ev_mes|ev_anio)\}/.test(loQueSeImprime)) {
+        return 'El texto de este certificado nombra el día del evento, y está en blanco: la hoja '
+          + 'saldría con un hueco en esa frase —«… el día , en …»—. Escriba la fecha del evento, o '
+          + `saque ese dato del texto del formato «${dato('tipo')}».`;
+      }
+
+      /**
+       * Y TAMPOCO SE EMITE SIN LA CIUDAD, cuando la hoja la va a nombrar.
+       *
+       * Es la misma regla que la del día, y por lo mismo. MEDIDO en la
+       * v1.301.0: emitido por una iglesia que no tiene ciudad anotada, el
+       * certificado se guardaba con la ciudad en nulo y su hoja salía diciendo
+       * «entregado en ___».
+       *
+       * PERO EL AVISO NO PUEDE DECIR LO MISMO. La ciudad no se escribe en esta
+       * ficha —es de solo lectura, se congela al emitir copiándola de la
+       * iglesia— así que decir «escríbala» mandaría a buscar una casilla que no
+       * existe. Lo que hay que arreglar está en la ficha de la iglesia, y ahí
+       * es donde el aviso manda.
+       *
+       * SE CONGELA A PROPÓSITO, y eso no cambia: si mañana la congregación se
+       * muda, los certificados ya entregados tienen que seguir diciendo dónde
+       * se entregaron. Lo que se arregla es emitir sin ella.
+       */
+      if (!String(data.ciudad === undefined ? dato('ciudad') : (data.ciudad || '')).trim()
+        && /\{ciudad\}/.test(loQueSeImprime)) {
+        const iglesia = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(dato('iglesia_id'));
+        return 'El texto de este certificado nombra la ciudad, y la iglesia que lo emite no la tiene '
+          + `anotada: la hoja saldría diciendo «entregado en ___». Escriba la ciudad en la ficha de `
+          + `${iglesia && iglesia.nombre ? `«${iglesia.nombre}»` : 'la iglesia'} —se copia acá al `
+          + `emitir— o saque ese dato del texto del formato «${dato('tipo')}».`;
       }
 
       /*
@@ -668,12 +703,6 @@ module.exports = {
         else if (estadoAntes === ANULADO) data.fecha_anulacion = null;
       }
 
-      // La ciudad se congela al emitir: si mañana la iglesia se muda, los
-      // certificados entregados siguen diciendo dónde se entregaron
-      if (!limpio('ciudad')) {
-        const iglesia = db.prepare('SELECT ciudad FROM iglesias WHERE id = ?').get(dato('iglesia_id'));
-        data.ciudad = (iglesia && iglesia.ciudad) || null;
-      }
       return null;
     },
 
