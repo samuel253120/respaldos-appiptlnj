@@ -4568,7 +4568,9 @@ async function viewFicha(name, id, pestana) {
       <div class="actions">
         <button class="btn secondary" id="btnBack">← Volver</button>
         ${SE_BAJA_EN_PDF[name] && tieneLlave('datos_impresion')
-          ? '<button class="btn secondary" id="btnPdf">⬇️ PDF</button>' : ''}
+          ? `<button class="btn secondary" id="btnPdf"${name === 'certificados'
+            ? ' title="Baja la constancia en el papel de la institución. El certificado con su orla se saca con «Imprimir»."'
+            : ''}>⬇️ PDF</button>` : ''}
         ${m.printable && tieneLlave('datos_impresion') ? `<button class="btn secondary" id="btnPrint">🖨️ Imprimir</button>` : ''}
         ${m.perms.edit ? `<button class="btn" id="btnEdit">✏️ Editar</button>` : ''}
       </div>
@@ -17486,6 +17488,13 @@ const SE_BAJA_EN_PDF = {
   actas_reuniones: (id) => `Acta ${id}.pdf`,
   actas_asambleas: (id) => `Acta de asamblea ${id}.pdf`,
   documentos: (id) => `Documento ${id}.pdf`,
+  /*
+   * Lo que se baja de un certificado es su CONSTANCIA, no la hoja ceremonial:
+   * esa se imprime desde la pantalla. El porqué está escrito entero en
+   * server/pdf/certificados.js, y el nombre del archivo lo dice para que no
+   * haya que abrirlo para saber qué es.
+   */
+  certificados: (id) => `Constancia del certificado ${id}.pdf`,
 };
 
 /**

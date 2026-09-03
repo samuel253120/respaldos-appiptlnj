@@ -694,6 +694,48 @@ module.exports = {
 
   extraRoutes(router, { requirePerm }) {
     /**
+     * La constancia del certificado, en un archivo que se puede mandar.
+     *
+     * MEDIDO en la v1.300.0: la ruta contestaba 404. Imprimir desde la pantalla
+     * funcionaba —y funciona— pero imprimir y bajar no son lo mismo: imprimir es
+     * apretar el botón del navegador y aceptar lo que ese navegador decida;
+     * bajar es tener el archivo, con su nombre puesto, para adjuntarlo a un
+     * correo cuando alguien pide una copia.
+     *
+     * LO QUE SE BAJA ES LA CONSTANCIA, NO LA HOJA CEREMONIAL, y el porqué está
+     * escrito entero en server/pdf/certificados.js. En dos líneas: el aspecto de
+     * la hoja ceremonial lo elige la iglesia y lo puede cambiar cualquier día, y
+     * un segundo dibujante se iría separando del primero sin que nada pudiera
+     * comprobarlo. Un certificado impreso que no se parece al que se mandó por
+     * correo es peor que no poder mandarlo.
+     *
+     * Pide el permiso de imprimir además del de ver, como el documento y como el
+     * acta: bajarse un certificado es sacarlo del sistema.
+     */
+    router.get('/certificados/:id(\\d+)/pdf', requirePerm('certificados', 'view'), (req, res, next) => {
+      if (!require('../permissions').can(req.user, 'datos_impresion', 'view')) {
+        return res.status(403).json({ error: 'No tiene permiso para imprimir ni descargar certificados.' });
+      }
+      const fila = require('../alcance')
+        .registroSuyo(req, res, 'certificados', Number(req.params.id), 'Ese certificado');
+      if (!fila) return undefined;
+      try {
+        const pdf = require('../pdf/certificados');
+        res.setHeader('Content-Type', 'application/pdf');
+        const comoSeLlama = pdf.nombreDelCertificado(fila);
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${comoSeLlama.replace(/[^\x20-\x7E]/g, '_')}"; `
+          + `filename*=UTF-8''${encodeURIComponent(comoSeLlama)}`
+        );
+        res.setHeader('Cache-Control', 'private, no-store');
+        return pdf.generarCertificado(fila, { quien: req.user && req.user.nombre }).pipe(res);
+      } catch (e) {
+        return next(e);
+      }
+    });
+
+    /**
      * Qué número le toca al próximo certificado de esta iglesia.
      *
      * ES UNA PROPUESTA. Se escribía entero a mano, y eso tiene los mismos dos
