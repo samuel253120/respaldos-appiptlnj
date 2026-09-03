@@ -119,6 +119,7 @@ module.exports = {
     {
       name: 'pastor_id', label: 'Pastor, pastora o guía de obra', type: 'ref', ref: 'pastores', required: true,
       seccion: 'Titular',
+      bloqueadoSi: { field: 'estado', salvo: 'Borrador' },
       help: 'De su ficha salen la fotografía, el grado, la función, el RUT y la iglesia. Si algo está mal, se corrige allá y se emite de nuevo.',
     },
     {
@@ -163,10 +164,17 @@ module.exports = {
     {
       name: 'fecha_emision', label: 'Fecha de entrega', type: 'date', required: true,
       seccion: 'Vigencia',
+      // Se elige mientras es un borrador y se traba al emitirla: desde ese
+      // momento va impresa en una tarjeta que anda en el bolsillo de alguien,
+      // y la fila y el papel tienen que seguir diciendo lo mismo. Antes esto
+      // se resolvía borrando el campo del guardado sin avisar, así que quien
+      // corregía una fecha mal escrita se iba creyendo que la había corregido.
+      bloqueadoSi: { field: 'estado', salvo: 'Borrador' },
     },
     {
       name: 'fecha_vencimiento', label: 'Fecha de vencimiento', type: 'date', required: true,
       futuro: true, noAntesDe: 'fecha_emision',
+      bloqueadoSi: { field: 'estado', salvo: 'Borrador' },
     },
     {
       name: 'estado', label: 'Estado', type: 'select', required: true, default: 'Borrador',
@@ -198,6 +206,23 @@ module.exports = {
     { name: 'notas', label: 'Notas internas', type: 'textarea', seccion: 'Notas' },
   ],
 
+  /**
+   * Por qué un campo trabado ya no se puede cambiar.
+   *
+   * El motor sabe QUE está trabado —lo dice `bloqueadoSi`—; solo el módulo
+   * sabe por qué, y decirlo es la diferencia entre un «no se puede» y una
+   * explicación que además indica qué hacer en su lugar.
+   */
+  razonDelBloqueo(fila) {
+    const numero = require('../credenciales/serie').conDigito(fila.serie, fila.serie_dv);
+    return (
+      `La credencial ${numero ? `N.º ${numero} ` : ''}ya fue emitida y lo que dice el papel quedó ` +
+      'congelado: la tarjeta que anda en el bolsillo de su titular y esta ficha tienen que seguir ' +
+      'diciendo lo mismo. Para reflejar un cambio se emite una credencial nueva desde la ficha de la ' +
+      'persona; la anterior queda como reemplazada y se conserva.'
+    );
+  },
+
   hooks: {
     /**
      * Lo que salió de una solicitud queda anotado en su seguimiento.
@@ -225,7 +250,21 @@ module.exports = {
       const estabaEmitida = existing && existing.estado && existing.estado !== 'Borrador';
 
       if (estabaEmitida) {
-        // Ya salió en papel: ni la serie, ni el titular, ni lo impreso cambian
+        /**
+         * Ya salió en papel: ni la serie, ni el titular, ni lo impreso cambian.
+         *
+         * Esto es la SEGUNDA capa. La primera son los campos mismos: los que
+         * se escriben a mano —el titular y las dos fechas— llevan
+         * `bloqueadoSi`, así que la pantalla los dibuja trabados y el motor
+         * contesta explicando si igual llegan; y los que no los escribe nadie
+         * —la serie, lo congelado, la iglesia— son `readonly` y el motor los
+         * descarta antes de llegar hasta acá.
+         *
+         * Esta pasada se conserva igual, y a propósito: si mañana alguien
+         * quitara una de esas marcas, el dato congelado de una credencial
+         * emitida seguiría sin poder reescribirse. Es la clase de regla que
+         * conviene que sostengan dos cosas y no una.
+         */
         for (const campo of Object.keys(data)) {
           if (campo === 'estado' || campo === 'motivo_revocacion' || campo === 'notas') continue;
           if (campo.startsWith('snap_') || campo === 'serie' || campo === 'serie_dv' ||

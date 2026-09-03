@@ -854,6 +854,48 @@ function dondeEsUnico(def, campo, datos, existing) {
 }
 
 /**
+ * ¿Está bloqueado este campo por el estado en que quedó la ficha?
+ *
+ * Hay datos que se escriben mientras algo se está preparando y dejan de poder
+ * escribirse en cuanto ese algo se consuma. La fecha de entrega de una
+ * credencial es el caso: se elige mientras es un borrador, y una vez emitida
+ * queda impresa en una tarjeta que anda en el bolsillo de alguien, así que la
+ * fila y el papel tienen que seguir diciendo lo mismo.
+ *
+ *     { name: 'fecha_vencimiento', bloqueadoSi: { field: 'estado', salvo: 'Borrador' } }
+ *
+ * Es la hermana de `readonly`, con dos diferencias que importan. `readonly` es
+ * para lo que NUNCA lo escribe una persona —el número de serie, lo que se
+ * calcula solo—; esto es para lo que sí se escribe, hasta que deja de poder.
+ * Y `readonly` se descarta en silencio, que ahí está bien porque el formulario
+ * ni siquiera lo ofrece; esto, en cambio, CONTESTA por qué, porque si alguien
+ * lo mandó es que quiso cambiarlo.
+ *
+ * POR QUÉ HACÍA FALTA. Esto se resolvía dentro del gancho del módulo borrando
+ * el campo del guardado y siguiendo adelante. Medido sobre una credencial
+ * emitida: cambiar su fecha de vencimiento a 2031 respondía HTTP 200, sin
+ * ningún mensaje, el dato seguía en 2028 y la versión subía igual —así que a
+ * otra persona con esa ficha abierta le saltaba el aviso de «alguien la
+ * modificó» por un cambio que no ocurrió—. Quien corregía una fecha mal escrita
+ * se iba convencido de haberla corregido.
+ *
+ * Dos formas, las mismas que `showIf` al revés:
+ *   { field, salvo }   bloqueado salvo mientras ese campo valga eso
+ *   { field, equals }  bloqueado justamente cuando valga eso
+ */
+function estaBloqueado(campo, existing) {
+  if (!campo.bloqueadoSi || !existing) return false;
+  const actual = existing[campo.bloqueadoSi.field];
+  if (campo.bloqueadoSi.salvo !== undefined) {
+    return String(actual == null ? '' : actual) !== String(campo.bloqueadoSi.salvo);
+  }
+  if (Array.isArray(campo.bloqueadoSi.salvoEn)) {
+    return !campo.bloqueadoSi.salvoEn.map(String).includes(String(actual == null ? '' : actual));
+  }
+  return String(actual == null ? '' : actual) === String(campo.bloqueadoSi.equals);
+}
+
+/**
  * ¿Aplica este campo, según la condición con que se declaró?
  *
  * Un campo puede declarar `showIf: { field, equals | in }` para existir solo en
@@ -1364,8 +1406,39 @@ function buildRouter() {
           }
         }
 
+        /**
+         * Lo que está bloqueado por el estado de la ficha no se descarta
+         * callado: se contesta. Ver estaBloqueado(), más arriba.
+         *
+         * Solo se protesta cuando el valor que llega es DISTINTO del guardado.
+         * El formulario manda la ficha entera en cada guardado, así que quien
+         * corrige las notas de una credencial emitida vuelve a mandar su fecha
+         * de vencimiento tal como está; eso no es un intento de cambiarla y no
+         * tiene por qué frenar el guardado.
+         */
+        const trabados = [];
+        for (const f of def.fields) {
+          if (!estaBloqueado(f, existing)) continue;
+          const v = coerce(f, req.body[f.name]);
+          if (v === undefined) continue;
+          const antes = existing[f.name];
+          const igual = String(v == null ? '' : v) === String(antes == null ? '' : antes);
+          if (!igual) trabados.push(f);
+        }
+        if (trabados.length) {
+          const cuales = trabados.map((f) => `«${f.label}»`).join(', ');
+          const razon = def.razonDelBloqueo
+            ? ` ${def.razonDelBloqueo(existing)}`
+            : '';
+          return res.status(400).json({
+            error:
+              `${trabados.length === 1 ? 'El campo' : 'Los campos'} ${cuales} ya no se ${trabados.length === 1 ? 'puede' : 'pueden'} cambiar.${razon}`,
+          });
+        }
+
         const data = {};
         for (const f of def.fields) {
+          if (estaBloqueado(f, existing)) continue;
           /*
            * Un campo de SOLO LECTURA no se toma de lo que llegó: lo escribe el
            * sistema, y aceptarlo del formulario sería dejar que cualquiera se
@@ -1865,7 +1938,7 @@ function buildRouter() {
 module.exports = {
   consultaDeUnListado,
   buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara,
-  revisarLimites, buscarDuplicado, avisoDeDuplicado, dondeEsUnico, seAplica, TECHO,
+  revisarLimites, buscarDuplicado, avisoDeDuplicado, dondeEsUnico, seAplica, estaBloqueado, TECHO,
   referenciasRotas, referenciasFueraDeAlcance,
   // Se exporta para que las pruebas puedan exigir que un dato mal escrito se
   // le explique a la persona (400) en vez de salir como avería del sistema.

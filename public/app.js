@@ -8246,6 +8246,31 @@ function renumerarBloques() {
   });
 }
 
+/**
+ * ¿Este campo está bloqueado por el estado en que está la ficha?
+ *
+ * Es la mitad de pantalla de `bloqueadoSi` (la otra está en
+ * server/crud.js, en estaBloqueado). Sirve para el dato que SÍ se escribe
+ * mientras algo se prepara y deja de escribirse en cuanto se consuma: la fecha
+ * de entrega de una credencial se elige mientras es un borrador, y una vez
+ * emitida queda impresa en una tarjeta que anda en el bolsillo de alguien.
+ *
+ * Dibujarlo bloqueado es la mitad que le faltaba al arreglo. El servidor ya
+ * rechazaba el cambio, pero la pantalla lo seguía ofreciendo: se editaba la
+ * fecha de una credencial emitida, se guardaba, y no pasaba nada. Un campo que
+ * el servidor no va a aceptar no se ofrece, igual que se hizo con el estado.
+ *
+ * En una ficha NUEVA nunca bloquea: todavía no hay estado del que depender.
+ */
+function seBloqueaPorSuEstado(f, row, isNew) {
+  if (isNew || !f.bloqueadoSi || !row) return false;
+  const actual = row[f.bloqueadoSi.field];
+  const como = (v) => String(v == null ? '' : v);
+  if (f.bloqueadoSi.salvo !== undefined) return como(actual) !== como(f.bloqueadoSi.salvo);
+  if (Array.isArray(f.bloqueadoSi.salvoEn)) return !f.bloqueadoSi.salvoEn.map(como).includes(como(actual));
+  return como(actual) === como(f.bloqueadoSi.equals);
+}
+
 /** Marca un control como de solo lectura (campos que se calculan solos). */
 function marcarSoloLectura(html) {
   return html.replace(/<(input|textarea|select)\b/g, '<$1 readonly disabled data-solo-lectura="1"');
@@ -8560,8 +8585,9 @@ function fieldHtml(f, row, isNew, campos) {
       }
       input = `<input type="text" name="${f.name}" value="${esc(val)}" ${f.required ? 'required' : ''} />`;
   }
-  if (f.readonly) input = marcarSoloLectura(input);
-  const clases = `fld${wide}${f.readonly ? ' calculado' : ''}${f.destacado ? ' destacado' : ''}`;
+  const trabado = f.readonly || seBloqueaPorSuEstado(f, row, isNew);
+  if (trabado) input = marcarSoloLectura(input);
+  const clases = `fld${wide}${trabado ? ' calculado' : ''}${f.destacado ? ' destacado' : ''}`;
   return `<div class="${clases}"${condicionAttrs(f)}><label>${esc(f.label)} ${req}</label>${input}${help}</div>`;
 }
 

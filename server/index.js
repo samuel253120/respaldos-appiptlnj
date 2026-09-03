@@ -224,7 +224,7 @@ app.get('/api/meta', authRequired, (req, res) => {
       fields: [
         ...m.fields
           .filter((f) => !f.oculto)
-          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, entero, sensible, reservado, futuro, placeholder, enElPapel }) => ({
+          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, bloqueadoSi, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, entero, sensible, reservado, futuro, placeholder, enElPapel }) => ({
             name, label, type, required: !!required, options: options || null,
             // Los límites viajan para que el formulario avise antes de mandar.
             // Quien manda igual —o escribe la dirección a mano— se topa con la
@@ -242,6 +242,10 @@ app.get('/api/meta', authRequired, (req, res) => {
             reservado: reservado || (sensible ? SALUD : null),
             sugerencias: sugerencias || null, ref: ref || null,
             help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
+            // «Este campo deja de poder escribirse cuando la ficha llega a tal
+            // estado». La pantalla lo dibuja bloqueado; el servidor contesta si
+            // igual llega (ver estaBloqueado en server/crud.js).
+            bloqueadoSi: bloqueadoSi || null,
             optionsRoute: optionsRoute || null, readonly: !!readonly, mostrarEdad: !!mostrarEdad,
             seccion: seccion || null, destacado: !!destacado, ancho: ancho || null, recorte: recorte || null,
             recorta: recorta || null,
