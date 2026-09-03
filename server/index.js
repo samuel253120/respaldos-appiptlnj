@@ -486,7 +486,9 @@ app.get('/api/dashboard', authRequired, (req, res) => {
    */
   let finanzas = null;
   if (can(req.user, 'tesoreria', 'view') && can(req.user, 'tesoreria_montos', 'view')) {
-    const mes = new Date().toISOString().slice(0, 7); // YYYY-MM
+    // YYYY-MM del mes de la iglesia: el último día del mes, de noche, el
+    // universal ya es el mes siguiente y el panel mostraba ceros
+    const mes = require('./fechas').hoy().slice(0, 7);
     const marcas = susIglesias.map(() => '?').join(',');
     // El resumen no puede sumar plata que esa persona no puede ver: quien no
     // alcanza la tesorería de los cuerpos vería su total sin poder abrir un

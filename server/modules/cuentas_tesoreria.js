@@ -388,7 +388,8 @@ module.exports = {
         }
       }
 
-      if (isNew && !data.fecha_apertura) data.fecha_apertura = new Date().toISOString().slice(0, 10);
+      // El día de la iglesia, no el universal (ver fechas.hoy)
+      if (isNew && !data.fecha_apertura) data.fecha_apertura = require('../fechas').hoy();
 
       /*
        * Una cuenta que se cierra dice CUÁNDO se cerró.
@@ -403,7 +404,7 @@ module.exports = {
       // Se mira lo que trae ESTE guardado, no lo que hubiera antes: si no dice
       // cuándo, es hoy. Una fecha vieja de un cierre anterior no es la de este.
       if (quedaCerrada && !estabaCerrada && !data.fecha_cierre) {
-        data.fecha_cierre = new Date().toISOString().slice(0, 10);
+        data.fecha_cierre = require('../fechas').hoy();
       }
       /*
        * Y la que se vuelve a abrir deja de tener fecha de cierre.

@@ -118,7 +118,9 @@ module.exports = {
       if (isNew) {
         data.origen = data.origen || 'Manual';
         data.registrado_por = user.nombre;
-        if (!data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
+        // El día de la iglesia, no el universal: una anotación escrita el
+        // domingo por la noche quedaba con fecha del lunes (ver fechas.hoy)
+        if (!data.fecha) data.fecha = require('../fechas').hoy();
       }
       // Corregir a mano lo que anotó el sistema deja constancia de lo que decía
       require('../lo-que-decia-el-sistema').guardarLoQueDecia(data, { existing, user });

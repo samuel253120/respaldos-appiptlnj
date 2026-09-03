@@ -811,7 +811,7 @@ module.exports = {
       const cuerpo = cuerpoDelUsuario(req, res);
       if (!cuerpo) return;
       const { integrantesDe } = require('../integrantes');
-      const hoy = new Date().toISOString().slice(0, 10);
+      const hoy = require('../fechas').hoy();
 
       const gente = integrantesDe(db, cuerpo.id, { conRetirados: true }).map((f) => ({
         id: f.id,

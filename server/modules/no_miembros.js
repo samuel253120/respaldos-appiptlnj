@@ -595,7 +595,7 @@ module.exports = {
             ficha.iglesia_id, ficha.nombres, ficha.apellidos, ficha.rut || null,
             ficha.fecha_nacimiento || null, ficha.genero || null,
             ficha.telefono || null, ficha.direccion || null, ficha.email || null,
-            new Date().toISOString().slice(0, 10),
+            require('../fechas').hoy(),
             `Inscrita desde el registro de No Miembros${ficha.notas ? `. ${ficha.notas}` : ''}`,
             req.user.id
           );

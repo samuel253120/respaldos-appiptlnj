@@ -148,7 +148,7 @@ module.exports = function importarMiembros(origen, { lote, prueba, iglesiaId, ru
 
       // El motivo de la baja, a su historial: es un hecho de su vida en la iglesia
       if (bajaPorFallecimiento || texto(m.inactiveReason)) {
-        const cuando = fecha(m.inactiveDate) || datos.updated_at || new Date().toISOString().slice(0, 10);
+        const cuando = fecha(m.inactiveDate) || datos.updated_at || require('../fechas').hoy();
         const yaEsta = db
           .prepare(`SELECT id FROM bitacora WHERE miembro_id = ? AND tipo = 'Cambio de estado' AND descripcion LIKE ?`)
           .get(id, `%${m.inactiveReason}%`);

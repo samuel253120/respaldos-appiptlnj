@@ -178,7 +178,7 @@ module.exports = {
         const miembro = db.prepare('SELECT iglesia_id FROM miembros WHERE id = ?').get(miembroId);
         if (miembro && miembro.iglesia_id) data.iglesia_id = miembro.iglesia_id;
       }
-      if (isNew && !data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
+      if (isNew && !data.fecha) data.fecha = require('../fechas').hoy();
 
       /*
        * ¿No será el mismo papel que ya está en la carpeta? Ver arriba, en

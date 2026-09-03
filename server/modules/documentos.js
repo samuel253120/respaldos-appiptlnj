@@ -705,7 +705,7 @@ module.exports = {
 
       // La fecha de registro, si no se puso: el día del documento, o hoy
       if (flujo !== 'Interno o de archivo' && !dato('fecha_registro')) {
-        data.fecha_registro = dato('fecha') || new Date().toISOString().slice(0, 10);
+        data.fecha_registro = dato('fecha') || require('../fechas').hoy();
       }
 
       /*

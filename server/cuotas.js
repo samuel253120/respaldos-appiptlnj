@@ -148,7 +148,9 @@ function registrarPago(conexion, { integranteId, anio, mes, monto, fecha, metodo
   const sinDonde = avisoSiLaCuentaEstaCerrada(ficha.cuerpo_id, conexion);
   if (sinDonde) return { error: sinDonde };
 
-  const cuando = fecha || new Date().toISOString().slice(0, 10);
+  // El día de la iglesia, no el universal: una cuota pagada el domingo por
+  // la noche quedaba con fecha del lunes (ver fechas.hoy)
+  const cuando = fecha || require('./fechas').hoy();
   const info = conexion
     .prepare(
       `INSERT INTO cuotas_cuerpo (integrante_id, anio, mes, monto, fecha_pago, metodo,

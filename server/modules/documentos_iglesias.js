@@ -54,7 +54,7 @@ module.exports = {
   ],
   hooks: {
     beforeSave(data, { isNew, id, existing, db, confirmado }) {
-      if (isNew && !data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
+      if (isNew && !data.fecha) data.fecha = require('../fechas').hoy();
       // ¿No será el mismo papel que ya está? Ver server/carpetas.js
       return carpetas.preguntaSiSeRepite({
         db, tabla: 'documentos_iglesias', campoDueno: 'iglesia_id', deQuien: 'esta iglesia',

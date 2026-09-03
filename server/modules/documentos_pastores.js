@@ -70,7 +70,7 @@ module.exports = {
         const pastor = db.prepare('SELECT iglesia_id FROM pastores WHERE id = ?').get(pastorId);
         if (pastor && pastor.iglesia_id) data.iglesia_id = pastor.iglesia_id;
       }
-      if (isNew && !data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
+      if (isNew && !data.fecha) data.fecha = require('../fechas').hoy();
       // ¿No será el mismo papel que ya está? Ver server/carpetas.js
       return carpetas.preguntaSiSeRepite({
         db, tabla: 'documentos_pastores', campoDueno: 'pastor_id', deQuien: 'este pastor',

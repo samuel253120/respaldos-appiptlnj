@@ -109,7 +109,7 @@ module.exports = {
         if (cerrado) return cerrado;
       }
 
-      if (!dato('fecha_pago')) data.fecha_pago = new Date().toISOString().slice(0, 10);
+      if (!dato('fecha_pago')) data.fecha_pago = require('../fechas').hoy();
       return null;
     },
 

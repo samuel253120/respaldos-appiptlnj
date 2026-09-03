@@ -79,7 +79,7 @@ module.exports = {
         // una anotación de constancia del sistema.
         data.origen = 'Manual';
         data.registrado_por = user.nombre;
-        if (!data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
+        if (!data.fecha) data.fecha = require('../fechas').hoy();
       }
       return null;
     },

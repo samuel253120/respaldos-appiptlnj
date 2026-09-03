@@ -64,7 +64,7 @@ module.exports = {
         const s = db.prepare('SELECT iglesia_id FROM solicitudes WHERE id = ?').get(solicitudId);
         if (s && s.iglesia_id) data.iglesia_id = s.iglesia_id;
       }
-      if (isNew && !data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
+      if (isNew && !data.fecha) data.fecha = require('../fechas').hoy();
       // ¿No será el mismo antecedente que ya está? Ver server/carpetas.js
       return carpetas.preguntaSiSeRepite({
         db, tabla: 'documentos_solicitudes', campoDueno: 'solicitud_id', deQuien: 'esta solicitud',

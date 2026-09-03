@@ -126,7 +126,9 @@ function membrete(doc) {
  * «página 2 de 5» necesita el total.
  */
 function pieEnTodasLasPaginas(doc, { quien }) {
-  const pie = `Emitido el ${formato.fechaLarga(new Date().toISOString().slice(0, 10))}`
+  // El día de la iglesia: un informe impreso el domingo por la noche decía
+  // «Emitido el lunes», y eso va en papel (ver fechas.hoy)
+  const pie = `Emitido el ${formato.fechaLarga(require('../fechas').hoy())}`
     + (quien ? ` por ${quien}` : '');
   const rango = doc.bufferedPageRange();
   for (let i = 0; i < rango.count; i++) {

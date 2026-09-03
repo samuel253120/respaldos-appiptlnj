@@ -145,7 +145,7 @@ router.post('/correr', (req, res) => {
     return res.status(400).json({ error: e.message });
   }
 
-  if (prueba && !salida.error) ultimoEnsayo = new Date().toISOString();
+  if (prueba && !salida.error) ultimoEnsayo = require('../fechas').ahora();
 
   // Terminada la importación, el informe queda guardado en el servidor: es el
   // acta de lo que se trajo, y tiene que sobrevivir aunque después se saque el
@@ -197,7 +197,7 @@ router.get('/informe', (req, res) => {
 
   if (req.query.descargar) {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="informe-importacion-${new Date().toISOString().slice(0, 10)}.txt"`);
+    res.setHeader('Content-Disposition', `attachment; filename="informe-importacion-${require('../fechas').hoy()}.txt"`);
     return res.send(texto);
   }
   res.json({ texto, todo_cuadra: todoCuadra, guardado });
@@ -373,7 +373,9 @@ router.post('/limpieza', (req, res) => {
  */
 router.get('/respaldo', async (req, res) => {
   if (!DB_PATH) return res.status(400).json({ error: 'No hay archivo de base que respaldar.' });
-  const destino = path.join(path.dirname(DB_PATH), `respaldo-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.db`);
+  // Con la fecha y la hora de la iglesia: un respaldo hecho el domingo a las
+  // 21:00 se llamaba «respaldo-2026-08-25…» y parecía del día siguiente
+  const destino = path.join(path.dirname(DB_PATH), `respaldo-${require('../fechas').ahora().replace(/[-: ]/g, '')}.db`);
   try {
     await db.backup(destino);
   } catch (e) {

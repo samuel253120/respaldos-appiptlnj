@@ -94,7 +94,8 @@ const MOTIVO_DE_FABRICA = 'Dejó de ser Miembro Líder';
 
 const motivoDeSalida = () => `Dejó de ser ${categoriaQueCompone()}`;
 
-const hoy = () => new Date().toISOString().slice(0, 10);
+/** El día de la iglesia, no el universal (ver fechas.hoy). */
+const hoy = () => require('./fechas').hoy();
 
 /** El nombre del miembro, para dejarlo escrito en su ficha de integrante. */
 function nombreDe(db, miembroId) {

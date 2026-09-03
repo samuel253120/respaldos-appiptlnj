@@ -179,7 +179,7 @@ async function bajarArchivoConSesion(ruta, comoSeLlamaSiNoDice) {
  */
 function pieDelDocumento(extra) {
   const quien = (USER && USER.nombre) ? ` por ${esc(USER.nombre)}` : '';
-  return `Emitido el ${fechaLarga(new Date().toISOString())}${quien}${extra ? ` · ${extra}` : ''}`;
+  return `Emitido el ${fechaLarga(hoyISO())}${quien}${extra ? ` · ${extra}` : ''}`;
 }
 
 /**
@@ -190,7 +190,7 @@ function pieDelDocumento(extra) {
  */
 function pieDelDocumentoEnPlano() {
   const quien = (USER && USER.nombre) ? ` por ${USER.nombre}` : '';
-  return `Emitido el ${fechaLarga(new Date().toISOString())}${quien}`;
+  return `Emitido el ${fechaLarga(hoyISO())}${quien}`;
 }
 
 /**
@@ -3466,7 +3466,7 @@ async function viewHojaDeInventario(tipo, id) {
       <div class="print-only">${membreteDelDocumento()}</div>
       <h3 class="informe-tit">
         Inventario de ${esc(nombre)}
-        <span class="mut">${esc(d.ambito)} · ${fmtNumero(enPie.length)} artículo(s) al ${fechaLarga(new Date().toISOString())}</span>
+        <span class="mut">${esc(d.ambito)} · ${fmtNumero(enPie.length)} artículo(s) al ${fechaLarga(hoyISO())}</span>
       </h3>
       ${totalesDelInventario(d.totales, d.ambito)}
       ${enPie.length
@@ -4207,7 +4207,7 @@ const CON_FICHA = ['miembros', 'pastores', 'cuerpos', 'iglesias', 'no_miembros',
 function estaVencido(iso) {
   const cuando = String(iso || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(cuando)) return false;
-  return cuando < new Date().toISOString().slice(0, 10);
+  return cuando < hoyISO();
 }
 
 function fechaCorta(iso) {
@@ -5229,7 +5229,7 @@ function proponerElVencimiento() {
     const d = new Date(`${entrega.value}T12:00:00`);
     if (Number.isNaN(d.getTime())) return;
     d.setFullYear(d.getFullYear() + anios);
-    vence.value = d.toISOString().slice(0, 10);
+    vence.value = ISO(d);
     vence.dispatchEvent(new Event('change', { bubbles: true }));
     toast(`Vencimiento propuesto a ${anios} año(s). Puede cambiarlo.`);
   });
@@ -5739,7 +5739,7 @@ async function crearCredencial(pastorId) {
       </div>
       <div class="fld">
         <label for="credHasta">Fecha de vencimiento</label>
-        <input type="date" id="credHasta" value="${enTresAnios.toISOString().slice(0, 10)}" min="1900-01-01" />
+        <input type="date" id="credHasta" value="${ISO(enTresAnios)}" min="1900-01-01" />
       </div>
     </div>`;
 
@@ -9815,7 +9815,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
       : `${new Date().getFullYear()}-01-01`,
     hasta: (precarga && precarga.hasta) || '',
     // La planilla mensual se pide por mes, no por un rango de fechas
-    mes: (precarga && precarga.mes) || new Date().toISOString().slice(0, 7),
+    mes: (precarga && precarga.mes) || hoyISO().slice(0, 7),
     /*
      * POR TIPO DE ACTIVIDAD. Vacío quiere decir todas.
      *
@@ -10297,7 +10297,7 @@ function exportarInformeCSV() {
   const blob = new Blob(['\ufeff' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   const enlace = document.createElement('a');
   enlace.href = URL.createObjectURL(blob);
-  enlace.download = `asistencia-${new Date().toISOString().slice(0, 10)}.csv`;
+  enlace.download = `asistencia-${hoyISO()}.csv`;
   document.body.appendChild(enlace);
   enlace.click();
   enlace.remove();
@@ -11022,7 +11022,7 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
  * prueba creyendo que es el certificado de esa persona.
  */
 function certDeEjemplo(tipo) {
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyISO();
 
   /*
    * La iglesia sale de la barra de arriba, para que la muestra tenga el largo
@@ -12510,7 +12510,7 @@ function printGenerico(m, row, extras = {}) {
   }
   const loSuyo = cifras.length ? `
     <h2 class="print-h2">Lo que tiene hoy</h2>
-    <div class="sub">Al ${fechaLarga(new Date().toISOString())}. No son datos escritos en su ficha: es lo que hay
+    <div class="sub">Al ${fechaLarga(hoyISO())}. No son datos escritos en su ficha: es lo que hay
       anotado en el sistema en el momento de imprimir esta hoja.</div>
     <table>${cifras.join('')}</table>` : '';
 
@@ -16592,7 +16592,7 @@ function abrirAnotacion(panel, id, alGuardar, registro) {
                       «${esc(registro.texto_original)}»</div>`
                  : ''}</div>`
           : ''}
-        <div class="fld"><label>Fecha</label><input type="date" id="anFecha" value="${esc(fechaISO(valor('fecha', new Date().toISOString().slice(0, 10))))}" /></div>
+        <div class="fld"><label>Fecha</label><input type="date" id="anFecha" value="${esc(fechaISO(valor('fecha', hoyISO())))}" /></div>
         <div class="fld" style="margin-top:12px"><label>Tipo</label>
           <select id="anTipo">${tipos.map((t) => `<option value="${esc(t)}" ${t === valor('tipo', 'Anotación') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
         </div>

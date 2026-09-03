@@ -257,7 +257,7 @@ module.exports = {
         data.fecha_retiro = null;
         data.motivo_retiro = null;
       } else if (!dato('fecha_retiro')) {
-        data.fecha_retiro = new Date().toISOString().slice(0, 10);
+        data.fecha_retiro = require('../fechas').hoy();
       }
       if (!dato('exento_cuota')) data.exento_motivo = null;
       return null;

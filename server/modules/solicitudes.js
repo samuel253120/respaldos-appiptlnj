@@ -386,7 +386,7 @@ module.exports = {
 
       // La fecha de respuesta la pone el sistema el día en que se cierra, y se
       // borra si la solicitud vuelve a abrirse.
-      if (quedaCerrada && !estabaCerrada) data.fecha_respuesta = new Date().toISOString().slice(0, 10);
+      if (quedaCerrada && !estabaCerrada) data.fecha_respuesta = require('../fechas').hoy();
       if (!quedaCerrada && estabaCerrada) data.fecha_respuesta = null;
 
       /*

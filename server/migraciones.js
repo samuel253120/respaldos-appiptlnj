@@ -128,7 +128,7 @@ function directivaCuerpoAHistorico() {
     ).run(
       fila.id,
       fila.periodo_directiva || 'Período inicial',
-      fila.fecha_constitucion || new Date().toISOString().slice(0, 10),
+      fila.fecha_constitucion || require('./fechas').hoy(),
       fila.presidente_id || null,
       fila.secretario_id || null,
       fila.tesorero_id || null,
@@ -1801,7 +1801,7 @@ function devolverLosQueLaDirectivaSaco() {
 
   if (!echados.length) return marcarAplicada(NOMBRE);
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = require('./fechas').hoy();
   db.transaction(() => {
     const devolver = db.prepare(
       `UPDATE integrantes_cuerpo

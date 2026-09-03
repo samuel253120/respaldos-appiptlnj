@@ -73,7 +73,7 @@ function leerOrigen(ruta) {
     nombre: path.basename(archivo),
     datos: crudo.data || crudo,
     descartadas: crudo.descartadas || {},
-    lote: crudo.extraido_en || new Date().toISOString().slice(0, 19),
+    lote: crudo.extraido_en || require('../fechas').ahora(),
   };
 }
 

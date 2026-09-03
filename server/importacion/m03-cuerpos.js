@@ -208,7 +208,7 @@ module.exports = function importarCuerpos(origen, { lote, prueba, iglesiaId }) {
 
       // La directiva vigente del cuerpo, con los cargos que traiga
       if (Object.keys(deLaDirectiva).length) {
-        const inicio = fecha(g.createdAt) || new Date().toISOString().slice(0, 10);
+        const inicio = fecha(g.createdAt) || require('../fechas').hoy();
         const datosDirectiva = {
           cuerpo_id: cuerpoId,
           periodo: String(inicio).slice(0, 4),

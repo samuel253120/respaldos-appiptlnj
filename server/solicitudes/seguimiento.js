@@ -37,7 +37,7 @@ function anotar(db, solicitudId, { tipo, descripcion, user, origen = 'Automátic
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     solicitudId,
-    fecha || new Date().toISOString().slice(0, 10),
+    fecha || require('../fechas').hoy(),
     tipo,
     descripcion,
     origen,

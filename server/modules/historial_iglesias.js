@@ -47,7 +47,7 @@ module.exports = {
       if (isNew) {
         data.origen = data.origen || 'Manual';
         data.registrado_por = user.nombre;
-        if (!data.fecha) data.fecha = new Date().toISOString().slice(0, 10);
+        if (!data.fecha) data.fecha = require('../fechas').hoy();
       }
       // Corregir a mano lo que anotó el sistema deja constancia de lo que decía
       require('../lo-que-decia-el-sistema').guardarLoQueDecia(data, { existing, user });
