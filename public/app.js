@@ -4919,6 +4919,23 @@ function pestanasDeLaFicha(name, id, row, pintarLosDatos) {
     sumar('solicitudes', 'Solicitudes', '📨', (c) => renderSolicitudesDeLaPersona('No miembro', id, c));
   }
   /*
+   * Lo que se le EMITIÓ, en su ficha.
+   *
+   * «¿Ya se le dio el certificado de bautismo?» es una pregunta de mostrador, y
+   * hasta la v1.298.0 se contestaba yendo al listado de Certificados y buscando
+   * por nombre — con la esperanza de que quien lo emitió haya escrito el nombre
+   * igual. El certificado guarda el enlace al miembro, así que el dato estaba;
+   * lo que faltaba era mirarlo desde donde se hace la pregunta.
+   *
+   * Va después de Solicitudes porque un certificado suele ser la RESPUESTA a
+   * una: primero lo que la persona pidió, después lo que se le emitió, después
+   * lo que se le entregó. Solo en Miembros: el certificado enlaza con esa
+   * ficha, no con la de No Miembros.
+   */
+  if (name === 'miembros' && MOD['certificados']) {
+    sumar('certificados', 'Certificados', '📜', (c) => renderCertificadosDeLaPersona(id, c));
+  }
+  /*
    * Lo que se le ha entregado, en su ficha.
    *
    * El registro de No Miembros existe por las ayudas sociales, y su ficha no
@@ -5132,6 +5149,57 @@ async function renderCredencialesDelPastor(pastorId, caja) {
 
   const boton = document.getElementById('credNueva');
   if (boton) boton.addEventListener('click', () => crearCredencial(pastorId));
+}
+
+/**
+ * Los certificados que se le han emitido a una persona, en su ficha.
+ *
+ * Es la misma forma que la lista de credenciales de un pastor, de la que salió:
+ * una línea por documento, con lo que lo identifica —su número y su tipo—, en
+ * qué estado está y cuándo se emitió; y se abre su ficha desde ahí.
+ *
+ * EL ESTADO SE MARCA, y no es decoración: un certificado anulado sigue en el
+ * libro y sigue en esta lista, y quien viene a preguntar si ya se le dio el de
+ * bautismo tiene que ver de una que ese está dado de baja. Es lo mismo que hace
+ * el sello en la hoja impresa desde la v1.292.0.
+ *
+ * SIN BOTÓN DE EMITIR. La lista de credenciales lo tiene, pero un certificado
+ * se emite eligiendo su tipo, su fecha del evento y a veces sus padrinos: el
+ * formulario del módulo pide cosas que acá no hay dónde poner, y un atajo que
+ * abriera una ficha a medias sería peor que ir al listado. Lo que este panel
+ * contesta es «¿ya se le dio?», que era la pregunta.
+ */
+async function renderCertificadosDeLaPersona(miembroId, caja) {
+  const suyos = await api(
+    'GET', `/certificados?f_miembro_id=${miembroId}&limit=50&sort=fecha_emision&dir=desc`
+  ).catch(() => null);
+  // Sin permiso sobre el módulo la pestaña no se ofrece, pero el listado puede
+  // fallar por otra razón: en ese caso no se pinta nada, en vez de una caja rota
+  if (!suyos) { caja.innerHTML = ''; return; }
+
+  const filas = suyos.rows.map((c) => `
+    <li data-ir="#/m/certificados/ficha/${c.id}">
+      <span>
+        <b class="mono">${esc(c.numero || '(sin número)')}</b>
+        ${esc(c.tipo || '')}
+        ${c.estado === 'Anulado' ? '<span class="badge red">Anulado</span>' : ''}
+      </span>
+      <span class="mut">${c.fecha_emision ? fechaCorta(c.fecha_emision) : ''}</span>
+    </li>`).join('');
+
+  caja.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>📜 Certificados emitidos</b>
+        <span class="mut">${fmtNumero(suyos.total)} en total</span>
+      </div>
+      ${suyos.rows.length
+    ? `<ul class="mini-list">${filas}</ul>`
+    : `<div class="empty-state" style="padding:26px">
+             Todavía no se le ha emitido ningún certificado.<br>
+             <span class="mut">Los emitidos a su nombre aparecen acá si quedaron enlazados a esta ficha.</span>
+           </div>`}
+    </div>`;
 }
 
 /**
