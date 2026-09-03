@@ -3137,6 +3137,8 @@ table.libro tbody tr:nth-child(even) td { background: #fafbfe; }
   margin-top: 22px; font-size: calc(var(--cert-tam-texto) * 0.95);
   color: var(--cert-color-texto); font-weight: 600;
 }
+/* Con el número justo encima, el aire de arriba ya lo puso él */
+.cert-ninos .cn-numero + .cn-emision { margin-top: 4px; }
 
 /* --------------------------------------------------------------------------
    MATRIMONIO
@@ -3203,14 +3205,23 @@ table.libro tbody tr:nth-child(even) td { background: #fafbfe; }
   font-size: calc(var(--cert-tam-texto) * 0.95); color: var(--cert-color-texto);
 }
 
-/* El número, abajo a la derecha.
+/* EL NÚMERO, ABAJO A LA DERECHA Y EN SU PROPIA LÍNEA.
    Arriba no cabe: esa franja es del logo, del título y del versículo, y un
-   título de dos líneas se le venía encima. Abajo hay aire al lado de la fecha
-   de emisión, y es donde se busca el número en un documento entregado. */
-.cert-ninos { position: relative; }
+   título de dos líneas se le venía encima. Abajo hay aire, y es donde se busca
+   el número en un documento entregado.
+
+   ESTABA FLOTANDO SOBRE LA HOJA —`position: absolute`— y por eso caía encima
+   de la línea de la fecha de emisión: puesto así, el resto de la hoja no sabe
+   que el número está ahí y le pasa por debajo. Medido en la v1.297.0, en
+   píxeles: el número iba de 1155 a 1294 y el subrayado del año terminaba en
+   1179, de modo que la raya cruzaba los dígitos y el número parecía tachado.
+   En un documento que se entrega, el número es lo único que lo identifica.
+
+   Ahora ocupa su lugar: una línea suya, alineada a la derecha, justo encima de
+   la fecha de emisión. Ocupando espacio de verdad, ninguna otra parte de la
+   hoja se le puede venir encima, y da igual cuán largo sea el número. */
 .cert-ninos .cn-numero {
-  position: absolute; bottom: calc(var(--cert-margen) + 10px); right: calc(var(--cert-margen) + 18px);
-  z-index: 2;
+  text-align: right; margin-top: 20px; line-height: 1.2;
 }
 
 /* ===========================================================================

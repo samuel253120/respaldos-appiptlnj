@@ -10757,7 +10757,6 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
       .filter(Boolean).join('');
 
     return envolver(' cert-ninos', `
-      ${conNumero && row.numero ? `<div class="cert-no cn-numero">N.º ${esc(row.numero)}</div>` : ''}
       <div class="cn-cab">
         ${f.muestra_logo === 0 || !IGLESIA.logo ? '' : `<img class="cert-logo" src="${IGLESIA.logo}" alt="" />`}
         <div class="cn-tit">
@@ -10772,6 +10771,7 @@ function printCertificado(row, formato, { conPagina = false } = {}) {
       ${row.padre || row.madre ? `<div class="cn-rotulo">SUS PADRES:</div>${par(row.padre, row.madre, 'y')}` : ''}
       ${padrinos ? `<div class="cn-rotulo">SUS PADRINOS:</div>${padrinos}` : ''}
       ${bloqueFirmas(true)}
+      ${conNumero && row.numero ? `<div class="cert-no cn-numero">N.º ${esc(row.numero)}</div>` : ''}
       ${lineaFecha ? `<div class="cn-emision">${certRellenarMarcado(
         puesto(f.texto_fecha, 'FECHA DE EMISIÓN: {ciudad}, {em_dia} de {em_mes} del año {em_anio}'), row
       )}</div>` : ''}

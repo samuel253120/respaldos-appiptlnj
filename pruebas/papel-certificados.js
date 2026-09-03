@@ -315,6 +315,69 @@ print(chr(10).join(x.get_textpage().get_text_range() for x in d))
   }
 
   /* ------------------------------------------------------------------
+   * EL NÚMERO, SIN NADA ENCIMA.
+   *
+   * En un documento que se entrega, el número es lo único que lo identifica:
+   * es lo que se cita cuando alguien pide una copia y lo que se busca en el
+   * libro cuando hay que comprobar que se emitió. En la hoja de presentación
+   * de niños iba FLOTANDO sobre la hoja —`position: absolute`—, de modo que el
+   * resto de la hoja no sabía que estaba ahí y le pasaba por debajo: medido en
+   * la v1.297.0, el número ocupaba de 1155 a 1294 px y el subrayado del año de
+   * la fecha de emisión terminaba en 1179, así que la raya cruzaba los dígitos
+   * y el número parecía tachado.
+   *
+   * SE MIDE LA TINTA, NO LA CAJA. Un bloque puede ocupar todo el ancho y tener
+   * su texto en una esquina; comparando cajas, media hoja «se cruzaría» con la
+   * otra media sin que nada se vea encima de nada. Con un Range sobre el nodo
+   * de texto se obtiene lo que de verdad se pinta.
+   *
+   * Va sobre las TRES hojas, no solo sobre la que falló: son tres maquetas
+   * distintas y el número tiene que quedar limpio en las tres.
+   * ------------------------------------------------------------------ */
+  console.log('\n── El número, sin nada encima');
+  for (const { tipo, cert } of suyos) {
+    await ir('#/m/certificados');
+    await ir(`#/print/certificados/${cert.id}`);
+    await pagina.waitForSelector('.cert-sheet', { timeout: 25000 });
+    await pagina.waitForTimeout(250);
+
+    const choque = await pagina.evaluate(() => {
+      /** Lo que de verdad se pinta de un elemento: la tinta, no su caja. */
+      const tinta = (el) => {
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        const caja = r.getBoundingClientRect();
+        r.detach && r.detach();
+        return caja.width && caja.height ? caja : null;
+      };
+      const numero = document.querySelector('.cert-sheet .cert-no');
+      if (!numero) return { sinNumero: true };
+      const suya = tinta(numero);
+      if (!suya) return { sinNumero: true };
+
+      /* Contra cada hoja del árbol: los que no tienen hijos con texto propio */
+      const encima = [];
+      for (const el of document.querySelectorAll('.cert-sheet *')) {
+        if (el === numero || numero.contains(el) || el.contains(numero)) continue;
+        if (!el.textContent.trim()) continue;
+        if ([...el.children].some((h) => h.textContent.trim())) continue;
+        const otra = tinta(el);
+        if (!otra) continue;
+        const cruzan = suya.left < otra.right && otra.left < suya.right
+          && suya.top < otra.bottom && otra.top < suya.bottom;
+        if (cruzan) encima.push(`${el.className || el.tagName}: «${el.textContent.trim().slice(0, 40)}»`);
+      }
+      return { numero: numero.textContent.trim(), encima };
+    });
+
+    revisar(`${tipo}: la hoja lleva su número`, !choque.sinNumero);
+    if (!choque.sinNumero) {
+      revisar(`${tipo}: y nada se le viene encima`, choque.encima.length === 0,
+        `se cruza con ${choque.encima.join(' · ')}`);
+    }
+  }
+
+  /* ------------------------------------------------------------------
    * LA HOJA A LA QUE LE FALTA LO QUE CERTIFICA.
    *
    * El cuerpo del certificado sale de su formato, y el formato se busca por el

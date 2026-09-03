@@ -330,3 +330,43 @@ test('un formato con el texto ya cambiado NO se pisa al actualizar', () => {
   const intacto = deLaIglesia('Presentación de niños');
   assert.equal(intacto.disposicion, 'Presentación de niños', 'el que seguía como vino sí se arma');
 });
+
+/* ── El número de la hoja de presentación ──────────────────────────── */
+
+test('el número de la hoja de niños ocupa su lugar, no flota sobre la hoja', () => {
+  /*
+   * CE-07. Iba con `position: absolute`, y puesto así el resto de la hoja no
+   * sabe que está ahí: le pasaba por debajo. Medido en la v1.297.0, en píxeles,
+   * el número ocupaba de 1155 a 1294 y el subrayado del año de la fecha de
+   * emisión terminaba en 1179 — la raya cruzaba los dígitos y el número parecía
+   * tachado. En un documento que se entrega, el número es lo único que lo
+   * identifica.
+   *
+   * Que NO se cruce con nada se comprueba en el navegador, midiendo la tinta
+   * (pruebas/papel-certificados.js). Lo que se vigila acá es la causa, que es
+   * la que se puede volver a escribir sin darse cuenta.
+   */
+  const fs = require('fs');
+  const path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, '../../public/styles.css'), 'utf8');
+  const desde = css.indexOf('.cert-ninos .cn-numero {');
+  assert.ok(desde > 0, 'la regla existe');
+  const regla = css.slice(desde, css.indexOf('}', desde));
+  assert.ok(!/position:\s*absolute/.test(regla),
+    'flotando, cualquier cosa de la hoja le puede pasar por debajo');
+  assert.match(regla, /text-align:\s*right/, 'va a la derecha, donde se busca');
+});
+
+test('y va en su propia línea, justo encima de la fecha de emisión', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const app = fs.readFileSync(path.join(__dirname, '../../public/app.js'), 'utf8');
+  const desde = app.indexOf("if (f.disposicion === 'Presentación de niños')");
+  const hoja = app.slice(desde, app.indexOf("if (f.disposicion === 'Matrimonio')", desde));
+  const numero = hoja.indexOf('cn-numero');
+  const emision = hoja.indexOf('cn-emision');
+  assert.ok(numero > 0 && emision > 0, 'los dos están en esta hoja');
+  assert.ok(numero < emision, 'el número va antes que la fecha de emisión');
+  assert.ok(hoja.slice(numero, emision).replace(/\s/g, '').length < 200,
+    'y pegado a ella, no al principio de la hoja');
+});
