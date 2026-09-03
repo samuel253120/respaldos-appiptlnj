@@ -34,13 +34,10 @@ const def = require('../../server/modules/certificados');
 const { elSistemaAndando, cerrarElSistema } = require('./andando');
 
 /*
- * Los ocho formatos y, con ellos, las dos hojas que piden más datos. La
- * segunda migración es la que le pone la DISPOSICIÓN a «Presentación de niños»
- * y a «Matrimonio»; sin ella el motor suelta los padres, los padrinos y el
- * cónyuge al guardar —y con razón: en una hoja clásica no significan nada—.
+ * La siembra primero, porque este archivo también CREA formatos y la siembra
+ * solo siembra si la tabla está vacía.
  */
 require('../../server/migraciones').formatosDeCertificadoQueTraiaElSistema();
-require('../../server/migraciones').hojasDePresentacionYMatrimonio();
 
 test.after(cerrarElSistema);
 
@@ -51,6 +48,28 @@ function unaIglesia(ciudad = 'Concepción') {
   return db.prepare("INSERT INTO iglesias (nombre, codigo, estado, ciudad) VALUES (?, ?, 'Activa', ?)")
     .run(`Borrar ${m}`, `BC${m}`.slice(0, 18), ciudad).lastInsertRowid;
 }
+
+/**
+ * UN FORMATO PROPIO PARA CADA FORMA DE HOJA, Y NO LOS QUE TRAE EL SISTEMA.
+ *
+ * Los archivos del motor comparten UNA base, y hay uno —hojas-de-certificado—
+ * que A PROPÓSITO le reescribe el texto y la disposición al formato
+ * «Matrimonio» que trae el sistema, para comprobar que la actualización no pisa
+ * lo que la iglesia editó. Es una prueba legítima y deja el formato así, de
+ * modo que dar por hecho que «Matrimonio» tiene la disposición Matrimonio
+ * depende de en qué orden corrieron los dos archivos.
+ */
+function unFormatoCon(disposicion) {
+  const nombre = `Hoja ${disposicion} ${marca()}`;
+  db.prepare(
+    `INSERT INTO formatos_certificado (nombre, activo, orden, texto, disposicion, tamano_hoja, orientacion)
+     VALUES (?, 1, 100, 'Certifica lo suyo.', ?, 'Carta', ?)`
+  ).run(nombre, disposicion, disposicion === 'Clásica' ? 'Vertical' : 'Horizontal');
+  return nombre;
+}
+
+const PRESENTACION = unFormatoCon('Presentación de niños');
+const MATRIMONIO = unFormatoCon('Matrimonio');
 
 async function unCertificado(api, campos = {}) {
   const r = await api('POST', '/certificados', {
@@ -221,7 +240,7 @@ test('EL OTRO QUE IMPORTA: la constancia guarda la ficha entera, no seis datos',
 test('de una presentación de niños quedan los padres y los padrinos', async () => {
   const api = await elSistemaAndando();
   const cert = await unCertificado(api, {
-    tipo: 'Presentación de niños', nombre_titular: 'Matías Rojas Soto',
+    tipo: PRESENTACION, nombre_titular: 'Matías Rojas Soto',
     fecha_nacimiento: '2025-11-06', padre: 'Juan Rojas', madre: 'Eva Soto',
     padrino_1: 'Luis Pérez', madrina_1: 'Rosa Pérez',
     padrino_2: 'Pablo Vera', madrina_2: 'Sara Vera',
@@ -241,7 +260,7 @@ test('de una presentación de niños quedan los padres y los padrinos', async ()
 test('y de un matrimonio, el otro cónyuge', async () => {
   const api = await elSistemaAndando();
   const cert = await unCertificado(api, {
-    tipo: 'Matrimonio', nombre_titular: 'Pedro Díaz', conyuge: 'María Rojas Soto',
+    tipo: MATRIMONIO, nombre_titular: 'Pedro Díaz', conyuge: 'María Rojas Soto',
   });
   assert.match(await loQueDiceAlBorrar(api, cert.id), /el otro cónyuge/);
 

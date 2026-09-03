@@ -31,10 +31,13 @@
  *
  * ---------------------------------------------------------------------------
  * Y NADA DE LO QUE LE PASA A UN CERTIFICADO EMITIDO PASA EN SILENCIO. Anularlo
- * se pregunta, devolverle la validez se pregunta, y borrarlo se pregunta: las
- * tres son decisiones sobre un papel que puede estar en manos de alguien, y
- * ninguna de las tres lo recoge. Las tres frases empiezan igual —cuál es— y
- * cada una dice qué cambia y qué no.
+ * se pregunta, devolverle la validez se pregunta, borrarlo se pregunta, y
+ * cambiarle el tipo —que suelta los datos que la hoja nueva no tiene dónde
+ * poner— también. Las tres primeras son decisiones sobre un papel que puede
+ * estar en manos de alguien, y ninguna de las tres lo recoge; la cuarta borra
+ * datos que después no vuelven. Las frases empiezan igual —cuál es— y cada una
+ * dice qué cambia y qué no. Si un mismo guardado tiene dos cosas que advertir,
+ * las dice LAS DOS en un solo aviso (ver server/una-sola-pregunta.js).
  *
  * Y NO SE BORRA SIN PREGUNTAR, ni se borra en silencio. Un certificado es lo
  * único de este sistema que se firma, se sella y sale del edificio: borrarlo
@@ -163,6 +166,45 @@ function avisoDelCertificadoQueVuelveAValer(fila) {
     + ' deja de llevar el sello y se imprime otra vez como un certificado válido, y se borra la fecha'
     + ' de anulación: en la ficha no quedará dicho que alguna vez se anuló, solo en el Registro de'
     + ' Cambios.';
+}
+
+/**
+ * Lo que se le dice a alguien antes de vaciarle datos por cambiarle el tipo.
+ *
+ * Cada forma de hoja pide sus propios datos, y el módulo suelta los que sobran
+ * al cambiar de tipo. LA REGLA ES CORRECTA —un cónyuge no significa nada en un
+ * certificado de membresía, y dejarlo guardado ahí lo haría aparecer de vuelta
+ * el día que alguien vuelva a cambiar el tipo—. Lo que faltaba era avisar.
+ *
+ * MEDIDO en la v1.295.0: un matrimonio a nombre de dos pasado a «Membresía»
+ * contestaba 200 y el cónyuge quedaba en nulo; una presentación de niños
+ * pasada a «Bautismo» perdía de una vez la fecha de nacimiento, los dos padres
+ * y las dos parejas de padrinos — siete datos, sin una palabra.
+ *
+ * SOLO SE NOMBRA LO QUE DE VERDAD TIENE ALGO ESCRITO. Avisar de siete campos
+ * cuando seis están vacíos convierte la pregunta en un trámite, y una pregunta
+ * que sale siempre se aprieta sin leer. Es la misma frase, y la misma razón,
+ * con que la oficina de partes cerró su OP-06 en la v1.287.0.
+ */
+function avisoDelTipoQueCambia(campos, deQue, aQue, deLaHoja, aLaHoja) {
+  const { enLista } = require('../formato');
+  // Los rótulos salen de la propia declaración de más abajo —se leen al
+  // preguntar, no al arrancar— para que un campo que se renombre no deje este
+  // aviso hablando de otra cosa.
+  const nombres = campos.map((c) => {
+    const f = (module.exports.fields || []).find((x) => x.name === c);
+    return `«${f ? f.label : c}»`;
+  });
+  const uno = campos.length === 1;
+  /*
+   * Las hojas se nombran entre comillas y con su nombre tal cual. En minúscula
+   * y sin comillas la frase salía torcida —«de la hoja matrimonio a la
+   * clásica»—, y estos tres nombres son rótulos, no sustantivos comunes.
+   */
+  const cambiaLaHoja = deLaHoja !== aLaHoja ? ` —de la hoja «${deLaHoja}» a la «${aLaHoja}»—` : '';
+  return `Va a cambiar el tipo de este certificado de «${deQue}» a «${aQue}»${cambiaLaHoja},`
+    + ` y eso vacía ${enLista(nombres)}: ${uno ? 'ese dato es' : 'esos datos son'} de la hoja anterior`
+    + ` y no ${uno ? 'tiene' : 'tienen'} dónde ir en la nueva.`;
 }
 
 module.exports = {
@@ -387,6 +429,20 @@ module.exports = {
       const sobran = como === 'Presentación de niños' ? DE_BODA
         : como === 'Matrimonio' ? DE_NINOS
           : [...DE_NINOS, ...DE_BODA];
+
+      /*
+       * Qué se pierde de verdad con este guardado (ver
+       * `avisoDelTipoQueCambia`). Se mira ANTES de soltarlo, y sobre lo que
+       * QUEDARÍA —lo que llega en esta petición, o lo que ya había—, que es lo
+       * que de verdad se va a perder. Solo en fichas que ya existen: en una
+       * nueva no hay nada que perder, y el formulario ni siquiera muestra esos
+       * campos si la hoja no los pide.
+       */
+      const seSueltan = !existing ? [] : sobran.filter((c) => {
+        const v = dato(c);
+        return v !== null && v !== undefined && v !== '';
+      });
+
       for (const campo of sobran) data[campo] = null;
 
       const limpio = (n) => String(dato(n) || '').trim();
@@ -428,19 +484,47 @@ module.exports = {
        * está escribiendo acaba de elegir ese estado en el formulario, y
        * preguntárselo ahí es ruido que se aprende a contestar que sí.
        */
-      if (existing && estadoAhora !== estadoAntes && !confirmado) {
+      /**
+       * TODO LO QUE HAY QUE ADVERTIR DE ESTE GUARDADO, EN UNA SOLA PREGUNTA.
+       *
+       * La marca de «guardar igual» es UNA para toda la petición: no dice a
+       * qué reparo contesta, dice que sí a todo. Preguntando de a una, quien
+       * confirma la primera pasa la segunda sin haberla leído (ver
+       * server/una-sola-pregunta.js). Y acá se pueden juntar: cambiar el tipo
+       * de un certificado y anularlo en el mismo guardado es raro, pero el
+       * formulario deja hacer las dos cosas antes de apretar «Guardar».
+       *
+       * El aviso del TIPO va primero porque es el que destruye: lo del estado
+       * se deshace volviendo a cambiarlo, y los datos soltados no vuelven.
+       */
+      const avisos = [];
+
+      if (seSueltan.length) {
+        avisos.push({
+          clave: 'certificado_que_cambia_de_tipo',
+          texto: avisoDelTipoQueCambia(seSueltan, existing.tipo, dato('tipo'), existing.disposicion || 'Clásica', como),
+        });
+      }
+
+      if (existing && estadoAhora !== estadoAntes) {
         if (estadoAhora === ANULADO) {
-          return {
-            error: avisoDelCertificadoQueSeAnula(existing),
-            confirmar: 'certificado_que_se_anula',
-          };
+          avisos.push({
+            clave: 'certificado_que_se_anula',
+            texto: avisoDelCertificadoQueSeAnula(existing),
+          });
+        } else if (estadoAntes === ANULADO) {
+          avisos.push({
+            clave: 'certificado_que_vuelve_a_valer',
+            texto: avisoDelCertificadoQueVuelveAValer(existing),
+          });
         }
-        if (estadoAntes === ANULADO) {
-          return {
-            error: avisoDelCertificadoQueVuelveAValer(existing),
-            confirmar: 'certificado_que_vuelve_a_valer',
-          };
-        }
+      }
+
+      if (avisos.length && !confirmado) {
+        return {
+          error: require('../una-sola-pregunta').enUnSoloAviso(avisos),
+          confirmar: avisos[0].clave,
+        };
       }
 
       if (estadoAhora !== estadoAntes) {

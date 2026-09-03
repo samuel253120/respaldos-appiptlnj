@@ -7882,6 +7882,13 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
     },
     // Las dos caras del estado de un certificado. Van separadas porque son dos
     // decisiones distintas, y el botón de seguir tiene que decir cuál se toma.
+    certificado_que_cambia_de_tipo: {
+      // Sí es de guardar, y por eso va acá: lo que pregunta es si se puede
+      // seguir guardando un cambio que vacía datos que alguien escribió.
+      titulo: '🔀 Cambiar el tipo vacía datos que ya están escritos',
+      volver: 'Volver y revisarlos',
+      seguir: 'Cambiarlo igual',
+    },
     certificado_que_se_anula: {
       titulo: '📜 Va a anular un certificado entregado',
       volver: 'Volver y dejarlo como está',

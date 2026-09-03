@@ -96,9 +96,9 @@ test('los demás formatos siguen siendo los de siempre', () => {
 /* ── Emitir con la forma que corresponde ───────────────────────────── */
 
 /** Pasa un certificado por su hook, como lo hace el motor. */
-function emitir(datos, { existing = null } = {}) {
+function emitir(datos, { existing = null, confirmado = false } = {}) {
   const copia = { ...datos };
-  const error = certificados.hooks.beforeSave(copia, { existing, db });
+  const error = certificados.hooks.beforeSave(copia, { existing, db, confirmado });
   return error ? { error } : { datos: copia };
 }
 
@@ -153,7 +153,10 @@ test('cambiar el tipo suelta los datos que ya no son de esa hoja', () => {
    * que alguien vuelva a cambiarle el tipo.
    */
   const antes = { ...base, tipo: 'Matrimonio', conyuge: 'María Fernanda Rojas', disposicion: 'Matrimonio' };
-  const r = emitir({ tipo: 'Membresía' }, { existing: antes });
+  // Con `confirmado`, que desde la v1.296.0 cambiar el tipo PREGUNTA antes de
+  // soltar lo que la hoja nueva no tiene dónde poner (CE-05). Lo que se
+  // comprueba acá es la regla, que es la de siempre: contestado que sí, suelta.
+  const r = emitir({ tipo: 'Membresía' }, { existing: antes, confirmado: true });
   assert.equal(r.error, undefined, String(r.error));
   assert.equal(r.datos.conyuge, null, 'el cónyuge de un certificado que ya no es de matrimonio');
   assert.equal(r.datos.disposicion, 'Clásica');
@@ -164,7 +167,7 @@ test('y al revés: el padrino no sobrevive a un cambio a matrimonio', () => {
     ...base, tipo: 'Presentación de niños', disposicion: 'Presentación de niños',
     padre: 'José Luis Solar', madre: 'Camila Alfaro', padrino_1: 'Dangelo Reyes',
   };
-  const r = emitir({ tipo: 'Matrimonio', conyuge: 'María Fernanda Rojas' }, { existing: antes });
+  const r = emitir({ tipo: 'Matrimonio', conyuge: 'María Fernanda Rojas' }, { existing: antes, confirmado: true });
   assert.equal(r.error, undefined, String(r.error));
   assert.equal(r.datos.padrino_1, null);
   assert.equal(r.datos.padre, null);
