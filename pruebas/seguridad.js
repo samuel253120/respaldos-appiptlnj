@@ -1589,6 +1589,63 @@ async function entrar(rut = RUT, clave = CLAVE) {
       `respondió ${ultimo.estado}: ${JSON.stringify(ultimo.datos).slice(0, 140)}`);
   }
 
+  /* 13 · La dirección del aparato y el aviso de prueba ------------------ */
+  console.log('\n13 · Los aparatos enganchados');
+  /*
+   * La dirección de un aparato la manda el navegador y el servidor le escribe
+   * ahí. Se guardaba sin mirarla, y con eso cualquier cuenta convertía al
+   * servidor en su sonda. MEDIDO en la v1.335.0, desde una cuenta de rol
+   * consulta: puerto abierto y puerto cerrado se distinguían en 6 ms, con la
+   * respuesta escrita en el error. Y no había tope: 500 aparatos en 1,4 s y 40
+   * avisos de prueba en 0,2 s.
+   *
+   * Va al final, como el de los mensajes y por lo mismo: gasta el tope de
+   * pruebas por hora de la cuenta con que se corre.
+   */
+  const llavesDeMentira = {
+    p256dh: require('crypto').randomBytes(65).toString('base64url'),
+    auth: require('crypto').randomBytes(16).toString('base64url'),
+  };
+  const enganchar = (endpoint) => api('POST', '/api/avisos/aparato', { suscripcion: { endpoint, keys: llavesDeMentira } });
+
+  const aDentro = await enganchar('https://127.0.0.1:4399/interno/panel');
+  revisar('no se puede enganchar un aparato que apunta al propio servidor',
+    aDentro.estado === 400 && /https|red interna/.test((aDentro.datos || {}).error || ''),
+    `respondió ${aDentro.estado}: ${JSON.stringify(aDentro.datos).slice(0, 160)}`);
+
+  const aLaRedInterna = await enganchar('https://192.168.1.1/x');
+  revisar('ni uno que apunta a la red de la oficina',
+    aLaRedInterna.estado === 400,
+    `respondió ${aLaRedInterna.estado}: ${JSON.stringify(aLaRedInterna.datos).slice(0, 160)}`);
+
+  const sinCifrar = await enganchar('http://push.example.com/x');
+  revisar('ni uno sin cifrar',
+    sinCifrar.estado === 400,
+    `respondió ${sinCifrar.estado}: ${JSON.stringify(sinCifrar.datos).slice(0, 160)}`);
+
+  const cuantosQuedaron = await api('GET', '/api/avisos/preferencias');
+  revisar('y ninguno de los tres quedó guardado',
+    cuantosQuedaron.estado === 200 && cuantosQuedaron.datos.aparatos === 0,
+    `el sistema dice que hay ${(cuantosQuedaron.datos || {}).aparatos} aparato(s)`);
+
+  /*
+   * Sin ningún aparato enganchado, el aviso de prueba contesta 400 —«no hay
+   * ningún aparato»— sin salir a hablar con nadie. Sirve igual para contar: lo
+   * que se mira es cuándo aparece el 429.
+   */
+  let atendidas = 0;
+  let frenadas = 0;
+  let elFreno = null;
+  for (let i = 0; i < 12; i++) {
+    const r = await api('POST', '/api/avisos/probar', {});
+    if (r.estado === 429) { frenadas++; elFreno = elFreno || r.datos; } else { atendidas++; }
+  }
+  revisar('el aviso de prueba tiene tope por hora',
+    frenadas > 0 && atendidas < 12, `se atendieron ${atendidas} de 12 y se frenaron ${frenadas}`);
+  revisar('y también dice cuánto falta',
+    !!elFreno && /Puede pedir otro en/.test(elFreno.error || ''),
+    `el freno decía: ${JSON.stringify(elFreno).slice(0, 160)}`);
+
   console.log(fallas ? `\n❌ ${fallas} comprobación(es) fallaron.` : '\n✅ Lo que tiene que estar cerrado, está cerrado.');
   process.exit(fallas ? 1 : 0);
 })();

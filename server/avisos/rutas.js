@@ -95,10 +95,26 @@ router.put('/avisos/preferencias', authRequired, (req, res) => {
   res.json({ ok: true, preferencias: avisos.preferenciasDe(usuario) });
 });
 
-/** El navegador de esta persona queda enganchado. */
+/**
+ * El navegador de esta persona queda enganchado.
+ *
+ * Los dos motivos por los que puede no guardarse se dicen distinto, porque se
+ * arreglan distinto: una suscripción a medias es cosa del navegador y hay que
+ * volver a activarla; una dirección que no sirve significa que lo que llegó no
+ * es de un servicio de avisos, y ahí no hay nada que reintentar.
+ */
 router.post('/avisos/aparato', authRequired, (req, res) => {
-  const guardada = navegador.suscribir(req.user.id, req.body && req.body.suscripcion, req.headers['user-agent']);
-  if (!guardada) return res.status(400).json({ error: 'La suscripción que mandó el navegador no viene completa.' });
+  const suscripcion = (req.body && req.body.suscripcion) || null;
+  const guardada = navegador.suscribir(req.user.id, suscripcion, req.headers['user-agent']);
+  if (!guardada) {
+    const direccion = suscripcion && suscripcion.endpoint;
+    const incompleta = !direccion || !suscripcion.keys || !suscripcion.keys.p256dh || !suscripcion.keys.auth;
+    return res.status(400).json({
+      error: incompleta
+        ? 'La suscripción que mandó el navegador no viene completa.'
+        : 'Esa dirección no es la de un servicio de avisos: tiene que ser https y no puede apuntar a la red interna.',
+    });
+  }
   res.json({ ok: true, aparatos: navegador.cuantosAparatos(req.user.id) });
 });
 
@@ -128,6 +144,44 @@ function desenganchar(req, res) {
 router.post('/avisos/aparato/apagar', authRequired, desenganchar);
 router.delete('/avisos/aparato', authRequired, desenganchar);
 
+/*
+ * El aviso de prueba tiene tope por hora.
+ *
+ * Es el único sitio del sistema donde una persona provoca, apretando un botón,
+ * que el servidor salga a hablar con afuera. Sin tope se midieron cuarenta
+ * pedidos atendidos en dos décimas de segundo, y cada uno le manda a TODOS los
+ * aparatos de esa cuenta a la vez.
+ *
+ * Se cuenta en memoria, igual que el tope de los mensajes (ver ritmo.js): un
+ * reinicio lo olvida, y está bien —no es algo que nadie pueda provocar—.
+ *
+ * Seis por hora: quien está tratando de encender los avisos y no le llegan
+ * aprieta el botón tres o cuatro veces, mira la configuración del navegador y
+ * vuelve a probar. Seis alcanza para eso de sobra y no alcanza para nada más.
+ */
+const PRUEBAS_POR_HORA = 6;
+const VENTANA_MS = 60 * 60 * 1000;
+const CUANTAS_CABEN = 2000;
+const pruebas = new Map();
+
+function cuantoLeFaltaParaProbar(usuarioId, ahora = Date.now()) {
+  const suyas = (pruebas.get(usuarioId) || []).filter((t) => ahora - t < VENTANA_MS);
+  pruebas.set(usuarioId, suyas);
+  if (suyas.length < PRUEBAS_POR_HORA) return 0;
+  return Math.max(1, Math.ceil((VENTANA_MS - (ahora - Math.min(...suyas))) / 1000));
+}
+
+function anotarPrueba(usuarioId, ahora = Date.now()) {
+  pruebas.set(usuarioId, [...(pruebas.get(usuarioId) || []).filter((t) => ahora - t < VENTANA_MS), ahora]);
+  // Sin esto, un sistema con muchas cuentas guarda una entrada por cada una
+  // para siempre. Misma limpieza que en ritmo.js.
+  if (pruebas.size > CUANTAS_CABEN) {
+    for (const [quien, horas] of pruebas) {
+      if (!horas.some((t) => ahora - t < VENTANA_MS)) pruebas.delete(quien);
+    }
+  }
+}
+
 /**
  * Un aviso de prueba, para comprobar que de verdad llega.
  *
@@ -136,6 +190,16 @@ router.delete('/avisos/aparato', authRequired, desenganchar);
  * esto la persona no sabría cuál de los cuatro le falló.
  */
 router.post('/avisos/probar', authRequired, async (req, res) => {
+  const falta = cuantoLeFaltaParaProbar(req.user.id);
+  if (falta) {
+    const minutos = Math.ceil(falta / 60);
+    return res.status(429).json({
+      error: `Ya pidió ${PRUEBAS_POR_HORA} avisos de prueba en la última hora. `
+        + `Puede pedir otro en ${minutos <= 1 ? 'un minuto' : `${minutos} minutos`}.`,
+      segundos: falta,
+    });
+  }
+  anotarPrueba(req.user.id);
   const r = await navegador.empujar(req.user.id, {
     titulo: 'Los avisos están funcionando',
     cuerpo: 'Así se van a ver los avisos del sistema en este aparato.',

@@ -77,14 +77,28 @@ const unUsuario = () =>
   db.prepare(`INSERT INTO usuarios (nombre, rut, rol, activo, password) VALUES ('Quien Sea', ?, 'secretario', 1, 'x')`)
     .run(`${cuantosRut++}-0`).lastInsertRowid;
 
-/** Una suscripción como la que manda un navegador de verdad. */
+/**
+ * Una suscripción como la que manda un navegador de verdad, escrita derecho en
+ * la tabla.
+ *
+ * NO PASA POR `suscribir()`, y es a propósito: desde la v1.337.0 esa función
+ * rechaza las direcciones que apuntan a esta misma máquina, que es justamente
+ * lo que este archivo necesita —un servicio de mentira en 127.0.0.1 al que se
+ * le pueda hablar de verdad—. Lo que se prueba acá es el ENVÍO: que salga, que
+ * se borre el aparato muerto, que un fallo no se lleve al de al lado. Que
+ * `suscribir()` mire la dirección antes de guardarla se prueba aparte, en
+ * la-direccion-del-aparato-no-la-elige-cualquiera.test.js.
+ */
 function unAparato(usuarioId, donde) {
   const ec = crypto.createECDH('prime256v1');
   ec.generateKeys();
-  navegador.suscribir(usuarioId, {
-    endpoint: donde,
-    keys: { p256dh: ec.getPublicKey().toString('base64url'), auth: crypto.randomBytes(16).toString('base64url') },
-  }, 'La prueba');
+  db.prepare(
+    `INSERT INTO notificacion_suscripciones (usuario_id, endpoint, p256dh, auth, aparato)
+     VALUES (?, ?, ?, ?, 'La prueba')
+     ON CONFLICT(endpoint) DO UPDATE SET
+       usuario_id = excluded.usuario_id, p256dh = excluded.p256dh, auth = excluded.auth,
+       fallos = 0, ultimo_error = NULL`
+  ).run(usuarioId, donde, ec.getPublicKey().toString('base64url'), crypto.randomBytes(16).toString('base64url'));
 }
 
 const aviso = { titulo: 'Prueba', cuerpo: 'Cuerpo del aviso', enlace: '#/', etiqueta: 'prueba' };
@@ -227,7 +241,7 @@ test('que uno esté muerto no impide que al otro le llegue', async () => {
 
 // -------------------------------------------------------- enganchar y desenganchar
 
-test('el mismo aparato no se engancha dos veces', async () => {
+test('la misma dirección no se guarda dos veces: la tabla no lo permite', async () => {
   const quien = unUsuario();
   const donde = `https://127.0.0.1:${puerto}/push/repetida`;
   unAparato(quien, donde);
