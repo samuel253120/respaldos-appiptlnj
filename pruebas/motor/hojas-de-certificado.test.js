@@ -280,6 +280,55 @@ test('LAS MEDIDAS DEL PAPEL DICEN LO MISMO EN EL SERVIDOR Y EN LA PANTALLA', () 
   assert.ok(app.includes("printCertificado(row, formatoCert, { conPagina: true })"));
 });
 
+test('Y LAS HOJAS QUE VAN SIEMPRE A LO ANCHO, TAMBIÉN', () => {
+  /*
+   * La misma clase de lista, escrita en los mismos dos lados y por la misma
+   * razón: la pantalla apaga el selector de orientación y dice por qué, y el
+   * servidor lo corrige igual al guardar, porque lo que la pantalla no ofrece
+   * hay que rechazarlo de todas maneras.
+   *
+   * FALTABA ESTA. Vaciada la lista de la pantalla, el motor entero y la suite
+   * del papel seguían verdes: la ficha volvía a ofrecer «Vertical» para la hoja
+   * de presentación de niños, quien lo eligiera lo guardaba, y el servidor lo
+   * devolvía a «Horizontal» sin decir nada. Es la misma forma del hallazgo
+   * CR-01 de Credenciales: la pantalla ofreciendo lo que el servidor no va a
+   * hacer. Medido en la v1.309.0.
+   *
+   * Lo que hace que valga poco es que la mitad importante —la del servidor— sí
+   * estaba probada, y bien: dos pruebas de este mismo archivo comprueban que
+   * esas dos hojas no se pueden poner de pie, y la suite del papel lo verifica
+   * además sobre el PDF.
+   */
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const app = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'app.js'), 'utf8');
+
+  const trozo = app.match(/const CERT_SIEMPRE_APAISADAS = \[([^\]]*)\];/);
+  assert.ok(trozo, 'no está CERT_SIEMPRE_APAISADAS en public/app.js');
+  const enPantalla = [...trozo[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual(enPantalla, formatos.SIEMPRE_APAISADAS,
+    'si las dos listas se separan, la ficha ofrece una orientación que el servidor va a cambiar');
+
+  // Y las dos que nombra existen: una disposición mal escrita no apaisaría nada
+  for (const cual of enPantalla) {
+    assert.ok(formatos.DISPOSICIONES.includes(cual),
+      `«${cual}» no es una disposición de las que hay`);
+  }
+
+  // La pantalla no solo la tiene: la USA para apagar el selector y decir por qué
+  const desde = app.indexOf('function prepararElFormato()');
+  assert.ok(desde > 0, 'no está el preparado de la ficha del formato');
+  const dentro = app.slice(desde, app.indexOf('\n}', desde));
+  assert.match(dentro, /CERT_SIEMPRE_APAISADAS\.includes\(como\.value\)/,
+    'la pantalla tiene que mirar la lista al elegir la disposición');
+  assert.match(dentro, /hacia\.disabled = apaisada/,
+    'y apagar el selector de orientación');
+  assert.match(dentro, /nota\.hidden = !apaisada/,
+    'y decir por qué, que si no parece que se rompió');
+  assert.match(dentro, /hacia\.value = 'Horizontal'/,
+    'y dejarla en horizontal, que es como va a quedar guardada');
+});
+
 /* ── El formato se guarda con lo que se puede imprimir ─────────────── */
 
 test('una disposición inventada cae a la clásica', () => {
