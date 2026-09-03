@@ -465,6 +465,96 @@ print(chr(10).join(x.get_textpage().get_text_range() for x in d))
   }
 
   /* ------------------------------------------------------------------
+   * LOS DATOS ENTRE LLAVES, EN EL PAPEL.
+   *
+   * El texto del formato se escribe una vez con los datos entre llaves —«el día
+   * {fecha_evento}, en {iglesia}»— y cada hoja sale con lo suyo. Es la promesa
+   * central de «Formatos de Certificado», y el módulo dice qué pasa si falla:
+   * «un certificado entregado que diga «{fecha_evento}» hay que rehacerlo».
+   *
+   * NADIE LO COMPROBABA EN EL PAPEL. Apagado el relleno de la pantalla, en la
+   * v1.309.0, las 3.503 pruebas del motor y las 76 comprobaciones de esta misma
+   * suite seguían verdes: un certificado de membresía salía impreso diciendo
+   * «Certifica que es miembro en plena comunión de {iglesia}», con su número,
+   * su orla y las dos líneas de firma, listo para firmar y entregar.
+   *
+   * Se revisa sobre el PDF y en las TRES disposiciones, que son tres trozos de
+   * código distintos: la clásica rellena de una manera y las otras dos de otra,
+   * la que deja el dato subrayado como el formulario en papel.
+   * ------------------------------------------------------------------ */
+  console.log('\n── Los datos entre llaves, en el papel');
+  for (const { tipo, cert, formatoId } of suyos) {
+    const antes = await api('GET', `/formatos_certificado/${formatoId}`);
+    try {
+      /*
+       * Un texto que usa las llaves de las tres clases: un nombre, una fecha
+       * entera, la iglesia, la ciudad y una fecha partida en día, mes y año,
+       * que son las que usan las hojas de presentación y de matrimonio.
+       */
+      await api('PUT', `/formatos_certificado/${formatoId}`, {
+        ...antes,
+        texto: 'Certifica que {titular}, en {iglesia}, con fecha {ev_dia} de {ev_mes} del año '
+          + '{ev_anio}, y por el presente {tipo} N.º {numero} dado en {ciudad} el {fecha_emision}.',
+      });
+      const hoja = await comoSaleEnPapel(cert.id, `llaves-${tipo}`);
+
+      const quedaron = hoja.texto.match(/\{\w+\}/g) || [];
+      revisar(`${tipo}: no queda ninguna llave sin reemplazar en el papel`,
+        quedaron.length === 0,
+        quedaron.length ? `salieron impresas: ${quedaron.join(' ')}` : '');
+
+      /*
+       * Y los datos SALEN. Sin esto, un relleno que se tragara las llaves en
+       * vez de reemplazarlas pasaría la comprobación de arriba con una hoja que
+       * dice «Certifica que , en , con fecha  de  del año …».
+       */
+      const debeSalir = [
+        [cert.nombre_titular, 'el nombre del titular'],
+        [iglesia.nombre, 'la iglesia'],
+        [cert.numero, 'el número'],
+      ];
+      for (const [dato, cual] of debeSalir) {
+        if (!dato) continue;
+        revisar(`${tipo}: sale ${cual}`, hoja.texto.includes(dato),
+          `no se encontró «${dato}» en: ${hoja.texto.slice(0, 200)}`);
+      }
+      /*
+       * El mes en letras, SOLO donde hay fecha del evento. Un certificado de
+       * membresía no la lleva —dice «es miembro en plena comunión de tal
+       * iglesia» y no nombra ningún día—, así que ahí {ev_mes} queda en blanco
+       * con razón, que es justamente lo que la ayuda del campo promete.
+       */
+      if (cert.fecha_evento) {
+        revisar(`${tipo}: y el mes de la fecha partida, en letras`,
+          /ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE/
+            .test(hoja.texto),
+          hoja.texto.slice(0, 220));
+      } else {
+        revisar(`${tipo}: sin fecha del evento, la llave queda en blanco y no a la vista`,
+          !/\{ev_/.test(hoja.texto), hoja.texto.slice(0, 220));
+      }
+
+      /*
+       * LA CONTRACARA: una llave mal escrita SÍ tiene que salir a la vista.
+       * Borrarla dejaría la frase coja sin decir por qué, y sin esta
+       * comprobación un relleno que borrara toda llave pasaría la primera.
+       */
+      await api('PUT', `/formatos_certificado/${formatoId}`, {
+        ...(await api('GET', `/formatos_certificado/${formatoId}`)),
+        texto: 'Certifica que {titular} y algo de {loquesea}.',
+      });
+      const conLlaveMala = await comoSaleEnPapel(cert.id, `llave-mala-${tipo}`);
+      revisar(`${tipo}: una llave que nadie conoce se imprime a la vista, para que se note`,
+        /\{loquesea\}/.test(conLlaveMala.texto),
+        conLlaveMala.texto.slice(0, 200));
+    } finally {
+      await api('PUT', `/formatos_certificado/${formatoId}`, {
+        ...(await api('GET', `/formatos_certificado/${formatoId}`)), texto: antes.texto,
+      });
+    }
+  }
+
+  /* ------------------------------------------------------------------
    * LA CONTRACARA: que la hoja de una página no le pase a las demás.
    *
    * Lo que hace que un certificado quepa en una hoja es una regla que aprieta
