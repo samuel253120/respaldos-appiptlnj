@@ -60,7 +60,10 @@ test('anular estampa el día en que se anuló', async () => {
   const cert = await unCertificado(api);
   assert.equal(cert.fecha_anulacion, null, 'un certificado emitido no tiene fecha de anulación');
 
-  const r = await api('PUT', `/certificados/${cert.id}`, { estado: 'Anulado' });
+  // Con `igual_asi`, que desde la v1.295.0 anular PREGUNTA: es una decisión
+  // sobre un papel que puede estar en manos de alguien (CE-04). Lo que se
+  // comprueba acá es lo otro, cuándo se estampa la fecha.
+  const r = await api('PUT', `/certificados/${cert.id}`, { estado: 'Anulado', igual_asi: true });
   assert.equal(r.estado, 200);
   assert.equal(r.json.estado, 'Anulado');
   assert.equal(r.json.fecha_anulacion, hoy(), 'y es el día de hoy en la zona de la institución');
@@ -69,9 +72,9 @@ test('anular estampa el día en que se anuló', async () => {
 test('y volver a emitirlo la borra: un papel que vuelve a valer no dice cuándo se anuló', async () => {
   const api = await elSistemaAndando();
   const cert = await unCertificado(api);
-  await api('PUT', `/certificados/${cert.id}`, { estado: 'Anulado' });
+  await api('PUT', `/certificados/${cert.id}`, { estado: 'Anulado', igual_asi: true });
 
-  const r = await api('PUT', `/certificados/${cert.id}`, { estado: 'Emitido' });
+  const r = await api('PUT', `/certificados/${cert.id}`, { estado: 'Emitido', igual_asi: true });
   assert.equal(r.estado, 200);
   assert.equal(r.json.fecha_anulacion, null);
 });
@@ -85,7 +88,7 @@ test('volver a guardar uno ya anulado NO re-estampa la fecha', async () => {
    */
   const api = await elSistemaAndando();
   const cert = await unCertificado(api);
-  await api('PUT', `/certificados/${cert.id}`, { estado: 'Anulado' });
+  await api('PUT', `/certificados/${cert.id}`, { estado: 'Anulado', igual_asi: true });
   db.prepare('UPDATE certificados SET fecha_anulacion = ? WHERE id = ?').run('2026-01-15', cert.id);
 
   const r = await api('PUT', `/certificados/${cert.id}`, { notas: 'Se avisó a la familia' });

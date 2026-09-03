@@ -293,7 +293,9 @@ print(chr(10).join(x.get_textpage().get_text_range() for x in d))
       !DICE_ANULADO.test(loQueDiceElPdf(valido).replace(/\s+/g, ' ')));
 
     const antes = await api('GET', `/certificados/${cert.id}`);
-    await api('PUT', `/certificados/${cert.id}`, { ...antes, estado: 'Anulado' });
+    // Con `igual_asi`: desde la v1.295.0 anular PREGUNTA, y esta suite mira lo
+    // que sale en el papel, no la pregunta
+    await api('PUT', `/certificados/${cert.id}`, { ...antes, estado: 'Anulado', igual_asi: true });
     await ir('#/m/certificados');
     await ir(`#/print/certificados/${cert.id}`);
     await pagina.waitForSelector('.cert-sheet', { timeout: 25000 });

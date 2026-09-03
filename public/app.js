@@ -7880,6 +7880,18 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y dejarle el nombre',
       seguir: 'Cambiarlo y llevármelos',
     },
+    // Las dos caras del estado de un certificado. Van separadas porque son dos
+    // decisiones distintas, y el botón de seguir tiene que decir cuál se toma.
+    certificado_que_se_anula: {
+      titulo: '📜 Va a anular un certificado entregado',
+      volver: 'Volver y dejarlo como está',
+      seguir: 'Anularlo',
+    },
+    certificado_que_vuelve_a_valer: {
+      titulo: '📜 Este certificado vuelve a valer',
+      volver: 'Volver y dejarlo anulado',
+      seguir: 'Devolverle la validez',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',

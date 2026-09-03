@@ -30,6 +30,12 @@
  * que rehacer.
  *
  * ---------------------------------------------------------------------------
+ * Y NADA DE LO QUE LE PASA A UN CERTIFICADO EMITIDO PASA EN SILENCIO. Anularlo
+ * se pregunta, devolverle la validez se pregunta, y borrarlo se pregunta: las
+ * tres son decisiones sobre un papel que puede estar en manos de alguien, y
+ * ninguna de las tres lo recoge. Las tres frases empiezan igual —cuál es— y
+ * cada una dice qué cambia y qué no.
+ *
  * Y NO SE BORRA SIN PREGUNTAR, ni se borra en silencio. Un certificado es lo
  * único de este sistema que se firma, se sella y sale del edificio: borrarlo
  * libera su número —que el sistema volverá a proponer— y deja fuera del
@@ -68,13 +74,6 @@ function avisoDelCertificadoQueSeBorra(fila) {
   const { comoSeLee } = require('../fechas');
   const { enLista } = require('../formato');
 
-  const cual = fila.numero
-    ? `el certificado n.º ${fila.numero}`
-    : 'un certificado sin número';
-  const deQue = fila.tipo ? ` de ${fila.tipo}` : '';
-  const deQuien = fila.nombre_titular ? `, a nombre de ${fila.nombre_titular}` : '';
-  const cuando = fila.fecha_emision ? `, emitido el ${comoSeLee(fila.fecha_emision)}` : '';
-
   /*
    * Qué trae adentro. Los datos de las hojas de presentación y de matrimonio
    * se cuentan juntos y no uno por uno: «los padres y los padrinos» dice lo
@@ -106,8 +105,64 @@ function avisoDelCertificadoQueSeBorra(fila) {
       + ' Para dejarlo sin efecto conservando el número está «Anulado».'
     : ' No lleva número, así que no libera ninguno.';
 
-  return `Va a eliminar ${cual}${deQue}${deQuien}${cuando}.${conQue}${deLaSolicitud}${anulado}`
+  return `Va a eliminar ${cualEs(fila)}.${conQue}${deLaSolicitud}${anulado}`
     + ` Lo que decía queda copiado en el Registro de Cambios.${elNumero}`;
+}
+
+/**
+ * Cómo se nombra un certificado dentro de un aviso.
+ *
+ * Las tres preguntas de este módulo —anular, volver a valer y borrar— empiezan
+ * igual, y tienen que empezar igual: se contestan desde un listado o desde un
+ * formulario donde todas las fichas se parecen, y lo primero que hace falta
+ * saber es cuál es ésta.
+ */
+function cualEs(fila) {
+  const { comoSeLee } = require('../fechas');
+  const cual = fila.numero ? `el certificado n.º ${fila.numero}` : 'un certificado sin número';
+  const deQue = fila.tipo ? ` de ${fila.tipo}` : '';
+  const deQuien = fila.nombre_titular ? `, a nombre de ${fila.nombre_titular}` : '';
+  const cuando = fila.fecha_emision ? `, emitido el ${comoSeLee(fila.fecha_emision)}` : '';
+  return `${cual}${deQue}${deQuien}${cuando}`;
+}
+
+/**
+ * Lo que se le dice a alguien antes de anular un certificado.
+ *
+ * MEDIDO en la v1.294.0: `PUT {estado: «Anulado»}` sobre un certificado emitido
+ * contestaba 200 sin una palabra. Anular es la operación CORRECTA —el número
+ * se conserva, la fila no desaparece, el libro sigue cuadrando— y por eso es la
+ * que este módulo recomienda en vez de borrar; pero es una decisión sobre un
+ * papel que puede estar en manos de alguien.
+ *
+ * La frase dice lo que el sistema SÍ hace y, sobre todo, LO QUE NO PUEDE HACER:
+ * ninguna de estas dos operaciones recoge el papel entregado. Esa copia sigue
+ * circulando sin el sello, y quien anula tiene que saberlo para ir a buscarla.
+ */
+function avisoDelCertificadoQueSeAnula(fila) {
+  return `Va a anular ${cualEs(fila)}. El número no se libera: la fila queda como constancia de que`
+    + ' existió. Desde ahora su hoja sale con el sello «ANULADO» y la fecha de hoy, y bajo cada'
+    + ' línea de firma dice que ese papel no vale. Lo que el sistema no puede hacer es recoger el'
+    + ' que ya se entregó: esa copia sigue circulando sin el sello.';
+}
+
+/**
+ * Y antes de devolverle la validez a uno anulado.
+ *
+ * Es la misma puerta en el otro sentido, y pesa igual o más: un certificado que
+ * vuelve a «Emitido» deja de llevar el sello y se imprime otra vez como uno
+ * válido. Además se borra su fecha de anulación —tiene que borrarse; uno que
+ * vale no puede seguir diciendo cuándo dejó de valer—, así que en la ficha no
+ * queda dicho que alguna vez se anuló. Queda en el Registro de Cambios, que es
+ * otro lugar y hay que ir a buscarlo.
+ */
+function avisoDelCertificadoQueVuelveAValer(fila) {
+  const { comoSeLee } = require('../fechas');
+  const desde = fila.fecha_anulacion ? ` desde el ${comoSeLee(fila.fecha_anulacion)}` : '';
+  return `${cualEs(fila).replace(/^el /, 'El ')} está anulado${desde}. Al volverlo a «Emitido» su hoja`
+    + ' deja de llevar el sello y se imprime otra vez como un certificado válido, y se borra la fecha'
+    + ' de anulación: en la ficha no quedará dicho que alguna vez se anuló, solo en el Registro de'
+    + ' Cambios.';
 }
 
 module.exports = {
@@ -199,7 +254,6 @@ module.exports = {
     },
     {
       name: 'padre', label: 'Padre', type: 'text',
-      seccion: 'Los datos del niño(a)',
       showIf: { field: 'disposicion', equals: 'Presentación de niños' },
       help: 'Nombre completo, como va a salir impreso.',
     },
@@ -240,7 +294,20 @@ module.exports = {
      * Sale de la iglesia, pero se copia: si mañana la iglesia se muda, los
      * certificados que ya se entregaron siguen diciendo dónde se entregaron.
      */
-    { name: 'ciudad', label: 'Ciudad', type: 'text', readonly: true },
+    /* ── Lo que sale impreso ─────────────────────────────────────
+     *
+     * ESTA SECCIÓN TIENE QUE ESTAR DECLARADA, y no es cosmética.
+     *
+     * En este formulario, un campo que no dice a qué sección pertenece se
+     * queda dentro de la que estaba abierta. Los cinco campos de acá abajo
+     * —la ciudad, el texto, el estado, la fecha de anulación y las notas— no
+     * la declaraban, así que caían dentro de «El matrimonio», que solo se
+     * muestra cuando la disposición es Matrimonio. Resultado, medido en la
+     * v1.294.0 sobre un certificado de bautismo: el campo ESTADO no aparecía
+     * en la pantalla. Anular desde el formulario era imposible salvo en los
+     * certificados de matrimonio.
+     */
+    { name: 'ciudad', label: 'Ciudad', type: 'text', readonly: true, seccion: 'Lo que sale impreso' },
     {
       name: 'texto', label: 'Texto del certificado', type: 'textarea',
       help: 'Solo si este certificado tiene que decir algo distinto. Vacío usa el texto del formato, ' +
@@ -248,6 +315,7 @@ module.exports = {
     },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Emitido',
+      seccion: 'El estado y las notas',
       options: ['Emitido', 'Anulado'],
       help: 'Anular no borra: el número se conserva y la hoja sale con su sello, diciendo que '
         + 'ese papel ya no vale.',
@@ -302,7 +370,7 @@ module.exports = {
      * puede quedar guardado ahí: no significa nada en la hoja nueva y aparece
      * de vuelta el día que alguien vuelva a cambiarle el tipo.
      */
-    beforeSave(data, { existing, db }) {
+    beforeSave(data, { existing, db, confirmado }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
 
       const formato = db
@@ -345,6 +413,36 @@ module.exports = {
        */
       const estadoAntes = existing ? existing.estado : null;
       const estadoAhora = dato('estado');
+
+      /**
+       * CAMBIARLE EL ESTADO A UN CERTIFICADO QUE YA EXISTE SE PREGUNTA.
+       *
+       * Las dos direcciones, y las dos por lo mismo: son decisiones sobre un
+       * papel que puede estar en manos de alguien, y ninguna de las dos lo
+       * recoge. Anular contestaba 200 sin una palabra —medido en la v1.294.0—,
+       * y desanular también, borrando de paso la fecha de la anulación.
+       *
+       * SOLO CUANDO YA EXISTE. Crear uno directamente como «Anulado» es
+       * legítimo —así se registra un certificado viejo que en el libro de papel
+       * ya estaba dado de baja— y no cambia nada de lo que hubiera: quien lo
+       * está escribiendo acaba de elegir ese estado en el formulario, y
+       * preguntárselo ahí es ruido que se aprende a contestar que sí.
+       */
+      if (existing && estadoAhora !== estadoAntes && !confirmado) {
+        if (estadoAhora === ANULADO) {
+          return {
+            error: avisoDelCertificadoQueSeAnula(existing),
+            confirmar: 'certificado_que_se_anula',
+          };
+        }
+        if (estadoAntes === ANULADO) {
+          return {
+            error: avisoDelCertificadoQueVuelveAValer(existing),
+            confirmar: 'certificado_que_vuelve_a_valer',
+          };
+        }
+      }
+
       if (estadoAhora !== estadoAntes) {
         if (estadoAhora === ANULADO) data.fecha_anulacion = require('../fechas').hoy();
         else if (estadoAntes === ANULADO) data.fecha_anulacion = null;
