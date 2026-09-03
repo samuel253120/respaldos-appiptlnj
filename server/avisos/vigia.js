@@ -550,9 +550,30 @@ function solicitudesSinResponsableActivo(usuario, dejar) {
   if (!filas.length) return;
   dejar({
     tipo: 'solicitud_sin_responsable',
-    // La clave lleva la cuenta: si aparece otra, vuelve a avisar; mientras sean
-    // las mismas, no repite todos los días
-    clave: `solicitudes_huerfanas:${filas.length}`,
+    /*
+     * La clave lleva CUÁLES SON, no cuántas.
+     *
+     * Llevaba la cuenta —`solicitudes_huerfanas:3`— y con eso una lista
+     * distinta del mismo largo era, para el sistema, el mismo asunto. MEDIDO en
+     * la v1.335.0, con dos pasadas seguidas:
+     *
+     *   la 0045-2026 sin dueño ......... «La solicitud 0045-2026 quedó sin
+     *                                     nadie que la lleve»
+     *   repartida la 0045 y huérfana
+     *   la 0051-2026 ................... ningún aviso nuevo, y el que sigue en
+     *                                     pie nombra la 0045, que ya tiene
+     *                                     responsable
+     *
+     * La que de verdad no tenía a nadie quedaba invisible, y en su lugar había
+     * un aviso apuntando a una que ya se resolvió: quien lo lee va a buscarla,
+     * la encuentra con dueño y concluye que el aviso está viejo. Con las
+     * solicitudes que entran y se reparten todos los días, la cuenta coincide
+     * seguido.
+     *
+     * Las otras trece claves del vigía llevan los identificadores. Ésta era la
+     * única que no.
+     */
+    clave: `solicitudes_huerfanas:${filas.map((s) => s.id).join(',')}`,
     titulo: filas.length === 1
       ? `La solicitud ${filas[0].numero} quedó sin nadie que la lleve`
       : `${filas.length} solicitudes quedaron sin nadie que las lleve`,

@@ -169,6 +169,79 @@ test('a quien no puede repartirlas no se le avisa: no está en sus manos', () =>
   assert.equal(salieron.length, 0);
 });
 
+/*
+ * LA CLAVE DEL AVISO DICE CUÁLES SON, NO CUÁNTAS.
+ *
+ * Llevaba la cuenta —«solicitudes_huerfanas:3»— y con eso una lista distinta
+ * del mismo largo era, para el sistema, el mismo asunto: mientras el aviso
+ * anterior siguiera sin leerse, la huérfana nueva no avisaba a nadie. MEDIDO en
+ * la v1.335.0: repartida la 0045 y quedando huérfana la 0051, no salía ningún
+ * aviso nuevo y el que seguía en pie nombraba la 0045, que ya tenía dueño.
+ */
+const laClaveDe = (usuario) => {
+  const salieron = [];
+  vigia.solicitudesSinResponsableActivo(usuario, (a) => salieron.push(a));
+  return salieron.length ? salieron[0].clave : null;
+};
+const ELQUEREPARTE = { id: SEQUEDA, rol: 'admin' };
+
+test('la clave del aviso lleva cuáles son, no cuántas', () => {
+  const suya = unaSolicitud({ estado: 'Pendiente', responsable_id: SEVA });
+  const clave = laClaveDe(ELQUEREPARTE);
+  assert.ok(clave, 'tiene que haber aviso: acaba de quedar una sin dueño');
+  assert.match(clave, /^solicitudes_huerfanas:\d+(,\d+)*$/,
+    'los identificadores, como en las otras trece claves del vigía');
+  assert.ok(clave.split(':')[1].split(',').includes(String(suya)),
+    `la clave tiene que nombrar la ${suya}; llevaba solo el largo de la lista`);
+});
+
+test('mientras sean las mismas no vuelve a avisar todos los días', () => {
+  assert.equal(laClaveDe(ELQUEREPARTE), laClaveDe(ELQUEREPARTE));
+});
+
+test('pero otra huérfana distinta, con la misma cuenta, SÍ vuelve a avisar', () => {
+  /*
+   * Es el caso medido: se reparte una y queda huérfana otra. La cuenta no
+   * cambia; lo que cambia es cuál está sin dueño, y eso es un asunto nuevo.
+   */
+  const huerfanas = () => db
+    .prepare("SELECT id FROM solicitudes WHERE responsable_id = ? AND estado NOT IN ('Aprobada','Rechazada','Completada','Anulada') ORDER BY fecha, id")
+    .all(SEVA).map((f) => f.id);
+
+  const antes = laClaveDe(ELQUEREPARTE);
+  const laPrimera = huerfanas()[0];
+  assert.ok(laPrimera, 'hace falta al menos una para repartir');
+
+  // Se reparte esa, y queda huérfana otra recién ingresada
+  db.prepare('UPDATE solicitudes SET responsable_id = ? WHERE id = ?').run(SEQUEDA, laPrimera);
+  const laNueva = unaSolicitud({ estado: 'Pendiente', responsable_id: SEVA });
+
+  const despues = laClaveDe(ELQUEREPARTE);
+  assert.notEqual(despues, antes, 'la lista ya es otra: tiene que volver a sonar');
+  assert.ok(despues.includes(String(laNueva)), 'y la clave nombra a la que de verdad quedó sin dueño');
+  assert.ok(!despues.split(':')[1].split(',').includes(String(laPrimera)),
+    'la que ya se repartió sale de la clave');
+});
+
+test('y las repartidas salen de la clave', () => {
+  /*
+   * No se comprueba que el aviso desaparezca del todo: quien reparte no tiene
+   * iglesias asignadas, así que alcanza la base entera, y las pruebas del motor
+   * corren en paralelo sobre UNA sola —otro archivo puede tener las suyas sin
+   * dueño en ese mismo instante—. Lo que sí es de este archivo, y se comprueba,
+   * es que ninguna de las suyas siga nombrada.
+   */
+  const mias = db.prepare('SELECT id FROM solicitudes WHERE responsable_id = ?').all(SEVA).map((f) => String(f.id));
+  assert.ok(mias.length, 'hace falta al menos una para repartir');
+  db.prepare('UPDATE solicitudes SET responsable_id = ? WHERE responsable_id = ?').run(SEQUEDA, SEVA);
+
+  const clave = laClaveDe(ELQUEREPARTE);
+  const nombradas = clave ? clave.split(':')[1].split(',') : [];
+  for (const id of mias) {
+    assert.ok(!nombradas.includes(id), `la ${id} ya tiene dueño y no puede seguir en la clave`);
+  }
+});
+
 // ------------------------------------------- el contador del panel --------
 
 test('el panel cuenta TODO lo abierto, no dos estados escritos a mano', () => {
