@@ -17,6 +17,11 @@
  *
  * Un perfil que alguien está usando no se puede eliminar: primero hay que
  * sacárselo, para que nadie se quede sin permisos sin darse cuenta.
+ *
+ * Y ponerle o sacarle un perfil a alguien ES cambiarle los permisos, así que
+ * las dos rutas que lo hacen desde acá piden lo mismo que la ficha de usuario:
+ * nadie se lo toca a sí mismo, nadie le concede a otro lo que él no tiene, y
+ * el cambio queda anotado en el Registro de Cambios (ver las rutas, abajo).
  */
 module.exports = {
   name: 'perfiles_permisos',
@@ -120,6 +125,81 @@ module.exports = {
       res.json({ perfil: { id: perfil.id, nombre: perfil.nombre }, usuarios: suyos, disponibles: libres });
     });
 
+    /**
+     * PONERLE O SACARLE UN PERFIL A ALGUIEN ES CAMBIARLE LOS PERMISOS.
+     *
+     * Y por eso estas dos rutas tienen que pedir lo mismo que pide la ficha de
+     * usuario, donde ese cambio pasa por el gancho de guardado. Hasta la
+     * 1.327.0 no lo pedían, porque escriben `UPDATE usuarios SET perfil_id`
+     * directo contra la base y así no tocan ni el gancho ni la bitácora.
+     *
+     * MEDIDO EN LA v1.327.0, con una cuenta de secretaria a la que se le dio
+     * exactamente «usuarios: ver, crear, editar» y ningún permiso sobre este
+     * módulo —el listado de perfiles le contestaba 403—:
+     *
+     *   antes ..... GET /configuracion .................... 403
+     *               POST /perfiles_permisos/6/usuarios      200 {"puestos":1}
+     *   después ... GET /configuracion .................... 200
+     *               Registro de Cambios .... 95 antes, 95 después
+     *
+     * Se dio a sí misma un perfil que le abrió la Configuración del sistema, y
+     * no quedó anotado en ninguna parte. Por su ficha, la misma persona recibe
+     * el aviso de la v1.317.0 —«No puede cambiar su propio rol, su perfil de
+     * permisos ni sus excepciones»— y el cambio sí se anota.
+     *
+     * Son las mismas dos reglas de aquella versión, y hacen falta las dos:
+     *
+     *   1. SOBRE LA PROPIA CUENTA no se toca el perfil. Lo que una persona
+     *      puede hacer en el sistema lo decide otra.
+     *   2. SOBRE LA DE OTRO no se concede lo que uno mismo no tiene. Sin esta,
+     *      la primera se rodea con dos cuentas que se suben entre sí.
+     *
+     * Se miran las dos en los DOS sentidos —al poner y al sacar—, porque un
+     * perfil también puede QUITAR lo que el rol daba: sacárselo devuelve esos
+     * permisos, y eso es ganar. `loQueSeGana` lo resuelve solo, comparando la
+     * cuenta antes y después.
+     */
+    const alGuardarElPerfil = (req, cuenta, perfilNuevo) => {
+      const { loQueSeGana, nombreDelPermiso, can } = require('../permissions');
+      if (Number(cuenta.id) === Number(req.user.id)) {
+        return 'No puede ponerse ni quitarse a sí mismo un perfil de permisos. Lo que una persona '
+          + 'puede hacer en el sistema lo decide otra: si de verdad hace falta, pídaselo a quien '
+          + 'administre las cuentas.';
+      }
+      const gana = loQueSeGana(cuenta, { ...cuenta, perfil_id: perfilNuevo })
+        .filter((x) => { const [modulo, accion] = x.split(':'); return !can(req.user, modulo, accion); });
+      if (gana.length) {
+        const nombres = gana.slice(0, 3).map(nombreDelPermiso);
+        return `Con eso le estaría dando a ${cuenta.nombre} ${gana.length} permiso(s) que usted no tiene: `
+          + nombres.join('; ') + (gana.length > 3 ? `, y ${gana.length - 3} más` : '') + '. '
+          + 'Nadie puede conceder lo que no alcanza: pídaselo a quien sí lo tenga.';
+      }
+      return null;
+    };
+
+    /**
+     * Y queda anotado, con el nombre del perfil y el de la persona.
+     *
+     * El Registro de Cambios vigila Usuarios y Perfiles de Permisos justamente
+     * porque son las llaves del sistema. Estas dos rutas no pasan por el motor,
+     * así que la línea se escribe acá a mano, con el mismo texto que deja el
+     * motor cuando el cambio se hace desde la ficha.
+     */
+    const dejarAnotado = (req, cuenta, antes, ahora) => {
+      const comoSeLlama = (id) => {
+        if (!id) return '(vacío)';
+        const p = db.prepare('SELECT nombre FROM perfiles_permisos WHERE id = ?').get(id);
+        return p ? p.nombre : `#${id}`;
+      };
+      require('../bitacora').anotarCambio({
+        def: require('../registry').getModule('usuarios'),
+        accion: 'Cambio',
+        fila: cuenta,
+        usuario: req.user,
+        detalle: `Perfil de permisos: ${comoSeLlama(antes)} → ${comoSeLlama(ahora)}`,
+      });
+    };
+
     /** Ponerle este perfil a uno o varios usuarios de una vez. */
     router.post('/perfiles_permisos/:id(\\d+)/usuarios', requirePerm('usuarios', 'edit'), (req, res) => {
       const perfil = db.prepare('SELECT * FROM perfiles_permisos WHERE id = ?').get(req.params.id);
@@ -140,12 +220,25 @@ module.exports = {
       const def = require('../registry').getModule('usuarios');
       let puestos = 0;
       let ajenas = 0;
+      const frenadas = [];
       for (const id of ids) {
         const cuenta = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(id);
         if (!cuenta) continue;
         if (!alcance.alcanza(def, cuenta, req.user)) { ajenas++; continue; }
-        puestos += poner.run(perfil.id, id).changes;
+        const aviso = alGuardarElPerfil(req, cuenta, perfil.id);
+        if (aviso) { frenadas.push(aviso); continue; }
+        const cambio = poner.run(perfil.id, id).changes;
+        if (cambio) {
+          dejarAnotado(req, cuenta, cuenta.perfil_id, perfil.id);
+          puestos += cambio;
+        }
       }
+      /*
+       * Si algo se frenó y no se puso nada, se contesta el PORQUÉ y no un
+       * número: es un cambio de permisos que alguien pidió a propósito y tiene
+       * derecho a saber por qué no se hizo.
+       */
+      if (frenadas.length && !puestos) return res.status(403).json({ error: frenadas[0] });
       if (ajenas && !puestos) {
         return res.status(403).json({
           error: ajenas === 1
@@ -153,17 +246,20 @@ module.exports = {
             : `Esas ${ajenas} cuentas están fuera de lo que tiene asignado`,
         });
       }
-      res.json({ puestos, ajenas });
+      res.json({ puestos, ajenas, frenadas: frenadas.length });
     });
 
     /** Y sacárselo a uno. */
     router.delete('/perfiles_permisos/:id(\\d+)/usuarios/:usuario(\\d+)', requirePerm('usuarios', 'edit'), (req, res) => {
       const cuenta = require('../alcance').registroSuyo(req, res, 'usuarios', req.params.usuario, 'Ese usuario');
       if (!cuenta) return;
+      const aviso = alGuardarElPerfil(req, cuenta, null);
+      if (aviso) return res.status(403).json({ error: aviso });
       const r = db
         .prepare("UPDATE usuarios SET perfil_id = NULL, updated_at = datetime('now','localtime') WHERE id = ? AND perfil_id = ?")
         .run(req.params.usuario, req.params.id);
       if (!r.changes) return res.status(404).json({ error: 'Ese usuario no tiene puesto este perfil' });
+      dejarAnotado(req, cuenta, Number(req.params.id), null);
       res.json({ ok: true });
     });
   },
