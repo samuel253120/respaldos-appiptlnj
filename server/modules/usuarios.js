@@ -13,7 +13,9 @@
  *   por el administrador, obliga a cambiarla en el primer ingreso: una
  *   contraseña que otro conoce no es suya.
  * - Al editar, dejar la contraseña vacía la mantiene sin cambios.
- * - No se puede eliminar el propio usuario ni el último administrador.
+ * - No se puede eliminar el propio usuario, ni dejar al sistema sin ningún
+ *   administrador activo: ni borrando esa cuenta, ni desactivándola, ni
+ *   bajándole el rol.
  *
  * Un usuario puede estar **enlazado a su ficha de miembro**: entonces los
  * datos que comparten —RUT, nombre, correo y teléfono— se mantienen iguales
@@ -33,6 +35,44 @@ const { ROLES } = require('../permissions');
 /** Lo que llega del formulario puede venir como 0, '0', false o 'false'. */
 function esVerdad(valor) {
   return !(valor === 0 || valor === '0' || valor === false || valor === 'false');
+}
+
+/**
+ * Cuántos administradores activos quedarían si este guardado saliera adelante.
+ *
+ * ES LA CUENTA QUE IMPORTA, y no «cuántos hay»: lo que deja al sistema sin
+ * administrador no es el número de ahora sino el de después. Se mira igual
+ * para las tres puertas —borrar la cuenta, desactivarla y bajarle el rol—
+ * porque las tres llevan al mismo sitio.
+ */
+function administradoresQueQuedarian(db, { id = null, rol, activo }) {
+  const otros = db
+    .prepare("SELECT COUNT(*) AS c FROM usuarios WHERE rol = 'admin' AND activo = 1 AND id != ?")
+    .get(id || 0).c;
+  const esteSigue = String(rol) === 'admin' && esVerdad(activo) ? 1 : 0;
+  return otros + esteSigue;
+}
+
+/**
+ * El aviso de que el sistema se quedaría sin administrador.
+ *
+ * Dice por qué no se puede deshacer, que es lo que distingue este caso de
+ * todos los demás: sin administrador activo no queda NADIE con permiso sobre
+ * Usuarios, así que nadie puede volver a activarlo desde el sistema y la única
+ * salida es entrar a la base de datos por fuera.
+ *
+ * Y por eso este se NIEGA en vez de preguntar, al revés que el de las
+ * solicitudes abiertas: allá hay un caso legítimo que confirmar —quien deja la
+ * iglesia tiene que perder el acceso hoy— y acá no hay ninguno. Un sistema sin
+ * administrador no es una decisión que alguien quiera tomar.
+ */
+function avisoDelUltimoAdministrador(comoSeLlama, queSeIntenta) {
+  return (
+    `${comoSeLlama} es el último administrador activo del sistema, y ${queSeIntenta} dejaría a la iglesia sin ` +
+    'ninguno. Nadie podría volver a entrar a administrar cuentas —ni siquiera para deshacerlo—, porque el ' +
+    'permiso de Usuarios lo tienen los administradores. Nombre antes a otra persona como administradora, y ' +
+    'después haga este cambio.'
+  );
 }
 
 /** Cuántas solicitudes abiertas lleva esa cuenta. */
@@ -303,6 +343,40 @@ module.exports = {
         }
       }
 
+      /**
+       * EL SISTEMA NO SE QUEDA SIN ADMINISTRADOR, POR NINGUNA DE LAS TRES PUERTAS.
+       *
+       * La cabecera de este módulo lo promete entre las cuatro cosas que dice
+       * de sí mismo: «No se puede eliminar el propio usuario ni el último
+       * administrador». Y era verdad para ELIMINAR. Medido en la v1.316.0,
+       * sobre una base con un solo administrador:
+       *
+       *   borrarle la cuenta        🛑 «No se puede eliminar el último…»
+       *   desactivarla              pasa, sin decir nada
+       *   bajarle el rol            pasa, sin decir nada
+       *
+       * Y desactivar es PEOR que borrar: sin administrador activo no queda
+       * nadie con permiso sobre Usuarios, así que nadie puede volver a
+       * activarlo desde el sistema y la única salida es entrar a la base de
+       * datos por fuera. Borrar la cuenta, en cambio, al menos dejaría crear
+       * otra si alguien más tuviera el permiso.
+       *
+       * No hace falta mala intención: una secretaria dando de baja a un pastor
+       * que se trasladó, sin fijarse en que esa cuenta era la última con rol de
+       * administrador, deja la iglesia encerrada fuera de su propio sistema.
+       */
+      if (!isNew && existing && existing.rol === 'admin' && existing.activo) {
+        const rolNuevo = data.rol !== undefined ? data.rol : existing.rol;
+        const activoNuevo = data.activo !== undefined ? data.activo : existing.activo;
+        const dejaDeSerlo = String(rolNuevo) !== 'admin' || !esVerdad(activoNuevo);
+        if (dejaDeSerlo && administradoresQueQuedarian(db, { id, rol: rolNuevo, activo: activoNuevo }) === 0) {
+          return avisoDelUltimoAdministrador(
+            existing.nombre,
+            String(rolNuevo) !== 'admin' ? 'cambiarle el rol' : 'desactivar su cuenta'
+          );
+        }
+      }
+
       /*
        * DESACTIVAR UNA CUENTA QUE LLEVA SOLICITUDES ABIERTAS.
        *
@@ -493,9 +567,11 @@ module.exports = {
 
     beforeDelete(row, { user, db }) {
       if (row.id === user.id) return 'No puede eliminar su propio usuario';
-      if (row.rol === 'admin') {
-        const admins = db.prepare("SELECT COUNT(*) AS c FROM usuarios WHERE rol = 'admin' AND activo = 1").get().c;
-        if (admins <= 1) return 'No se puede eliminar el último administrador del sistema';
+      // La misma cuenta y el mismo aviso que las otras dos puertas: borrar es
+      // solo una de las tres maneras de dejar al sistema sin administrador
+      if (row.rol === 'admin' && row.activo
+          && administradoresQueQuedarian(db, { id: row.id, rol: null, activo: 0 }) === 0) {
+        return avisoDelUltimoAdministrador(row.nombre, 'eliminar su cuenta');
       }
       return null;
     },
