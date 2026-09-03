@@ -87,5 +87,99 @@ test('la clave no viaja al navegador', () => {
   // asomarse: si algún día alguien la agregara a lo que se manda, esto lo dice.
   const expuesto = JSON.stringify(Object.keys(codigo));
   assert.ok(!expuesto.includes('CLAVE'), 'el módulo no puede exportar la clave');
-  assert.equal(typeof codigo.tieneClavePropia(), 'boolean');
+});
+
+/* --------------------------------------------------------------------- */
+/* Y que la clave que firma sea de VERDAD la del servidor                 */
+/* --------------------------------------------------------------------- */
+
+/**
+ * Estas cuatro pruebas arrancan procesos aparte, y no es por gusto.
+ *
+ * El módulo lee la clave UNA VEZ, al cargarse, y se la queda. Dentro de un
+ * mismo proceso no hay forma de cambiarla, así que preguntarle dos veces con
+ * dos claves distintas exige dos procesos. Es el único rincón del módulo donde
+ * hace falta.
+ *
+ * POR QUÉ HACEN FALTA. Comprobado: cambiando el código para que use SIEMPRE la
+ * clave de reserva —la que está escrita en el archivo y es pública— y dejando
+ * intacta la comprobación que decide si avisar, todas las pruebas seguían en
+ * verde Y el aviso de arranque tampoco salía, porque esa comprobación mira la
+ * variable de entorno y la variable seguía puesta. El sistema habría dicho que
+ * estaba bien configurado mientras firmaba con la clave que cualquiera puede
+ * leer en el repositorio, y ninguna credencial emitida así valdría nada.
+ *
+ * La única prueba que tocaba el asunto comprobaba que `tieneClavePropia()`
+ * devolviera un booleano, que es algo que no puede fallar.
+ */
+function comoFirmaOtroServidor(entorno) {
+  const { execFileSync } = require('node:child_process');
+  const guion =
+    "const c = require(process.argv[1]);" +
+    "process.stdout.write(JSON.stringify({ codigo: c.firmar(process.argv[2]), propia: c.tieneClavePropia() }));";
+  const salida = execFileSync(
+    process.execPath,
+    ['-e', guion, require.resolve('../../server/credenciales/codigo'), DATOS],
+    {
+      encoding: 'utf8',
+      // Se arranca con un entorno limpio: si se heredara el de la prueba,
+      // CREDENCIAL_SECRETO se colaría en el caso que justamente lo quita
+      env: { PATH: process.env.PATH, NODE_ENV: 'test', ...entorno },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }
+  );
+  return JSON.parse(salida);
+}
+
+/** Lo mismo, pero quedándose con lo que el módulo avisa al cargarse. */
+function loQueAvisaAlArrancar(entorno) {
+  const { spawnSync } = require('node:child_process');
+  const r = spawnSync(
+    process.execPath,
+    ['-e', "require(process.argv[1]);", require.resolve('../../server/credenciales/codigo')],
+    { encoding: 'utf8', env: { PATH: process.env.PATH, NODE_ENV: 'test', ...entorno } }
+  );
+  return String(r.stderr || '');
+}
+
+test('dos claves distintas firman distinto', () => {
+  const una = comoFirmaOtroServidor({ CREDENCIAL_SECRETO: 'una-clave-cualquiera' });
+  const otra = comoFirmaOtroServidor({ CREDENCIAL_SECRETO: 'otra-clave-distinta' });
+  assert.notEqual(una.codigo, otra.codigo,
+    'si dos claves distintas dieran el mismo código, la clave no estaría firmando nada');
+});
+
+test('con clave propia NO se firma con la de reserva (punto 8.3)', () => {
+  /**
+   * Es la comprobación que faltaba, y la que atrapa el caso peligroso: que el
+   * sistema diga que tiene su clave configurada mientras firma con la pública.
+   */
+  const conLaSuya = comoFirmaOtroServidor({ CREDENCIAL_SECRETO: 'la-del-servidor-publicado' });
+  const conLaDeReserva = comoFirmaOtroServidor({});
+  assert.equal(conLaSuya.propia, true, 'con la variable puesta tiene que decir que la clave es suya');
+  assert.equal(conLaDeReserva.propia, false, 'sin ninguna variable, no lo es');
+  assert.notEqual(conLaSuya.codigo, conLaDeReserva.codigo,
+    'el código firmado con la clave del servidor no puede ser el mismo que el de la clave pública');
+});
+
+test('a falta de la propia sirve la de la sesión, y tampoco es la de reserva', () => {
+  // El módulo acepta JWT_SECRET como segunda opción: es mejor que la escrita
+  // en el código, aunque lo correcto sea poner CREDENCIAL_SECRETO
+  const conJwt = comoFirmaOtroServidor({ JWT_SECRET: 'la-de-la-sesion' });
+  const conLaDeReserva = comoFirmaOtroServidor({});
+  assert.equal(conJwt.propia, true);
+  assert.notEqual(conJwt.codigo, conLaDeReserva.codigo);
+});
+
+test('sin clave configurada, el servidor lo avisa al arrancar', () => {
+  /**
+   * El aviso es lo único que separa a un servidor mal publicado de uno que
+   * firma credenciales con una clave pública sin que nadie se entere.
+   */
+  const sinNada = loQueAvisaAlArrancar({});
+  assert.match(sinNada, /CREDENCIAL_SECRETO/, 'tiene que nombrar la variable que falta');
+  assert.match(sinNada, /clave de reserva|es pública/i, 'y decir qué está pasando mientras tanto');
+  const conLaSuya = loQueAvisaAlArrancar({ CREDENCIAL_SECRETO: 'la-del-servidor' });
+  assert.ok(!/CREDENCIAL_SECRETO/.test(conLaSuya),
+    'con la clave puesta no puede seguir avisando: un aviso que sale siempre no lo lee nadie');
 });
