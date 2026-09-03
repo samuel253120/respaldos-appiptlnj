@@ -51,9 +51,42 @@ const anotar = (clave, valor) =>
      ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = datetime('now','localtime')`
   ).run(clave, valor);
 
-/** Los usuarios que pueden recibir avisos. */
+/**
+ * Los usuarios que pueden recibir avisos.
+ *
+ * VAN LOS PERMISOS Y EL PERFIL, no solo el rol. Las trece revisiones de más
+ * abajo preguntan `can(usuario, …)` antes de dejar nada, y `can()` decide en
+ * tres escalones: primero las excepciones de esa persona, después el perfil que
+ * tenga puesto, y solo al final su rol. Sin estas dos columnas los dos primeros
+ * escalones no existen y contesta siempre el rol.
+ *
+ * Estaban faltando, y se midió lo que eso producía, en las dos direcciones:
+ *
+ *   una cuenta de rol «consulta» con un perfil que le DA las ayudas sociales
+ *   ....... no recibía el aviso de la caja de mercadería que alguien pedió hace
+ *           noventa días —justamente la persona puesta para entregarla—;
+ *   una cuenta de rol «pastor» con un perfil que le QUITA las fichas
+ *   ....... sí recibía «Hoy cumple años Fulana» y «Mengano ya cumplió 18 años»,
+ *           con nombre y apellido de fichas que su perfil le había cerrado.
+ *
+ * Y peor: así es como el propio sistema dice que hay que repartir el trabajo
+ * —«Excepciones para esta persona», en el comentario del rol consulta de
+ * server/permissions.js—. Armada así, esa cuenta tampoco recibía nada.
+ *
+ * Es el mismo error que ya se corrigió DOS VECES en este mismo subsistema, con
+ * el comentario escrito al lado las dos veces: en `crear()` (avisos.js) y en la
+ * ruta de las preferencias (rutas.js). El vigía quedó fuera de las dos.
+ *
+ * NO va `iglesias_trabajando`, y es a propósito: esa es la elección temporal de
+ * con cuál iglesia se está trabajando en pantalla, y un aviso de las seis de la
+ * mañana tiene que cubrir todo lo asignado. Una credencial que vence en la otra
+ * iglesia no deja de vencer porque hoy se esté mirando ésta.
+ */
 const losQueEntran = () =>
-  db.prepare('SELECT id, nombre, rol, activo, avisos, iglesias, cuerpos, iglesia_id FROM usuarios WHERE activo = 1').all();
+  db.prepare(
+    `SELECT id, nombre, rol, activo, avisos, iglesias, cuerpos, iglesia_id, permisos, perfil_id
+       FROM usuarios WHERE activo = 1`
+  ).all();
 
 // ----------------------------------------------------------- cada revisión --
 
@@ -816,6 +849,10 @@ function empezar() {
 
 module.exports = {
   empezar, mirar, pasada, leToca, REVISIONES,
+  // Se exporta para poder probar la pasada CON EL USUARIO QUE ELLA ARMA, y no
+  // con uno escrito a mano en la prueba: el hueco de los permisos y el perfil
+  // vivía justamente ahí, en la diferencia entre los dos.
+  losQueEntran,
   solicitudesSinRespuesta, solicitudesSinResponsableActivo, cumplieronLaMayoria,
   ayudasSinEntregar, cuerpoDeOficialesSinArmar, avisoDeOficialesSinArmar,
   documentosPorResponder,
