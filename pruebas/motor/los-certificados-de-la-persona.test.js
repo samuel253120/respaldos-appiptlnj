@@ -40,9 +40,12 @@ function unaIglesia() {
     .run(`Suyos ${m}`, `SY${m}`.slice(0, 18)).lastInsertRowid;
 }
 
+/** Devuelve el id y el nombre, porque el certificado se emite a ese nombre. */
 function unMiembro(iglesia) {
-  return db.prepare("INSERT INTO miembros (nombres, apellidos, iglesia_id, estado) VALUES ('Ana', ?, ?, 'Activo')")
-    .run(`Soto ${marca()}`, iglesia).lastInsertRowid;
+  const apellidos = `Soto ${marca()}`;
+  const id = db.prepare("INSERT INTO miembros (nombres, apellidos, iglesia_id, estado) VALUES ('Ana', ?, ?, 'Activo')")
+    .run(apellidos, iglesia).lastInsertRowid;
+  return { id, nombre: `Ana ${apellidos}` };
 }
 
 /** Un formato cuyo texto no nombra ningún día, para emitir sin más trámite. */
@@ -64,10 +67,15 @@ test('el listado filtrado por persona trae los suyos y solo los suyos', async ()
   const suyo = unMiembro(iglesia);
   const otro = unMiembro(iglesia);
 
-  const emitir = async (miembroId, numero) => {
+  /*
+   * `igual_asi` porque desde la v1.300.0 el segundo certificado del mismo tipo
+   * a la misma persona PREGUNTA (CE-10). Acá los dos son a propósito: lo que se
+   * comprueba es que el listado por persona los traiga.
+   */
+  const emitir = async (quien, numero) => {
     const r = await api('POST', '/certificados', {
-      numero, tipo, iglesia_id: iglesia, miembro_id: miembroId,
-      nombre_titular: 'Ana Soto', fecha_emision: '2026-03-10',
+      numero, tipo, iglesia_id: iglesia, miembro_id: quien.id,
+      nombre_titular: quien.nombre, fecha_emision: '2026-03-10', igual_asi: true,
     });
     assert.equal(r.estado, 201, JSON.stringify(r.json));
     return r.json;
@@ -76,16 +84,16 @@ test('el listado filtrado por persona trae los suyos y solo los suyos', async ()
   await emitir(suyo, `SUYO-B-${marca()}`);
   await emitir(otro, `AJENO-${marca()}`);
 
-  const r = await api('GET', `/certificados?f_miembro_id=${suyo}&limit=50`);
+  const r = await api('GET', `/certificados?f_miembro_id=${suyo.id}&limit=50`);
   assert.equal(r.estado, 200);
   assert.equal(r.json.total, 2, 'los dos suyos');
-  for (const c of r.json.rows) assert.equal(c.miembro_id, suyo, 'y ninguno de otro');
+  for (const c of r.json.rows) assert.equal(c.miembro_id, suyo.id, 'y ninguno de otro');
 });
 
 test('y una persona sin certificados contesta una lista vacía, no un error', async () => {
   const api = await elSistemaAndando();
   const solo = unMiembro(unaIglesia());
-  const r = await api('GET', `/certificados?f_miembro_id=${solo}&limit=50`);
+  const r = await api('GET', `/certificados?f_miembro_id=${solo.id}&limit=50`);
   assert.equal(r.estado, 200);
   assert.equal(r.json.total, 0);
 });
@@ -97,12 +105,12 @@ test('vienen del más nuevo al más viejo, que es como se pregunta', async () =>
   const quien = unMiembro(iglesia);
   for (const [numero, fecha] of [['VIEJO', '2024-01-10'], ['NUEVO', '2026-05-20'], ['MEDIO', '2025-03-01']]) {
     const r = await api('POST', '/certificados', {
-      numero: `${numero}-${marca()}`, tipo, iglesia_id: iglesia, miembro_id: quien,
-      nombre_titular: 'Ana Soto', fecha_emision: fecha,
+      numero: `${numero}-${marca()}`, tipo, iglesia_id: iglesia, miembro_id: quien.id,
+      nombre_titular: quien.nombre, fecha_emision: fecha, igual_asi: true,
     });
     assert.equal(r.estado, 201, JSON.stringify(r.json));
   }
-  const r = await api('GET', `/certificados?f_miembro_id=${quien}&limit=50&sort=fecha_emision&dir=desc`);
+  const r = await api('GET', `/certificados?f_miembro_id=${quien.id}&limit=50&sort=fecha_emision&dir=desc`);
   assert.deepEqual(r.json.rows.map((c) => c.fecha_emision), ['2026-05-20', '2025-03-01', '2024-01-10']);
 });
 

@@ -207,6 +207,81 @@ function avisoDelTipoQueCambia(campos, deQue, aQue, deLaHoja, aLaHoja) {
     + ` y no ${uno ? 'tiene' : 'tienen'} dónde ir en la nueva.`;
 }
 
+/**
+ * El nombre del titular, contra el de la ficha a la que está enlazado.
+ *
+ * MEDIDO en la v1.299.0: un certificado enlazado a un miembro y con «NOMBRE
+ * QUE NO ES EL SUYO» en el titular se emitía con un 201 y sin decir nada. Lo
+ * que se imprime en la hoja es el titular; el enlace es lo que ata el papel a
+ * una persona del sistema. Que digan cosas distintas es, casi siempre, que el
+ * enlace apunta a quien no es — y ese certificado va a aparecer en la ficha de
+ * una persona que no lo recibió (CE-08).
+ *
+ * ESTO NO PUEDE SER UN RECHAZO, y por eso es una pregunta. Hay razones
+ * legítimas para que no coincidan: un nombre de casada, el nombre completo
+ * frente al corto de la ficha, un segundo apellido que en el registro civil
+ * está y en la ficha no. La hoja tiene que poder decir el nombre que
+ * corresponde. Es lo mismo que el sistema ya hace en Miembros con las fichas
+ * que se llaman igual: lo menciona y deja seguir.
+ *
+ * SE COMPARA SIN TILDES Y SIN MAYÚSCULAS —con la misma función con que el
+ * sistema busca—, porque «José» y «Jose» son la misma persona escrita por dos
+ * manos distintas y preguntar por eso sería ruido.
+ */
+function avisoDelTitularQueNoCalza(fila, db) {
+  if (!fila.miembro_id) return null;
+  const quien = db.prepare('SELECT nombres, apellidos FROM miembros WHERE id = ?').get(fila.miembro_id);
+  if (!quien) return null;
+
+  const { comoSeCompara } = require('../busqueda');
+  const enLaFicha = `${quien.nombres || ''} ${quien.apellidos || ''}`.trim();
+  const enElPapel = String(fila.nombre_titular || '').trim();
+  if (!enLaFicha || !enElPapel) return null;
+  if (comoSeCompara(enLaFicha) === comoSeCompara(enElPapel)) return null;
+
+  return `Este certificado se va a imprimir a nombre de «${enElPapel}», pero está enlazado a la ficha`
+    + ` de ${enLaFicha}. Si el enlace apunta a quien no es, el certificado va a aparecer en la ficha de`
+    + ' una persona que no lo recibió. Si el nombre de la hoja es el correcto —el de casada, el'
+    + ' completo, el del registro civil—, siga.';
+}
+
+/**
+ * Otro certificado del mismo tipo, ya emitido a la misma persona.
+ *
+ * MEDIDO en la v1.299.0: el segundo certificado de bautismo a la misma persona
+ * se emitía con un 201 y sin preguntar nada.
+ *
+ * TAMPOCO ES UN RECHAZO: volver a emitir es normal —se pierde el papel, se
+ * moja, se pide una copia para un trámite—. Pero dos certificados del mismo
+ * tipo a la misma persona, con números distintos y sin ninguna relación entre
+ * ellos, es el caso en que conviene mirar antes de firmar: puede ser una copia
+ * legítima o el mismo trámite hecho dos veces por dos personas distintas.
+ *
+ * SE MIRA SOLO EL ENLACE, no el nombre escrito. El nombre se teclea y se
+ * teclea distinto; el enlace es el que ata el papel a una persona. Un
+ * certificado sin enlazar no tiene con qué compararse, y preguntar por
+ * parecido de nombres sería exactamente la clase de aviso que sale siempre.
+ */
+function avisoDelQueYaTiene(fila, db, id) {
+  if (!fila.miembro_id || !fila.tipo) return null;
+  const { comoSeLee } = require('../fechas');
+
+  const otros = db.prepare(
+    `SELECT numero, fecha_emision, estado FROM certificados
+      WHERE miembro_id = ? AND tipo = ? AND id IS NOT ? AND estado IS NOT ?
+      ORDER BY fecha_emision DESC LIMIT 3`
+  ).all(fila.miembro_id, fila.tipo, id || -1, ANULADO);
+  if (!otros.length) return null;
+
+  const listados = otros
+    .map((o) => `${o.numero || '(sin número)'}${o.fecha_emision ? `, del ${comoSeLee(o.fecha_emision)}` : ''}`)
+    .join('; ');
+
+  return `Esa persona ya tiene ${otros.length === 1 ? 'un certificado' : `${otros.length} certificados`}`
+    + ` de ${fila.tipo}: ${listados}. Si es una copia porque se perdió el papel, siga; si el trámite ya`
+    + ' se hizo, abra el que está en vez de emitir otro con un número nuevo.';
+}
+
 module.exports = {
   name: 'certificados',
   label: 'Certificados',
@@ -412,7 +487,7 @@ module.exports = {
      * puede quedar guardado ahí: no significa nada en la hoja nueva y aparece
      * de vuelta el día que alguien vuelva a cambiarle el tipo.
      */
-    beforeSave(data, { existing, db, confirmado }) {
+    beforeSave(data, { existing, db, confirmado, isNew, id }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
 
       const formato = db
@@ -540,6 +615,31 @@ module.exports = {
           clave: 'certificado_que_cambia_de_tipo',
           texto: avisoDelTipoQueCambia(seSueltan, existing.tipo, dato('tipo'), existing.disposicion || 'Clásica', como),
         });
+      }
+
+      /*
+       * El titular que no calza con su ficha (CE-09) y el que ya tiene uno
+       * igual (CE-10). Los dos se miran sobre lo que QUEDARÍA guardado, no
+       * sobre lo que llega: cambiarle solo el enlace a un certificado ya
+       * emitido tiene que preguntar lo mismo que emitirlo mal de entrada.
+       */
+      const comoQueda = {
+        miembro_id: dato('miembro_id'),
+        nombre_titular: dato('nombre_titular'),
+        tipo: dato('tipo'),
+      };
+
+      const titular = avisoDelTitularQueNoCalza(comoQueda, db);
+      if (titular) avisos.push({ clave: 'titular_que_no_calza', texto: titular });
+
+      /*
+       * El de «ya tiene uno» solo al EMITIR. Editando uno que ya existe, el
+       * segundo certificado ya está emitido y la pregunta llega tarde: lo único
+       * que haría es estorbar cada vez que alguien le corrija una tilde.
+       */
+      if (isNew) {
+        const repetido = avisoDelQueYaTiene(comoQueda, db, id);
+        if (repetido) avisos.push({ clave: 'certificado_que_ya_tiene', texto: repetido });
       }
 
       if (existing && estadoAhora !== estadoAntes) {

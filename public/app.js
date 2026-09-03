@@ -7957,6 +7957,16 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y revisarlos',
       seguir: 'Cambiarlo igual',
     },
+    titular_que_no_calza: {
+      titulo: '🧍 El nombre de la hoja no es el de la ficha',
+      volver: 'Volver y revisar el enlace',
+      seguir: 'El nombre es correcto, emitir',
+    },
+    certificado_que_ya_tiene: {
+      titulo: '📜 Esa persona ya tiene uno de este tipo',
+      volver: 'Volver y abrir el que está',
+      seguir: 'Es una copia, emitir',
+    },
     certificado_que_se_anula: {
       titulo: '📜 Va a anular un certificado entregado',
       volver: 'Volver y dejarlo como está',
