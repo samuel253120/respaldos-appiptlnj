@@ -38,10 +38,38 @@ module.exports = {
 
   computed: [
     {
+      /**
+       * CUÁNTA GENTE LLEVA ESTE PERFIL, DE LA QUE QUIEN MIRA PUEDE VER.
+       *
+       * Desde la v1.98.0 las tres rutas de este módulo están acotadas: quien
+       * administra una iglesia ve, en la ficha de un perfil, solo las cuentas
+       * de sus iglesias. Esta columna quedó fuera de aquel arreglo y contaba la
+       * tabla entera.
+       *
+       * MEDIDO EN LA v1.327.0, con un administrador de una sola iglesia, en la
+       * misma pantalla y sobre el mismo perfil:
+       *
+       *   en el listado ............. «2 usuarios»
+       *   en la ficha de ese perfil . 0 cuentas
+       *
+       * No se filtraban nombres —la ficha sí estaba bien acotada— pero sí un
+       * número: cuánta gente de otras iglesias lleva ese perfil. Y dejaba la
+       * pantalla contradiciéndose sola, que es lo que en la práctica hace que
+       * nadie confíe en la cifra.
+       *
+       * Cuando quien mira tiene iglesias asignadas, la columna lo dice: «1 de
+       * los suyos». Sin iglesias asignadas se ven todas, y entonces el número
+       * es el de todos y se dice a secas.
+       */
       name: 'cuantos_usuarios', label: 'Usuarios', type: 'texto',
-      calc: (fila, { db }) => {
-        const n = db.prepare('SELECT COUNT(*) c FROM usuarios WHERE perfil_id = ?').get(fila.id).c;
-        return n === 0 ? 'Nadie todavía' : n === 1 ? '1 usuario' : `${n} usuarios`;
+      calc: (fila, { db, usuario }) => {
+        const params = [fila.id];
+        const suyas = usuario ? require('../alcance').condicionesDeUsuarios(usuario, params) : null;
+        const n = db
+          .prepare(`SELECT COUNT(*) c FROM usuarios WHERE perfil_id = ?${suyas ? ` AND ${suyas}` : ''}`)
+          .get(...params).c;
+        if (!suyas) return n === 0 ? 'Nadie todavía' : n === 1 ? '1 usuario' : `${n} usuarios`;
+        return n === 0 ? 'Nadie de los suyos' : n === 1 ? '1 de los suyos' : `${n} de los suyos`;
       },
     },
   ],
