@@ -16,19 +16,27 @@ const { db } = require('../db');
 /**
  * La categoría de la iglesia, como la nombra la credencial.
  *
- * La especificación las llama CENTRAL, SEDE, FILIAL y ANEXO (punto 4.7). El
- * módulo de Iglesias las llama «Iglesia Matriz», «Iglesia Sede», «Iglesia
- * Local» e «Iglesia Anexo» desde antes de esta especificación. Son las mismas
- * cuatro; acá se dice la correspondencia, en un solo lugar, para no renombrar
- * datos que ya están cargados ni dejar la credencial diciendo una palabra y la
- * ficha otra.
+ * La lista cerrada es MATRIZ, SEDE, FILIAL y ANEXO. El módulo de Iglesias las
+ * llama «Iglesia Matriz», «Iglesia Sede», «Iglesia Local» e «Iglesia Anexo»
+ * desde antes de la especificación de credenciales. Son las mismas cuatro; acá
+ * se dice la correspondencia, en un solo lugar, para no renombrar datos que ya
+ * están cargados ni dejar la credencial diciendo una palabra y la ficha otra.
+ *
+ * LA PRIMERA SE LLAMABA «CENTRAL» Y AHORA SE LLAMA «MATRIZ» (punto 5.1 de las
+ * modificaciones). La categoría reservada al Pastor Presidente es la Iglesia
+ * Matriz, y el registro de Iglesias siempre la llamó así; era la credencial la
+ * que la rebautizaba al imprimir. Ojo con no confundir esto con una iglesia
+ * que se LLAME «Iglesia Central»: eso es un nombre propio que alguien escribió
+ * y no se toca. Lo que cambia es la categoría, no los nombres.
  */
 const CATEGORIAS = {
-  'Iglesia Matriz': 'CENTRAL',
+  'Iglesia Matriz': 'MATRIZ',
   'Iglesia Sede': 'SEDE',
   'Iglesia Local': 'FILIAL',
   'Iglesia Anexo': 'ANEXO',
 };
+/** Como se llamaba antes. Solo sirve para reconocer lo ya guardado. */
+const CATEGORIA_ANTERIOR = 'CENTRAL';
 const categoriaDe = (tipo) => CATEGORIAS[tipo] || '';
 
 /** Los grados del ministerio que puede llevar una credencial. */
@@ -120,5 +128,5 @@ function recursosQueFaltan() {
 
 module.exports = {
   delTitular, loQueFalta, sePuedeEmitir, recursosQueFaltan,
-  categoriaDe, CATEGORIAS, GRADOS, IMPRESCINDIBLES,
+  categoriaDe, CATEGORIAS, CATEGORIA_ANTERIOR, GRADOS, IMPRESCINDIBLES,
 };

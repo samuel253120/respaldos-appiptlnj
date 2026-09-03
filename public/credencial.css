@@ -214,7 +214,7 @@
     white-space:nowrap; overflow:hidden; outline:none;
     line-height:1.12;
   }
-  /* Iglesia: categoría (CENTRAL / SEDE / FILIAL / ANEXO) junto al nombre, en la misma línea */
+  /* Iglesia: categoría (MATRIZ / SEDE / FILIAL / ANEXO) junto al nombre, en la misma línea */
   .cred-disenio .iglesia-fila{display:flex; align-items:stretch; gap:1.1mm; min-width:0;}
   .cred-disenio .iglesia-fila .valor{flex:1 1 auto; min-width:0;}
   .cred-disenio .cat-iglesia{

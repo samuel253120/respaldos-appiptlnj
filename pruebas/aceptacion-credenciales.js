@@ -232,7 +232,7 @@ const esperar = (ms) => new Promise((sigue) => setTimeout(sigue, ms));
     const c = emitida.datos.credencial || {};
     const ig = (await api('GET', `/api/iglesias/${laIglesia.id}`)).datos;
     const p = (await api('GET', `/api/pastores/${PASTOR.id}`)).datos;
-    const CATEGORIAS = { 'Iglesia Matriz': 'CENTRAL', 'Iglesia Sede': 'SEDE', 'Iglesia Local': 'FILIAL', 'Iglesia Anexo': 'ANEXO' };
+    const CATEGORIAS = { 'Iglesia Matriz': 'MATRIZ', 'Iglesia Sede': 'SEDE', 'Iglesia Local': 'FILIAL', 'Iglesia Anexo': 'ANEXO' };
     const discrepan = [];
     const igual = (que, enLaCredencial, enElRegistro) => {
       if (String(enLaCredencial || '').trim() !== String(enElRegistro || '').trim()) {

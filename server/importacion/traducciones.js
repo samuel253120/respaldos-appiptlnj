@@ -135,7 +135,15 @@ const CATEGORIA_EGRESO = {
   'Reparaciones y Mantenciones': 'Mantenimiento',
 };
 
-const TIPO_IGLESIA = { central: 'Iglesia Matriz', sede: 'Iglesia Sede', local: 'Iglesia Local', anexo: 'Iglesia Anexo' };
+/**
+ * «matriz» es como se llama ahora la categoría; «central» se sigue aceptando
+ * porque las planillas viejas que se importan la escriben así y traducirla es
+ * justamente para lo que está esta tabla.
+ */
+const TIPO_IGLESIA = {
+  matriz: 'Iglesia Matriz', central: 'Iglesia Matriz',
+  sede: 'Iglesia Sede', local: 'Iglesia Local', filial: 'Iglesia Local', anexo: 'Iglesia Anexo',
+};
 
 module.exports = {
   traducir, SEXO, ESTADO_MIEMBRO, TIPO_MIEMBRO, FORMA_INGRESO, ESTADO_CIVIL, TRATO,

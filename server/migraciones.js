@@ -3130,6 +3130,125 @@ function losNombresCopiadosQueQuedaronViejos(conexion = db) {
   marcar();
 }
 
+/**
+ * La categoría «CENTRAL» de las credenciales pasa a llamarse «MATRIZ».
+ *
+ * La categoría reservada al Pastor Presidente es la IGLESIA MATRIZ (punto 5.1
+ * de las modificaciones). El registro de Iglesias siempre la llamó así —su
+ * campo «tipo» dice «Iglesia Matriz» desde antes—; era la credencial la que la
+ * rebautizaba «CENTRAL» al imprimir. Cambiada esa correspondencia, las
+ * credenciales YA EMITIDAS conservan en su copia congelada la palabra vieja, y
+ * hay que ponerlas al día para que no queden dos nombres para lo mismo.
+ *
+ * LO QUE ESTA MIGRACIÓN NO TOCA, Y ES LO MÁS IMPORTANTE DE ELLA: una iglesia
+ * que se LLAME «Iglesia Central», o que tenga «CENTRAL» como código corto, no
+ * se toca. Eso es un nombre propio que alguien escribió y no es una categoría.
+ * Medido antes de escribir esto, en esta base había 69 valores con la palabra
+ * «central» y NINGUNO era la categoría: eran el nombre de una congregación, su
+ * código, sus cuentas de tesorería y el historial de cambios. Confundir las dos
+ * cosas habría renombrado datos que nadie pidió tocar (punto 17.7).
+ *
+ * Y LA ADVERTENCIA DEL PUNTO 5.6. Al cambiar la categoría guardada cambia lo
+ * que la página pública vuelve a firmar, así que una credencial impresa EN
+ * MODO EN LÍNEA de esa categoría deja de validar: su código de autenticidad
+ * ya no calza. (En modo sin conexión no pasa: el código lleva su contenido
+ * adentro y se comprueba contra sí mismo, aunque la tarjeta quedaría diciendo
+ * una palabra que el registro ya no usa.) Por eso las emitidas que se vean
+ * afectadas quedan nombradas UNA POR UNA en el registro y en la consola, con
+ * su número de serie: emitir el reemplazo es un acto con fecha, número nuevo y
+ * una firma detrás, y no es algo que deba hacer solo el servidor al arrancar
+ * —la misma razón por la que tampoco revoca solo—. La reemplaza una persona,
+ * y al emitir la nueva el sistema deja la anterior como REEMPLAZADA.
+ */
+function laCategoriaCentralAhoraEsMatriz(conexion = db) {
+  const NOMBRE = 'la categoría central de las credenciales ahora es matriz';
+  const yaEsta = () => !!conexion.prepare('SELECT nombre FROM migraciones WHERE nombre = ?').get(NOMBRE);
+  const marcar = () => conexion.prepare('INSERT OR IGNORE INTO migraciones (nombre) VALUES (?)').run(NOMBRE);
+  if (yaEsta()) return { migradas: 0, emitidas: [] };
+
+  const hayTabla = (t) =>
+    !!conexion.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('credenciales')) { marcar(); return { migradas: 0, emitidas: [] }; }
+
+  const ANTES = require('./credenciales/datos').CATEGORIA_ANTERIOR;
+  const AHORA = require('./credenciales/datos').CATEGORIAS['Iglesia Matriz'];
+
+  const afectadas = conexion
+    .prepare(
+      `SELECT id, serie, serie_dv, estado, snap_nombres, snap_apellidos
+         FROM credenciales
+        WHERE UPPER(TRIM(COALESCE(snap_categoria, ''))) = ?`
+    )
+    .all(ANTES);
+
+  // Las que ya salieron en papel: son las del punto 5.6
+  const emitidas = afectadas.filter((c) => (c.estado || 'Borrador') !== 'Borrador' && c.serie);
+
+  const hecho = conexion.transaction(() => {
+    const r = conexion
+      .prepare(
+        `UPDATE credenciales SET snap_categoria = ?
+          WHERE UPPER(TRIM(COALESCE(snap_categoria, ''))) = ?`
+      )
+      .run(AHORA, ANTES);
+    marcar();
+    return r.changes;
+  }).immediate();
+
+  if (hecho) {
+    console.log(
+      `🏛️  Categoría de credencial: ${hecho} registro(s) pasaron de ${ANTES} a ${AHORA}.`
+    );
+    if (emitidas.length) {
+      const cuales = emitidas
+        .map((c) => `N.º ${c.serie}${c.serie_dv ? '-' + c.serie_dv : ''} (${c.snap_apellidos} ${c.snap_nombres})`)
+        .join(', ');
+      console.log(
+        `⚠️  ${emitidas.length} de ellas YA ESTABAN EMITIDAS: ${cuales}.\n` +
+          '   Si el código QR se emite en modo EN LÍNEA, esas tarjetas impresas dejan de validar,\n' +
+          '   porque su código de autenticidad se calcula sobre la categoría. Hay que emitirles una\n' +
+          '   credencial nueva; al hacerlo, la anterior queda como REEMPLAZADA y se conserva.'
+      );
+    }
+    /**
+     * Y que quede constancia, una línea por credencial (punto 5.3).
+     *
+     * Se escribe derecho en el Registro de Cambios en vez de pasar por
+     * bitacora.anotarCambio, que necesita la definición del módulo: esto corre
+     * al arrancar, antes de que los módulos estén montados. La línea nombra a
+     * cada una por su número de serie, que es con lo que se la va a buscar
+     * después para reemplazarla.
+     */
+    try {
+      const anotar = conexion.prepare(
+        `INSERT INTO registro_cambios
+           (fecha, hora, modulo, accion, registro, registro_id, detalle, usuario, iglesia_id, created_by)
+         VALUES (date('now','localtime'), strftime('%H:%M','now','localtime'),
+                 'Credenciales', 'Migración', ?, ?, ?, 'Sistema', NULL, NULL)`
+      );
+      for (const c of afectadas) {
+        const suNumero = c.serie ? `N.º ${c.serie}${c.serie_dv ? '-' + c.serie_dv : ''}` : 'sin número';
+        const quien = `${c.snap_apellidos || ''} ${c.snap_nombres || ''}`.trim();
+        anotar.run(
+          `${suNumero} · ${quien}`.slice(0, 120),
+          c.id,
+          `La categoría de la iglesia pasó de «${ANTES}» a «${AHORA}».` +
+            ((c.estado || 'Borrador') !== 'Borrador' && c.serie
+              ? ' Esta credencial YA ESTABA EMITIDA: si su código QR se emitió en modo en línea, la' +
+                ' tarjeta impresa deja de validar, porque el código de autenticidad se calcula sobre' +
+                ' la categoría. Hay que emitirle una credencial nueva; la anterior quedará como' +
+                ' Reemplazada y se conserva.'
+              : ' Todavía no estaba emitida, así que no hay ninguna tarjeta impresa afectada.')
+        );
+      }
+    } catch (e) {
+      // Que no quede constancia es malo, pero peor sería no migrar por eso
+      console.error(`   (no se pudo anotar en el registro de cambios: ${e.message})`);
+    }
+  }
+  return { migradas: hecho, emitidas };
+}
+
 function ejecutarMigraciones() {
   const pasos = [
     ['RUT de los miembros', () => documentoIdentidadARut('miembros')],
@@ -3196,6 +3315,7 @@ function ejecutarMigraciones() {
     ['los nombres de iglesia sin espacios de más', losNombresDeIglesiaSinEspaciosDeMas],
     ['el estado de cada cuerpo, escrito', elEstadoDeCadaCuerpo],
     ['los nombres copiados que quedaron viejos', losNombresCopiadosQueQuedaronViejos],
+    ['la categoría central de las credenciales ahora es matriz', laCategoriaCentralAhoraEsMatriz],
   ];
 
   for (const [nombre, paso] of pasos) {
@@ -3458,4 +3578,5 @@ module.exports = {
   losNombresDeIglesiaSinEspaciosDeMas,
   elEstadoDeCadaCuerpo,
   losNombresCopiadosQueQuedaronViejos,
+  laCategoriaCentralAhoraEsMatriz,
 };

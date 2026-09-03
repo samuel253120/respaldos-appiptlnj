@@ -57,7 +57,7 @@ test('la categoría de la iglesia se dice como la dice la credencial', () => {
   // El módulo de Iglesias las llama de una manera desde antes de esta
   // especificación, y la credencial de otra. Son las mismas cuatro: acá está
   // la correspondencia, en un solo lugar.
-  assert.equal(datos.categoriaDe('Iglesia Matriz'), 'CENTRAL');
+  assert.equal(datos.categoriaDe('Iglesia Matriz'), 'MATRIZ');
   assert.equal(datos.categoriaDe('Iglesia Sede'), 'SEDE');
   assert.equal(datos.categoriaDe('Iglesia Local'), 'FILIAL');
   assert.equal(datos.categoriaDe('Iglesia Anexo'), 'ANEXO');
@@ -65,7 +65,7 @@ test('la categoría de la iglesia se dice como la dice la credencial', () => {
 
 test('y las cuatro son las que exige la especificación, ni una más', () => {
   const salen = Object.values(datos.CATEGORIAS).sort();
-  assert.deepEqual(salen, ['ANEXO', 'CENTRAL', 'FILIAL', 'SEDE']);
+  assert.deepEqual(salen, ['ANEXO', 'FILIAL', 'MATRIZ', 'SEDE']);
 });
 
 test('una iglesia sin categoría cargada no inventa ninguna', () => {

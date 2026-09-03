@@ -43,7 +43,7 @@ test('cambiar un solo carácter cambia el código (prueba 15.9)', () => {
     DATOS.replace('123456785', '123456786'), // el RUT
     DATOS.replace('1232026-3', '1242026-3'), // el número de serie
     DATOS.replace('0326-0328', '0326-0338'), // la vigencia
-    DATOS.replace('SEDE', 'CENTRAL'),        // la categoría de la iglesia
+    DATOS.replace('SEDE', 'MATRIZ'),         // la categoría de la iglesia
   ];
   for (const malo of alterados) {
     assert.notEqual(codigo.firmar(malo), bueno, `no cambió al alterar: ${malo}`);
