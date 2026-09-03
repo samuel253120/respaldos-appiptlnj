@@ -210,6 +210,80 @@ test('los fallos se van sumando mientras siga sin poder', async () => {
   assert.equal(suscripcionesDe(quien)[0].fallos, 2);
 });
 
+// ------------------------------------------- el que lleva mucho sin andar --
+
+/*
+ * Los fallos se contaban y nadie los miraba: la columna se escribía en tres
+ * sitios del servidor y no se consultaba en ninguno, así que una dirección
+ * muerta que no devuelve 404 ni 410 —el sistema cambió de dominio, el
+ * computador se botó— se reintentaba todos los días para siempre.
+ *
+ * Se retira con DOS condiciones juntas, y las dos hacen falta: muchos fallos Y
+ * un mes largo sin funcionar. Contar fallos a secas sería peligroso, porque una
+ * caída de la red le suma fallos a todas las suscripciones del sistema a la vez
+ * y dejaría a la organización entera sin avisos por una mañana mala.
+ */
+const comoSiLlevara = (usuarioId, { fallos, diasSinAndar }) =>
+  db.prepare(
+    `UPDATE notificacion_suscripciones
+        SET fallos = ?, usada_en = datetime('now','localtime', ?)
+      WHERE usuario_id = ?`
+  ).run(fallos, `-${diasSinAndar} days`, usuarioId);
+
+test('el aparato que lleva mucho fallando y mucho sin andar se retira', async () => {
+  const quien = unUsuario();
+  unAparato(quien, 'https://127.0.0.1:1/push/perdida');
+  comoSiLlevara(quien, {
+    fallos: navegador.FALLOS_PARA_RETIRAR - 1,
+    diasSinAndar: navegador.DIAS_SIN_ANDAR + 10,
+  });
+
+  const r = await navegador.empujar(quien, aviso, comoMandarlo);
+  assert.equal(r.borrados, 1, 'el fallo número veinte la retira');
+  assert.equal(suscripcionesDe(quien).length, 0);
+});
+
+test('pero una caída pasajera no le borra el aparato a nadie', async () => {
+  /*
+   * Ésta es la que importa: el mismo número de fallos, pero el aparato andaba
+   * ayer. Sin esta condición, una mañana sin internet dejaría a la
+   * organización entera teniendo que volver a activar los avisos.
+   */
+  const quien = unUsuario();
+  unAparato(quien, 'https://127.0.0.1:1/push/solo-hoy-mala');
+  comoSiLlevara(quien, { fallos: navegador.FALLOS_PARA_RETIRAR + 5, diasSinAndar: 1 });
+
+  const r = await navegador.empujar(quien, aviso, comoMandarlo);
+  assert.equal(r.borrados, 0);
+  assert.equal(r.fallados, 1, 'se cuenta el fallo, pero el aparato queda');
+  assert.equal(suscripcionesDe(quien).length, 1);
+});
+
+test('ni tampoco al que lleva mucho sin andar pero apenas ha fallado', async () => {
+  const quien = unUsuario();
+  unAparato(quien, 'https://127.0.0.1:1/push/pocos-fallos');
+  comoSiLlevara(quien, { fallos: 1, diasSinAndar: navegador.DIAS_SIN_ANDAR + 60 });
+
+  const r = await navegador.empujar(quien, aviso, comoMandarlo);
+  assert.equal(r.borrados, 0, 'hacen falta las dos condiciones, no una');
+  assert.equal(suscripcionesDe(quien).length, 1);
+});
+
+test('y un envío bueno vuelve a poner el contador en cero', async () => {
+  const quien = unUsuario();
+  unAparato(quien, `https://127.0.0.1:${puerto}/push/se-recupera`);
+  comoSiLlevara(quien, {
+    fallos: navegador.FALLOS_PARA_RETIRAR - 1,
+    diasSinAndar: navegador.DIAS_SIN_ANDAR + 10,
+  });
+  queContesta = 201;
+
+  await navegador.empujar(quien, aviso, comoMandarlo);
+  const suya = suscripcionesDe(quien)[0];
+  assert.ok(suya, 'el que vuelve a funcionar no se retira');
+  assert.equal(suya.fallos, 0, 'y la cuenta empieza de nuevo');
+});
+
 // ----------------------------------------------------------- con varios aparatos
 
 test('con varios aparatos, cada uno corre su suerte', async () => {

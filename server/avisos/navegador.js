@@ -237,6 +237,45 @@ const cuantosAparatos = (usuarioId) =>
   db.prepare('SELECT COUNT(*) c FROM notificacion_suscripciones WHERE usuario_id = ?').get(usuarioId).c;
 
 /**
+ * Cuándo se da por perdido un aparato que no contesta.
+ *
+ * Un 404 o un 410 son el servicio del navegador diciendo «esa dirección murió»,
+ * y ahí la suscripción se borra en el acto. Pero hay muertes que no avisan: el
+ * sistema cambió de dominio, el computador se botó, alguien limpió los datos
+ * del sitio. Esas fallan con cualquier otro error, para siempre.
+ *
+ * Se contaban: la columna `fallos` sube en cada intento fallido. Y NADIE LA
+ * MIRABA —se escribía en tres sitios del servidor y no se consultaba en
+ * ninguno—, así que el contador subía sin que nada pasara nunca. Medido: cinco
+ * intentos fallidos seguidos dejan `fallos = 5` y la suscripción puesta. La
+ * prueba que existía incluso lo fijaba: «los fallos se van sumando mientras
+ * siga sin poder». Sumaban, y ahí terminaba la historia.
+ *
+ * ── POR QUÉ HACEN FALTA LAS DOS CONDICIONES ──
+ *
+ * Contar fallos a secas sería peligroso. Un rato sin salida a internet, o el
+ * servicio del navegador caído una tarde, le suma fallos A TODAS las
+ * suscripciones del sistema al mismo tiempo: con un tope bajo, una caída de una
+ * mañana dejaría a la organización entera sin avisos y con cada persona
+ * teniendo que volver a activarlos en su teléfono. El remedio sería peor.
+ *
+ * Por eso se piden las dos cosas juntas: que haya fallado muchas veces Y que
+ * lleve un mes largo sin funcionar. Una caída pasajera no toca la segunda, y
+ * un éxito devuelve el contador a cero. Lo único que cae es lo que de verdad
+ * está muerto hace tiempo.
+ */
+const FALLOS_PARA_RETIRAR = 20;
+const DIAS_SIN_ANDAR = 30;
+
+const seDaPorPerdida = (id) => !!db
+  .prepare(
+    `SELECT 1 FROM notificacion_suscripciones
+      WHERE id = ? AND fallos >= ?
+        AND COALESCE(usada_en, created_at) < datetime('now','localtime', ?)`
+  )
+  .get(id, FALLOS_PARA_RETIRAR, `-${DIAS_SIN_ANDAR} days`);
+
+/**
  * Manda un aviso a todos los aparatos de una persona.
  *
  * Una suscripción muerta —el navegador se desinstaló, la persona limpió los
@@ -285,6 +324,11 @@ async function empujar(usuarioId, { titulo, cuerpo, enlace, etiqueta }, comoMand
         const razon = String((e && e.message) || e).slice(0, 200);
         db.prepare('UPDATE notificacion_suscripciones SET fallos = fallos + 1, ultimo_error = ? WHERE id = ?')
           .run(razon, s.id);
+        if (seDaPorPerdida(s.id)) {
+          db.prepare('DELETE FROM notificacion_suscripciones WHERE id = ?').run(s.id);
+          borrados++;
+          return;
+        }
         fallados++;
         porque = porque || razon;
       }
@@ -296,4 +340,5 @@ async function empujar(usuarioId, { titulo, cuerpo, enlace, etiqueta }, comoMand
 module.exports = {
   llavePublica, suscribir, desuscribir, desuscribirTodos, cuantosAparatos, empujar,
   sirveComoDireccion, CUANTOS_APARATOS,
+  FALLOS_PARA_RETIRAR, DIAS_SIN_ANDAR,
 };
