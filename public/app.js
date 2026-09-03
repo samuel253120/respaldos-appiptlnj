@@ -11730,19 +11730,18 @@ async function viewImprimirCredencial(id) {
             </div>
 
             <div class="pj">PERSONALIDAD JUR&Iacute;DICA N&deg; ${esc(d.institucion.personalidad_juridica)}</div>
-            <div class="pj-sub">IGLESIA CENTRAL CONCEPCI&Oacute;N</div>
+            <div class="pj-sub">IGLESIA MATRIZ &middot; CONCEPCI&Oacute;N, CHILE</div>
 
             <div class="leyenda">
-              EMITIDA EN CONCEPCI&Oacute;N, CHILE &middot; V&Aacute;LIDA PARA EL MINISTERIO RELIGIOSO.<br>
-              SE ANULA SI PRESENTA ENMIENDAS O ADULTERACIONES.<br>
-              DEVOLVER A LA IGLESIA SI ES ENCONTRADA.
+              CREDENCIAL V&Aacute;LIDA PARA EL MINISTERIO RELIGIOSO<br>
+              SE ANULA SI PRESENTA ENMIENDAS O ADULTERACIONES
             </div>
 
             <div class="barra">
               <div class="qr-holder ${d.qr.hay ? '' : 'incompleto'}">${qr}</div>
               <div class="barra-txt">
                 <span class="mini">ESCANEE PARA VERIFICAR LOS DATOS</span>
-                <span class="mini-cod">El c&oacute;digo &laquo;C:&raquo; valida su contenido</span>
+                <span class="mini-cod">Si la encuentra, devu&eacute;lvala a la iglesia</span>
                 <span class="mini-wa"><span class="wa-lbl">WhatsApp</span>+56&nbsp;9&nbsp;7172&nbsp;7872</span>
               </div>
             </div>

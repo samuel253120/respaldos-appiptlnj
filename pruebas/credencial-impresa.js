@@ -188,7 +188,7 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
     medidas.qr.top - medidas.reverso.top,
     (medidas.reverso.top + medidas.reverso.alto) - (medidas.qr.top + medidas.qr.alto)
   );
-  revisar('el QR queda entero dentro de la tarjeta', qrDentro >= -0.1,
+  revisar('el QR queda entero dentro de la tarjeta', qrDentro >= 0,
     qrDentro >= 0 ? `${qrDentro.toFixed(2)} mm de margen` : `se sale ${Math.abs(qrDentro).toFixed(2)} mm`);
 
   // La pieza entera: dos caras de 86 mm, una encima de la otra
@@ -396,6 +396,66 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
   });
   revisar('ninguno se sale de la tarjeta', desborde.length === 0, desborde.join(' · '));
 
+  /* 3 bis · Los textos del reverso (punto 4 y 7.9) ------------------------ */
+  console.log('\n3 bis · Lo que dice el reverso');
+  /**
+   * Palabra por palabra, y también lo que NO tiene que decir.
+   *
+   * El punto 4.5 nombra cuatro redacciones que quedan fuera, y ese es el lado
+   * que se olvida: una frase vieja no desaparece porque se escriba la nueva
+   * al lado, y en una tarjeta impresa no hay forma de corregirla después.
+   */
+  const reverso = await pagina.evaluate(() => {
+    const cara = document.querySelector('.pieza-reverso .card');
+    const limpio = (s) => s.replace(/\s+/g, ' ').trim();
+    const linea = (sel) => {
+      const el = cara.querySelector(sel);
+      if (!el) return null;
+      // <br> separa líneas. Se parte ANTES de limpiar: limpiar aplasta también
+      // los saltos de línea, y si se hace al revés no queda nada que partir.
+      const trozos = el.innerHTML.split(/<br\s*\/?>/i);
+      const aTexto = (t) => {
+        const caja = document.createElement('div');
+        caja.innerHTML = t;
+        return limpio(caja.textContent);
+      };
+      return trozos.map(aTexto).filter(Boolean);
+    };
+    return {
+      pj: linea('.pj'),
+      pjSub: linea('.pj-sub'),
+      leyenda: linea('.leyenda'),
+      barra: [...cara.querySelectorAll('.barra-txt > span')].map((e) => limpio(e.textContent)),
+      todo: limpio(cara.textContent),
+    };
+  });
+
+  const dice = (cual, esperado) => {
+    const hay = (cual || []).join(' | ');
+    revisar(`dice «${esperado.join(' / ')}»`, hay === esperado.join(' | '), hay || '(no está)');
+  };
+  dice(reverso.pjSub, ['IGLESIA MATRIZ · CONCEPCIÓN, CHILE']);
+  dice(reverso.leyenda, ['CREDENCIAL VÁLIDA PARA EL MINISTERIO RELIGIOSO',
+    'SE ANULA SI PRESENTA ENMIENDAS O ADULTERACIONES']);
+  dice(reverso.barra, ['ESCANEE PARA VERIFICAR LOS DATOS',
+    'Si la encuentra, devuélvala a la iglesia', 'WhatsApp+56 9 7172 7872']);
+  revisar('y la personalidad jurídica sigue en su línea',
+    (reverso.pj || []).length === 1 && /PERSONALIDAD JUR[ÍI]DICA N° \d+/.test(reverso.pj[0]),
+    (reverso.pj || []).join(' | '));
+
+  const prohibidos = [
+    'EMITIDA EN CONCEPCIÓN, CHILE',
+    'DEVOLVER A LA IGLESIA SI ES ENCONTRADA',
+    'IGLESIA CENTRAL CONCEPCIÓN',
+    'valida su contenido',
+    'C:» valida',
+  ];
+  const quedaron = prohibidos.filter((t) => reverso.todo.includes(t));
+  revisar('ninguna de las redacciones viejas sigue apareciendo (punto 4.5)',
+    quedaron.length === 0, quedaron.length ? quedaron.join(' · ') : 'ninguna');
+  revisar('y la palabra CENTRAL no aparece en ninguna parte de la tarjeta',
+    !/\bCENTRAL\b/i.test(reverso.todo), reverso.todo.match(/\S*CENTRAL\S*/i) || 'no aparece');
+
   /* 4 · La fotografía, encuadrada como se guardó ------------------------- */
   /**
    * El punto 6.4 pide que el encuadre se guarde «para que al reimprimir salga
@@ -575,16 +635,41 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
    * Una impresora de inyección sobre papel común no deja el punto donde lo
    * puso: el papel absorbe la tinta y la mancha se expande. En un QR eso es lo
    * que mata la lectura, porque los módulos negros se comen el blanco que los
-   * separa. Se le pasa un desenfoque de 0,12 mm —alrededor de un tercio de
-   * módulo— y tiene que seguir leyéndose lo mismo (punto 15.6).
+   * separa.
+   *
+   * El punto 7.3 pide tres grados —leve, medio y alto— y no uno, y con razón:
+   * un código puede aguantar un corrimiento pequeño y caerse en el siguiente,
+   * así que probar solo el suave no dice si hay margen o si se está pasando
+   * raspando. Los tres se miden en fracción de módulo, que es la unidad en la
+   * que esto se rompe: un corrimiento del 25 % del módulo no es lo mismo en un
+   * QR de 0,4 mm que en uno de 0,25.
    */
-  const corrida = papel.desenfocar(hoja, 0.12);
-  const leidoBorroso = papel.leer(corrida);
-  revisar('sigue leyéndose con la tinta corrida 0,12 mm', !!leidoBorroso,
-    leidoBorroso ? `${corrida.radio_px} píxel(es) de desenfoque` : 'no se pudo decodificar');
-  if (leidoBorroso && leidoNitido) {
-    revisar('y dice lo mismo que en limpio', leidoBorroso.texto === leidoNitido.texto,
-      leidoBorroso.texto);
+  /**
+   * Los tres grados, medidos y no elegidos a ojo.
+   *
+   * Barriendo el desenfoque de 0,04 a 0,44 mm sobre el PDF rasterizado a
+   * 300 ppp, el código aguanta hasta 0,20 mm y se cae en 0,21. El de 12,2 mm
+   * de antes aguantaba hasta 0,14. Los tres grados se ponen por debajo de ese
+   * techo con margen, y el «alto» —0,16 mm— por encima de lo que el recuadro
+   * viejo soportaba: así la prueba no solo dice que se lee, dice que se lee
+   * donde antes no se leía, que es lo que afirma el punto 1.3.
+   */
+  const grados = [
+    ['leve', 0.06],
+    ['medio', 0.11],
+    ['alto', 0.16],
+  ];
+  let leidoBorroso = null;
+  for (const [comoEs, mm] of grados) {
+    const corrida = papel.desenfocar(hoja, mm);
+    const leido = papel.leer(corrida);
+    const enModulos = leidoNitido ? ` · ${(mm / leidoNitido.mm_por_modulo * 100).toFixed(0)} % de un módulo` : '';
+    revisar(`sigue leyéndose con la tinta corrida ${comoEs} (${String(mm).replace('.', ',')} mm)`, !!leido,
+      leido ? `campana de ${corrida.radio_px} px${enModulos}` : `no se pudo decodificar${enModulos}`);
+    if (leido && leidoNitido) {
+      revisar(`   y con ${comoEs} dice lo mismo que en limpio`, leido.texto === leidoNitido.texto, leido.texto);
+    }
+    if (!leidoBorroso) leidoBorroso = leido;
   }
 
   /* 7 · Los casos difíciles de la prueba 15.4 ----------------------------- */

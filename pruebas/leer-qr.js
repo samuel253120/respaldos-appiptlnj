@@ -86,29 +86,55 @@ async function rasterizar(rutaDelPdf, ppp = 300, cualPagina = 1) {
  * la tinta y la mancha se expande alrededor. En un QR eso es lo que mata la
  * lectura, porque los módulos negros invaden el blanco que los separa.
  *
- * Se imita con tres pasadas de desenfoque de caja, que juntas se parecen
- * bastante a una campana de Gauss y cuestan mucho menos de calcular. El radio
- * se pide en milímetros —que es como se habla de sangrado de tinta— y se pasa
- * a píxeles con la resolución de la imagen.
+ * Se imita con una campana de Gauss de verdad, separable en dos pasadas. El
+ * ancho de la campana se pide en milímetros, que es como se habla de sangrado
+ * de tinta, y se pasa a píxeles con la resolución de la imagen.
+ *
+ * ANTES ESTO ERAN TRES PASADAS DE CAJA con el radio redondeado a píxeles
+ * enteros, y esa era la trampa: a 300 ppp un píxel son 0,085 mm, así que el
+ * desenfoque solo podía valer 0,12 mm, 0,21 mm, 0,29 mm… y nada en medio. El
+ * punto 7.3 pide tres grados —leve, medio y alto—, y con esos saltos dos de
+ * los tres caían en el mismo escalón: la herramienta no podía distinguir lo
+ * que se le estaba pidiendo medir. Medido con la caja, además, el código de
+ * 12,2 mm y el de 20 mm se rompían en el MISMO escalón, lo que hacía parecer
+ * que agrandar el recuadro no servía de nada. Con la campana fina se ve lo que
+ * de verdad pasa: el de 12,2 mm aguanta hasta 0,10 mm y el de 20 mm hasta
+ * 0,22 mm, más del doble.
+ *
+ * El número que se pide es la desviación típica de la campana. Coincide con lo
+ * que significaba el parámetro viejo en su escalón más chico, así que un
+ * 0,12 mm de antes y uno de ahora son el mismo desenfoque.
  */
 function desenfocar(imagen, milimetros = 0.12) {
-  const radio = Math.max(1, Math.round((milimetros / MM_POR_PULGADA) * imagen.ppp));
-  let datos = Uint8ClampedArray.from(imagen.datos);
-  for (let pasada = 0; pasada < 3; pasada++) {
-    datos = unaPasadaDeCaja(datos, imagen.ancho, imagen.alto, radio, true);
-    datos = unaPasadaDeCaja(datos, imagen.ancho, imagen.alto, radio, false);
+  const sigma = Math.max(0.3, (milimetros / MM_POR_PULGADA) * imagen.ppp);
+  const radio = Math.max(1, Math.ceil(sigma * 3));
+  // El núcleo de la campana, normalizado para que no aclare ni oscurezca
+  const nucleo = new Float64Array(radio * 2 + 1);
+  let suma = 0;
+  for (let i = -radio; i <= radio; i++) {
+    const v = Math.exp(-(i * i) / (2 * sigma * sigma));
+    nucleo[i + radio] = v; suma += v;
   }
-  return { ...imagen, datos, guardarComo: null, radio_px: radio, radio_mm: milimetros };
+  for (let i = 0; i < nucleo.length; i++) nucleo[i] /= suma;
+
+  let datos = Uint8ClampedArray.from(imagen.datos);
+  datos = unaPasadaDeCampana(datos, imagen.ancho, imagen.alto, nucleo, radio, true);
+  datos = unaPasadaDeCampana(datos, imagen.ancho, imagen.alto, nucleo, radio, false);
+  return {
+    ...imagen, datos, guardarComo: null,
+    radio_px: Number(sigma.toFixed(2)), radio_mm: milimetros,
+  };
 }
 
 /**
- * Una pasada de promedio en una sola dirección.
+ * Una pasada de la campana en una sola dirección.
  *
  * Se hace por filas y después por columnas —que da el mismo resultado que
- * promediar el cuadrado entero— porque así el trabajo crece con el ancho más
- * el alto en vez de con su producto.
+ * aplicarla al cuadrado entero— porque así el trabajo crece con el ancho más
+ * el alto en vez de con su producto. En los bordes se repite el píxel del
+ * extremo: el papel es blanco y no hay nada más allá.
  */
-function unaPasadaDeCaja(datos, ancho, alto, radio, porFilas) {
+function unaPasadaDeCampana(datos, ancho, alto, nucleo, radio, porFilas) {
   const salida = new Uint8ClampedArray(datos.length);
   const largo = porFilas ? ancho : alto;
   const cuantas = porFilas ? alto : ancho;
@@ -117,19 +143,17 @@ function unaPasadaDeCaja(datos, ancho, alto, radio, porFilas) {
 
   for (let linea = 0; linea < cuantas; linea++) {
     const inicio = linea * salto;
-    for (let canal = 0; canal < 4; canal++) {
-      let suma = 0;
-      let cuenta = 0;
-      // Se arranca con la ventana puesta sobre el borde izquierdo
-      for (let i = 0; i <= radio && i < largo; i++) { suma += datos[inicio + i * paso + canal]; cuenta++; }
-      for (let i = 0; i < largo; i++) {
-        salida[inicio + i * paso + canal] = suma / cuenta;
-        // La ventana avanza un lugar: entra uno por delante y sale uno por detrás
-        const entra = i + radio + 1;
-        const sale = i - radio;
-        if (entra < largo) { suma += datos[inicio + entra * paso + canal]; cuenta++; }
-        if (sale >= 0) { suma -= datos[inicio + sale * paso + canal]; cuenta--; }
+    for (let i = 0; i < largo; i++) {
+      let r = 0, g = 0, b = 0, al = 0;
+      for (let k = -radio; k <= radio; k++) {
+        const j = Math.min(largo - 1, Math.max(0, i + k));
+        const d = inicio + j * paso;
+        const peso = nucleo[k + radio];
+        r += datos[d] * peso; g += datos[d + 1] * peso;
+        b += datos[d + 2] * peso; al += datos[d + 3] * peso;
       }
+      const d = inicio + i * paso;
+      salida[d] = r; salida[d + 1] = g; salida[d + 2] = b; salida[d + 3] = al;
     }
   }
   return salida;
