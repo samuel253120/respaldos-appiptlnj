@@ -137,10 +137,9 @@ test('«enElPapel: false» viaja al navegador, que es quien arma la hoja', () =>
   // 1. el módulo lo declara — 2. /api/meta lo deja pasar, para los campos
   // corrientes y no solo para los calculados — 3. la hoja lo respeta
   assert.equal(AYUDAS.fields.find((f) => f.name === 'notas').enElPapel, false);
-  assert.match(lee('server/index.js'), /futuro, placeholder, enElPapel \}\) => \(\{/,
-    'la lista de propiedades de un campo corriente tiene que incluirlo');
-  assert.match(lee('server/index.js'), /enElPapel: enElPapel === undefined \? null : !!enElPapel,[\s\S]{0,400}buscador:/,
-    'y mandarlo, no solo recibirlo');
+  const { comoLoVeLaPantalla } = require('../../server/meta-liviana');
+  assert.equal(comoLoVeLaPantalla({ name: 'notas', enElPapel: false }).enElPapel, false,
+    'la descripción del sistema tiene que dejarlo pasar para un campo corriente, no solo para los calculados');
   assert.match(lee('public/app.js'), /\.filter\(\(f\) => f\.type !== 'password' && f\.enElPapel !== false\)/);
 
   // Y el falso no se pierde por el camino: la lista que aligera /api/meta

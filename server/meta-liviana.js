@@ -52,4 +52,121 @@ function sinLoQueNoDiceNada(campo) {
   return limpio;
 }
 
-module.exports = { sinLoQueNoDiceNada, EL_NO_DICE_ALGO };
+/**
+ * LO QUE UN CAMPO LE CUENTA A LA PANTALLA, Y LO QUE SE QUEDA EN EL SERVIDOR.
+ *
+ * Un módulo declara sus campos con muchas propiedades, y son de dos clases
+ * distintas: las que la pantalla necesita para dibujar el formulario, y las
+ * que son REGLAS DEL GUARDADO y no le incumben a nadie más —que un RUT sea
+ * único, que una fecha no vaya antes de otra, que un campo solo se escriba al
+ * crear—. Las primeras viajan; las segundas se quedan acá.
+ *
+ * Estaban escritas en un solo lugar, sueltas en el destructuring de la ruta
+ * /api/meta, y no había forma de notar que a una le faltaba el pasaje. Es lo
+ * que pasó con `porDefecto`: el módulo de Formatos de Certificado declaraba el
+ * color de fábrica de sus tres campos de color, la pantalla estaba escrita
+ * para usarlo, y en el medio no viajaba. Los tres cuadritos se abrían en el
+ * mismo azul, así que el marco de un certificado —que se imprime ORO— se veía
+ * azul en su propia ficha; y como el cuadrito es un control y no un cartel,
+ * tocarlo dejaba el marco azul de verdad. Medido en la v1.309.0 (FC-02).
+ *
+ * Ahora las dos clases están declaradas, y una prueba comprueba que toda
+ * propiedad que algún campo del sistema declare esté en una de las dos listas.
+ * Agregar una tercera clase sin decidir a cuál pertenece se pone rojo.
+ */
+const LO_QUE_VIAJA = [
+  'name', 'label', 'type', 'required', 'options', 'sugerencias', 'ref', 'help',
+  'default', 'porDefecto', 'accept', 'showIf', 'bloqueadoSi', 'optionsRoute',
+  'readonly', 'calcula', 'mostrarEdad', 'seccion', 'destacado', 'buscador',
+  'ancho', 'recorte', 'recorta', 'min', 'max', 'entero', 'sensible',
+  'reservado', 'futuro', 'placeholder', 'enElPapel',
+];
+
+/**
+ * Reglas del guardado. No viajan porque la pantalla no hace nada con ellas: el
+ * servidor es el que las hace cumplir, y quien escriba la dirección a mano se
+ * topa con la misma comprobación.
+ */
+const SOLO_DEL_SERVIDOR = [
+  'unique',                   // no puede repetirse (el RUT)
+  'soloAlCrear',              // se escribe al crear y después no
+  'noAntesDe',                // esta fecha no va antes de aquella
+  'companeroDe',              // dos campos que no pueden ser la misma persona
+  'alcanceLoDecideElModulo',  // el alcance de esta referencia lo resuelve el módulo
+  'oculto',                   // el campo no sale del servidor: se filtra antes
+];
+
+/**
+ * Un campo del módulo, tal como lo ve la pantalla.
+ *
+ * Vive acá y no en la ruta que lo usa para que se pueda probar sin levantar el
+ * servidor: es una función de un campo a otro campo, y lo que hay que
+ * comprobar de ella es justamente qué deja pasar.
+ */
+function comoLoVeLaPantalla(campo, { salud = null, porcentajeVigente = () => undefined } = {}) {
+  const {
+    name, label, type, required, options, sugerencias, ref, help, default: def,
+    porDefecto, accept, showIf, bloqueadoSi, optionsRoute, readonly, calcula,
+    mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max,
+    entero, sensible, reservado, futuro, placeholder, enElPapel,
+  } = campo;
+  return {
+    name, label, type, required: !!required, options: options || null,
+    // Los límites viajan para que el formulario avise antes de mandar. Quien
+    // manda igual —o escribe la dirección a mano— se topa con la misma
+    // comprobación en el servidor, que es la que manda.
+    min: min === undefined ? null : min, max: max === undefined ? null : max,
+    // Y si se cuenta en enteros: el teclado del teléfono se abre sin coma, y el
+    // aviso sale mientras se escribe en vez de al guardar.
+    entero: !!entero,
+    // Si el campo admite fecha adelante, el calendario no le pone tope de hoy
+    futuro: !!futuro,
+    // Para que la pantalla sepa cuáles esconder cuando el servidor no se los
+    // mandó a esta persona (ver server/sensibles.js). `sensible` es la forma
+    // antigua de decir «reservado a los datos de salud».
+    sensible: !!sensible,
+    reservado: reservado || (sensible ? salud : null),
+    sugerencias: sugerencias || null, ref: ref || null,
+    help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
+    /*
+     * EL COLOR DE FÁBRICA DE UN CAMPO DE COLOR.
+     *
+     * No es lo mismo que `default`: un color en blanco significa «el del
+     * sistema» y así se guarda —vacío—, así que no lleva valor por defecto. Lo
+     * que la pantalla necesita saber es en qué color abrir el cuadrito de
+     * elegir y qué poner de pista en la caja, para que quien mire la ficha vea
+     * el color que ESA hoja imprime.
+     */
+    porDefecto: porDefecto || null,
+    // «Este campo deja de poder escribirse cuando la ficha llega a tal estado».
+    // La pantalla lo dibuja bloqueado; el servidor contesta si igual llega (ver
+    // estaBloqueado en server/crud.js).
+    bloqueadoSi: bloqueadoSi || null,
+    optionsRoute: optionsRoute || null, readonly: !!readonly, mostrarEdad: !!mostrarEdad,
+    seccion: seccion || null, destacado: !!destacado, ancho: ancho || null, recorte: recorte || null,
+    recorta: recorta || null,
+    // Lo que dice la casilla vacía de un buscador de referencias. Sin esto, la
+    // de una cuenta de tesorería pedía «el nombre, el apellido o el RUT», que
+    // para una cuenta no quiere decir nada.
+    placeholder: placeholder || null,
+    /*
+     * «Este campo NO va en la hoja impresa». El falso dice algo y por eso viaja
+     * (ver EL_NO_DICE_ALGO más arriba); no venir significa lo contrario, que va
+     * como todos.
+     *
+     * Iba solo para los campos calculados, que es donde se estrenó, y un campo
+     * corriente que lo declaraba se imprimía igual: la pantalla nunca se
+     * enteraba. Se vio al mandar a imprimir una ayuda social y encontrar sus
+     * notas privadas en la hoja.
+     */
+    enElPapel: enElPapel === undefined ? null : !!enElPapel,
+    buscador: buscador === undefined ? null : !!buscador,
+    calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
+    computed: false,
+  };
+}
+
+module.exports = {
+  sinLoQueNoDiceNada, EL_NO_DICE_ALGO,
+  LO_QUE_VIAJA, SOLO_DEL_SERVIDOR, comoLoVeLaPantalla,
+};

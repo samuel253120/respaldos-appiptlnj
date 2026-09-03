@@ -369,11 +369,11 @@ test('el buscador de la cuenta pide el nombre de una cuenta, no el RUT de una pe
    * igual al de Tesorería desde antes; se arregla en los dos, porque es el
    * mismo campo.
    *
-   * Esto se comprueba leyendo el código y no pidiéndole la respuesta al
-   * servidor: /api/meta se arma dentro de index.js, que al cargarse levanta el
-   * sistema entero. Lo que se cuida acá es la cadena completa —el módulo lo
-   * declara, /api/meta lo deja pasar, la pantalla lo usa—, porque romper
-   * cualquiera de los tres deja la casilla diciendo lo que no es.
+   * Lo que se cuida acá es la cadena completa —el módulo lo declara, la
+   * descripción del sistema lo deja pasar, la pantalla lo usa—, porque romper
+   * cualquiera de los tres deja la casilla diciendo lo que no es. El eslabón
+   * del medio se le pregunta a la función que lo arma; el de la pantalla se
+   * lee del código, que es lo único que hay de ese lado.
    */
   const cuentaDeLaAyuda = AYUDAS.fields.find((f) => f.name === 'cuenta_id');
   const cuentaDelMovimiento = TESORERIA.fields.find((f) => f.name === 'cuenta_id');
@@ -381,8 +381,9 @@ test('el buscador de la cuenta pide el nombre de una cuenta, no el RUT de una pe
   assert.match(cuentaDelMovimiento.placeholder, /nombre de la cuenta/);
 
   const lee = (r) => fs.readFileSync(path.join(__dirname, '../..', r), 'utf8');
-  assert.match(lee('server/index.js'), /placeholder: placeholder \|\| null,/,
-    '/api/meta tiene que dejarlo pasar: la lista de propiedades es cerrada');
+  const { comoLoVeLaPantalla } = require('../../server/meta-liviana');
+  assert.equal(comoLoVeLaPantalla(cuentaDeLaAyuda).placeholder, cuentaDeLaAyuda.placeholder,
+    'la descripción del sistema tiene que dejarlo pasar: la lista de propiedades es cerrada');
   assert.match(lee('public/app.js'), /placeholder="\$\{esc\(f\.placeholder \|\|/,
     'y la pantalla tiene que usarlo, con el de siempre por omisión');
 });

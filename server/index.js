@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const express = require('express');
 const compression = require('compression');
 const apretados = require('./apretados');
-const { sinLoQueNoDiceNada } = require('./meta-liviana');
+const { sinLoQueNoDiceNada, comoLoVeLaPantalla } = require('./meta-liviana');
 const multer = require('multer');
 
 const { db, DATA_DIR, UPLOADS_DIR } = require('./db');
@@ -224,50 +224,8 @@ app.get('/api/meta', authRequired, (req, res) => {
       fields: [
         ...m.fields
           .filter((f) => !f.oculto)
-          .map(({ name, label, type, required, options, sugerencias, ref, help, default: def, accept, showIf, bloqueadoSi, optionsRoute, readonly, calcula, mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max, entero, sensible, reservado, futuro, placeholder, enElPapel }) => ({
-            name, label, type, required: !!required, options: options || null,
-            // Los límites viajan para que el formulario avise antes de mandar.
-            // Quien manda igual —o escribe la dirección a mano— se topa con la
-            // misma comprobación en el servidor, que es la que manda.
-            min: min === undefined ? null : min, max: max === undefined ? null : max,
-            // Y si se cuenta en enteros: el teclado del teléfono se abre sin
-            // coma, y el aviso sale mientras se escribe en vez de al guardar.
-            entero: !!entero,
-            // Si el campo admite fecha adelante, el calendario no le pone tope de hoy
-            futuro: !!futuro,
-            // Para que la pantalla sepa cuáles esconder cuando el servidor no
-            // se los mandó a esta persona (ver server/sensibles.js). `sensible`
-            // es la forma antigua de decir «reservado a los datos de salud».
-            sensible: !!sensible,
-            reservado: reservado || (sensible ? SALUD : null),
-            sugerencias: sugerencias || null, ref: ref || null,
-            help: help || null, default: def ?? null, accept: accept || null, showIf: showIf || null,
-            // «Este campo deja de poder escribirse cuando la ficha llega a tal
-            // estado». La pantalla lo dibuja bloqueado; el servidor contesta si
-            // igual llega (ver estaBloqueado en server/crud.js).
-            bloqueadoSi: bloqueadoSi || null,
-            optionsRoute: optionsRoute || null, readonly: !!readonly, mostrarEdad: !!mostrarEdad,
-            seccion: seccion || null, destacado: !!destacado, ancho: ancho || null, recorte: recorte || null,
-            recorta: recorta || null,
-            // Lo que dice la casilla vacía de un buscador de referencias. Sin
-            // esto, la de una cuenta de tesorería pedía «el nombre, el apellido
-            // o el RUT», que para una cuenta no quiere decir nada.
-            placeholder: placeholder || null,
-            /*
-             * «Este campo NO va en la hoja impresa». El falso dice algo y por
-             * eso viaja (ver EL_NO_DICE_ALGO en server/meta-liviana.js); no
-             * venir significa lo contrario, que va como todos.
-             *
-             * Iba solo para los campos calculados, que es donde se estrenó, y
-             * un campo corriente que lo declaraba se imprimía igual: la
-             * pantalla nunca se enteraba. Se vio al mandar a imprimir una
-             * ayuda social y encontrar sus notas privadas en la hoja.
-             */
-            enElPapel: enElPapel === undefined ? null : !!enElPapel,
-            buscador: buscador === undefined ? null : !!buscador,
-            calcula: calcula ? { ...calcula, porcentaje: porcentajeVigente(calcula) } : null,
-            computed: false,
-          })).map(sinLoQueNoDiceNada),
+          .map((f) => comoLoVeLaPantalla(f, { salud: SALUD, porcentajeVigente }))
+          .map(sinLoQueNoDiceNada),
         ...(m.computed || []).map(({ name, label, type, help, ordenarPor, ancho, enElPapel, reservado }) => sinLoQueNoDiceNada({
           name, label, type, help: help || null, computed: true, readonly: true,
           ancho: ancho || null,

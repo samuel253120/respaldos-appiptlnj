@@ -335,21 +335,24 @@ test('la ficha de un documento pide su hilo y ofrece el botón', () => {
 
 test('y la regla llega hasta la pantalla, que si no no la puede aplicar', () => {
   /*
-   * MIRA EL CÓDIGO, y se deja escrito por lo que costó encontrarlo: la
-   * descripción del sistema (/api/meta) no manda los campos enteros, manda una
-   * lista escogida de sus propiedades. `entero` no estaba en esa lista, así que
-   * el navegador recibía el campo SIN la regla: el teclado del teléfono seguía
-   * saliendo con coma y el aviso no aparecía nunca. Se vio abriendo la ficha en
-   * el navegador, no en las pruebas — que es justamente por qué se abre.
+   * Se deja escrito por lo que costó encontrarlo: la descripción del sistema
+   * (/api/meta) no manda los campos enteros, manda una lista escogida de sus
+   * propiedades. `entero` no estaba en esa lista, así que el navegador recibía
+   * el campo SIN la regla: el teclado del teléfono seguía saliendo con coma y
+   * el aviso no aparecía nunca. Se vio abriendo la ficha en el navegador, no en
+   * las pruebas — que es justamente por qué se abre.
+   *
+   * Antes esto se comprobaba LEYENDO index.js, porque cargarlo levanta el
+   * sistema entero. Desde la v1.310.0 el armado es una función aparte
+   * (`comoLoVeLaPantalla`), así que se le pregunta a ella, que es lo que de
+   * verdad corre.
    */
-  const fs = require('fs');
-  const path = require('path');
-  const index = fs.readFileSync(path.join(__dirname, '../../server/index.js'), 'utf8');
-  const desde = index.indexOf('.map(({ name, label, type, required, options');
-  assert.ok(desde > 0, 'se encontró la descripción de los campos');
-  const trozo = index.slice(desde, desde + 3000);
-  assert.match(trozo, /min, max, entero,/, 'el motor tiene que sacar `entero` del campo');
-  assert.match(trozo, /entero: !!entero,/, 'y mandarlo en la descripción');
+  const { comoLoVeLaPantalla } = require('../../server/meta-liviana');
+  const def = require('../../server/modules/documentos');
+  const campo = def.fields.find((f) => f.name === 'folios');
+  assert.equal(campo.entero, true, 'el módulo tiene que declararlo');
+  assert.equal(comoLoVeLaPantalla(campo).entero, true,
+    'y la descripción del sistema tiene que mandarlo: sin esto la pantalla no puede aplicar la regla');
 });
 
 test('la pantalla avisa del entero mientras se escribe, con las mismas palabras', () => {
