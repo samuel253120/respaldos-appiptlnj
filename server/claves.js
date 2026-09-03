@@ -18,6 +18,7 @@ const bcrypt = require('bcryptjs');
 const cifrado = require('./cifrado');
 const { db } = require('./db');
 const ajustes = require('./ajustes');
+const fechas = require('./fechas');
 
 /** Cuántos intentos fallidos de recuperación se toleran antes de bloquearla. */
 const INTENTOS_MAXIMOS = 5;
@@ -186,7 +187,23 @@ async function establecer(usuarioId, clave, origen) {
     cifrada,
     origen,
     propia ? 0 : 1,
-    propia ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null,
+    /*
+     * Con el reloj de la iglesia, no con el universal.
+     *
+     * Acá decía `new Date().toISOString()`, que devuelve SIEMPRE la hora
+     * universal y no mira la zona horaria configurada. MEDIDO con el reloj en
+     * las 21:30 del lunes 24 de agosto en Chile: se guardaba «2026-08-25
+     * 01:30:00», y la pantalla de la cuenta le decía al administrador «La
+     * cambió su dueño el 2026-08-25» —mañana— por algo que había pasado
+     * anoche. Y en la misma sentencia, dos líneas más abajo, `updated_at` se
+     * estampa con `datetime('now','localtime')`: la misma fila quedaba con dos
+     * relojes distintos.
+     *
+     * Es el mismo error de la fecha de vencimiento de las credenciales
+     * (v1.304.0). `fechas.ahora()` pregunta con los métodos locales, que sí
+     * obedecen la zona que el sistema deja puesta al arrancar.
+     */
+    propia ? fechas.ahora() : null,
     Math.floor(Date.now() / 1000),
     usuarioId
   );

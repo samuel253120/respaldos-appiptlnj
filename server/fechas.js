@@ -58,6 +58,32 @@ function hoy() {
   return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
 }
 
+/**
+ * El instante de ahora en la zona del sistema, como «YYYY-MM-DD HH:MM:SS».
+ *
+ * Es el mismo formato y el mismo reloj que `datetime('now','localtime')` de
+ * SQLite, que es con lo que este sistema estampa sus 46 fechas: los dos
+ * preguntan la hora local del proceso, y la zona la deja puesta
+ * `zona-horaria.aplicar()` al arrancar y al guardarla.
+ *
+ * NO SE USA `toISOString()`, que es lo que había en el sitio que hizo falta
+ * esto. Esa función devuelve SIEMPRE la hora universal, sin mirar la zona
+ * configurada: en Chile, entre las 20:00 y la medianoche, estampa el día
+ * siguiente. Es el mismo error que ya se corrigió en la fecha de vencimiento
+ * de las credenciales (v1.304.0), y por eso el arreglo vive acá y no en el
+ * archivo que lo necesitaba: para que el próximo lo tenga a mano.
+ *
+ * Las partes se sacan todas del MISMO instante, y no llamando a `hoy()` por
+ * un lado y a la hora por el otro: entre las dos llamadas puede cambiar el
+ * día, y quedaría una fecha de ayer con la hora de hoy.
+ */
+function ahora() {
+  const d = new Date();
+  const dos = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())} `
+    + `${dos(d.getHours())}:${dos(d.getMinutes())}:${dos(d.getSeconds())}`;
+}
+
 /** La misma fecha corrida unos años, para poder comparar sin restar a mano. */
 function dentroDeAnios(anios) {
   const d = new Date();
@@ -159,4 +185,4 @@ function revisarCoherencia(def, datos, existing) {
   return null;
 }
 
-module.exports = { revisar, revisarCoherencia, normalizar, comoSeLee, hoy, PISO, TOPE_FUTURO_ANIOS };
+module.exports = { revisar, revisarCoherencia, normalizar, comoSeLee, hoy, ahora, PISO, TOPE_FUTURO_ANIOS };
