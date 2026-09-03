@@ -63,7 +63,10 @@ function enPrueba(miembroId) {
 function alEvaluar(fila, contexto = {}) {
   const desde = db.prepare('SELECT COALESCE(MAX(id), 0) AS n FROM bitacora').get().n;
   EVALUACIONES.hooks.afterSave(fila, { db, user: USUARIO, isNew: true, existing: null, ...contexto });
-  return db.prepare('SELECT * FROM bitacora WHERE id > ? ORDER BY id').all(desde);
+  // Acotado a la iglesia de este archivo: los del motor corren en paralelo
+  // sobre una sola base, y «lo que se anotó después del id tal» también trae
+  // lo que anotó otra prueba en el mismo instante.
+  return db.prepare('SELECT * FROM bitacora WHERE id > ? AND iglesia_id = ? ORDER BY id').all(desde, iglesia);
 }
 
 /* ------------------------------- los tres resultados */
@@ -156,9 +159,12 @@ test('cambiarle el resultado sí, porque pasó otra cosa', () => {
 
 test('a quien no está inscrito no se le anota nada, y su ficha se mueve igual', () => {
   const suelta = enPrueba(null);
-  const antes = db.prepare('SELECT COUNT(*) c FROM bitacora').get().c;
+  // Se cuentan las de ESTA iglesia y no las de la tabla entera: en paralelo,
+  // la tabla entera crece por lo que anotan las demás pruebas
+  const cuantas = () => db.prepare('SELECT COUNT(*) c FROM bitacora WHERE iglesia_id = ?').get(iglesia).c;
+  const antes = cuantas();
   alEvaluar({ id: 8, integrante_id: suelta, fecha: '2026-07-14', resultado: 'Aprobado' });
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM bitacora').get().c, antes,
+  assert.equal(cuantas(), antes,
     'en los grupos sirve gente de fuera del registro, y esa gente no tiene bitácora');
   const quedo = db.prepare('SELECT estado FROM integrantes_cuerpo WHERE id = ?').get(suelta);
   assert.equal(quedo.estado, 'Activo', 'lo que no se anota es la línea, no el hecho');

@@ -57,7 +57,8 @@ function alGuardar(miembro, datos, antes) {
     isNew: false, antes, despues: { id: miembro, iglesia_id: iglesia, ...antes, ...datos },
     datos, user: USUARIO,
   });
-  return db.prepare('SELECT * FROM bitacora WHERE id > ? ORDER BY id').all(desde);
+  // Acotado a la iglesia de este archivo, que corre en paralelo con las demás
+  return db.prepare('SELECT * FROM bitacora WHERE id > ? AND iglesia_id = ? ORDER BY id').all(desde, iglesia);
 }
 
 /* ------------------------------- el bautismo es un hecho de su vida */
@@ -150,11 +151,14 @@ test('sin ficha de miembro enlazada no se le anota nada', () => {
   const suelto = db
     .prepare("INSERT INTO pastores (nombres, apellidos, iglesia_id, estado) VALUES ('Sin','Ficha',?,'Activo')")
     .run(iglesia).lastInsertRowid;
-  const antes = db.prepare('SELECT COUNT(*) c FROM bitacora').get().c;
+  // Se cuentan las de ESTA iglesia y no las de la tabla entera: en paralelo,
+  // la tabla entera crece por lo que anotan las demás pruebas
+  const cuantas = () => db.prepare('SELECT COUNT(*) c FROM bitacora WHERE iglesia_id = ?').get(iglesia).c;
+  const antes = cuantas();
   bitacora.anotarCredencial({ pastorId: suelto, usuario: USUARIO, texto: 'Se le emitió una credencial.' });
   bitacora.anotarCredencial({ pastorId: null, usuario: USUARIO, texto: 'Sin pastor siquiera.' });
   bitacora.anotarCredencial({ pastorId: 999999, usuario: USUARIO, texto: 'Un pastor que no existe.' });
-  assert.equal(db.prepare('SELECT COUNT(*) c FROM bitacora').get().c, antes,
+  assert.equal(cuantas(), antes,
     'es lo mismo que hace el resto del sistema con quien no está en la membresía');
 });
 

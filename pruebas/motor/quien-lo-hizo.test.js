@@ -53,7 +53,11 @@ function alGuardar(modulo, fila, user, { isNew = true, antes = {} } = {}) {
   bitacora.registrarGuardado(registry.getModule(modulo), {
     isNew, antes, despues: fila, datos: fila, user,
   });
-  return db.prepare('SELECT * FROM bitacora WHERE id > ? ORDER BY id').all(desde);
+  // Acotado a la iglesia de este archivo: los del motor corren en paralelo
+  // sobre una sola base, y «lo que se anotó después del id tal» también trae
+  // lo que anotó otra prueba en el mismo instante. Nadie más puede escribir
+  // una anotación de ESTA iglesia, que es de este archivo.
+  return db.prepare('SELECT * FROM bitacora WHERE id > ? AND iglesia_id = ? ORDER BY id').all(desde, iglesia);
 }
 
 /* ------------------------------- el nombre se guarda, y es el correcto */

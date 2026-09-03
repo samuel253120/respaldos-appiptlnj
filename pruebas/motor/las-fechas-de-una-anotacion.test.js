@@ -67,7 +67,9 @@ function alCambiar(despues, antes) {
     isNew: false, antes, despues: { id: miembro, iglesia_id: iglesia, ...despues },
     datos: despues, user: { id: 1, nombre: 'Quien Guarda' },
   });
-  const fila = db.prepare('SELECT * FROM bitacora WHERE id > ? ORDER BY id').all(desde)[0];
+  // Acotado a esta persona: los del motor corren en paralelo sobre una sola base
+  const fila = db.prepare('SELECT * FROM bitacora WHERE id > ? AND miembro_id = ? ORDER BY id')
+    .all(desde, miembro)[0];
   return fila ? fila.descripcion : null;
 }
 
