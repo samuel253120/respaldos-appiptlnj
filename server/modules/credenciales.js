@@ -188,7 +188,9 @@ module.exports = {
     {
       name: 'motivo_revocacion', label: 'Motivo de la revocación', type: 'textarea',
       showIf: { field: 'estado', equals: 'Revocada' },
-      help: 'Obligatorio al revocar. Queda en el registro de cambios: pérdida, robo, cese del cargo.',
+      help: 'Obligatorio al revocar. SE PUBLICA: quien escanee el código de esta credencial lo lee tal '
+        + 'cual en la página de verificación, así que conviene lo justo para que se entienda que la '
+        + 'tarjeta ya no vale. Lo que sea de la oficina va en las notas, que no salen de acá.',
     },
     {
       name: 'reemplaza_a', label: 'Reemplaza a la credencial', type: 'ref', ref: 'credenciales',
@@ -307,7 +309,8 @@ module.exports = {
           ? data.motivo_revocacion
           : existing && existing.motivo_revocacion;
         if (!motivo || !String(motivo).trim()) {
-          return 'Para revocar una credencial hay que escribir el motivo: se pierde, se roba o cesa el cargo, y eso queda en el registro';
+          return 'Para revocar una credencial hay que escribir el motivo. Se publica: es lo que va a leer '
+            + 'quien escanee su código en la página de verificación';
         }
       }
 
@@ -560,7 +563,11 @@ module.exports = {
       if (!fila) return;
       const motivo = String((req.body && req.body.motivo) || '').trim();
       if (!motivo) {
-        return res.status(400).json({ error: 'Escriba el motivo de la revocación: queda en el registro y es lo que explica por qué esta credencial dejó de valer' });
+        return res.status(400).json({
+          error:
+            'Escriba el motivo de la revocación. Es lo que explica por qué esta credencial dejó de valer, y ' +
+            'SE PUBLICA: quien escanee su código lo va a leer tal cual en la página de verificación.',
+        });
       }
       if (fila.estado === 'Borrador') {
         return res.status(400).json({ error: 'Un borrador no se revoca: se elimina. Revocar es para una credencial que ya salió en papel.' });

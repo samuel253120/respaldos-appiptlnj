@@ -5348,22 +5348,66 @@ async function renderEmisionCredencial(id, caja) {
   const revocar = document.getElementById('credRevocar');
   if (revocar) {
     revocar.addEventListener('click', async () => {
+      /**
+       * El motivo de una revocación ES PÚBLICO, y hay que decirlo acá.
+       *
+       * La página de verificación lo muestra tal cual a cualquiera que escanee
+       * el código de esa credencial. El sistema ya lo tenía decidido para la
+       * revocación automática —usa a propósito un motivo neutro, «El titular ya
+       * no ejerce en el ministerio», y su comentario explica que esa página la
+       * abre cualquiera con un teléfono—, pero al escribirlo a mano nadie lo
+       * advertía: esta misma caja decía solo que «queda en el registro de
+       * cambios», que suena a un lugar de adentro. Comprobado de punta a punta:
+       * un motivo escrito acá salía íntegro en la página pública.
+       *
+       * Así que se dice, y además se ofrecen los motivos ya redactados para que
+       * se lean bien en público. Lo que no tiene por qué salir de la oficina va
+       * en las notas de la ficha, que no se publican.
+       */
+      const MOTIVOS = [
+        'Se extravió',
+        'Fue robada',
+        'El titular cesó en el cargo',
+        'El titular ya no ejerce en el ministerio',
+        'Se deterioró y no es legible',
+        'Se emitió en su lugar una credencial corregida',
+      ];
       const seguro = await preguntarEnDialogo({
         titulo: '🚫 Revocar la credencial',
         cuerpo: `
           <p>Una credencial revocada deja de valer <b>en el momento</b>: quien escanee su código QR verá
           que no es válida.</p>
-          <p>El motivo es obligatorio y queda en el registro de cambios.</p>
+          <div class="resultado warn">
+            ⚠️ <b>El motivo se publica.</b> Quien escanee el código de esta credencial lo va a leer tal
+            cual en la página de verificación. Escriba lo justo para que se entienda que la tarjeta ya no
+            vale; <b>lo que sea de la oficina va en las notas de la ficha</b>, que no salen de acá.
+          </div>
           <div class="fld full">
-            <label for="credMotivo">Motivo</label>
-            <textarea id="credMotivo" rows="3" placeholder="Pérdida, robo, cese del cargo…"></textarea>
+            <label for="credMotivo">Motivo <span class="req">*</span></label>
+            <select id="credMotivo">
+              ${MOTIVOS.map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join('')}
+              <option value="">Otro motivo (lo escribo abajo)</option>
+            </select>
+          </div>
+          <div class="fld full">
+            <label for="credMotivoDetalle">Detalle, si hace falta</label>
+            <textarea id="credMotivoDetalle" rows="2"
+                      placeholder="Se agrega al motivo. También se publica."></textarea>
           </div>`,
         aceptar: 'Revocarla',
         peligro: true,
       });
       if (!seguro) return;
+      // Con «Otro motivo» el detalle es el motivo, así que ahí sí es obligatorio
+      const elegido = (seguro.credMotivo || '').trim();
+      const detalle = (seguro.credMotivoDetalle || '').trim();
+      const motivo = [elegido, detalle].filter(Boolean).join('. ');
+      if (!motivo) {
+        toast('Escriba el motivo: es lo que va a leer quien escanee el código', true);
+        return;
+      }
       try {
-        await api('POST', `/credenciales/${id}/revocar`, { motivo: (seguro.credMotivo || '').trim() });
+        await api('POST', `/credenciales/${id}/revocar`, { motivo });
         toast('Credencial revocada');
         route();
       } catch (e) {
