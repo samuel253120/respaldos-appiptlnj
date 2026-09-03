@@ -106,12 +106,32 @@
     color:var(--azul); opacity:.78;
     white-space:nowrap; text-align:center; line-height:1.5mm;
   }
-  /* Sello de seguridad sobre la fotografía (cruza foto y borde) */
-  /* Sello de seguridad cruzando la parte inferior de la fotografía (≈30% sobre ella) */
+  /**
+   * Sello de seguridad cruzando la parte inferior de la fotografía.
+   *
+   * La posición está calculada para que el 30 % de su superficie quede sobre
+   * la foto y el resto fuera (punto 3.3): cruzándola marca la fotografía, que
+   * es de lo que se trata, pero sin taparla ni acercarse a ningún dato. El
+   * punto 3.4 es tajante con lo segundo —solapamiento CERO con los campos—, y
+   * las dos cosas se comprueban midiendo en pruebas/credencial-impresa.js.
+   *
+   * POR QUÉ 19,1 mm Y NO 19,0. El documento de cambios da 19,0 mm y añade que,
+   * si al implementarlo el porcentaje cambia, se corrija la posición hasta
+   * volver al 30 % (punto 3.3). Medido acá con el giro de −12° que pide el
+   * punto 3.2, 19,0 mm deja el 30,62 % y 19,1 mm deja el 30,04 %. Se corrige
+   * la posición, que es lo que el propio punto 3.3 manda hacer.
+   *
+   * De dónde salía la diferencia, que vale la pena dejar dicho: en el archivo
+   * de diseño el sello lleva a la vez las clases `sello-real` y `sello-foto`,
+   * y la regla de `sello-real` —que va después— le pisa el giro y lo deja en
+   * −5°, no en los −12° que su propia hoja de estilos pide. Con −5° el 30 %
+   * cae justo en 19,0 mm. Acá el sello lleva solo `sello-foto`, así que el
+   * giro es el que dice el documento y la posición se ajusta a ese giro.
+   */
   .cred-disenio .sello-foto{
     position:absolute; z-index:2;
-    width:15mm; height:15mm; object-fit:contain;
-    left:3mm; top:20mm;
+    width:17.5mm; height:17.5mm; object-fit:contain;
+    left:2.2mm; top:19.1mm;
     opacity:.5; transform:rotate(-12deg);
     pointer-events:none;
   }
@@ -266,7 +286,7 @@
   .cred-disenio .firma .l1{font-size:5.1pt; font-weight:700; letter-spacing:.05em; color:#20242E;}
   .cred-disenio .firma .l2{font-size:4.2pt; font-weight:600; letter-spacing:.08em; color:#5A5F70; margin-top:0.2mm;}
   .cred-disenio .sello-box{
-    position:relative; width:19.4mm; height:19.4mm; flex:0 0 auto;
+    position:relative; width:18.5mm; height:18.5mm; flex:0 0 auto;
     cursor:pointer;
   }
   .cred-disenio .sello-box img{

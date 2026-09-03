@@ -209,6 +209,140 @@ const casi = (a, b, tolerancia = 0.6) => Math.abs(a - b) <= tolerancia;
   revisar('el reverso sale girado 180°, para que al doblar quede derecho',
     /matrix\(-1,\s*0,\s*0,\s*-1/.test(girado.replace(/\s/g, ' ')), girado || '(sin transformación)');
 
+  /* 1 bis · Los sellos (punto 3 de las modificaciones) --------------------- */
+  console.log('\n1 bis · Los sellos');
+  /**
+   * El sello del anverso cruza la fotografía, y cuánto la cruza es un número.
+   *
+   * El punto 3.3 pide EXACTAMENTE el 30 % de su superficie sobre la foto, y el
+   * 3.4 que no toque ningún dato. Las dos cosas se miden de verdad, no se dan
+   * por buenas mirando: el sello va girado −12°, así que su huella sobre el
+   * papel no es el rectángulo que devuelve el navegador sino un cuadrado
+   * inclinado, y comparar rectángulos daría un número que no es.
+   *
+   * Se recortan polígonos (Sutherland–Hodgman) y se mide el área de verdad.
+   */
+  const sellos = await pagina.evaluate(() => {
+    const regla = document.createElement('div');
+    regla.style.cssText = 'position:absolute;width:100mm;height:0;visibility:hidden';
+    document.body.appendChild(regla);
+    const pxPorMm = regla.getBoundingClientRect().width / 100;
+    regla.remove();
+
+    /** Los cuatro vértices de un elemento, con su giro aplicado. */
+    function huella(el) {
+      const r = el.getBoundingClientRect();
+      const giro = getComputedStyle(el).transform;
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      // Sin giro, el rectángulo del navegador ya es la huella
+      const m = /matrix\(([^)]+)\)/.exec(giro);
+      if (!m) {
+        return [[r.left, r.top], [r.right, r.top], [r.right, r.bottom], [r.left, r.bottom]];
+      }
+      // Con giro, getBoundingClientRect devuelve la caja QUE LO ENVUELVE, más
+      // grande que el elemento: hay que reconstruir el cuadrado inclinado a
+      // partir de su tamaño sin girar y de la matriz.
+      const [a, b, c, d] = m[1].split(',').map(Number);
+      const w = el.offsetWidth, h = el.offsetHeight;
+      return [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]]
+        .map(([x, y]) => [cx + a * x + c * y, cy + b * x + d * y]);
+    }
+    const deCaja = (r) => [[r.left, r.top], [r.right, r.top], [r.right, r.bottom], [r.left, r.bottom]];
+
+    /** Recorte de un polígono contra otro convexo. */
+    function recortar(sujeto, ventana) {
+      let salida = sujeto;
+      for (let i = 0; i < ventana.length; i++) {
+        const A = ventana[i], B = ventana[(i + 1) % ventana.length];
+        const dentro = (p) => (B[0] - A[0]) * (p[1] - A[1]) - (B[1] - A[1]) * (p[0] - A[0]) >= 0;
+        const corte = (P, Q) => {
+          const d1 = (B[0] - A[0]) * (P[1] - A[1]) - (B[1] - A[1]) * (P[0] - A[0]);
+          const d2 = (B[0] - A[0]) * (Q[1] - A[1]) - (B[1] - A[1]) * (Q[0] - A[0]);
+          const t = d1 / (d1 - d2);
+          return [P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])];
+        };
+        const entrada = salida; salida = [];
+        for (let j = 0; j < entrada.length; j++) {
+          const P = entrada[j], Q = entrada[(j + 1) % entrada.length];
+          if (dentro(Q)) { if (!dentro(P)) salida.push(corte(P, Q)); salida.push(Q); }
+          else if (dentro(P)) salida.push(corte(P, Q));
+        }
+        if (!salida.length) return [];
+      }
+      return salida;
+    }
+    const area = (poly) => {
+      let s = 0;
+      for (let i = 0; i < poly.length; i++) {
+        const [x1, y1] = poly[i], [x2, y2] = poly[(i + 1) % poly.length];
+        s += x1 * y2 - x2 * y1;
+      }
+      return Math.abs(s) / 2;
+    };
+
+    const cara = document.querySelector('.pieza-frente .card');
+    const sello = cara.querySelector('.sello-foto');
+    const foto = cara.querySelector('.foto');
+    if (!sello || !foto) return null;
+
+    // El polígono en sentido horario, que es lo que espera el recorte
+    const orden = (p) => (area(p) && ((p[1][0] - p[0][0]) * (p[2][1] - p[0][1])
+      - (p[1][1] - p[0][1]) * (p[2][0] - p[0][0])) < 0) ? [...p].reverse() : p;
+
+    const huellaSello = orden(huella(sello));
+    const areaSello = area(huellaSello);
+    const sobreLaFoto = area(recortar(huellaSello, orden(deCaja(foto.getBoundingClientRect()))));
+
+    // Punto 3.4: ni un milímetro cuadrado encima de ningún dato
+    const pisados = [];
+    for (const campo of cara.querySelectorAll('.datos .lbl, .datos .valor, .datos .cat-iglesia')) {
+      if (!campo.getClientRects().length) continue;
+      const encima = area(recortar(huellaSello, orden(deCaja(campo.getBoundingClientRect()))));
+      if (encima > 0) {
+        pisados.push(`${campo.className}: «${campo.textContent.trim().slice(0, 18)}» ${(encima / (pxPorMm * pxPorMm)).toFixed(2)} mm²`);
+      }
+    }
+
+    const cajaSello = document.querySelector('.pieza-reverso .sello-box');
+    const firma = document.querySelector('.pieza-reverso .firma');
+    let selloYFirma = 0;
+    if (cajaSello && firma) {
+      selloYFirma = area(recortar(orden(deCaja(cajaSello.getBoundingClientRect())),
+        orden(deCaja(firma.getBoundingClientRect())))) / (pxPorMm * pxPorMm);
+    }
+
+    return {
+      ladoSello: sello.offsetWidth / pxPorMm,
+      porcentajeSobreLaFoto: (sobreLaFoto / areaSello) * 100,
+      areaSelloMm2: areaSello / (pxPorMm * pxPorMm),
+      pisados,
+      ladoSelloReverso: cajaSello ? cajaSello.offsetWidth / pxPorMm : null,
+      selloYFirma,
+      giro: getComputedStyle(sello).transform,
+      opacidad: getComputedStyle(sello).opacity,
+    };
+  });
+
+  if (!sellos) {
+    revisar('el sello del anverso está en su sitio', false, 'no se encontró el sello o la fotografía');
+  } else {
+    revisar('el sello del anverso mide 17,5 mm', casi(sellos.ladoSello, 17.5, 0.3), `${sellos.ladoSello.toFixed(2)} mm`);
+    // −12° es la matriz (cos, sin) = (0.978, −0.208)
+    revisar('va girado −12°', /matrix\(0\.97[0-9]*,\s*-0\.20[0-9]*/.test(sellos.giro), sellos.giro);
+    revisar('con opacidad 0,5', Math.abs(Number(sellos.opacidad) - 0.5) < 0.01, sellos.opacidad);
+    // El punto 3.3 pide el 30 % exacto, así que se admite medio punto, no dos
+    revisar('cubre el 30 % de la fotografía (punto 3.3)',
+      Math.abs(sellos.porcentajeSobreLaFoto - 30) <= 0.5,
+      `${sellos.porcentajeSobreLaFoto.toFixed(2)} % de ${sellos.areaSelloMm2.toFixed(1)} mm²`);
+    revisar('y no toca ningún campo de datos (punto 3.4)', sellos.pisados.length === 0,
+      sellos.pisados.length ? sellos.pisados.join(' · ') : 'solapamiento cero');
+    revisar('el sello del reverso mide 18,5 mm', casi(sellos.ladoSelloReverso, 18.5, 0.3),
+      `${sellos.ladoSelloReverso.toFixed(2)} mm`);
+    revisar('y no se encima con la firma (punto 7.8)', sellos.selloYFirma === 0,
+      sellos.selloYFirma ? `${sellos.selloYFirma.toFixed(2)} mm² encima` : 'solapamiento cero');
+  }
+
   /* 2 · El código QR ------------------------------------------------------ */
   console.log('\n2 · El código QR');
   const impresion = await pagina.evaluate(async (cred) => {
