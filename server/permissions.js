@@ -620,7 +620,49 @@ function todoLoQueSePuedePermitir() {
   ];
 }
 
+/**
+ * TODO lo que una ficha de usuario concede, ya resuelto, en una lista plana.
+ *
+ * Cada entrada es «módulo:acción». Sirve para comparar dos fichas y saber qué
+ * gana la persona con un cambio, que es lo que hace falta para no dejar que
+ * nadie conceda lo que él mismo no tiene.
+ *
+ * Se resuelve con las mismas tres capas de siempre —la excepción, el perfil y
+ * el rol— porque lo que importa no es en cuál de las tres está escrito, sino
+ * qué puede hacer la persona al final.
+ */
+function loQueConcede(usuario) {
+  const salida = new Set();
+  for (const cosa of todoLoQueSePuedePermitir()) {
+    for (const accion of cosa.acciones) {
+      if (can(usuario, cosa.name, accion)) salida.add(`${cosa.name}:${accion}`);
+    }
+  }
+  return salida;
+}
+
+/**
+ * Lo que la segunda ficha da y la primera no.
+ *
+ * Devuelve la lista de «módulo:acción» que se GANAN con el cambio. Lo que se
+ * pierde no se mira: quitarle permisos a alguien no es escalar, y quien
+ * administra cuentas tiene que poder hacerlo.
+ */
+function loQueSeGana(antes, despues) {
+  const tenia = loQueConcede(antes);
+  return [...loQueConcede(despues)].filter((x) => !tenia.has(x));
+}
+
+/** Cómo se llama un permiso cuando hay que nombrarlo en un aviso. */
+function nombreDelPermiso(clave) {
+  const [modulo, accion] = String(clave).split(':');
+  const cosa = todoLoQueSePuedePermitir().find((c) => c.name === modulo);
+  const laAccion = ACCIONES.find((a) => a.value === accion);
+  return `${(cosa && cosa.label) || modulo} · ${(laAccion && laAccion.label) || accion}`;
+}
+
 module.exports = {
   ROLES, ACCIONES, MATRIX, SALUD, LLAVES, llavesDeFabrica, todoLoQueSePuedePermitir,
   can, permisosDelRol, permisosPropios, permisosDelPerfil, permisosEfectivos,
+  loQueConcede, loQueSeGana, nombreDelPermiso,
 };

@@ -228,7 +228,81 @@ module.exports = {
   },
 
   hooks: {
-    beforeSave(data, { isNew, id, existing, db, confirmado }) {
+    beforeSave(data, { isNew, id, existing, db, confirmado, user }) {
+      /**
+       * NADIE SE DA A SÍ MISMO LO QUE NO TIENE.
+       *
+       * El sistema reparte el trabajo a propósito: el campo «Excepciones para
+       * esta persona» y el módulo de Perfiles de Permisos existen para que a
+       * una secretaria se le pueda dejar mantener las cuentas sin hacerla
+       * administradora de todo. Lo que faltaba era lo otro: que ese permiso no
+       * se pudiera usar sobre la propia ficha.
+       *
+       * MEDIDO EN LA v1.316.0, con una cuenta de secretaria a la que se le dio
+       * exactamente «usuarios: ver, crear, editar». Tres peticiones seguidas,
+       * las tres HTTP 200 y sin un mensaje: se puso «rol: admin», se concedió
+       * la llave de la Configuración —que antes le contestaba 403 y pasó a
+       * contestarle 200— y le cerró la cuenta al administrador que se lo había
+       * dado.
+       *
+       * El sistema comprobaba con cuidado A QUÉ CUENTAS alcanza cada persona
+       * —eso se arregló en la v1.98.0 y la suite de aislamiento lo cuida— pero
+       * no QUÉ PUEDE ESCRIBIR dentro de una cuenta que sí alcanza, y la suya
+       * siempre la alcanza: «en Usuarios, uno siempre se ve a sí mismo».
+       *
+       * En cualquier otro módulo, editar de más es un dato mal escrito que se
+       * corrige. Acá el dato ES el permiso.
+       *
+       * Son dos reglas, y hacen falta las dos:
+       *
+       *   1. SOBRE LA PROPIA FICHA no se tocan el rol, las excepciones ni el
+       *      perfil. Es la hermana de la que ya existía —«no puede eliminar su
+       *      propio usuario»— y cierra el caso medido.
+       *   2. SOBRE LA DE OTRO no se concede lo que uno mismo no tiene. Sin
+       *      esta, la primera se rodea con dos cuentas que se suben entre sí.
+       *
+       * Quitar permisos no se toca: quien administra cuentas tiene que poder
+       * hacerlo, y quitar no es escalar.
+       */
+      const LAS_LLAVES_DE_LA_CASA = ['rol', 'permisos', 'perfil_id'];
+      if (!isNew && existing && user) {
+        const comoTexto = (v) => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+        const cambia = (campo) => data[campo] !== undefined && comoTexto(data[campo]) !== comoTexto(existing[campo]);
+
+        // 1 · sobre la propia ficha
+        if (Number(existing.id) === Number(user.id)) {
+          const tocados = LAS_LLAVES_DE_LA_CASA.filter(cambia);
+          if (tocados.length) {
+            return (
+              'No puede cambiar su propio rol, su perfil de permisos ni sus excepciones. Lo que una persona '
+              + 'puede hacer en el sistema lo decide otra: si de verdad hace falta cambiarlo, pídaselo a quien '
+              + 'administre las cuentas. (Sí puede corregir el resto de su ficha.)'
+            );
+          }
+        }
+
+        // 2 · sobre la de otro: no se concede lo que uno no tiene
+        if (LAS_LLAVES_DE_LA_CASA.some(cambia)) {
+          const { loQueSeGana, nombreDelPermiso, can } = require('../permissions');
+          const quedaria = { ...existing };
+          for (const campo of LAS_LLAVES_DE_LA_CASA) {
+            if (data[campo] !== undefined) quedaria[campo] = data[campo];
+          }
+          const gana = loQueSeGana(existing, quedaria).filter((x) => {
+            const [modulo, accion] = x.split(':');
+            return !can(user, modulo, accion);
+          });
+          if (gana.length) {
+            const nombres = gana.slice(0, 3).map(nombreDelPermiso);
+            return (
+              `Con eso le estaría dando a ${existing.nombre} ${gana.length} permiso(s) que usted no tiene: `
+              + nombres.join('; ') + (gana.length > 3 ? `, y ${gana.length - 3} más` : '') + '. '
+              + 'Nadie puede conceder lo que no alcanza: pídaselo a quien sí lo tenga.'
+            );
+          }
+        }
+      }
+
       /*
        * DESACTIVAR UNA CUENTA QUE LLEVA SOLICITUDES ABIERTAS.
        *
