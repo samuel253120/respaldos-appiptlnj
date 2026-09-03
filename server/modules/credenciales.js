@@ -32,7 +32,28 @@ const serie = require('../credenciales/serie');
 /** Con cuánta anticipación se avisa que una credencial está por vencer. */
 const diasPorVencer = () => require('../ajustes').numero('credencial_aviso_dias', 7, 365);
 
-const hoyISO = () => new Date().toISOString().slice(0, 10);
+/**
+ * Qué día es hoy PARA LA IGLESIA, no para el servidor.
+ *
+ * Esto decía `new Date().toISOString().slice(0, 10)`, y ahí estaba el error:
+ * `toISOString` devuelve SIEMPRE la fecha universal, y no mira la zona horaria
+ * que el sistema tiene configurada. En Chile eso son tres o cuatro horas de
+ * diferencia, todas las noches.
+ *
+ * Y de esta fecha depende lo único que la tarjeta impresa no puede decir por
+ * sí sola: si está vigente, por vencer o vencida. MEDIDO con el reloj puesto
+ * en el lunes 24 de agosto de 2026 a las 21:30 en Chile continental, una
+ * credencial que vencía ese mismo 24 ya salía como VENCIDA —le quedaban dos
+ * horas y media—, y eso es lo que contestaba la página pública a quien
+ * escaneara su código en la puerta de una iglesia. Pasaba entre las 20:00 y la
+ * medianoche en invierno y entre las 21:00 y la medianoche en verano: justo
+ * las horas en que hay culto.
+ *
+ * `fechas.hoy()` pregunta con los métodos locales de la fecha, que sí obedecen
+ * la zona que `zona-horaria.aplicar()` deja puesta al arrancar y al guardar la
+ * configuración. Es la misma que usa el resto del sistema.
+ */
+const hoyISO = () => require('../fechas').hoy();
 
 /**
  * En qué está realmente una credencial.
