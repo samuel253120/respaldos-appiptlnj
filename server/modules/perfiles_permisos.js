@@ -208,6 +208,20 @@ module.exports = {
       if (!ids.length) return res.status(400).json({ error: 'Elija al menos un usuario' });
 
       /*
+       * Un perfil archivado no se le pone a nadie nuevo, tampoco desde acá. La
+       * misma regla que la ficha de usuario, y por lo mismo: hasta la 1.327.0
+       * archivarlo solo lo escondía del desplegable, y esta ruta se lo ponía
+       * igual a quien se le pidiera —medido, «{"puestos":1}»—.
+       */
+      if (perfil.estado !== 'Activo') {
+        return res.status(400).json({
+          error: `El perfil "${perfil.nombre}" está archivado: la iglesia decidió no volver a usarlo, `
+            + 'así que no se le puede poner a nadie más. Quien ya lo tiene lo conserva. Si hace falta '
+            + 'volver a usarlo, cámbielo a Activo.',
+        });
+      }
+
+      /*
        * Se comprueba cuenta por cuenta, no en el UPDATE: así se puede decir
        * cuántas quedaron fuera en vez de que desaparezcan sin explicación.
        * Cambiarle el perfil a alguien es cambiarle los permisos, y eso no se

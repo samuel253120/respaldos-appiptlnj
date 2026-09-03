@@ -347,6 +347,37 @@ module.exports = {
       }
 
       /**
+       * UN PERFIL ARCHIVADO NO SE LE PONE A NADIE NUEVO.
+       *
+       * La ayuda del campo «Estado» de un perfil lo dice con todas sus letras:
+       * «Un perfil archivado ya no se ofrece al asignar, pero sigue funcionando
+       * para quienes ya lo tienen». Archivar es lo que la iglesia hace con un
+       * perfil que decidió no volver a usar y que no puede borrar porque
+       * alguien todavía lo lleva puesto.
+       *
+       * MEDIDO EN LA v1.327.0: el desplegable de la ficha efectivamente deja de
+       * ofrecerlo —esa parte funciona—, pero cualquier petición que traiga ese
+       * número se lo pone igual. Por la ficha contestaba 200, y por la ruta del
+       * módulo de Perfiles, «{"puestos":1}». Así que «ya no se ofrece» era
+       * exacto y «ya no se asigna» no era cierto: lo único que hacía el
+       * archivado era esconderlo de una lista, y un formulario abierto antes de
+       * archivarlo todavía trae ese número.
+       *
+       * Solo se mira cuando el perfil CAMBIA: quien ya lo tiene puesto sigue
+       * guardando su ficha sin tropezar con esto, que es la otra mitad de la
+       * promesa.
+       */
+      if (data.perfil_id !== undefined && Number(data.perfil_id)
+          && Number((existing || {}).perfil_id || 0) !== Number(data.perfil_id)) {
+        const elPerfil = db.prepare('SELECT nombre, estado FROM perfiles_permisos WHERE id = ?').get(data.perfil_id);
+        if (elPerfil && elPerfil.estado !== 'Activo') {
+          return `El perfil "${elPerfil.nombre}" está archivado: la iglesia decidió no volver a usarlo, `
+            + 'así que no se le puede poner a nadie más. Quien ya lo tiene lo conserva. Si hace falta '
+            + 'volver a usarlo, cámbielo a Activo en Perfiles de Permisos.';
+        }
+      }
+
+      /**
        * EL SISTEMA NO SE QUEDA SIN ADMINISTRADOR, POR NINGUNA DE LAS TRES PUERTAS.
        *
        * La cabecera de este módulo lo promete entre las cuatro cosas que dice
