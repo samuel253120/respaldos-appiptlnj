@@ -98,9 +98,21 @@ function ficha(llave) {
   return f;
 }
 
-/** Las llaves con que se mira a quien intenta entrar. */
+/**
+ * Las llaves con que se mira a quien intenta entrar.
+ *
+ * SIN RUT se cuenta SOLO por dirección, y eso tiene un uso concreto: la puerta
+ * de «¿Olvidó su contraseña?» pregunta cuál es la pregunta secreta de una
+ * cuenta, y eso no es un error de nadie —no se puede contar contra el RUT que
+ * se está preguntando, porque entonces preguntar por una cuenta ajena la
+ * dejaría a ella cerrada—. Lo que sí hay que frenar es a quien pregunta por
+ * cientos de RUT desde el mismo lugar, y para eso está el conteo por dirección.
+ */
 function llaves(rut, ip) {
-  return [`rut:${String(rut || '').toLowerCase()}`, `ip:${ip || '?'}`];
+  const suyas = [`ip:${ip || '?'}`];
+  const limpio = String(rut == null ? '' : rut).trim().toLowerCase();
+  if (limpio) suyas.unshift(`rut:${limpio}`);
+  return suyas;
 }
 
 /**

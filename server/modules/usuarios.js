@@ -139,6 +139,9 @@ module.exports = {
     // campos de tipo contraseña
     { name: 'respuesta_secreta', label: 'Respuesta de recuperación', type: 'password', oculto: true },
     { name: 'recuperacion_intentos', label: 'Intentos de recuperación', type: 'number', oculto: true },
+    // Cuándo se cerró la recuperación, para que se levante sola pasado el rato
+    // (ver minutosDeBloqueo en server/claves.js)
+    { name: 'recuperacion_bloqueada_en', label: 'Recuperación cerrada el', type: 'number', oculto: true },
     {
       name: 'rol', label: 'Rol', type: 'select', required: true, default: 'consulta',
       options: ROLES.map((r) => ({ value: r.value, label: r.label })),

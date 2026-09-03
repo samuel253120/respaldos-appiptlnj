@@ -22,6 +22,30 @@ const ajustes = require('./ajustes');
 /** Cuántos intentos fallidos de recuperación se toleran antes de bloquearla. */
 const INTENTOS_MAXIMOS = 5;
 
+/**
+ * Cuánto dura ese bloqueo antes de levantarse solo.
+ *
+ * ANTES NO SE LEVANTABA: quedaba puesto hasta que un administrador lo quitara a
+ * mano. Y esa puerta la abre cualquiera sin sesión, así que quien supiera el
+ * RUT de la tesorera podía errar seis respuestas seguidas y dejarle la
+ * recuperación cerrada; ella se enteraba el día que la necesitaba. Medido en la
+ * v1.316.0. En Chile un RUT no es un secreto.
+ *
+ * El sistema ya había resuelto exactamente este problema en la puerta de
+ * entrada, y su portero lo explica: «alguien podría errar cinco veces adrede
+ * sobre un RUT ajeno para dejar a esa persona afuera. Que sean minutos y no
+ * horas hace que esa maña moleste poco y que el ataque por fuerza bruta siga
+ * sin servir». Acá se aplica lo mismo, con la misma cuenta configurable —cuatro
+ * veces la espera larga de la entrada— así que sigue siendo un solo número el
+ * que la iglesia ajusta.
+ *
+ * El desbloqueo a mano del administrador se queda: sirve para quien no quiere
+ * esperar.
+ */
+function minutosDeBloqueo() {
+  return ajustes.numero('acceso_espera_minutos', 1, 120) * 4;
+}
+
 /** La contraseña inicial que definió el administrador. */
 function inicial() {
   return (ajustes.obtener('password_inicial') || 'Iglesia2026').trim() || 'Iglesia2026';
@@ -213,12 +237,30 @@ function estado(usuario) {
 
 /** Cómo está la recuperación por pregunta secreta de una cuenta. */
 function estadoRecuperacion(usuario) {
-  const intentos = Number(usuario.recuperacion_intentos || 0);
+  const llevados = Number(usuario.recuperacion_intentos || 0);
+  const desde = Number(usuario.recuperacion_bloqueada_en || 0);
+  const minutos = minutosDeBloqueo();
+  // Se levanta solo pasado el rato, como la puerta de entrada
+  const faltan = desde ? Math.ceil((desde + minutos * 60000 - Date.now()) / 60000) : 0;
+  const bloqueada = llevados >= INTENTOS_MAXIMOS && faltan > 0;
+  /*
+   * Los que cuentan HOY. Si hubo un bloqueo y ya se levantó, la cuenta empieza
+   * de nuevo; si no, son los que lleva. De acá sale el «le quedan N intentos»
+   * que se le dice a quien está recuperando su contraseña, así que tiene que
+   * ser el número de verdad y no uno redondeado: quien va por el cuarto
+   * necesita saber que le queda uno.
+   */
+  const intentos = desde && !bloqueada ? 0 : llevados;
   return {
     activa: ajustes.activo('recuperacion_activa'),
     tiene_pregunta: !!usuario.pregunta_secreta,
     pregunta: usuario.pregunta_secreta || null,
-    bloqueada: intentos >= INTENTOS_MAXIMOS,
+    bloqueada,
+    minutos_restantes: bloqueada ? faltan : 0,
+    aviso_bloqueo: bloqueada
+      ? `La recuperación quedó cerrada por los intentos seguidos. Vuelva a intentarlo en ${faltan} `
+        + `minuto${faltan === 1 ? '' : 's'}, o pida al administrador que la habilite ahora.`
+      : null,
     intentos,
     maximo: INTENTOS_MAXIMOS,
   };
@@ -263,18 +305,30 @@ function normalizar(texto) {
 async function respuestaCorrecta(usuario, respuesta) {
   if (!usuario.respuesta_secreta) return false;
   const acierta = await cifrado.coincide(normalizar(respuesta), usuario.respuesta_secreta);
-  db.prepare('UPDATE usuarios SET recuperacion_intentos = ? WHERE id = ?')
-    .run(acierta ? 0 : Number(usuario.recuperacion_intentos || 0) + 1, usuario.id);
+  /*
+   * Los intentos se suman como siempre, con UNA excepción: si esta cuenta tuvo
+   * un bloqueo y ya se levantó solo, la cuenta empieza de nuevo. Sin eso, un
+   * error suelto al mes siguiente la cerraría en el acto, porque el contador
+   * seguiría en cinco.
+   *
+   * Y no al revés: mientras no haya habido bloqueo, los intentos se acumulan
+   * normalmente. Descontarlos siempre dejaría la cuenta sin poder cerrarse
+   * nunca, y entonces la respuesta secreta se podría probar sin límite.
+   */
+  const lleva = acierta ? 0 : estadoRecuperacion(usuario).intentos + 1;
+  db.prepare('UPDATE usuarios SET recuperacion_intentos = ?, recuperacion_bloqueada_en = ? WHERE id = ?')
+    .run(lleva, lleva >= INTENTOS_MAXIMOS ? Date.now() : null, usuario.id);
   return acierta;
 }
 
 /** Vuelve a habilitar la recuperación de una cuenta bloqueada por intentos. */
 function desbloquearRecuperacion(usuarioId) {
-  db.prepare('UPDATE usuarios SET recuperacion_intentos = 0 WHERE id = ?').run(usuarioId);
+  db.prepare('UPDATE usuarios SET recuperacion_intentos = 0, recuperacion_bloqueada_en = NULL WHERE id = ?')
+    .run(usuarioId);
 }
 
 module.exports = {
-  INTENTOS_MAXIMOS, inicial, largoMinimo, revisarClave, revisarLargo, establecer, restablecer,
+  INTENTOS_MAXIMOS, minutosDeBloqueo, inicial, largoMinimo, revisarClave, revisarLargo, establecer, restablecer,
   estado, estadoRecuperacion, guardarPregunta, quitarPregunta, respuestaCorrecta,
   desbloquearRecuperacion, normalizar,
 };

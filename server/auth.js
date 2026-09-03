@@ -379,22 +379,65 @@ router.post('/pregunta-secreta', authRequired, atender(async (req, res) => {
  * Recuperar la contraseña olvidada, desde la pantalla de acceso: primero se
  * pide la pregunta de esa cuenta y después se responde eligiendo una nueva.
  */
+/**
+ * Lo mismo que contesta la puerta de entrada cuando por acá no se puede seguir.
+ *
+ * ES EL MISMO TEXTO EXISTA O NO LA CUENTA, y eso es a propósito. La pantalla de
+ * acceso se cuida de no decir si un RUT tiene cuenta —contesta igual en los dos
+ * casos, y hay una prueba que lo comprueba—, y esta puerta de al lado lo
+ * contaba: medido en la v1.316.0, un RUT que existía recibía 400 «Esa cuenta no
+ * tiene pregunta de recuperación» y uno que no, 404 «No hay una cuenta activa
+ * con ese RUT». Con eso, quien tuviera una lista de RUT sabía cuáles tienen
+ * cuenta en el sistema sin necesidad de acertar ninguna contraseña.
+ */
+const PORACANOSEPUEDE = 'Por acá no se puede recuperar esa cuenta. Pida al administrador que le restablezca la contraseña.';
+
+/**
+ * El mismo portero de la entrada, contando SOLO por dirección.
+ *
+ * No se puede contar contra el RUT que se está preguntando: preguntar por una
+ * cuenta ajena la dejaría cerrada a ella, que es justamente la maña que hay que
+ * evitar. Contando por dirección, quien recupera su propia contraseña pregunta
+ * una o dos veces y no se entera; quien va probando RUT tras RUT desde el mismo
+ * lugar topa en seguida.
+ */
+function elPorteroDeLaRecuperacion(req, res) {
+  const espera = intentos.esperaQueLeFalta(null, req.ip);
+  if (espera) {
+    res.status(429).json({
+      error:
+        `Demasiados intentos. Espere ${espera} minuto${espera === 1 ? '' : 's'} antes de volver a intentarlo.`,
+    });
+    return false;
+  }
+  return true;
+}
+
 router.post('/recuperar/pregunta', (req, res) => {
   const claves = require('./claves');
   const ajustes = require('./ajustes');
   if (!ajustes.activo('recuperacion_activa')) {
     return res.status(400).json({ error: 'La recuperación por pregunta está desactivada. Pida al administrador que le restablezca la contraseña.' });
   }
+  if (!elPorteroDeLaRecuperacion(req, res)) return;
+  /*
+   * CADA PREGUNTA CUENTA, acierte o no. Preguntar por la pregunta de una cuenta
+   * no es un error de nadie, pero es el paso con que se barre una lista de RUT,
+   * y sin contarlo el portero no frenaría nada: medido en la v1.316.0, cuarenta
+   * preguntas seguidas sin que la puerta se moviera. A quien recupera su propia
+   * contraseña no le estorba —pregunta una vez— y al terminar bien se le
+   * perdona (ver /recuperar).
+   */
+  intentos.fallo(null, req.ip);
+
   const user = db.prepare('SELECT * FROM usuarios WHERE rut = ?').get(rutUtil.canonico(String((req.body || {}).rut || '')));
-  if (!user || !user.activo) {
-    return res.status(404).json({ error: 'No hay una cuenta activa con ese RUT.' });
-  }
-  const estado = claves.estadoRecuperacion(user);
-  if (!estado.tiene_pregunta) {
-    return res.status(400).json({ error: 'Esa cuenta no tiene pregunta de recuperación. Pida al administrador que le restablezca la contraseña.' });
+  const estado = user && user.activo ? claves.estadoRecuperacion(user) : null;
+  if (!estado || !estado.tiene_pregunta) {
+    // La misma respuesta para «no existe» y para «existe y no tiene pregunta»
+    return res.status(400).json({ error: PORACANOSEPUEDE });
   }
   if (estado.bloqueada) {
-    return res.status(423).json({ error: 'La recuperación quedó bloqueada por demasiados intentos. Pida al administrador que la habilite.' });
+    return res.status(423).json({ error: estado.aviso_bloqueo });
   }
   res.json({ pregunta: estado.pregunta, intentos_restantes: estado.maximo - estado.intentos });
 });
@@ -405,29 +448,39 @@ router.post('/recuperar', atender(async (req, res) => {
   if (!ajustes.activo('recuperacion_activa')) {
     return res.status(400).json({ error: 'La recuperación por pregunta está desactivada.' });
   }
+  if (!elPorteroDeLaRecuperacion(req, res)) return;
   const { rut, respuesta, nueva } = req.body || {};
   const user = db.prepare('SELECT * FROM usuarios WHERE rut = ?').get(rutUtil.canonico(String(rut || '')));
-  if (!user || !user.activo) return res.status(404).json({ error: 'No hay una cuenta activa con ese RUT.' });
-
-  const estado = claves.estadoRecuperacion(user);
-  if (!estado.tiene_pregunta) return res.status(400).json({ error: 'Esa cuenta no tiene pregunta de recuperación.' });
+  const estado = user && user.activo ? claves.estadoRecuperacion(user) : null;
+  if (!estado || !estado.tiene_pregunta) return res.status(400).json({ error: PORACANOSEPUEDE });
   if (estado.bloqueada) {
-    return res.status(423).json({ error: 'La recuperación quedó bloqueada por demasiados intentos. Pida al administrador que la habilite.' });
+    return res.status(423).json({ error: estado.aviso_bloqueo });
   }
   const problema = claves.revisarClave(nueva, user);
   if (problema) return res.status(400).json({ error: problema });
 
   if (!(await claves.respuestaCorrecta(user, respuesta))) {
     const quedan = estado.maximo - (estado.intentos + 1);
+    /*
+     * Con los intentos agotados, el aviso dice que la puerta se abre sola: el
+     * bloqueo dura un rato y no para siempre (ver minutosDeBloqueo en
+     * server/claves.js). Decir solo «pida al administrador» mandaría a
+     * molestar a alguien por algo que se arregla esperando.
+     */
+    const claveDeNuevo = require('./claves');
     return res.status(401).json({
       error: quedan > 0
         ? `La respuesta no coincide. Le quedan ${quedan} intento(s).`
-        : 'La respuesta no coincide y se agotaron los intentos. Pida al administrador que le restablezca la contraseña.',
+        : 'La respuesta no coincide y se agotaron los intentos. La recuperación queda cerrada por '
+          + `${claveDeNuevo.minutosDeBloqueo()} minutos; después puede volver a intentarlo, o pedirle al `
+          + 'administrador que la habilite ahora.',
     });
   }
 
   // La eligió su dueño: no hay nada que cambiar en el primer ingreso
   await claves.establecer(user.id, nueva, 'usuario');
+  // Recuperó bien: se le perdonan las preguntas que hizo para llegar hasta acá
+  intentos.acierto(rut, req.ip);
   res.json({ ok: true });
 }));
 
