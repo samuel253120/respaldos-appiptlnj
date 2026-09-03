@@ -790,16 +790,19 @@ function pasada() {
     // navegador alguno de los tipos que le tocaron.
     const empujables = suyos.filter((f) => avisos.quiere(usuario, f.tipo, 'navegador'));
     if (!empujables.length) continue;
-    const titulo = empujables.length === 1
-      ? empujables[0].titulo
-      : `Tiene ${empujables.length} avisos nuevos`;
-    const soloUno = empujables[0];
-    const cuerpo = empujables.length === 1
-      // Si viene de alguien, se dice; y se recorta a lo que se alcanza a leer en
-      // una pantalla bloqueada. Es la misma regla del empujón de un aviso
-      // suelto (ver `avisar` y `paraElTelefono`, en avisos.js)
-      ? avisos.paraElTelefono(soloUno.de ? `${soloUno.de}: ${soloUno.cuerpo || ''}` : soloUno.cuerpo)
-      : empujables.slice(0, 3).map((f) => f.titulo).join(' · ');
+    /*
+     * CON UNO SOLO va su título y su texto; con varios, los titulares.
+     *
+     * Qué texto puede salir NO se decide acá: lo decide `loQueVaAlTelefono`, en
+     * avisos.js, que es el mismo camino que usa el empujón de un aviso suelto.
+     * Antes esta línea armaba el texto por su cuenta, y por eso el cuerpo del
+     * aviso de una ayuda social —«Mercadería para Fulana de Tal»— salía entero
+     * a una pantalla bloqueada el día en que a esa persona le tocaba un solo
+     * aviso, que para quien lleva las ayudas es el día normal.
+     */
+    const soloUno = empujables.length === 1 ? avisos.loQueVaAlTelefono(empujables[0]) : null;
+    const titulo = soloUno ? soloUno.titulo : `Tiene ${empujables.length} avisos nuevos`;
+    const cuerpo = soloUno ? soloUno.cuerpo : empujables.slice(0, 3).map((f) => f.titulo).join(' · ');
     navegador
       .empujar(usuario.id, { titulo, cuerpo, enlace: '#/', etiqueta: 'resumen' })
       .then(() => {

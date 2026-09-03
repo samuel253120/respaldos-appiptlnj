@@ -63,6 +63,13 @@ const TIPOS = {
      * que no está en sus manos, igual que la solicitud sin responsable.
      */
     llave: 'ayudas_sociales',
+    /*
+     * AL TELÉFONO NO LE VA EL TEXTO. Ver `reservado`, más abajo: el cuerpo de
+     * este aviso dice qué se pidió y para quién —«Mercadería para Carmen
+     * Salgado Vera»—, que es exactamente el dato que la cabecera de este
+     * archivo se compromete a no mandar.
+     */
+    reservado: true,
     ayuda:
       'Una ayuda que quedó «Solicitada» o «Aprobada» y sigue así pasados los días que se indiquen en '
       + 'Configuración. Es lo único que el sistema entrega a una persona y no avisaba nadie: una '
@@ -202,6 +209,54 @@ function paraElTelefono(texto) {
   const cortado = t.slice(0, LARGO_EN_EL_TELEFONO);
   const ultimoEspacio = cortado.lastIndexOf(' ');
   return `${(ultimoEspacio > LARGO_EN_EL_TELEFONO - 30 ? cortado.slice(0, ultimoEspacio) : cortado).trimEnd()}…`;
+}
+
+/**
+ * Lo que de un aviso puede viajar al teléfono.
+ *
+ * ── POR QUÉ NO ES SIEMPRE EL CUERPO ──
+ *
+ * La cabecera de este archivo promete que el aviso «lleva el hecho y el enlace
+ * […] y nunca el dato: ni el RUT, ni el motivo de una ayuda social, ni nada de
+ * salud». Había un aviso que la rompía.
+ *
+ * MEDIDO en la v1.335.0, interceptando el empujón de la pasada del día para una
+ * cuenta que lleva las ayudas y nada más —que es el caso normal, no el raro—:
+ *
+ *   ┌───────────────────────────────────────────────────────────────┐
+ *   │ Una ayuda pedida sigue sin entregarse                          │
+ *   │ Mercadería para Carmen Salgado Vera (05-06-2026, hace 90       │
+ *   │ día(s), «Solicitada»).                                        │
+ *   └───────────────────────────────────────────────────────────────┘
+ *
+ * El nombre completo de una señora de la congregación y qué fue a pedir, en un
+ * teléfono que queda sobre una mesa. Con dos avisos o más el resumen del día
+ * manda solo los titulares y esto no pasaba; con uno solo, manda el cuerpo.
+ *
+ * ── LA REGLA ──
+ *
+ * Un tipo marcado `reservado` manda su título —que ya dice el hecho— y en vez
+ * del cuerpo, la frase de acá abajo. La constancia entera queda igual en la
+ * campanita, que es donde corresponde: para eso está entrar al sistema.
+ *
+ * SOLO LA AYUDA SOCIAL lleva la marca hoy. Los otros doce tipos también nombran
+ * gente —«Hoy cumple años Fulana», «Venció: Carné de identidad de Mengana»—
+ * pero lo hacen en el TÍTULO, y el título viaja siempre, también dentro del
+ * resumen de varios. Decidir si un nombre puede aparecer en una pantalla
+ * bloqueada es otra conversación, y no es del programa: es de la iglesia. Lo
+ * que sí estaba escrito y no se cumplía era esto.
+ */
+const EN_VEZ_DEL_TEXTO = 'Entre al sistema para ver de qué se trata.';
+
+function loQueVaAlTelefono({ tipo, titulo, cuerpo, de } = {}) {
+  const def = TIPOS[tipo] || {};
+  if (def.reservado) return { titulo, cuerpo: EN_VEZ_DEL_TEXTO };
+  /*
+   * De quién viene va al principio del TEXTO, no del título: el título es lo
+   * poco que se alcanza a leer en una pantalla bloqueada, y gastarlo en un
+   * nombre puede dejar fuera justamente lo que había que decir.
+   */
+  return { titulo, cuerpo: paraElTelefono(de ? `${de}: ${cuerpo || ''}` : cuerpo) };
 }
 
 /** Los canales por los que puede salir un aviso. */
@@ -499,14 +554,11 @@ function avisar({ usuario_id, tipo, clave, titulo, cuerpo, de, enlace, iglesia_i
   if (!usuario || !quiere(usuario, tipo, 'navegador')) return fila;
 
   const navegador = require('./navegador');
-  /*
-   * En el teléfono, de quién viene va al principio del texto. En el título no:
-   * el título es lo poco que se alcanza a leer en una pantalla bloqueada, y
-   * gastarlo en un nombre puede dejar fuera justamente lo que había que decir.
-   */
-  const loQueSeLee = paraElTelefono(de ? `${de}: ${cuerpo || ''}` : cuerpo);
+  // Qué de este aviso puede salir a una pantalla bloqueada: ver
+  // `loQueVaAlTelefono`, que es el único sitio donde se decide.
+  const loQueSeLee = loQueVaAlTelefono({ tipo, titulo, cuerpo, de });
   navegador
-    .empujar(usuario_id, { titulo, cuerpo: loQueSeLee, enlace, etiqueta: clave || tipo })
+    .empujar(usuario_id, { ...loQueSeLee, enlace, etiqueta: clave || tipo })
     .then(() => db.prepare('UPDATE notificaciones SET empujada = 1 WHERE id = ?').run(fila.id))
     .catch((e) => console.error(`⚠️  No se pudo empujar el aviso ${fila.id}: ${e.message}`));
 
@@ -517,4 +569,5 @@ module.exports = {
   TIPOS, CANALES,
   avisar, crear, paraLaCampanita, marcarLeida, marcarTodasLeidas, limpiarLosViejos,
   preferenciasDe, quiere, recibidos, paraElTelefono, LARGO_EN_EL_TELEFONO,
+  loQueVaAlTelefono, EN_VEZ_DEL_TEXTO,
 };
