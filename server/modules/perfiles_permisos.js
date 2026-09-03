@@ -190,12 +190,30 @@ module.exports = {
         )
         .all(...pSuyos);
 
+      /*
+       * Las que se pueden marcar para ponerles el perfil: las que no lo tienen,
+       * que no son administradores —un administrador no lleva perfil— y que
+       * SIGUEN ACTIVAS.
+       *
+       * Lo último faltaba: hasta la 1.327.0 la lista traía también las cuentas
+       * dadas de baja. No abría nada —una cuenta desactivada no entra al
+       * sistema, y eso está probado desde la v1.323.0— pero es ruido en una
+       * lista que se usa para decidir, y contradice el criterio del resto del
+       * sistema: la lista de responsables de una solicitud, por ejemplo, solo
+       * trae las activas.
+       *
+       * La ruta que asigna SÍ acepta una cuenta desactivada si se le manda su
+       * número, y se deja así a propósito: preparar la cuenta de alguien que
+       * empieza el lunes y activarla ese día es un caso de verdad. Lo que no
+       * corresponde es ofrecerla entre las que hay para elegir.
+       */
       const pLibres = [perfil.id];
       const alcanceLibres = soloLasSuyas(req, pLibres);
       const libres = db
         .prepare(
           `SELECT usuarios.id, usuarios.nombre, usuarios.rut, usuarios.rol FROM usuarios
             WHERE (usuarios.perfil_id IS NULL OR usuarios.perfil_id != ?) AND usuarios.rol != 'admin'
+              AND usuarios.activo = 1
               ${alcanceLibres ? `AND ${alcanceLibres}` : ''}
             ORDER BY usuarios.nombre`
         )
