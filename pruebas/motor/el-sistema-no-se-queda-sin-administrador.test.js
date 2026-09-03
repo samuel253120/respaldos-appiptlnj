@@ -48,10 +48,23 @@ function unRut() {
  *
  * Los archivos del motor comparten una sola base y corren en paralelo, así que
  * contar administradores «los que haya» no diría nada: se apagan los que estén
- * y se dejan los de esta prueba, dentro de una transacción que se deshace al
- * terminar.
+ * y se dejan los de esta prueba.
+ *
+ * TODO ESO VA DENTRO DE UNA TRANSACCIÓN, y no es un detalle: mientras esta
+ * prueba tiene los administradores apagados, las OTRAS pruebas siguen
+ * corriendo en sus propios procesos, y varias de ellas trabajan entrando al
+ * sistema con el suyo. Sin la transacción alcanzaban a ver ese rato: el
+ * comentario decía «dentro de una transacción» y el código no la abría, y una
+ * prueba de otro archivo se cayó con «Usuario inactivo o inexistente» al
+ * pedirle algo al sistema justo en esa rendija. Con la transacción, los demás
+ * procesos siguen viendo la base como estaba: el apagado y el encendido
+ * quedan del lado de adentro y lo que se confirma al final no cambia nada.
  */
 function conSoloEstosAdministradores(cuantos, hacer) {
+  return db.transaction(() => soloEstos(cuantos, hacer))();
+}
+
+function soloEstos(cuantos, hacer) {
   const apagados = db.prepare("SELECT id FROM usuarios WHERE rol = 'admin' AND activo = 1").all();
   const apagar = db.prepare('UPDATE usuarios SET activo = 0 WHERE id = ?');
   const encender = db.prepare('UPDATE usuarios SET activo = 1 WHERE id = ?');
