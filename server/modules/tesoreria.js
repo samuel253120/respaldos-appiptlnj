@@ -16,6 +16,7 @@ const { comoSeLee } = require('../fechas');
  * pregunta de Traspasos, y escritas dos veces un día dirían dos cosas.
  */
 const { comoSeCompara, enPesos, seguiIgual, senasDe } = require('../repetido');
+const { CATEGORIA } = require('../categorias-del-sistema');
 
 /**
  * El movimiento igual a este que ya estaba anotado, o null si no hay ninguno.
@@ -190,7 +191,15 @@ module.exports = {
       options: ['Ingreso', 'Egreso'],
     },
     {
-      name: 'categoria', label: 'Categoría', type: 'select', required: true, default: 'Ofrendas',
+      name: 'categoria', label: 'Categoría', type: 'select', required: true,
+      /*
+       * El valor de fábrica sale de `categorias-del-sistema.js` y no está
+       * escrito acá: era un octavo sitio con un nombre de la lista que la
+       * iglesia controla, congelado en el código. Medido: con «Ofrendas»
+       * borrada, un movimiento sin categoría se guardaba igual —201— y quedaba
+       * clasificado bajo una palabra que ya no existía.
+       */
+      default: CATEGORIA.OFRENDAS,
       // La lista la mantiene la iglesia en Categorías de Tesorería, y se acota
       // sola: al registrar un gasto no aparecen las categorías de ingreso.
       optionsRoute: '/categorias_tesoreria/opciones?tipo={tipo}',

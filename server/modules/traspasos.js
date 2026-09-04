@@ -27,6 +27,9 @@
  */
 const repetido = require('../repetido');
 const { comoSeLee } = require('../fechas');
+// El nombre de la categoría lo declara un solo archivo, que es además el que
+// impide que alguien la borre o la renombre (ver categorias-del-sistema.js).
+const { CATEGORIA } = require('../categorias-del-sistema');
 
 /**
  * El traspaso igual a este que ya estaba anotado, o null si no hay ninguno.
@@ -436,12 +439,12 @@ module.exports = {
         if (existente) {
           db.prepare(
             `UPDATE tesoreria
-                SET fecha = ?, tipo = ?, categoria = 'Traspaso', concepto = ?, monto = ?,
+                SET fecha = ?, tipo = ?, categoria = ?, concepto = ?, monto = ?,
                     metodo = ?, entre_cuentas = 1, cuenta_id = ?, iglesia_id = ?, comprobante = ?,
                     updated_at = datetime('now','localtime')
               WHERE id = ?`
           ).run(
-            fila.fecha, lado.tipo, lado.concepto, fila.monto,
+            fila.fecha, lado.tipo, CATEGORIA.TRASPASO, lado.concepto, fila.monto,
             metodoDe(fila.forma), lado.cuenta.id, lado.cuenta.iglesia_id || null,
             fila.comprobante || null, existente.id
           );
@@ -450,10 +453,10 @@ module.exports = {
             .prepare(
               `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto, metodo, entre_cuentas,
                                       cuenta_id, iglesia_id, comprobante, notas, traspaso_id)
-               VALUES (?, ?, 'Traspaso', ?, ?, ?, 1, ?, ?, ?, ?, ?)`
+               VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`
             )
             .run(
-              fila.fecha, lado.tipo, lado.concepto, fila.monto,
+              fila.fecha, lado.tipo, CATEGORIA.TRASPASO, lado.concepto, fila.monto,
               metodoDe(fila.forma), lado.cuenta.id, lado.cuenta.iglesia_id || null,
               fila.comprobante || null,
               'Movimiento generado por un traspaso entre cuentas.', fila.id

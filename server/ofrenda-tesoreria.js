@@ -45,6 +45,9 @@
  */
 const { fechaLarga } = require('./formato');
 const cuentaCerrada = require('./cuenta-cerrada');
+// Los nombres los declara un solo archivo, que es el que además los protege
+// de que alguien los borre o los renombre (ver categorias-del-sistema.js).
+const { CATEGORIA } = require('./categorias-del-sistema');
 
 const NOTA = 'Movimiento generado por el Registro de Servicios.';
 
@@ -82,25 +85,25 @@ function movimientosDeLaOfrenda(fila, db) {
   return [
     {
       columna: 'movimiento_iglesia_id',
-      tipo: 'Ingreso', categoria: 'Ofrendas', metodo: 'Efectivo', entreCuentas: 0,
+      tipo: 'Ingreso', categoria: CATEGORIA.OFRENDAS, metodo: 'Efectivo', entreCuentas: 0,
       monto: enEfectivo,
       cuenta: general, concepto: recibida,
     },
     {
       columna: 'movimiento_transferencia_id',
-      tipo: 'Ingreso', categoria: 'Ofrendas', metodo: 'Transferencia', entreCuentas: 0,
+      tipo: 'Ingreso', categoria: CATEGORIA.OFRENDAS, metodo: 'Transferencia', entreCuentas: 0,
       monto: porBanco,
       cuenta: general, concepto: `${recibida} (por transferencia)`,
     },
     {
       columna: 'movimiento_aporte_id',
-      tipo: 'Egreso', categoria: 'Aportes', metodo: 'Otro', entreCuentas: 1,
+      tipo: 'Egreso', categoria: CATEGORIA.APORTES, metodo: 'Otro', entreCuentas: 1,
       monto: Number(fila.ofrenda_fondo) || 0,
       cuenta: general, concepto: aporte,
     },
     {
       columna: 'movimiento_fondo_id',
-      tipo: 'Ingreso', categoria: 'Aportes', metodo: 'Otro', entreCuentas: 1,
+      tipo: 'Ingreso', categoria: CATEGORIA.APORTES, metodo: 'Otro', entreCuentas: 1,
       monto: Number(fila.ofrenda_fondo) || 0,
       cuenta: fondo, concepto: aporte,
     },

@@ -7,6 +7,10 @@
  * la planilla en la ficha del cuerpo, para que los dos hagan exactamente lo
  * mismo.
  */
+// El nombre de la categoría lo declara un solo archivo, que es además el que
+// impide que alguien la borre o la renombre (ver categorias-del-sistema.js).
+const { CATEGORIA } = require('./categorias-del-sistema');
+
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -89,20 +93,20 @@ function sincronizarConLaTesoreria(fila, conexion) {
   if (guardado) {
     conexion.prepare(
       `UPDATE tesoreria
-          SET fecha = ?, tipo = 'Ingreso', categoria = 'Aportes', concepto = ?, monto = ?,
+          SET fecha = ?, tipo = 'Ingreso', categoria = ?, concepto = ?, monto = ?,
               cuenta_id = ?, iglesia_id = ?, cuerpo_id = ?, updated_at = datetime('now','localtime')
         WHERE id = ?`
-    ).run(fila.fecha_pago, concepto, fila.monto, cuenta.id, fila.iglesia_id, fila.cuerpo_id, guardado.id);
+    ).run(fila.fecha_pago, CATEGORIA.APORTES, concepto, fila.monto, cuenta.id, fila.iglesia_id, fila.cuerpo_id, guardado.id);
     return;
   }
   const info = conexion
     .prepare(
       `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto, metodo, cuenta_id,
                               iglesia_id, cuerpo_id, notas)
-       VALUES (?, 'Ingreso', 'Aportes', ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, 'Ingreso', ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
-      fila.fecha_pago, concepto, fila.monto, fila.metodo || 'Efectivo', cuenta.id,
+      fila.fecha_pago, CATEGORIA.APORTES, concepto, fila.monto, fila.metodo || 'Efectivo', cuenta.id,
       fila.iglesia_id, fila.cuerpo_id, 'Movimiento generado por las cuotas del cuerpo.'
     );
   conexion.prepare('UPDATE cuotas_cuerpo SET movimiento_id = ? WHERE id = ?').run(info.lastInsertRowid, fila.id);

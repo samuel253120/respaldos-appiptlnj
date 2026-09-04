@@ -57,11 +57,19 @@
 
 const { POR_PAGAR, OTRA_CAJA } = require('./modules/deudas');
 
-/** Las categorías con que se anotan. Vienen de fábrica en Categorías de Tesorería. */
-const CATEGORIA_DESEMBOLSO = 'Préstamos recibidos';
-const CATEGORIA_PAGO = 'Pago de deudas';
-const CATEGORIA_COBRO = 'Cobro de préstamos';
-const CATEGORIA_PRESTADO = 'Préstamos entregados';
+/*
+ * Las categorías con que se anotan. Vienen de fábrica en Categorías de
+ * Tesorería, y se toman de server/categorias-del-sistema.js: estaban escritas
+ * acá y el módulo de Categorías no las protegía de nada —se borraban las cuatro
+ * con un clic en una instalación nueva, porque todavía no tenían movimientos—.
+ * Declararlas en un solo sitio es lo que permite que el módulo sepa cuáles son.
+ */
+const { CATEGORIA } = require('./categorias-del-sistema');
+
+const CATEGORIA_DESEMBOLSO = CATEGORIA.DESEMBOLSO;
+const CATEGORIA_PAGO = CATEGORIA.PAGO;
+const CATEGORIA_COBRO = CATEGORIA.COBRO;
+const CATEGORIA_PRESTADO = CATEGORIA.PRESTADO;
 
 const NOTA = 'Movimiento generado por Deudas y Compromisos.';
 
