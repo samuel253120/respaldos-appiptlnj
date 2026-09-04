@@ -60,6 +60,9 @@ for (const file of fs.readdirSync(MODULES_DIR).sort()) {
   modules[def.name] = def;
 }
 
+// Una vez montados todos: lo que un módulo dice copiar de otro (más abajo).
+for (const def of Object.values(modules)) revisarDeQuienCopia(def);
+
 function normalize(def) {
   def.label = def.label || def.name;
   def.labelSingular = def.labelSingular || def.label;
@@ -189,6 +192,29 @@ function revisarLoReservado(def) {
 }
 
 /**
+ * Un campo que copia de otro módulo tiene que nombrar un módulo que exista.
+ *
+ * `copiaDe: 'miembros'` es lo que hace que la bitácora tape el RUT y el
+ * teléfono que quedaron escritos en su descripción. Si el nombre está mal
+ * escrito, el campo se leería y se buscaría entero creyendo que está
+ * resguardado, y nadie iría a mirarlo.
+ *
+ * Se revisa DESPUÉS de montarlos todos, y no al normalizar cada uno: los
+ * módulos se cargan por orden alfabético, así que la bitácora se monta antes
+ * que miembros y ahí todavía no se le puede preguntar al registro por él.
+ */
+function revisarDeQuienCopia(def) {
+  for (const f of def.fields) {
+    if (!f.copiaDe || f.copiaDe === '*' || modules[f.copiaDe]) continue;
+    throw new Error(
+      `El campo "${f.name}" de ${def.name} dice copiar de «${f.copiaDe}», que no es un módulo. ` +
+      `Corrija el nombre o use '*' si de verdad puede traer datos de cualquiera: tal como está, el ` +
+      `campo se leería y se buscaría entero creyendo que está resguardado.`
+    );
+  }
+}
+
+/**
  * Texto de presentación de una fila según la plantilla display del módulo.
  *
  * La plantilla admite un recorte detrás de dos puntos, para nombrar a una
@@ -308,4 +334,5 @@ module.exports = {
   modules, getModule, allModules, displayOf,
   // Para poder comprobar desde las pruebas que un módulo mal declarado no pasa
   normalizarParaPruebas: normalize,
+  revisarDeQuienCopiaParaPruebas: revisarDeQuienCopia,
 };

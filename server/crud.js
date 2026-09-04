@@ -642,7 +642,38 @@ function expandRows(def, filas, usuario) {
   // al final y en un solo lugar, porque por acá pasan todas las respuestas que
   // llevan una ficha: el listado, el detalle, lo que se devuelve al guardar y
   // la planilla que se baja (ver server/sensibles.js).
-  return sensibles.limpiarVarias(def, resueltas, usuario);
+  const limpias = sensibles.limpiarVarias(def, resueltas, usuario);
+
+  /*
+   * Y los campos que COPIAN lo que decía la ficha de otro módulo: la bitácora
+   * de un miembro, el historial de un pastor. El texto se recorta con los
+   * campos reservados del módulo del que copia, porque para este módulo es
+   * texto y el recorte de arriba no lo mira (ver server/sensibles.js).
+   */
+  for (const campo of def.fields) {
+    const origen = sensibles.elOrigenDe(campo);
+    if (!origen) continue;
+    for (const fila of limpias) {
+      if (fila[campo.name]) fila[campo.name] = sensibles.sinLoReservado(origen, fila[campo.name], usuario);
+    }
+  }
+
+  /*
+   * Y lo que el propio módulo quiera recortar al leer.
+   *
+   * `alLeer(fila, { usuario, db })` devuelve la fila que se entrega. Es el
+   * único gancho de LECTURA del motor y va acá, en el mismo sitio y por la
+   * misma razón que el recorte de arriba: por esta función pasan las cuatro
+   * puertas por las que sale una ficha —el listado, el detalle, la respuesta
+   * de guardar y la planilla—, así que lo que se recorte acá no se escapa por
+   * ninguna. Uno que se llamara desde la ruta del listado dejaría la planilla
+   * abierta, que es exactamente lo que hay que evitar.
+   *
+   * Lo trajo el detalle del Registro de Cambios, que es texto copiado de otro
+   * módulo y puede traer un monto o un RUT reservados (ver server/bitacora.js).
+   */
+  if (!def.hooks || !def.hooks.alLeer) return limpias;
+  return limpias.map((fila) => def.hooks.alLeer(fila, { usuario, db }) || fila);
 }
 
 /** Expande una fila suelta. */
@@ -1026,11 +1057,25 @@ function consultaDeUnListado(def, req) {
     params.push(...buscada.params);
   }
 
-  // Filtros exactos: ?f_campo=valor (solo campos declarados)
+  /*
+   * Filtros exactos: ?f_campo=valor (solo campos declarados)
+   *
+   * Y solo por los campos que esta persona alcanza, por lo mismo que la
+   * búsqueda de arriba: `?f_rut=15111222-6` devolvía la ficha de su dueña a
+   * quien tiene cerrada la llave del RUT, y `?f_monto=990000` el movimiento a
+   * quien no puede ver los montos. Probar valores hasta que uno devuelva una
+   * fila es la misma fuga por otra puerta —la búsqueda ya estaba cerrada y el
+   * rango de montos también—, y esta era la que quedaba abierta.
+   *
+   * El filtro que no le toca se IGNORA en vez de rechazarse, igual que el
+   * rango de montos: la pantalla no ofrece esos filtros, así que quien llega
+   * acá está probando a mano, y no hay por qué contestarle si acertó o no.
+   */
   for (const [key, val] of Object.entries(req.query)) {
     if (!key.startsWith('f_') || val === '') continue;
     const fname = key.slice(2);
     if (!fields[fname] && fname !== 'id') continue;
+    if (fields[fname] && !sensibles.alcanzaElCampo(def, fields[fname], req.user)) continue;
     where.push(`"${fname}" = ?`);
     params.push(val);
   }
@@ -1040,6 +1085,9 @@ function consultaDeUnListado(def, req) {
   // quiénes corresponde.
   for (const nombre of String(req.query.sin || '').split(',').map((n) => n.trim()).filter(Boolean)) {
     if (!fields[nombre]) continue;
+    // Por lo mismo que el filtro exacto: quién tiene y quién no tiene un dato
+    // reservado tampoco se cuenta desde afuera.
+    if (!sensibles.alcanzaElCampo(def, fields[nombre], req.user)) continue;
     where.push(`("${nombre}" IS NULL OR TRIM("${nombre}") = '')`);
   }
 
@@ -1950,6 +1998,10 @@ function buildRouter() {
 
 module.exports = {
   consultaDeUnListado,
+  // Por acá salen las cuatro puertas de una ficha —el listado, el detalle, la
+  // respuesta de guardar y la planilla—, así que es donde se puede comprobar de
+  // una vez que un dato reservado no sale por ninguna.
+  expandRows,
   buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara,
   revisarLimites, buscarDuplicado, avisoDeDuplicado, dondeEsUnico, seAplica, estaBloqueado, TECHO,
   referenciasRotas, referenciasFueraDeAlcance,

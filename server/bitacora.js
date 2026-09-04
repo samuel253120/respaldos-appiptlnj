@@ -245,6 +245,58 @@ const MODULOS_VIGILADOS = [
  */
 const BORRADOS_QUE_NO_SE_ANOTAN = ['asistencia_detalle', 'registro_cambios'];
 
+/**
+ * ── LO QUE LA LÍNEA DICE, SEGÚN QUIÉN LA LEA ──
+ *
+ * El detalle de una línea es una COPIA de lo que decía la ficha de otro
+ * módulo, y ahí van los datos que ese módulo reserva: el monto de un
+ * movimiento, el RUT de un miembro que se borró, su teléfono. En su propia
+ * pantalla esos datos tienen llave —quien no la tiene no los ve, no los busca
+ * y no los baja en la planilla— y acá quedaban escritos con todas sus letras.
+ * Medido con las dos llaves cerradas a propósito: el monto llegaba «sin dato»
+ * en Tesorería y «Monto: $ 445.000 → $ 990.000» en el Registro de Cambios, y
+ * buscarlo por esa cifra devolvía la línea.
+ *
+ * Se recorta AL LEER y no al escribir. El registro existe para contestar
+ * «¿quién cambió este monto?», así que la cifra tiene que quedar guardada: al
+ * tesorero, que tiene la llave, se le muestra entera. Lo que cambia es quién
+ * la ve, no lo que quedó anotado —que además no se toca nunca, ni siquiera
+ * para esto: una línea que el sistema reescribe deja de servir como registro—.
+ *
+ * De la COLA no se ocupa el recorte. `registrarEliminado` le agrega al resumen
+ * lo que el borrado se llevó por delante —«— Se llevó consigo 3 registro(s)»—
+ * y eso no sale de ningún campo: se separa antes de recortar y se vuelve a
+ * pegar después, para que no se pierda cuando el último dato de la ficha sea
+ * justamente uno reservado.
+ */
+const COLAS_DEL_BORRADO = [' — Se llevó consigo ', ' — Dejó vacío(s) '];
+
+/** El módulo cuyo nombre quedó escrito en la línea (se guarda su `label`). */
+let porSuNombre = null;
+function elModuloQueNombra(label) {
+  if (!label) return null;
+  if (!porSuNombre) {
+    porSuNombre = new Map();
+    for (const def of require('./registry').allModules()) porSuNombre.set(def.label, def);
+  }
+  return porSuNombre.get(label) || null;
+}
+
+/** El detalle de una línea como lo puede leer esta persona. */
+function elDetalleQueSeLee(fila, usuario) {
+  if (!fila || !fila.detalle) return fila ? fila.detalle : null;
+  const def = elModuloQueNombra(fila.modulo);
+  if (!def) return fila.detalle;
+  const texto = String(fila.detalle);
+  let corte = texto.length;
+  for (const cola of COLAS_DEL_BORRADO) {
+    const donde = texto.indexOf(cola);
+    if (donde >= 0 && donde < corte) corte = donde;
+  }
+  const sensibles = require('./sensibles');
+  return sensibles.sinLoReservado(def, texto.slice(0, corte), usuario) + texto.slice(corte);
+}
+
 /** Escribe una línea en el Registro de Cambios. */
 function anotarCambio({ def, accion, fila, detalle, usuario }) {
   try {
@@ -1000,4 +1052,6 @@ module.exports = {
   // Qué módulos deja anotados el Registro de Cambios, para poder comprobar que
   // uno esté en la lista sin tener que provocar el guardado entero.
   MODULOS_VIGILADOS,
+  // El detalle de una línea recortado para quien la lee (ver más arriba).
+  elDetalleQueSeLee,
 };

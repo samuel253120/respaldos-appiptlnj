@@ -32,7 +32,17 @@ module.exports = {
         'Cambio de datos', 'Documento', 'Otro',
       ],
     },
-    { name: 'descripcion', label: 'Descripción', type: 'textarea', required: true },
+    {
+      name: 'descripcion', label: 'Descripción', type: 'textarea', required: true,
+      /*
+       * Una iglesia no reserva ningún dato hoy, así que esto no tapa nada
+       * todavía. Se declara igual: el día que reserve uno —y las otras dos
+       * fichas ya reservan cinco entre las dos— su historial no lo va a dejar
+       * escrito a la vista sin que nadie se acuerde de venir a agregarlo
+       * (ver server/sensibles.js).
+       */
+      copiaDe: 'iglesias',
+    },
     {
       name: 'origen', label: 'Origen', type: 'select', default: 'Manual', readonly: true,
       options: ['Manual', 'Automático'],

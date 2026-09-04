@@ -32,7 +32,16 @@ module.exports = {
         'Documento', 'Otro',
       ],
     },
-    { name: 'descripcion', label: 'Descripción', type: 'textarea', required: true },
+    {
+      name: 'descripcion', label: 'Descripción', type: 'textarea', required: true,
+      /*
+       * Por lo mismo que en la bitácora de un miembro: la descripción de un
+       * cambio de datos copia lo que decía la ficha del pastor, con su RUT, su
+       * teléfono y su dirección, que en su propia pantalla tienen llave
+       * (ver server/sensibles.js).
+       */
+      copiaDe: 'pastores',
+    },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true, help: 'Se toma de la ficha del pastor.' },
     {
       name: 'origen', label: 'Origen', type: 'select', default: 'Manual', readonly: true,

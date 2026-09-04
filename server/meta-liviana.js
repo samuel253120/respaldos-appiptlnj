@@ -102,6 +102,14 @@ const SOLO_DEL_SERVIDOR = [
    * comprobación del guardado, y de ésas no viaja ninguna.
    */
   'opcionesDe',
+  /*
+   * De qué módulo COPIA su texto este campo —el detalle del Registro de
+   * Cambios, la descripción de la bitácora de un miembro—. Es una regla de
+   * lectura: con ella el servidor recorta las cifras reservadas que ese texto
+   * traiga y no deja buscar por él sin las llaves. A la pantalla no le
+   * incumbe: lo que le llega ya viene recortado (ver server/sensibles.js).
+   */
+  'copiaDe',
 ];
 
 /**

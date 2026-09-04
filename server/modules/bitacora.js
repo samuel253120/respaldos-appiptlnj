@@ -102,7 +102,17 @@ module.exports = {
         'Cambio de estado', 'Visita', 'Disciplina', 'Reconocimiento', 'Otro',
       ],
     },
-    { name: 'descripcion', label: 'Descripción', type: 'textarea', required: true },
+    {
+      name: 'descripcion', label: 'Descripción', type: 'textarea', required: true,
+      /*
+       * La descripción de un cambio de datos COPIA lo que decía la ficha
+       * —«RUT: 15111222-6 → 17555444-0 · Teléfono: (vacío) → +56 9 8877 6655»—
+       * y ahí van los datos que la ficha reserva. Se recorta al leer con las
+       * llaves de Miembros, que son las que deciden en su propia pantalla
+       * (ver server/sensibles.js).
+       */
+      copiaDe: 'miembros',
+    },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias' },
     {
       name: 'origen', label: 'Origen', type: 'select', default: 'Manual', readonly: true,
