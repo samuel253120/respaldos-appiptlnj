@@ -195,3 +195,52 @@ test('desactivarla la saca del desplegable y la deja existiendo', () => {
     db.prepare('UPDATE categorias_tesoreria SET activo = 1 WHERE id = ?').run(fila.id);
   }
 });
+
+/* ------------------------------------------------- las que ya se perdieron */
+
+test('las siete se reponen solas si a una base le faltan', () => {
+  /*
+   * La guardia impide borrarlas de aquí en adelante, pero no arregla una base a
+   * la que ya se las borraron antes de la v1.342.0. Las cuatro de deudas se
+   * sembraban UNA sola vez —quedaban marcadas como aplicadas— así que una base
+   * a la que se le hubieran borrado no las recuperaba nunca. Ahora las dos
+   * siembras se repiten en cada arranque y reponen lo que falte.
+   */
+  const migraciones = require('../../server/migraciones');
+  const perdidas = [CATEGORIA.DESEMBOLSO, CATEGORIA.PAGO, CATEGORIA.COBRO, CATEGORIA.PRESTADO];
+  for (const nombre of perdidas) unaCategoria(nombre, 'Ambos');
+
+  const guardadas = db.prepare('SELECT id, nombre, tipo, activo FROM categorias_tesoreria WHERE lower(nombre) IN (?, ?, ?, ?)')
+    .all(...perdidas.map((n) => n.toLowerCase()));
+  assert.equal(guardadas.length, 4, 'las cuatro tienen que estar antes de borrarlas');
+
+  // Se borran a mano, como estaban las bases dañadas, y se vuelve a sembrar
+  db.prepare(`DELETE FROM categorias_tesoreria WHERE lower(nombre) IN (${perdidas.map(() => '?').join(',')})`)
+    .run(...perdidas.map((n) => n.toLowerCase()));
+  assert.equal(
+    db.prepare(`SELECT COUNT(*) c FROM categorias_tesoreria WHERE lower(nombre) IN (${perdidas.map(() => '?').join(',')})`)
+      .get(...perdidas.map((n) => n.toLowerCase())).c,
+    0, 'quedaron borradas'
+  );
+
+  migraciones.categoriasDeLasDeudas();
+
+  for (const nombre of perdidas) {
+    assert.ok(
+      db.prepare('SELECT id FROM categorias_tesoreria WHERE lower(nombre) = lower(?)').get(nombre),
+      `«${nombre}» tiene que reponerse sola`
+    );
+  }
+});
+
+test('y repetirlo no duplica ninguna', () => {
+  const migraciones = require('../../server/migraciones');
+  const cuantas = () => db
+    .prepare("SELECT COUNT(*) c FROM categorias_tesoreria WHERE lower(nombre) = lower(?)")
+    .get(CATEGORIA.DESEMBOLSO).c;
+  migraciones.categoriasDeLasDeudas();
+  const antes = cuantas();
+  migraciones.categoriasDeLasDeudas();
+  assert.equal(cuantas(), antes, 'solo agrega las que falten');
+  assert.equal(antes, 1);
+});

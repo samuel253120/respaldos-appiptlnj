@@ -964,23 +964,28 @@ function categoriasDeTesoreria() {
  * en el papel que se archiva, un préstamo quedaba escrito al lado de los
  * diezmos.
  *
- * Va aparte de la siembra de las otras dieciocho porque aquélla ya corrió en
- * las bases que existen y no volvería a correr. Se puede repetir sin daño:
- * solo agrega las que falten, comparando sin distinguir mayúsculas, para no
- * pisar una que la iglesia haya creado a mano con ese mismo nombre.
+ * Va aparte de la siembra de las otras diecisiete porque aquélla ya corrió en
+ * las bases que existen. Se puede repetir sin daño: solo agrega las que falten,
+ * comparando sin distinguir mayúsculas, para no pisar una que la iglesia haya
+ * creado a mano con ese mismo nombre.
+ *
+ * Y SE REPITE EN CADA ARRANQUE, como la otra. Estaba marcada para correr una
+ * sola vez, y eso dejaba un hueco: hasta la v1.342.0 estas cuatro se podían
+ * borrar de un clic —lo que se midió en la revisión del módulo— y una base a la
+ * que se las hubieran borrado no las recuperaba nunca, porque la siembra ya
+ * figuraba aplicada. Desde ahora la guardia impide borrarlas y esto repone las
+ * que falten en las bases donde ya se perdieron.
  */
 function categoriasDeLasDeudas() {
-  if (yaAplicada('categorias de las deudas')) return;
   const columnas = db.prepare('PRAGMA table_info("categorias_tesoreria")').all().map((c) => c.name);
   if (!columnas.includes('nombre')) return;
-  marcarAplicada('categorias de las deudas');
 
-  const puente = require('./deuda-tesoreria');
+  const { CATEGORIA } = require('./categorias-del-sistema');
   const cuales = [
-    [puente.CATEGORIA_DESEMBOLSO, 'Ingreso'],
-    [puente.CATEGORIA_PAGO, 'Egreso'],
-    [puente.CATEGORIA_PRESTADO, 'Egreso'],
-    [puente.CATEGORIA_COBRO, 'Ingreso'],
+    [CATEGORIA.DESEMBOLSO, 'Ingreso'],
+    [CATEGORIA.PAGO, 'Egreso'],
+    [CATEGORIA.PRESTADO, 'Egreso'],
+    [CATEGORIA.COBRO, 'Ingreso'],
   ];
   const existe = db.prepare('SELECT id FROM categorias_tesoreria WHERE lower(nombre) = lower(?)');
   const agregar = db.prepare('INSERT INTO categorias_tesoreria (nombre, tipo, activo) VALUES (?, ?, 1)');
