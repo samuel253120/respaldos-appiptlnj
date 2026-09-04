@@ -146,6 +146,14 @@ function planDe(db, deuda) {
     a_cuenta: { pagado: Math.round(aCuenta.pagado), pagos: aCuenta.pagos },
     resumen: {
       total, pactado, pagado,
+      /*
+       * ¿Las cuotas del plan suman la deuda? El plan se arma una vez y no se
+       * rearma solo —para no borrar lo que alguien corrigió a mano— así que
+       * puede quedar diciendo otra cosa que la ficha. Las dos cifras ya
+       * estaban acá; lo que faltaba era compararlas y decirlo.
+       */
+      cuadra: pactado === total,
+      descuadre: total - pactado,
       falta: Math.max(0, total - pagado),
       cuotas: filas.length,
       pagadas: filas.filter((f) => f.estado === 'Pagada').length,
@@ -209,6 +217,58 @@ function ponerLasQueFalten(db, deuda) {
   return { agregadas: 0, quitadas };
 }
 
+/**
+ * Cuánto va a sumar el plan DESPUÉS de este guardado, sin escribir nada.
+ *
+ * Existe para poder avisar antes, y es el espejo exacto de `ponerLasQueFalten`:
+ * las dos tienen que decir lo mismo o el aviso mentiría. Hay una prueba que las
+ * compara —«lo que se avisa es lo que después queda escrito»— justamente porque
+ * son dos copias de la misma cuenta y las copias se separan.
+ *
+ * Se le pasa la deuda COMO VA A QUEDAR: con su monto y su número de cuotas
+ * nuevos, y el id de la que ya está guardada.
+ */
+function elPactadoQueQuedara(db, deuda) {
+  const cuantas = Math.max(1, Math.min(MAXIMO_DE_CUOTAS, Math.floor(Number(deuda.cuotas) || 1)));
+  const ya = deuda.id ? lasDe(db, deuda.id) : [];
+  const suma = (filas) => filas.reduce((s, c) => s + Math.round(Number(c.monto) || 0), 0);
+
+  if (ya.length === cuantas) return suma(ya);
+
+  if (ya.length < cuantas) {
+    // Las que ya están se quedan como están; las que nacen ahora se reparten
+    // sobre el total, igual que allá.
+    const montos = comoSeReparte(deuda.monto, cuantas);
+    let total = suma(ya);
+    for (let n = ya.length + 1; n <= cuantas; n += 1) total += Math.round(montos[n - 1]);
+    return total;
+  }
+
+  // Quitando: solo las de más, y solo mientras no tengan plata encima
+  const conPagos = deuda.id ? loPagadoPorCuota(db, deuda.id) : new Map();
+  const quedan = ya.slice();
+  for (let i = ya.length - 1; i >= cuantas; i -= 1) {
+    if (conPagos.has(ya[i].id)) break;
+    quedan.pop();
+  }
+  return suma(quedan);
+}
+
+/**
+ * Las cuotas que sobrarían de este guardado y no se pueden quitar, en orden.
+ *
+ * Bajar el número de cuotas saca las últimas, y nunca una que tenga pagos
+ * encima: eso sería borrar plata anotada. Antes eso pasaba callado y la ficha
+ * quedaba diciendo «en 2 cuotas» con un plan de seis.
+ */
+function lasQueNoSePuedenQuitar(db, deuda) {
+  const cuantas = Math.max(1, Math.min(MAXIMO_DE_CUOTAS, Math.floor(Number(deuda.cuotas) || 1)));
+  const ya = deuda.id ? lasDe(db, deuda.id) : [];
+  if (ya.length <= cuantas) return [];
+  const conPagos = loPagadoPorCuota(db, deuda.id);
+  return ya.slice(cuantas).filter((c) => conPagos.has(c.id));
+}
+
 /** Las cuotas que tienen pagos encima, para poder decir que no se quitan. */
 function lasQueTienenPagos(db, deudaId) {
   const pagos = loPagadoPorCuota(db, deudaId);
@@ -218,4 +278,5 @@ function lasQueTienenPagos(db, deudaId) {
 module.exports = {
   MAXIMO_DE_CUOTAS, comoSeReparte, elMesSiguiente, lasDe, planDe,
   ponerLasQueFalten, loPagadoPorCuota, loAbonadoSinCuota, lasQueTienenPagos,
+  elPactadoQueQuedara, lasQueNoSePuedenQuitar,
 };

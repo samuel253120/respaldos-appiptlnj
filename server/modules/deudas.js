@@ -177,6 +177,89 @@ function laOtraParte(data, { existing, db, user, cuentaId }) {
 }
 
 /**
+ * Lo que impide bajar el número de cuotas, o null.
+ *
+ * Bajar el plan saca las últimas, y nunca una que tenga plata encima: eso sería
+ * borrar un pago anotado. Esa defensa ya existía y funcionaba —el plan
+ * simplemente se detenía— pero pasaba callada, y la ficha quedaba diciendo un
+ * número que no era cierto.
+ *
+ * MEDIDO en la v1.355.0: deuda de $ 600.000 en seis cuotas, se paga por
+ * adelantado la sexta y se baja el plan a dos. Contestó 200 sin una palabra; la
+ * ficha quedó diciendo «en 2 cuotas» y el plan siguió con seis.
+ *
+ * Ahora se dice, nombrando la cuota que lo impide y qué hacer.
+ */
+function loQueImpideBajarLasCuotas(data, { existing, db }) {
+  if (!existing || data.cuotas === undefined) return null;
+  const plan = require('../plan-de-cuotas');
+  const trabadas = plan.lasQueNoSePuedenQuitar(db, { id: existing.id, cuotas: data.cuotas });
+  if (!trabadas.length) return null;
+
+  const cual = trabadas[0];
+  const cuantas = plan.lasDe(db, existing.id).length;
+  return (
+    `No se puede bajar el plan a ${Number(data.cuotas)} cuota(s): la cuota ${cual.numero} ya tiene `
+    + 'pagos anotados, que son movimientos de tesorería. Retire primero ese pago desde el plan, '
+    + `o deje el plan en ${cuantas}: bajarlo ahora dejaría la ficha diciendo un número de cuotas `
+    + 'que el plan no tiene.'
+  );
+}
+
+/**
+ * El aviso de que las cuotas dejarían de sumar la deuda, o null.
+ *
+ * El plan se arma UNA VEZ y de ahí en adelante solo se agrega o se quita al
+ * final, sin tocar lo que alguien corrigió a mano. La razón está escrita en
+ * server/plan-de-cuotas.js y es buena: hay deudas con interés y créditos que se
+ * reajustan, y rearmarlo entero borraría a mano lo que alguien corrigió a mano.
+ * Lo que faltaba no era rearmarlo: era DECIRLO.
+ *
+ * MEDIDO en la v1.355.0: se le corrige el monto a una deuda de $ 300.000 en
+ * tres cuotas y queda en $ 900.000. Contestó 200; la ficha decía deber
+ * $ 900.000 y el plan seguía con tres cuotas de $ 100.000. Ningún aviso.
+ *
+ * El resumen del plan ya devolvía `total` y `pactado` como dos cifras
+ * distintas: el sistema ya sabía que no cuadraban. Nada las comparaba.
+ */
+function elAvisoDeQueElPlanNoCuadra(data, { existing, db }) {
+  if (!existing) return null;
+  const como = (campo) => (data[campo] !== undefined ? data[campo] : existing[campo]);
+
+  const plan = require('../plan-de-cuotas');
+  const cuotas = plan.lasDe(db, existing.id);
+  if (!cuotas.length) return null;
+
+  const total = Math.round(Number(como('monto')) || 0);
+  const antes = Math.round(Number(existing.monto) || 0);
+  const pactadoAhora = cuotas.reduce((s, c) => s + Math.round(Number(c.monto) || 0), 0);
+
+  const quedara = plan.elPactadoQueQuedara(db, { id: existing.id, monto: total, cuotas: como('cuotas') });
+  if (quedara === total) return null;
+
+  /*
+   * Si el plan YA venía sin cuadrar y este guardado no toca el monto ni las
+   * cuotas, no se vuelve a preguntar: alguien ya contestó eso, y repetirlo cada
+   * vez que se le arregla una coma enseña a confirmar sin leer.
+   */
+  const yaVeniaSinCuadrar = pactadoAhora !== antes;
+  const tocaElPlan = total !== antes || Number(como('cuotas')) !== Number(existing.cuotas);
+  if (yaVeniaSinCuadrar && !tocaElPlan) return null;
+
+  const dice = quedara > total ? 'más' : 'menos';
+  return {
+    error: `Las cuotas del plan no suman lo que dice la deuda.`,
+    confirmar:
+      `Las cuotas del plan suman ${enPesos(quedara)} y la deuda quedaría en ${enPesos(total)}: `
+      + `${enPesos(Math.abs(total - quedara))} de ${dice} en el plan. `
+      + 'El plan no se rearma solo, a propósito: hay deudas con interés y créditos que se '
+      + 'reajustan, y rearmarlo borraría lo que usted haya corregido cuota por cuota. '
+      + 'Guarde igual y ajuste las cuotas desde el plan, o deje el monto como estaba. '
+      + '¿Guardo el monto nuevo?',
+  };
+}
+
+/**
  * El aviso de dar vuelta una deuda que ya tiene pagos anotados, o null.
  *
  * Cambiar la dirección le da vuelta el signo a TODA la plata de esta deuda: lo
@@ -591,6 +674,9 @@ module.exports = {
       const noPuedeCerrar = loQueImpideCerrarla(data, { existing, user });
       if (noPuedeCerrar) return noPuedeCerrar;
 
+      const noPuedeBajar = loQueImpideBajarLasCuotas(data, { existing, db });
+      if (noPuedeBajar) return noPuedeBajar;
+
       /*
        * ¿Y esta deuda deja alguna caja en rojo? Se pregunta, no se bloquea: una
        * caja puede quedar en rojo de verdad. Va al final porque es la única de
@@ -610,6 +696,9 @@ module.exports = {
 
         const debiendo = elAvisoDeCerrarlaDebiendo(data, { existing, db });
         if (debiendo) return debiendo;
+
+        const noCuadra = elAvisoDeQueElPlanNoCuadra(data, { existing, db });
+        if (noCuadra) return noCuadra;
 
         const enRojo = elAvisoDeLaCajaEnRojo(data, { existing, db, cuentaId });
         if (enRojo) return enRojo;

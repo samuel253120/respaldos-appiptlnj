@@ -16926,6 +16926,14 @@ async function renderPlanDeCuotas(deudaId, caja) {
         <span class="spacer"></span>
         <span style="font-size:13px">falta <b>${fmtMoney(r.falta)}</b> de ${fmtMoney(r.total)}</span>
       </div>
+      ${r.cuadra === false ? `
+        <div class="aviso" style="margin:0 14px 12px">
+          <b>Las cuotas no suman la deuda</b>
+          <span>El plan suma ${fmtMoney(r.pactado)} y la deuda dice ${fmtMoney(r.total)}:
+            ${fmtMoney(Math.abs(r.descuadre))} de ${r.descuadre > 0 ? 'menos' : 'más'} en el plan.
+            El plan no se rearma solo —hay deudas con interés y créditos que se reajustan— así que
+            ajuste las cuotas que corresponda.</span>
+        </div>` : ''}
       ${d.desembolso ? `
         <div class="aviso" style="margin:0 14px 12px">
           <b>La plata entró a la caja</b>
