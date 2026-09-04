@@ -111,15 +111,25 @@ test('quien no tiene ninguna asignada sí puede elegir con cuál trabajar', () =
 test('sin cuerpos asignados, alcanza todos', () => {
   const u = { iglesias: '[2]', cuerpos: '[]' };
   assert.deepEqual(alcance.cuerposDe(u), []);
-  assert.equal(alcance.alcanzaCuerpo(u, 7), true);
   assert.equal(alcance.alcanza(ACTAS, { id: 1, iglesia_id: 2, cuerpo_id: 7 }, u), true);
+  /*
+   * `alcanzaCuerpo` se pregunta acá SIN iglesias asignadas, que es la parte
+   * que se puede medir con un cuerpo de mentira. Desde la v1.375.0 esa
+   * función hace las DOS preguntas —los cuerpos asignados y las iglesias— y
+   * para la segunda tiene que ir a buscar de qué iglesia es el cuerpo, así que
+   * ya no se puede contestar con un número inventado. La mitad de las
+   * iglesias se mide contra cuerpos de verdad en
+   * `la-lista-que-cambia-de-iglesia.test.js`.
+   */
+  assert.equal(alcance.alcanzaCuerpo({ iglesias: '[]', cuerpos: '[]' }, 7), true);
 });
 
 test('con cuerpos asignados, lo de otro cuerpo queda afuera', () => {
   const u = { iglesias: '[2]', cuerpos: '[3]' };
-  assert.equal(alcance.alcanzaCuerpo(u, 3), true);
-  assert.equal(alcance.alcanzaCuerpo(u, 4), false);
-  assert.equal(alcance.alcanzaCuerpo(u, null), false);
+  const sinIglesias = { iglesias: '[]', cuerpos: '[3]' };
+  assert.equal(alcance.alcanzaCuerpo(sinIglesias, 3), true);
+  assert.equal(alcance.alcanzaCuerpo(sinIglesias, 4), false);
+  assert.equal(alcance.alcanzaCuerpo(sinIglesias, null), false);
   assert.equal(alcance.alcanza(ACTAS, { id: 1, iglesia_id: 2, cuerpo_id: 3 }, u), true);
   assert.equal(alcance.alcanza(ACTAS, { id: 1, iglesia_id: 2, cuerpo_id: 4 }, u), false);
   assert.equal(alcance.alcanza(CUERPOS, { id: 3, iglesia_id: 2 }, u), true);

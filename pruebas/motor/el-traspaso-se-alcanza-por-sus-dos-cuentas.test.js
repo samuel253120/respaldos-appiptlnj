@@ -149,12 +149,19 @@ test('la regla la declara el módulo, no la inventa el alcance', () => {
   assert.match(texto, /suyoEs\.tambienPor \|\| \[\]/, 'y la ficha también, o dirían cosas distintas');
 });
 
-test('y es la única del sistema: una excepción de alcance sin dueño es un agujero', () => {
+test('y son las dos del sistema: una excepción de alcance sin dueño es un agujero', () => {
+  /*
+   * Cada una tiene su motivo escrito en su módulo y su prueba que la mide. La
+   * segunda llegó en la v1.375.0: una actividad de asistencia puede convocar
+   * cuerpos de dos congregaciones y su columna `iglesia_id` se queda con la del
+   * primero, así que la otra recibía un 403 al abrir la lista de su propio
+   * cuerpo. Si aparece una tercera sin que nadie la haya pensado, esto lo dice.
+   */
   const modulos = fs.readdirSync(path.join(__dirname, '../../server/modules'))
     .filter((f) => f.endsWith('.js'));
   const conEsto = modulos.filter((f) => {
     const def = getModule(f.replace(/\.js$/, ''));
     return def && def.alcance && def.alcance.tambienPor;
   });
-  assert.deepEqual(conEsto, ['traspasos.js']);
+  assert.deepEqual(conEsto.sort(), ['asistencias.js', 'traspasos.js']);
 });

@@ -1947,6 +1947,50 @@ function devolverLosQueLaDirectivaSaco() {
  * mira, `cuerpos` ya está lleno. La prueba lo comprueba sobre una base a la
  * que se le devuelve la columna a propósito.
  */
+/**
+ * Y la IGLESIA de cada marca, la de su cuerpo.
+ *
+ * La marca se anotaba con la iglesia de la ACTIVIDAD, y una actividad se queda
+ * con la del primer cuerpo convocado. Cuando convocaba a cuerpos de dos
+ * congregaciones, la asistencia de una quedaba contada en la otra: medido en la
+ * v1.374.0, la marca de un miembro de la iglesia 2 quedó anotada en la 1, y el
+ * informe de la encargada de la 2 decía cero presentes ese día.
+ *
+ * Desde la v1.375.0 la marca toma la iglesia de su cuerpo. Esto endereza las
+ * que ya estaban escritas, que si no se quedan mal para siempre: son el pasado
+ * que los informes leen.
+ *
+ * Solo las que TIENEN cuerpo. La marca sin cuerpo no tiene de dónde sacarla, y
+ * dejarla en blanco la sacaría de todos los informes: se queda con la de la
+ * actividad, que es lo único que se sabe de ella. Se corre después de la
+ * migración de acá arriba, que es la que les pone el cuerpo a las que se puede.
+ */
+function laIglesiaDeCadaMarca(conexion = db) {
+  const NOMBRE = 'la iglesia de cada marca sale de su cuerpo';
+  const yaEsta = () => !!conexion.prepare('SELECT nombre FROM migraciones WHERE nombre = ?').get(NOMBRE);
+  const marcar = () => conexion.prepare('INSERT OR IGNORE INTO migraciones (nombre) VALUES (?)').run(NOMBRE);
+  if (yaEsta()) return;
+
+  const hayTabla = (t) =>
+    !!conexion.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  if (!hayTabla('asistencia_detalle') || !hayTabla('cuerpos')) return marcar();
+
+  const enderezar = conexion.prepare(
+    `UPDATE asistencia_detalle
+        SET iglesia_id = (SELECT c.iglesia_id FROM cuerpos c WHERE c.id = asistencia_detalle.cuerpo_id)
+      WHERE cuerpo_id IS NOT NULL
+        AND (SELECT c.iglesia_id FROM cuerpos c WHERE c.id = asistencia_detalle.cuerpo_id) IS NOT NULL
+        AND COALESCE(iglesia_id, 0) <>
+            COALESCE((SELECT c.iglesia_id FROM cuerpos c WHERE c.id = asistencia_detalle.cuerpo_id), 0)`
+  );
+  let cuantas = 0;
+  conexion.transaction(() => { cuantas = enderezar.run().changes; }).immediate();
+  if (cuantas) {
+    console.log(`🔁 asistencia: ${cuantas} marca(s) quedaron anotadas en la iglesia de su cuerpo.`);
+  }
+  marcar();
+}
+
 function marcasDeAsistenciaConSuCuerpo(conexion = db) {
   const NOMBRE = 'marcas de asistencia con su cuerpo';
   const yaEsta = () => !!conexion.prepare('SELECT nombre FROM migraciones WHERE nombre = ?').get(NOMBRE);
@@ -3360,6 +3404,8 @@ function ejecutarMigraciones() {
     ['directiva de cada iglesia', directivaDeCadaIglesia],
     ['devolver los que la directiva sacó (corregida)', devolverLosQueLaDirectivaSaco],
     ['marcas de asistencia con su cuerpo', marcasDeAsistenciaConSuCuerpo],
+    // Después de la de arriba: primero el cuerpo, y de ahí sale la iglesia
+    ['la iglesia de cada marca sale de su cuerpo', laIglesiaDeCadaMarca],
     ['formatos de certificado', formatosDeCertificadoQueTraiaElSistema],
     ['documentos a la oficina de partes', documentosALaOficinaDePartes],
     ['fichas de integrante con su nombre', fichasDeIntegranteConSuNombre],
@@ -3647,7 +3693,7 @@ function solicitudesConSeguimiento() {
 module.exports = {
   ejecutarMigraciones, categoriasDeTesoreria, categoriasDeLasDeudas, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
   cadaIglesiaConSuCodigo, solicitudesNumeradasPorIglesia,
-  devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, actividadesConVariosCuerpos,
+  devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, laIglesiaDeCadaMarca, actividadesConVariosCuerpos,
   elConteoDeLeidosSeGuarda,
   elAvisoDiceDeQuienViene, losDestinatariosQuedanAnotados, elPorcentajeDelAporteQuedaConSuServicio,
   losTrasladosQuedanMarcados, cuentasAbiertasSinFechaDeCierre,

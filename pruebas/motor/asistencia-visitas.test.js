@@ -101,7 +101,7 @@ const marca = (miembroId, cuerpoId, estado, extra) =>
 test('sin decir que es visita, a quien no está convocado se le sigue rechazando', () => {
   const r = pasar(ANA, [marca(deJovenes, damas, 'Presente')]);
   assert.equal(r.estado, 403);
-  assert.match(r.error, /no es de los cuerpos que tiene asignados|no está en ninguno de los cuerpos/);
+  assert.match(r.error, /no es de los cuerpos que a usted le toca|no está en ninguno de los cuerpos/);
 });
 
 // ------------------------------------------------------------ la visita ---

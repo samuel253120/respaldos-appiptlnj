@@ -66,10 +66,56 @@ function idsDeCuerpos(valor) {
  * —el caso del administrador— le tocan todos los convocados.
  */
 function cuerposQueLeTocan(actividad, usuario) {
+  const alcance = require('../alcance');
   const convocados = idsDeCuerpos(actividad.cuerpos);
-  const suyos = require('../alcance').cuerposDe(usuario);
-  if (!suyos.length) return convocados;
-  return convocados.filter((id) => suyos.includes(Number(id)));
+  /*
+   * Se pregunta cuerpo por cuerpo y con la pregunta completa —sus cuerpos
+   * asignados Y sus iglesias— porque desde la v1.375.0 una actividad puede
+   * convocar cuerpos de dos congregaciones y se alcanza desde las dos. A quien
+   * tiene iglesia asignada y ningún cuerpo, el caso corriente de una
+   * secretaria, antes le tocaban todos los convocados: también los de al lado.
+   */
+  return convocados.filter((id) => alcance.alcanzaCuerpo(usuario, id));
+}
+
+/**
+ * ¿A esta persona se le acota lo que ve de una actividad, o lo alcanza todo?
+ *
+ * Lo alcanza todo quien no tiene ni cuerpos ni iglesias asignadas: el
+ * administrador general. A cualquier otro se le acota por los cuerpos que le
+ * tocan.
+ *
+ * Se preguntaba solo por los CUERPOS asignados, y a quien no tenía ninguno se
+ * le mostraba la actividad entera. Mientras una actividad fue de una sola
+ * congregación eso no se notaba —lo que veía de más era de su propia iglesia—;
+ * desde que una actividad puede convocar a dos, sí: la encargada de una
+ * congregación veía las cincuenta marcas del cuerpo de la otra.
+ */
+function loAlcanzaTodo(usuario) {
+  const alcance = require('../alcance');
+  return !alcance.cuerposDe(usuario).length && !alcance.iglesiasDe(usuario).length;
+}
+
+/**
+ * En qué iglesia queda anotada una marca: en la DE SU CUERPO.
+ *
+ * La actividad tiene una sola iglesia —la del primer cuerpo convocado— y esa se
+ * le estampaba a todas sus marcas. Cuando la actividad convocaba a cuerpos de
+ * dos congregaciones, la asistencia de una quedaba contada en la otra: medido,
+ * la marca de un miembro de la iglesia 2 quedó anotada en la 1, y el informe de
+ * su propia encargada decía cero presentes ese día.
+ *
+ * La marca es de una persona EN UN CUERPO, y ese cuerpo tiene su iglesia. La de
+ * la actividad queda de respaldo para lo que no tenga cuerpo —una lista vieja,
+ * una marca que llegó sin él— porque dejarla en blanco la sacaría de todos los
+ * informes.
+ */
+function laIglesiaDe(cuerpoId, actividad) {
+  if (cuerpoId) {
+    const suyo = require('../db').db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(cuerpoId);
+    if (suyo && suyo.iglesia_id) return suyo.iglesia_id;
+  }
+  return actividad.iglesia_id || null;
 }
 
 /**
@@ -129,7 +175,7 @@ function integrantesConvocados(actividad, db, usuario) {
  * al día con lo que hayan marcado los demás mientras tanto.
  */
 function marcasVisibles(actividad, db, usuario) {
-  const suyos = require('../alcance').cuerposDe(usuario);
+  const suyos = loAlcanzaTodo(usuario) ? [] : cuerposQueLeTocan(actividad, usuario);
   const acota = suyos.length ? ` AND cuerpo_id IN (${suyos.map(() => '?').join(',')})` : '';
   return db
     .prepare(
@@ -188,7 +234,7 @@ function clavesDelCuerpo(db, cuerpoId, recuerdo) {
  */
 function avanceDe(actividad, db, usuario, marcas, recuerdo) {
   const leTocan = cuerposQueLeTocan(actividad, usuario).map(Number);
-  const suyos = require('../alcance').cuerposDe(usuario).map(Number);
+  const todo = loAlcanzaTodo(usuario);
 
   let convocados = 0;
   for (const cuerpoId of leTocan) convocados += clavesDelCuerpo(db, cuerpoId, recuerdo).size;
@@ -209,7 +255,7 @@ function avanceDe(actividad, db, usuario, marcas, recuerdo) {
     if (!estaEnElCuerpo) {
       // Salió del cuerpo después de que le marcaran. La lista lo muestra
       // igual, siempre que ese cuerpo sea de los que esta persona pasa.
-      if (suyos.length && !suyos.includes(cuerpoId)) continue;
+      if (!todo && !leTocan.includes(cuerpoId)) continue;
       convocados += 1;
     }
     if (m.estado === 'Presente') cuenta.presentes += 1;
@@ -313,8 +359,7 @@ function anotarLaCorreccion(actividad, corregidas, db, usuario) {
  */
 function quienLaPaso(actividad, db, usuario) {
   const leTocan = cuerposQueLeTocan(actividad, usuario).map(Number);
-  const suyos = require('../alcance').cuerposDe(usuario).map(Number);
-  const cuales = suyos.length ? leTocan : null; // sin cuerpos asignados, toda la actividad
+  const cuales = loAlcanzaTodo(usuario) ? null : leTocan; // el administrador ve toda la actividad
   const acota = cuales ? ` AND cuerpo_id IN (${cuales.map(() => '?').join(',')})` : '';
   if (cuales && !cuales.length) return null;
 
@@ -390,6 +435,24 @@ module.exports = {
   listFields: ['fecha', 'cuerpos', 'tipo_reunion', 'nombre', 'presentes', 'ausentes', 'justificados', 'porcentaje'],
   filterFields: ['tipo_reunion'],
   defaultSort: { field: 'fecha', dir: 'desc' },
+
+  /*
+   * ── UNA ACTIVIDAD PUEDE SER DE DOS CONGREGACIONES ──
+   *
+   * Su columna `iglesia_id` se toma del PRIMER cuerpo convocado —una actividad
+   * tiene que quedar anotada en algún sitio— y eso sirve para decir dónde pasó,
+   * no para decidir quién la alcanza. Sin esta línea, una jornada que convoca a
+   * un cuerpo de cada iglesia quedaba entera en una de las dos: medido, la
+   * encargada de la otra recibía un 403 al abrir la lista de SU PROPIO cuerpo,
+   * la actividad no le aparecía en el listado y su informe de ese día decía
+   * cero presentes y cero actividades.
+   *
+   * Se alcanza también por los cuerpos convocados, y «alcanzar un cuerpo» es
+   * alcanzarlo con las reglas de siempre: no se abre nada nuevo, se admite lo
+   * que esa persona ya podía ver. Es la misma regla con que un traspaso entre
+   * dos iglesias se alcanza por sus dos cuentas.
+   */
+  alcance: { tambienPor: [{ modulo: 'cuerpos', campo: 'cuerpos', varios: true }] },
 
   computed: [
     { name: 'presentes', label: 'Presentes', type: 'texto', calc: (r, o) => String(avanceDeUna(r, o.db, o.usuario, o.recuerdo).presentes) },
@@ -482,10 +545,21 @@ module.exports = {
       return null;
     },
 
-    /** Si cambia la fecha, las marcas ya tomadas quedan al día. */
+    /**
+     * Si cambia la fecha, las marcas ya tomadas quedan al día.
+     *
+     * La iglesia de cada marca sale de SU CUERPO y no de la actividad (ver
+     * `laIglesiaDe`): acá se vuelve a poner por si el cuerpo cambió de
+     * congregación. Las que no tienen cuerpo se quedan con la de la actividad,
+     * que es lo único que se sabe de ellas.
+     */
     afterSave(fila, { db }) {
-      db.prepare('UPDATE asistencia_detalle SET fecha = ?, iglesia_id = ? WHERE asistencia_id = ?')
-        .run(fila.fecha, fila.iglesia_id || null, fila.id);
+      db.prepare('UPDATE asistencia_detalle SET fecha = ? WHERE asistencia_id = ?').run(fila.fecha, fila.id);
+      db.prepare(
+        `UPDATE asistencia_detalle
+            SET iglesia_id = COALESCE((SELECT iglesia_id FROM cuerpos WHERE id = asistencia_detalle.cuerpo_id), ?)
+          WHERE asistencia_id = ?`
+      ).run(fila.iglesia_id || null, fila.id);
     },
 
     beforeDelete(fila, { db }) {
@@ -730,15 +804,23 @@ module.exports = {
       const marcas = db.prepare('SELECT * FROM asistencia_detalle WHERE asistencia_id = ?').all(actividad.id);
       const porPar = new Map(marcas.map((m) => [claveDe(m, m.cuerpo_id), m]));
 
-      // Quien ya tiene marca pero salió del cuerpo se sigue mostrando, siempre
-      // que su marca sea de un cuerpo que a esta persona le toque pasar. Y las
-      // VISITAS, que nunca estuvieron en el cuerpo pero estuvieron ahí.
-      const suyos = require('../alcance').cuerposDe(req.user);
+      /*
+       * Quien ya tiene marca pero salió del cuerpo se sigue mostrando, siempre
+       * que su marca sea de un cuerpo que a esta persona le toque pasar. Y las
+       * VISITAS, que nunca estuvieron en el cuerpo pero estuvieron ahí.
+       *
+       * «Que le toque» es la pregunta completa —sus cuerpos y sus iglesias— y
+       * no solo la de los cuerpos asignados. Con la pregunta a medias, la
+       * encargada de una congregación abría una actividad compartida y recibía
+       * las cincuenta marcas del cuerpo de la otra, cada una con su nombre y su
+       * estado; medido antes de esto: 51 personas donde le tocaba 1.
+       */
+      const alcance3 = require('../alcance');
       for (const m of marcas) {
         const clave = claveDe(m, m.cuerpo_id);
         if (!clave || clave.startsWith(':')) continue; // marca sin persona: no se muestra
         if (convocados.has(clave)) continue;
-        if (suyos.length && !suyos.includes(Number(m.cuerpo_id))) continue;
+        if (!alcance3.alcanzaCuerpo(req.user, m.cuerpo_id)) continue;
         const cuerpo = m.cuerpo_id ? db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(m.cuerpo_id) : null;
         const esNo = !!Number(m.no_miembro_id);
         const ficha = esNo
@@ -1009,7 +1091,6 @@ module.exports = {
         }
       }
 
-      const suyos = require('../alcance').cuerposDe(req.user);
       const yaMarcados = new Map(
         db.prepare('SELECT miembro_id, no_miembro_id, cuerpo_id, visita FROM asistencia_detalle WHERE asistencia_id = ?')
           .all(actividad.id)
@@ -1063,7 +1144,11 @@ module.exports = {
         const clave = claveDe(m, m.cuerpo_id);
         if (convocados.has(clave)) return false;
         if (!yaMarcados.has(clave)) return true; // ni convocado ni marcado antes
-        return suyos.length ? !suyos.includes(Number(yaMarcados.get(clave).cuerpo_id)) : false;
+        // Corregir una marca ya puesta se permite solo si su cuerpo le toca:
+        // la pregunta completa, sus cuerpos Y sus iglesias. Con la pregunta a
+        // medias, la encargada de una congregación podía corregir las marcas
+        // del cuerpo de la otra en una actividad compartida.
+        return !require('../alcance').alcanzaCuerpo(req.user, yaMarcados.get(clave).cuerpo_id);
       });
       if (ajeno) {
         const esNo = !!Number(ajeno.no_miembro_id);
@@ -1078,9 +1163,9 @@ module.exports = {
         }
         const nombre = require('../nombres').paraMostrar(quien.nombres, quien.apellidos);
         return res.status(403).json({
-          error: suyos.length
-            ? `${nombre} no es de los cuerpos que tiene asignados. Solo puede pasar lista a los suyos.`
-            : `${nombre} no está en ninguno de los cuerpos convocados a esta actividad.`,
+          error: loAlcanzaTodo(req.user)
+            ? `${nombre} no está en ninguno de los cuerpos convocados a esta actividad.`
+            : `${nombre} no es de los cuerpos que a usted le toca pasar. Solo puede pasar lista a los suyos.`,
         });
       }
       /*
@@ -1144,7 +1229,7 @@ module.exports = {
             actividad.id, noMiembroId ? 'No miembro' : 'Miembro', miembroId, noMiembroId, m.estado,
             justificado ? m.motivo : null,
             justificado && motivosConDetalle().includes(m.motivo) ? String(m.detalle).trim() : null,
-            cuerpoId, actividad.fecha, actividad.iglesia_id || null, req.user.id,
+            cuerpoId, actividad.fecha, laIglesiaDe(cuerpoId, actividad), req.user.id,
             // La marca se vuelve a escribir, pero se queda con la fecha y el
             // nombre de la primera vez: es lo único que dice cuándo se tomó
             // esta lista, porque `created_at` pasa a ser el de la corrección.
@@ -1178,7 +1263,9 @@ module.exports = {
         guardadas,
         marcas: marcasVisibles(actividad, db, req.user),
         tomada: quienLaPaso(actividad, db, req.user),
-        ...conteo(actividad.id, db, suyos),
+        // El conteo, acotado a lo que a esta persona le toca: los mismos
+        // cuerpos con que se le arma la lista y se le devuelven las marcas
+        ...conteo(actividad.id, db, loAlcanzaTodo(req.user) ? null : cuerposQueLeTocan(actividad, req.user)),
       });
     });
 

@@ -215,7 +215,21 @@ function condiciones(def, usuario, params) {
         const destino = require('./registry').getModule(cual.modulo);
         if (!destino) return null;
         const suyas = condiciones(destino, usuario, params);
-        return `"${cual.campo}" IN (SELECT id FROM "${cual.modulo}"${suyas ? ` WHERE ${suyas}` : ''})`;
+        const dentro = `SELECT id FROM "${cual.modulo}"${suyas ? ` WHERE ${suyas}` : ''}`;
+        /*
+         * `varios: true` cuando la otra punta no es UNA sino una LISTA.
+         *
+         * Es la asistencia: una actividad convoca a varios cuerpos y los
+         * guarda como lista. Su columna `iglesia_id` se toma del primero, así
+         * que una actividad de dos congregaciones quedaba entera en una de las
+         * dos y la otra recibía un 403 al abrir la lista de SU PROPIO cuerpo.
+         * Medido: la encargada de la iglesia 2 no veía la actividad en su
+         * listado y su informe de ese día decía cero.
+         */
+        if (cual.varios) {
+          return `EXISTS (SELECT 1 FROM json_each("${cual.campo}") WHERE json_each.value IN (${dentro}))`;
+        }
+        return `"${cual.campo}" IN (${dentro})`;
       }).filter(Boolean);
       partes.push(otras.length ? `(${[suya, ...otras].join(' OR ')})` : suya);
     }
@@ -316,8 +330,13 @@ function alcanza(def, fila, usuario) {
       const porLaOtraPunta = (suyoEs.tambienPor || []).some((cual) => {
         const destino = require('./registry').getModule(cual.modulo);
         if (!destino || !fila[cual.campo]) return false;
-        const apuntada = db.prepare(`SELECT * FROM "${cual.modulo}" WHERE id = ?`).get(fila[cual.campo]);
-        return !!apuntada && alcanza(destino, apuntada, usuario);
+        // La misma regla que el listado, fila por fila, también cuando la otra
+        // punta es una LISTA: los cuerpos convocados a una actividad.
+        const cuales = cual.varios ? lista(fila[cual.campo]) : [fila[cual.campo]];
+        return cuales.some((id) => {
+          const apuntada = db.prepare(`SELECT * FROM "${cual.modulo}" WHERE id = ?`).get(id);
+          return !!apuntada && alcanza(destino, apuntada, usuario);
+        });
       });
       if (!porLaOtraPunta && (!suya || !iglesias.includes(Number(suya)))) return false;
     }
@@ -356,11 +375,33 @@ function alcanzaIglesia(usuario, iglesiaId) {
   return !!iglesiaId && iglesias.includes(Number(iglesiaId));
 }
 
-/** ¿Puede trabajar con este cuerpo? */
+/**
+ * ¿Puede trabajar con este cuerpo?
+ *
+ * Las dos preguntas, no una: que sea de los cuerpos que tiene asignados —si
+ * tiene alguno— y que esté en una de sus iglesias. Miraba solo lo primero, y
+ * eso dejaba pasar a quien tiene iglesia asignada y ningún cuerpo, que es el
+ * caso corriente de una secretaria: para ella «no tengo cuerpos asignados»
+ * quería decir «me sirven todos los del sistema», incluidos los de la
+ * congregación de al lado.
+ *
+ * No se notaba mientras nada le acercara un cuerpo ajeno. Desde la v1.375.0 una
+ * actividad de dos congregaciones se alcanza desde las dos, así que ahora sí se
+ * lo acerca: la lista de esa actividad trae los cuerpos convocados, y hay que
+ * poder decir cuáles de ellos son suyos.
+ */
 function alcanzaCuerpo(usuario, cuerpoId) {
   const cuerpos = cuerposDe(usuario);
-  if (!cuerpos.length) return true;
-  return !!cuerpoId && cuerpos.includes(Number(cuerpoId));
+  if (cuerpos.length && !(cuerpoId && cuerpos.includes(Number(cuerpoId)))) return false;
+  const iglesias = iglesiasDe(usuario);
+  if (!iglesias.length) return true;
+  const suyo = cuerpoId
+    ? db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(Number(cuerpoId))
+    : null;
+  // Un cuerpo que no existe no lo alcanza nadie acotado; uno sin iglesia es de
+  // la organización y lo alcanza cualquiera que llegue hasta él.
+  if (!suyo) return false;
+  return !suyo.iglesia_id || iglesias.includes(Number(suyo.iglesia_id));
 }
 
 /**
