@@ -77,7 +77,7 @@ function sinLoQueNoDiceNada(campo) {
 const LO_QUE_VIAJA = [
   'name', 'label', 'type', 'required', 'options', 'sugerencias', 'ref', 'help',
   'default', 'porDefecto', 'accept', 'showIf', 'bloqueadoSi', 'optionsRoute',
-  'readonly', 'soloAlCrear', 'calcula', 'mostrarEdad', 'seccion', 'destacado', 'buscador',
+  'readonly', 'soloAlCrear', 'calcula', 'mostrarEdad', 'mostrarDia', 'seccion', 'destacado', 'buscador',
   'ancho', 'recorte', 'recorta', 'min', 'max', 'entero', 'sensible',
   'reservado', 'futuro', 'placeholder', 'enElPapel',
 ];
@@ -129,7 +129,7 @@ function comoLoVeLaPantalla(campo, { salud = null, porcentajeVigente = () => und
   const {
     name, label, type, required, options, sugerencias, ref, help, default: def,
     porDefecto, accept, showIf, bloqueadoSi, optionsRoute, readonly, soloAlCrear, calcula,
-    mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max,
+    mostrarEdad, mostrarDia, seccion, destacado, buscador, ancho, recorte, recorta, min, max,
     entero, sensible, reservado, futuro, placeholder, enElPapel,
   } = campo;
   return {
@@ -172,6 +172,12 @@ function comoLoVeLaPantalla(campo, { salud = null, porcentajeVigente = () => und
      * que el servidor sí acepta.
      */
     soloAlCrear: !!soloAlCrear, mostrarEdad: !!mostrarEdad,
+    /*
+     * «Y ponle el día de la semana delante»: el listado dibuja «Sáb. 29-08-2026»
+     * en vez de «29-08-2026». Es del listado y no de la ficha, y por eso lo
+     * decide el módulo campo por campo (ver `diaAbreviado` en public/app.js).
+     */
+    mostrarDia: !!mostrarDia,
     seccion: seccion || null, destacado: !!destacado, ancho: ancho || null, recorte: recorte || null,
     recorta: recorta || null,
     // Lo que dice la casilla vacía de un buscador de referencias. Sin esto, la

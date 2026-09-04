@@ -307,7 +307,18 @@ module.exports = {
      * veintitrés campos, cuatro de ellas con UN SOLO campo: cada encabezado se
      * llevaba lo que ocupan dos campos.
      */
-    { name: 'fecha', label: 'Fecha', type: 'date', required: true, futuro: true, seccion: 'El servicio' },
+    {
+      /*
+       * Con el día de la semana delante en el listado: «Sáb. 29-08-2026».
+       *
+       * Un servicio se recuerda por el día antes que por la fecha —«el culto
+       * del sábado»— y la pantalla ordena por fecha, así que el día no se
+       * deduce de un vistazo. La ficha y la hoja impresa la siguen mostrando
+       * como siempre: es una ayuda para leer la lista, no otro dato.
+       */
+      name: 'fecha', label: 'Fecha', type: 'date', required: true, futuro: true,
+      seccion: 'El servicio', mostrarDia: true,
+    },
     { name: 'hora_inicio', label: 'Hora de inicio', type: 'time' },
     {
       name: 'hora_termino', label: 'Hora de término', type: 'time',

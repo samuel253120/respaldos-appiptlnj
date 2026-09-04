@@ -4152,8 +4152,11 @@ function cellValue(f, row, col) {
       return esc(fmtNumero(v));
     case 'boolean':
       return v ? '<span class="badge green">Sí</span>' : '<span class="badge red">No</span>';
-    case 'date':
-      return esc(fechaCorta(v));
+    case 'date': {
+      // Con el día delante cuando el módulo lo pide (ver `diaAbreviado`)
+      const dia = f.mostrarDia ? diaAbreviado(v) : '';
+      return esc(dia ? `${dia} ${fechaCorta(v)}` : fechaCorta(v));
+    }
     case 'rut':
       return esc(rutFormatear(v));
     case 'persona':
@@ -4254,6 +4257,29 @@ function fechaCorta(iso) {
   const s = String(iso || '').slice(0, 10);
   const [y, m, d] = s.split('-');
   return y && m && d ? `${d}-${m}-${y}` : s;
+}
+
+/**
+ * EL DÍA DE LA SEMANA DE UNA FECHA, ABREVIADO: «Sáb.», «Dom.», «Mié.».
+ *
+ * Va delante de la fecha en los listados que lo pidan —el módulo lo declara con
+ * `mostrarDia`— porque hay pantallas donde el día importa tanto como la fecha:
+ * en el Registro de Servicios, «Sáb. 29-08-2026» dice de un vistazo que ése fue
+ * el culto del sábado, que es como la gente se acuerda de un servicio.
+ *
+ * Se lee en UTC a propósito. Una fecha del sistema es un día del calendario y
+ * no un instante —«2026-08-29»—, y `new Date('2026-08-29')` es medianoche UTC:
+ * leerla con `getDay()` en un huso al oeste devuelve el día ANTERIOR, así que
+ * todos los sábados dirían «Vie.». Es la misma trampa que ya está documentada
+ * en server/asistencia-repeticion.js, y se esquiva igual: se pone la Z y se
+ * pregunta por UTC.
+ */
+const DIAS_ABREVIADOS = ['Dom.', 'Lun.', 'Mar.', 'Mié.', 'Jue.', 'Vie.', 'Sáb.'];
+function diaAbreviado(iso) {
+  const s = String(iso || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+  const cuando = new Date(s + 'T00:00:00Z');
+  return Number.isNaN(cuando.getTime()) ? '' : DIAS_ABREVIADOS[cuando.getUTCDay()];
 }
 
 /**

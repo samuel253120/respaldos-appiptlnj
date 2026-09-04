@@ -156,6 +156,8 @@ test('y lo que la lista dice que viaja, viaja de verdad', () => {
     // el mapeo de columnas de la importación tiene que distinguirla
     soloAlCrear: true,
     calcula: { tipo: 'porcentaje', porcentaje: 10 }, mostrarEdad: true,
+    // «Y ponle el día de la semana delante de la fecha», desde la v1.392.0
+    mostrarDia: true,
     seccion: 'S', destacado: true, buscador: false, ancho: 2, recorte: 'c',
     recorta: 'r', min: 1, max: 9, entero: true, sensible: true,
     reservado: null, futuro: true, placeholder: 'p', enElPapel: false,

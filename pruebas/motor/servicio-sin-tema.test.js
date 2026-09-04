@@ -33,7 +33,17 @@ test('el formulario ya no pide el tema del mensaje', () => {
 });
 
 test('y la hoja impresa tampoco lo muestra', () => {
-  const hoja = app.slice(app.indexOf('Registro de Servicio'), app.indexOf('Registro de Servicio') + 1800);
+  /*
+   * Se busca la FUNCIÓN que arma la hoja y no su título.
+   *
+   * El corte era `indexOf('Registro de Servicio')`, y ese texto puede aparecer
+   * antes en cualquier comentario que nombre la pantalla —pasó en la v1.392.0—:
+   * entonces se leían 1.800 letras de un comentario en vez de la hoja, y la
+   * prueba se ponía roja sin que la hoja hubiera cambiado en nada.
+   */
+  const desde = app.indexOf('function printServicio');
+  assert.ok(desde > 0, 'no se encontró la función que arma la hoja del servicio');
+  const hoja = app.slice(desde, desde + 2600);
   assert.ok(!/mensaje_titulo/.test(hoja));
   assert.match(hoja, /fila\('Predicador\(a\)', row\.predicador\)/, 'lo demás del mensaje sigue');
   assert.match(hoja, /fila\('Pasaje', row\.cita_mensaje\)/);
