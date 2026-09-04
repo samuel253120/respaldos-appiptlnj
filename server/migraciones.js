@@ -1269,15 +1269,63 @@ function tiposDeActividad() {
     'Otra': 'Otros',
   };
 
+  /*
+   * La lista de la iglesia se sostiene sola (v1.351.0).
+   *
+   * Justo antes corre `listasDeAsistenciaComoDatos`, que mete en la lista
+   * cualquier nombre que las actividades estén usando. Sobre una base vieja
+   * eso mete también los nombres viejos, así que renombrar las actividades a
+   * secas dejaba la lista contando otra historia: una entrada «Culto general»
+   * que ya no usa ninguna actividad, ofrecida en el desplegable como si nada,
+   * y la actividad diciendo «Servicio General».
+   *
+   * Así que el renombrado se hace en los dos lados y en el mismo orden:
+   *   1. el nombre nuevo tiene que existir en la lista —si la iglesia lo
+   *      borró alguna vez, se repone—, para no dejar ninguna actividad
+   *      apuntando a un tipo que no está;
+   *   2. se renombran las actividades;
+   *   3. el nombre viejo sale de la lista, pero SOLO si ya no lo usa nadie
+   *      —escrito como sea—. El renombrado del paso 2 compara el nombre
+   *      exacto, así que una actividad guardada como «culto general» no se
+   *      mueve; retirar la entrada de la lista dejaría a esa actividad
+   *      diciendo algo que no está en ninguna parte. La lista tiene que
+   *      seguir teniendo todo lo que las actividades dicen.
+   *
+   * No depende de en qué orden corran las dos migraciones: el paso 1 repone
+   * lo que haga falta si la siembra todavía no pasó.
+   */
+  const hayLista = !!db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tipos_actividad'").get();
+  const enLaLista = (n) =>
+    hayLista && db.prepare('SELECT id FROM tipos_actividad WHERE lower(nombre) = lower(?)').get(n);
+  const seUsa = (n) => db.prepare('SELECT COUNT(*) AS n FROM asistencias WHERE tipo_reunion = ?').get(n).n;
+  const seUsaComoSea = (n) =>
+    db.prepare('SELECT COUNT(*) AS n FROM asistencias WHERE lower(tipo_reunion) = lower(?)').get(n).n;
+
   const renombrar = db.prepare('UPDATE asistencias SET tipo_reunion = ? WHERE tipo_reunion = ?');
   let renombradas = 0;
+  let retiradas = 0;
   for (const [antes, despues] of Object.entries(equivalencias)) {
-    const cuantas = db.prepare('SELECT COUNT(*) AS n FROM asistencias WHERE tipo_reunion = ?').get(antes).n;
-    if (!cuantas) continue;
+    if (!seUsa(antes)) continue;
+
+    if (hayLista && !enLaLista(despues)) {
+      db.prepare('INSERT INTO tipos_actividad (nombre, activo) VALUES (?, 1)').run(despues);
+    }
+    renombradas += seUsa(antes);
     renombrar.run(despues, antes);
-    renombradas += cuantas;
+
+    const vieja = enLaLista(antes);
+    if (vieja && !seUsaComoSea(antes)) {
+      db.prepare('DELETE FROM tipos_actividad WHERE id = ?').run(vieja.id);
+      retiradas += 1;
+    }
   }
-  if (renombradas) console.log(`🔁 asistencias: ${renombradas} actividad(es) pasaron a los nombres nuevos.`);
+  if (renombradas) {
+    console.log(
+      `🔁 asistencias: ${renombradas} actividad(es) pasaron a los nombres nuevos` +
+        (retiradas ? `, y ${retiradas} nombre(s) viejo(s) salieron de la lista de tipos.` : '.')
+    );
+  }
 
   marcarAplicada(NOMBRE);
 }

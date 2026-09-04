@@ -24,7 +24,7 @@ const { exigirBaseDescartable } = require('./aislada');
 exigirBaseDescartable();
 
 const { db } = require('../../server/db');
-const { tiposDeActividad } = require('../../server/migraciones');
+const { tiposDeActividad, listasDeAsistenciaComoDatos } = require('../../server/migraciones');
 
 /** Los archivos del motor comparten UNA base y corren en paralelo. */
 const MARCA = `m${process.pid}`;
@@ -121,4 +121,88 @@ test('y no vuelve a correr', () => {
   tiposDeActividad();                   // el arranque siguiente
   assert.equal(comoQuedo(id), 'Culto general',
     'la segunda vez no toca nada: por eso es una migración y no una regla');
+});
+
+/* ─────────── la lista y las actividades, diciendo lo mismo (v1.351.0) ─── */
+
+/*
+ * Justo antes corre `listasDeAsistenciaComoDatos`, que mete en la lista
+ * cualquier nombre que las actividades estén usando —incluidos los viejos, en
+ * una base vieja—. Renombrar solo las actividades dejaba las dos migraciones
+ * contando historias distintas: una entrada en la lista que ya no usa nadie,
+ * ofrecida en el desplegable, y la actividad diciendo otra cosa.
+ */
+
+const enLaLista = (nombre) =>
+  db.prepare('SELECT id, nombre FROM tipos_actividad WHERE lower(nombre) = lower(?)').get(nombre);
+
+const ponerEnLaLista = (nombre) => {
+  if (!enLaLista(nombre)) db.prepare('INSERT INTO tipos_actividad (nombre, activo) VALUES (?, 1)').run(nombre);
+};
+
+test('el nombre viejo sale de la lista cuando ya no lo usa ninguna actividad', () => {
+  ponerEnLaLista('Culto general');
+  const id = nuevaActividad('Culto general');
+
+  comoSiSeReiniciara();
+
+  assert.equal(comoQuedo(id), 'Servicio General');
+  assert.ok(!enLaLista('Culto general'),
+    'quedaba ofrecida en el desplegable un tipo que ya no usaba ninguna actividad');
+  assert.ok(enLaLista('Servicio General'), 'y el nombre nuevo tiene que estar');
+});
+
+test('si el nombre nuevo no estaba en la lista, se repone antes de renombrar', () => {
+  /*
+   * Si la iglesia borró «Servicio General» alguna vez, renombrar a secas
+   * dejaría la actividad apuntando a un tipo que no está en ninguna parte:
+   * exactamente lo que la regla del módulo se niega a hacer al borrar.
+   */
+  const habia = enLaLista('Servicio General');
+  if (habia) db.prepare('DELETE FROM tipos_actividad WHERE id = ?').run(habia.id);
+
+  const id = nuevaActividad('Culto general');
+  comoSiSeReiniciara();
+
+  assert.ok(enLaLista('Servicio General'), 'se repone: ninguna actividad queda apuntando a la nada');
+  assert.equal(comoQuedo(id), 'Servicio General');
+});
+
+test('pero el viejo NO sale si algo lo sigue usando, aunque esté escrito distinto', () => {
+  /*
+   * El renombrado compara el nombre exacto, así que una actividad guardada
+   * como «culto general» no se mueve. Retirar la entrada de la lista dejaría
+   * a esa actividad diciendo algo que no está en ninguna parte.
+   */
+  ponerEnLaLista('Culto general');
+  const conMayuscula = nuevaActividad('Culto general');
+  const conMinuscula = nuevaActividad('culto general');
+
+  comoSiSeReiniciara();
+
+  assert.equal(comoQuedo(conMayuscula), 'Servicio General');
+  assert.equal(comoQuedo(conMinuscula), 'culto general', 'a ésa no la alcanzó el renombrado');
+  assert.ok(enLaLista('Culto general'), 'así que su tipo tiene que seguir en la lista');
+
+  db.prepare('DELETE FROM asistencias WHERE id = ?').run(conMinuscula);
+  const suelta = enLaLista('Culto general');
+  if (suelta) db.prepare('DELETE FROM tipos_actividad WHERE id = ?').run(suelta.id);
+});
+
+test('al terminar, todo tipo que una actividad diga está en la lista', () => {
+  /*
+   * Es la promesa de las dos migraciones juntas, y la que hace innecesaria la
+   * parte que ponía «Otros»: si todo nombre en uso está en la lista, no queda
+   * ningún nombre suelto que limpiar.
+   *
+   * Se mira solo lo de esta iglesia: los archivos del motor comparten una base
+   * y otro puede estar a mitad de camino con sus propios datos.
+   */
+  listasDeAsistenciaComoDatos();   // la que mete en la lista lo que se usa
+  comoSiSeReiniciara();            // la que pone al día los nombres viejos
+  const enUso = db
+    .prepare("SELECT DISTINCT tipo_reunion AS t FROM asistencias WHERE iglesia_id = ? AND tipo_reunion != ''")
+    .all(iglesia).map((f) => f.t);
+  assert.ok(enUso.length, 'la prueba no sirve si no hay ninguna actividad');
+  for (const t of enUso) assert.ok(enLaLista(t), `«${t}» quedó fuera de la lista`);
 });
