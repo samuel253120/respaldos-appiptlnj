@@ -152,6 +152,9 @@ test('y lo que la lista dice que viaja, viaja de verdad', () => {
     sugerencias: ['s'], ref: 'iglesias', help: 'ayuda', default: 'd',
     porDefecto: '#123456', accept: 'image/*', showIf: { field: 'y', equals: 'z' },
     bloqueadoSi: { field: 'y', salvo: 'z' }, optionsRoute: '/r', readonly: true,
+    // La única excepción a «de solo lectura»: viaja desde la v1.382.0, porque
+    // el mapeo de columnas de la importación tiene que distinguirla
+    soloAlCrear: true,
     calcula: { tipo: 'porcentaje', porcentaje: 10 }, mostrarEdad: true,
     seccion: 'S', destacado: true, buscador: false, ancho: 2, recorte: 'c',
     recorta: 'r', min: 1, max: 9, entero: true, sensible: true,
@@ -166,7 +169,7 @@ test('y lo que la lista dice que viaja, viaja de verdad', () => {
 test('y las reglas del guardado NO viajan: la pantalla no las necesita', () => {
   const conReglas = {
     name: 'rut', label: 'RUT', type: 'rut',
-    unique: true, soloAlCrear: true, noAntesDe: 'otra', companeroDe: 'otro',
+    unique: true, noAntesDe: 'otra', companeroDe: 'otro',
     alcanceLoDecideElModulo: true, oculto: true,
   };
   const sale = comoLoVeLaPantalla(conReglas);

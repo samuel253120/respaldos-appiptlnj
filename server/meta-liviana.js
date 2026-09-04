@@ -77,7 +77,7 @@ function sinLoQueNoDiceNada(campo) {
 const LO_QUE_VIAJA = [
   'name', 'label', 'type', 'required', 'options', 'sugerencias', 'ref', 'help',
   'default', 'porDefecto', 'accept', 'showIf', 'bloqueadoSi', 'optionsRoute',
-  'readonly', 'calcula', 'mostrarEdad', 'seccion', 'destacado', 'buscador',
+  'readonly', 'soloAlCrear', 'calcula', 'mostrarEdad', 'seccion', 'destacado', 'buscador',
   'ancho', 'recorte', 'recorta', 'min', 'max', 'entero', 'sensible',
   'reservado', 'futuro', 'placeholder', 'enElPapel',
 ];
@@ -86,10 +86,16 @@ const LO_QUE_VIAJA = [
  * Reglas del guardado. No viajan porque la pantalla no hace nada con ellas: el
  * servidor es el que las hace cumplir, y quien escriba la dirección a mano se
  * topa con la misma comprobación.
+ *
+ * `soloAlCrear` estaba acá y se pasó a lo que viaja en la v1.382.0. Dejó de ser
+ * cierto que la pantalla no hiciera nada con ella: desde que la importación por
+ * planilla no escribe campos de solo lectura, el mapeo de columnas tiene que
+ * saber cuáles son la excepción —los que sí se aceptan al crear, que es lo que
+ * hace una importación— para no ofrecer una columna que el servidor va a
+ * descartar ni esconder una que sí acepta.
  */
 const SOLO_DEL_SERVIDOR = [
   'unique',                   // no puede repetirse (el RUT)
-  'soloAlCrear',              // se escribe al crear y después no
   'noAntesDe',                // esta fecha no va antes de aquella
   'companeroDe',              // dos campos que no pueden ser la misma persona
   'alcanceLoDecideElModulo',  // el alcance de esta referencia lo resuelve el módulo
@@ -122,7 +128,7 @@ const SOLO_DEL_SERVIDOR = [
 function comoLoVeLaPantalla(campo, { salud = null, porcentajeVigente = () => undefined } = {}) {
   const {
     name, label, type, required, options, sugerencias, ref, help, default: def,
-    porDefecto, accept, showIf, bloqueadoSi, optionsRoute, readonly, calcula,
+    porDefecto, accept, showIf, bloqueadoSi, optionsRoute, readonly, soloAlCrear, calcula,
     mostrarEdad, seccion, destacado, buscador, ancho, recorte, recorta, min, max,
     entero, sensible, reservado, futuro, placeholder, enElPapel,
   } = campo;
@@ -158,7 +164,14 @@ function comoLoVeLaPantalla(campo, { salud = null, porcentajeVigente = () => und
     // La pantalla lo dibuja bloqueado; el servidor contesta si igual llega (ver
     // estaBloqueado en server/crud.js).
     bloqueadoSi: bloqueadoSi || null,
-    optionsRoute: optionsRoute || null, readonly: !!readonly, mostrarEdad: !!mostrarEdad,
+    optionsRoute: optionsRoute || null, readonly: !!readonly,
+    /*
+     * Y la única excepción a «de solo lectura»: se acepta al CREAR y nunca más.
+     * Viaja desde la v1.382.0 porque el mapeo de columnas de la importación
+     * tiene que distinguirla —importar crea—, y sin eso escondería una columna
+     * que el servidor sí acepta.
+     */
+    soloAlCrear: !!soloAlCrear, mostrarEdad: !!mostrarEdad,
     seccion: seccion || null, destacado: !!destacado, ancho: ancho || null, recorte: recorte || null,
     recorta: recorta || null,
     // Lo que dice la casilla vacía de un buscador de referencias. Sin esto, la

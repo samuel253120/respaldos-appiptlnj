@@ -83,6 +83,33 @@ function prepararFila(def, fila, user) {
   const errores = [];
 
   for (const f of def.fields) {
+    /*
+     * UN CAMPO DE SOLO LECTURA NO SE ESCRIBE POR PLANILLA. La misma línea que
+     * tiene el formulario (ver crud.js), que acá faltaba.
+     *
+     * Un campo así lo escribe el sistema, y el propio motor lo dice con todas
+     * sus letras: «aceptarlo del formulario sería dejar que cualquiera se
+     * invente el número de serie de una credencial». El formulario lo cumplía y
+     * esta puerta no, así que el mismo dato entraba por una y no por la otra.
+     *
+     * MEDIDO en la v1.381.0, los mismos dos campos y los mismos valores:
+     *
+     *   «Marcada el» / «Marcada por»   formulario: descartados, quedan en nulo
+     *                                  planilla:   «01-01-2020 08:00», y
+     *                                              apuntando a otra persona
+     *
+     * Y esos dos son justamente la constancia de quién pasó la lista y cuándo,
+     * que el sistema agregó para poder responder por ella. Contando lo que hay
+     * declarado hoy, la puerta alcanzaba 97 campos en 27 módulos: la serie, el
+     * correlativo, el estado y los nueve datos congelados de una credencial;
+     * los enlaces que hacen que un movimiento de tesorería sea el espejo de
+     * otro; quién firmó un acta y cuándo.
+     *
+     * `soloAlCrear` es la única excepción, y es la misma del formulario: se
+     * acepta al CREAR y nunca más. Importar CREA, así que acá aplica siempre.
+     */
+    if (f.readonly && !f.soloAlCrear) continue;
+
     let valor = fila[f.name];
     if (valor === undefined || valor === null) continue;
     if (typeof valor === 'string') valor = valor.trim();

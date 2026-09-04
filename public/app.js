@@ -12862,7 +12862,18 @@ function adivinarCampo(columna, campos) {
 }
 
 function abrirImportador(m, alTerminar) {
-  const campos = m.fields.filter((f) => f.type !== 'file' && !f.computed);
+  /*
+   * Lo que se puede llenar por planilla es lo mismo que se puede llenar en el
+   * formulario: un campo de SOLO LECTURA lo escribe el sistema. Se dejaban
+   * mapear, y desde la v1.382.0 el servidor los descarta, así que ofrecerlos
+   * sería ofrecer una columna que no va a ninguna parte.
+   *
+   * La excepción es `soloAlCrear` —se acepta al crear y nunca más—, y una
+   * importación crea: ésos sí se ofrecen.
+   */
+  const campos = m.fields.filter((f) => (
+    f.type !== 'file' && !f.computed && (!f.readonly || f.soloAlCrear)
+  ));
   let columnas = [];
   let filasArchivo = [];
 
