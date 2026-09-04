@@ -98,6 +98,18 @@ module.exports = {
   display: '{nombre:persona}',
   searchFields: ['nombre', 'rut', 'email'],
   listFields: ['foto', 'rut', 'nombre', 'rol', 'miembro_id', 'iglesias', 'cuerpos', 'activo'],
+  /*
+   * Lo que esta cuenta podía hacer, en la constancia de su borrado.
+   *
+   * El listado dice quién era y con qué rol, y eso no alcanza: lo que
+   * distingue a una cuenta de otra del mismo rol son sus EXCEPCIONES y su
+   * perfil —qué se le abrió a mano y qué se le cerró—, y de eso no quedaba
+   * nada una vez borrada. Es justo lo que el Registro de Cambios existe para
+   * poder contestar después: el módulo abre diciendo que registra el dinero y
+   * las llaves. Se escriben en palabras, no como el JSON que guarda la base
+   * (ver `legible` en server/bitacora.js).
+   */
+  camposAlBorrar: ['permisos', 'perfil_id', 'email'],
   defaultSort: { field: 'nombre', dir: 'asc' },
   fields: [
     {

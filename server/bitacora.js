@@ -320,6 +320,116 @@ function anotarCambio({ def, accion, fila, detalle, usuario }) {
 }
 
 /**
+ * ── LOS PERMISOS, ESCRITOS COMO SE LEEN ──
+ *
+ * El módulo abre diciendo que existe para dos cosas: el dinero y las llaves. La
+ * mitad del dinero se leía bien —la plata con su signo, las fechas como se leen
+ * acá, un enlace con el nombre de aquello a lo que apunta— y la de las llaves
+ * era la única línea que había que descifrar:
+ *
+ *     Excepciones para esta persona: {"tesoreria_montos":[],"miembros_rut":[]}
+ *       → {"tesoreria_montos":[],"miembros_rut":[],"tesoreria":["view"]}
+ *
+ * Y dice algo importante: a esa persona se le acaba de abrir Tesorería.
+ *
+ * SE ANOTA LA DIFERENCIA Y NO LAS DOS LISTAS. Un perfil de permisos concede
+ * sobre los cuarenta y tantos módulos del sistema, así que «lo de antes → lo de
+ * ahora» sería una línea de varios miles de letras donde habría que buscar a
+ * ojo qué cambió. Lo que hace falta saber es qué se abrió y qué se cerró.
+ *
+ * Las tres cosas que le pueden pasar a una llave se dicen distinto, porque
+ * significan distinto: concederla, cerrarla —que es una excepción que dice
+ * «esta persona no, aunque su perfil sí»— y QUITARLA, que no es cerrarla: es
+ * dejar de hacerle excepción y que vuelva a valer lo que le dé su perfil.
+ */
+const ACCIONES_EN_PALABRAS = { view: 'ver', create: 'crear', edit: 'editar', delete: 'eliminar' };
+
+/** Las etiquetas de todo lo que se puede permitir, por su nombre interno. */
+let losNombresDeLasLlaves = null;
+function comoSeLlamaLaLlave(que) {
+  if (!losNombresDeLasLlaves) {
+    losNombresDeLasLlaves = new Map();
+    for (const cosa of require('./permissions').todoLoQueSePuedePermitir()) {
+      losNombresDeLasLlaves.set(cosa.name, cosa.label);
+    }
+  }
+  return losNombresDeLasLlaves.get(que) || que;
+}
+
+/** Lo que un permiso deja hacer, en palabras. */
+function loQueDejaHacer(acciones) {
+  const lista = (Array.isArray(acciones) ? acciones : []).map((a) => ACCIONES_EN_PALABRAS[a] || a);
+  if (!lista.length) return 'nada';
+  if (lista.length === 1) return lista[0];
+  return `${lista.slice(0, -1).join(', ')} y ${lista[lista.length - 1]}`;
+}
+
+/** El JSON de un campo de permisos, o un objeto vacío si no se puede leer. */
+function losPermisosDe(valor) {
+  if (!valor) return {};
+  if (typeof valor === 'object') return valor;
+  try {
+    const leido = JSON.parse(String(valor));
+    return leido && typeof leido === 'object' ? leido : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+/** Todo lo que un campo de permisos concede, escrito de corrido. */
+function comoSeLeenLosPermisos(valor) {
+  const puestos = losPermisosDe(valor);
+  // Por su NOMBRE en pantalla y no por el interno: quien lee la línea ve
+  // «Montos del dinero», no «tesoreria_montos», y una lista ordenada por algo
+  // que no se ve parece desordenada.
+  const partes = Object.keys(puestos)
+    .sort((a, b) => comoSeLlamaLaLlave(a).localeCompare(comoSeLlamaLaLlave(b), 'es'))
+    .map((que) => `${comoSeLlamaLaLlave(que)}: ${loQueDejaHacer(puestos[que])}`);
+  return partes.length ? partes.join(' · ') : '(ninguno)';
+}
+
+/** Lo que cambió entre dos campos de permisos, y solo eso. */
+function elCambioDeLosPermisos(antes, despues) {
+  const uno = losPermisosDe(antes);
+  const otro = losPermisosDe(despues);
+  const dice = [];
+  const todas = [...new Set([...Object.keys(uno), ...Object.keys(otro)])]
+    .sort((a, b) => comoSeLlamaLaLlave(a).localeCompare(comoSeLlamaLaLlave(b), 'es'));
+  for (const que of todas) {
+    const nombre = comoSeLlamaLaLlave(que);
+    const tenia = uno[que];
+    const tiene = otro[que];
+    /*
+     * Que la llave ESTÉ o NO ESTÉ se mira antes que lo que deja hacer, y no
+     * después: «no tiene excepción» y «tiene una excepción que no le deja
+     * hacer nada» se parecen —las dos no dejan hacer nada por acá— y son cosas
+     * distintas. La primera dice «vale lo que le dé su perfil» y la segunda,
+     * «esta persona no, aunque su perfil sí». Comparando primero las acciones,
+     * cerrarle una llave a alguien no quedaba anotado.
+     */
+    if (tenia !== undefined && tiene === undefined) {
+      dice.push(`${nombre}: se le quita la excepción y vuelve a valer su perfil`);
+      continue;
+    }
+    if (tenia === undefined) {
+      dice.push((tiene || []).length
+        ? `se le concede ${nombre} (${loQueDejaHacer(tiene)})`
+        : `se le cierra ${nombre}`);
+      continue;
+    }
+    if (mismasAcciones(tenia, tiene)) continue;
+    dice.push(`${nombre}: ${loQueDejaHacer(tenia)} → ${loQueDejaHacer(tiene)}`);
+  }
+  return dice;
+}
+
+/** ¿Estas dos listas de acciones dicen lo mismo? El orden no cuenta. */
+function mismasAcciones(uno, otro) {
+  const limpia = (v) => (Array.isArray(v) ? [...v].map(String).sort().join(',') : '');
+  return limpia(uno) === limpia(otro);
+}
+
+/**
  * Un valor escrito como lo lee una persona: la plata con su signo y sus miles,
  * y una referencia con el nombre de aquello a lo que apunta, no con su número.
  * «Cuenta: 5» no le dice nada a nadie; «Cuenta: Tesorería general», sí.
@@ -387,6 +497,8 @@ function legible(campo, valor) {
     }
   }
   if (campo.type === 'boolean') return String(valor) === '1' ? 'Sí' : 'No';
+  // Los permisos, en palabras y no en JSON (ver más arriba)
+  if (campo.type === 'permisos') return comoSeLeenLosPermisos(valor);
   return String(valor);
 }
 
@@ -486,6 +598,14 @@ function mismoValor(campo, uno, otro) {
     };
     return ids(uno) === ids(otro);
   }
+  /*
+   * Y dos campos de PERMISOS son el mismo permiso aunque el texto no calce: el
+   * formulario los manda con las llaves en el orden en que las dibujó, que no
+   * es el que quedó guardado. Comparados como texto, guardar una ficha de
+   * usuario sin tocarle nada anotaba un cambio de permisos que no ocurrió, y
+   * eso es justo lo que hace que un registro se deje de leer.
+   */
+  if (campo.type === 'permisos') return !elCambioDeLosPermisos(uno, otro).length;
   return String(uno ?? '') === String(otro ?? '');
 }
 
@@ -499,6 +619,16 @@ function cambios(def, antes, despues) {
     if (mismoValor(f, previo, nuevo)) continue;
     if (f.sensible) {
       lista.push(`${f.label}: ${nuevo ? 'actualizada' : 'borrada'}`);
+      continue;
+    }
+    /*
+     * De los permisos se anota lo que CAMBIÓ. Las dos listas enteras serían
+     * una línea de miles de letras —un perfil concede sobre los cuarenta y
+     * tantos módulos— donde habría que buscar a ojo qué se movió.
+     */
+    if (f.type === 'permisos') {
+      const movidos = elCambioDeLosPermisos(previo, nuevo);
+      if (movidos.length) lista.push(`${f.label}: ${movidos.join(' · ')}`);
       continue;
     }
     lista.push(`${f.label}: ${legible(f, previo)} → ${legible(f, nuevo)}`);
@@ -1054,4 +1184,6 @@ module.exports = {
   MODULOS_VIGILADOS,
   // El detalle de una línea recortado para quien la lee (ver más arriba).
   elDetalleQueSeLee,
+  // Los permisos en palabras, para poder comprobarlos sin provocar un guardado.
+  comoSeLeenLosPermisos, elCambioDeLosPermisos,
 };
