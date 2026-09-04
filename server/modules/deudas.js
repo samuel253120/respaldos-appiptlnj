@@ -777,6 +777,10 @@ module.exports = {
   },
 
   extraRoutes(router, { db, requirePerm }) {
+    /** Una línea en el Registro de Cambios a nombre de esta deuda. */
+    const anotarEnElRegistro = (deuda, usuario, accion, detalle) =>
+      require('../bitacora').anotarCambio({ def: module.exports, accion, fila: deuda, usuario, detalle });
+
     /**
      * Las clases que se pueden elegir según la dirección. Una compra a crédito
      * no existe hacia el lado de cobrar, y ofrecerla sería ofrecer un error.
@@ -860,6 +864,18 @@ module.exports = {
       const movimiento = require('../deuda-tesoreria').anotarUnPago(db, deuda, {
         cuotaId, fecha, monto, metodo: req.body.metodo, notas: req.body.notas,
       }, req.user);
+
+      /*
+       * Y queda anotado. Esta ruta escribe el movimiento derecho, sin pasar por
+       * el guardado de Tesorería, así que la línea del Registro de Cambios hay
+       * que dejarla acá: si no, la plata se movería sin que nadie pueda
+       * preguntar después quién la movió. Es lo mismo que pasaba con el módulo
+       * entero antes de la v1.360.0.
+       */
+      anotarEnElRegistro(deuda, req.user, 'Cambio',
+        `Anotó un pago de ${enPesos(monto)} del ${fecha}`
+        + (cuotaId ? ` a la cuota ${db.prepare('SELECT numero FROM cuotas_deuda WHERE id = ?').get(cuotaId).numero}` : ' a cuenta'));
+
       return res.status(201).json({ ok: true, movimiento_id: movimiento.id });
     });
 
@@ -869,6 +885,12 @@ module.exports = {
       if (!deuda) return undefined;
       const quitado = require('../deuda-tesoreria').retirarUnPago(db, deuda.id, Number(req.params.mov));
       if (!quitado) return res.status(404).json({ error: 'Ese pago no es de esta deuda' });
+
+      // Retirar un pago hace reaparecer plata en una caja: de las dos, ésta es
+      // la que más falta hace poder consultar después.
+      anotarEnElRegistro(deuda, req.user, 'Cambio',
+        `Retiró un pago de ${enPesos(quitado.monto)} del ${String(quitado.fecha).slice(0, 10)}`);
+
       return res.json({ ok: true });
     });
   },

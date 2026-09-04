@@ -137,6 +137,25 @@ const MODULOS_VIGILADOS = [
   // El dinero
   'tesoreria', 'cuentas_tesoreria', 'traspasos', 'cuotas_cuerpo', 'ayudas_sociales',
   /*
+   * Y LO QUE LA ORGANIZACIÓN DEBE Y LE DEBEN.
+   *
+   * No estaban, y son de las que más se preguntan después. MEDIDO en la
+   * v1.355.0, sobre una misma base de prueba:
+   *
+   *   9 deudas creadas, corregidas y cerradas ........ 0 líneas
+   *   14 movimientos de tesorería que dejaron ........ 0 líneas
+   *   1 movimiento escrito a mano en Tesorería ....... 1 línea
+   *
+   * Los mismos $ 100.000 dejaban constancia por una puerta y por la otra no. Y
+   * las dos operaciones que más importan —dar una deuda por pagada y
+   * condonarla— pasaban las dos por la puerta que no anotaba.
+   *
+   * Sus cuotas van también: corregirle el monto o la fecha a una cuota cambia
+   * lo que la iglesia se comprometió a pagar. Son unas pocas al año —una
+   * iglesia no contrae una deuda por semana— así que no hay ruido que temer.
+   */
+  'deudas', 'cuotas_deuda',
+  /*
    * Y LAS PALABRAS CON QUE SE ESCRIBE EL DINERO.
    *
    * Las categorías de tesorería no son un módulo de listas más: son el
