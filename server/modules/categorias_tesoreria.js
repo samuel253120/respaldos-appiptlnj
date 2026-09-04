@@ -60,7 +60,7 @@ module.exports = {
      * que no le estorben. Desactivada sigue existiendo, así que el día que de
      * verdad haya un préstamo el movimiento cae en una categoría que existe.
      */
-    beforeSave(data, { isNew, existing }) {
+    beforeSave(data, { db, isNew, existing }) {
       if (isNew || !existing || data.nombre === undefined) return null;
       const seLlamaba = String(existing.nombre || '');
       const seVaALlamar = String(data.nombre || '');
@@ -68,14 +68,53 @@ module.exports = {
 
       const { quienLaEscribe } = require('../categorias-del-sistema');
       const quien = quienLaEscribe(seLlamaba);
-      if (!quien) return null;
+      if (quien) {
+        return (
+          `«${seLlamaba}» no la elige nadie: la escribe ${quien}, así que su nombre no se puede cambiar. `
+          + 'Si le cambiara el nombre, el sistema seguiría anotando con el de antes y esos movimientos '
+          + 'quedarían clasificados con una categoría que ya no está en la lista. '
+          + 'Si no la usa, desmárquela en «En uso»: deja de ofrecerse y sigue estando el día que haga falta.'
+        );
+      }
 
-      return (
-        `«${seLlamaba}» no la elige nadie: la escribe ${quien}, así que su nombre no se puede cambiar. `
-        + 'Si le cambiara el nombre, el sistema seguiría anotando con el de antes y esos movimientos '
-        + 'quedarían clasificados con una categoría que ya no está en la lista. '
-        + 'Si no la usa, desmárquela en «En uso»: deja de ofrecerse y sigue estando el día que haga falta.'
-      );
+      /*
+       * Y UNA QUE YA SE USÓ TAMPOCO SE RENOMBRA.
+       *
+       * El módulo frenaba el borrado de una categoría en uso con un buen
+       * argumento —dejaría los movimientos «clasificados con un nombre que ya
+       * no existe»— y dejaba el renombrado abierto y sin cartel, haciendo
+       * exactamente el mismo daño. Eran dos puertas al mismo sitio: una cuidada
+       * con esmero y la otra de par en par.
+       *
+       * MEDIDO en la v1.341.0, con tres diezmos anotados por $445.000:
+       *
+       *   borrar «Diezmos» ................... 400, con un mensaje que explica
+       *   renombrarla a «Diezmos y primicias»  200, sin una palabra
+       *
+       * Y el informe, que agrupa por el texto guardado, quedó partido en dos:
+       * «Diezmos $445.000» y «Diezmos y primicias $150.000», para siempre. Un
+       * cambio de nombre pensado para ordenar parte en dos la cuenta de los
+       * diezmos sin que nadie se entere.
+       *
+       * NO SE ARRASTRAN LOS MOVIMIENTOS, y ésa es la decisión de fondo: este es
+       * un libro contable. Reescribir cuatrocientas anotaciones para que digan
+       * algo que no decían el día que se hicieron es justamente lo que la
+       * cabecera de este módulo se niega a hacer. Lo que se hace es lo mismo que
+       * ya decía el rechazo del borrado: se crea la categoría nueva y se
+       * desmarca la vieja. Lo viejo sigue diciendo lo que decía —que es lo
+       * correcto— y lo nuevo entra con el nombre nuevo.
+       */
+      const usos = db.prepare('SELECT COUNT(*) AS c FROM tesoreria WHERE categoria = ?').get(seLlamaba).c;
+      if (usos) {
+        return (
+          `«${seLlamaba}» está en ${usos.toLocaleString('es-CL')} movimiento(s) de tesorería, así que no se le `
+          + 'puede cambiar el nombre: esos movimientos seguirían diciendo «' + seLlamaba + '» y quedarían '
+          + 'clasificados con una categoría que ya no está en la lista, con el informe partido en dos. '
+          + `Para empezar a usar «${seVaALlamar}»: créela como una categoría nueva y desmarque ésta en `
+          + '«En uso». Lo ya anotado sigue diciendo lo que decía, que es lo que corresponde en un libro.'
+        );
+      }
+      return null;
     },
 
     /**

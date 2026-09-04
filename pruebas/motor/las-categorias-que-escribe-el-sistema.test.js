@@ -244,3 +244,56 @@ test('y repetirlo no duplica ninguna', () => {
   assert.equal(cuantas(), antes, 'solo agrega las que falten');
   assert.equal(antes, 1);
 });
+
+/* ------------------------------------------------- y la que ya se usó tampoco */
+
+/*
+ * La otra puerta al mismo daño. El módulo frenaba el BORRADO de una categoría en
+ * uso con un buen argumento —dejaría los movimientos «clasificados con un nombre
+ * que ya no existe»— y dejaba el RENOMBRADO abierto y sin cartel.
+ *
+ * MEDIDO en la v1.341.0, con tres diezmos anotados por $445.000: borrar contestó
+ * 400 con su mensaje; renombrar contestó 200 sin una palabra, y el informe quedó
+ * partido en «Diezmos $445.000» y «Diezmos y primicias $150.000», para siempre.
+ */
+const conUnMovimiento = (nombre) => {
+  const fila = unaCategoria(nombre, 'Ingreso');
+  db.prepare(
+    `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto)
+     VALUES (date('now','localtime'), 'Ingreso', ?, 'Un diezmo', 120000)`
+  ).run(nombre);
+  return fila;
+};
+
+test('una categoría de la iglesia que ya se usó no se renombra', () => {
+  const fila = conUnMovimiento(`Diezmos del norte ${MARCA}`);
+  const freno = alGuardar({ ...fila, nombre: `Diezmos y primicias ${MARCA}` }, fila);
+  assert.ok(freno, 'renombrarla hace el mismo daño que borrarla, que sí estaba frenado');
+  assert.match(freno, /movimiento\(s\) de tesorería/);
+  assert.match(freno, /no se le puede cambiar el nombre/);
+});
+
+test('y el rechazo dice cuántos son y qué hacer en cambio', () => {
+  const fila = conUnMovimiento(`Ofrenda de misiones ${MARCA}`);
+  const freno = alGuardar({ ...fila, nombre: `Misiones ${MARCA}` }, fila);
+  assert.match(freno, /1 movimiento\(s\)/, 'dice cuántos hay');
+  assert.match(freno, new RegExp(`Misiones ${MARCA}`), 'nombra el nombre nuevo que se quería');
+  assert.match(freno, /créela como una categoría nueva y desmarque ésta en «En uso»/);
+});
+
+test('una que todavía no se ha usado sí se renombra: un error de tecleo se corrige', () => {
+  const fila = unaCategoria(`Pro-Tenplo ${MARCA}`, 'Ingreso');
+  assert.equal(alGuardar({ ...fila, nombre: `Pro-Templo ${MARCA}` }, fila), null);
+});
+
+test('y lo que no es el nombre se puede cambiar aunque tenga movimientos', () => {
+  /*
+   * Ésta es la que evita que la guardia se pase de la raya: desactivarla,
+   * cambiarle el tipo o escribirle una nota tiene que seguir funcionando. Lo que
+   * rompe el informe es el NOMBRE, y solo ése se cuida.
+   */
+  const fila = conUnMovimiento(`Actividades del año ${MARCA}`);
+  assert.equal(alGuardar({ ...fila, activo: 0 }, fila), null, 'desactivarla es la salida que el rechazo ofrece');
+  assert.equal(alGuardar({ ...fila, tipo: 'Ambos' }, fila), null);
+  assert.equal(alGuardar({ ...fila, notas: 'Rifas y once solidarias' }, fila), null);
+});
