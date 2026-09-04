@@ -15503,6 +15503,13 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
       ${datos.personas.length ? `
         ${recuperadas ? `<div class="pl-recuperado">📵 Se recuperaron ${recuperadas} marca(s) que habían quedado sin guardar en este teléfono. Revíselas y guarde.</div>` : ''}
         ${propuestas ? `<div class="pl-recuperado">✅ La lista se abrió con las ${fmtNumero(propuestas)} personas marcadas como presentes, según lo configurado. <b>Todavía no se ha guardado nada</b>: marque a quienes faltaron y después guarde.</div>` : ''}
+        ${datos.actividad.futura ? `
+          <div class="pl-recuperado pl-futura" id="plFutura">
+            📅 Esta actividad es del <b>${esc(fechaCorta(datos.actividad.fecha))}</b>: todavía no ocurre.
+            Lo que marque queda anotado como asistencia de ese día y el informe la cuenta igual que las demás.
+            Si está adelantando justificaciones que ya le avisaron, siga; si se equivocó de actividad, vuelva y elija la correcta.
+            ${puedeEditar ? '<button type="button" class="btn secondary" id="plFuturaOk">Marcar igual</button>' : ''}
+          </div>` : ''}
         <div class="pl-filtros">
           <input type="search" id="plBuscar" aria-label="Buscar a alguien de esta lista por nombre o RUT"
                  placeholder="🔎 Buscar miembro por nombre o RUT…" autocomplete="off" />
@@ -15710,6 +15717,21 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     sello.hidden = !frase;
   };
 
+  /*
+   * ¿Se dijo que sí a marcar una actividad que todavía no ocurre?
+   *
+   * El servidor pregunta al guardar (ver `lista_de_actividad_futura` en
+   * server/modules/asistencias.js), y esta pantalla se guarda sola cada tres
+   * segundos: una pregunta que se contesta en un cuadro de diálogo volvería a
+   * salir en cada guardado automático. Así que la respuesta se da UNA vez, en
+   * el aviso de arriba, y desde ahí todos los guardados la llevan.
+   *
+   * Si nadie aprieta el botón, el guardado automático recibe la pregunta y la
+   * muestra donde se muestra todo lo demás: al lado del botón Guardar. El
+   * aviso, con su botón, sigue arriba.
+   */
+  let vaIgualAunqueSeaFutura = false;
+
   const guardar = async (automatico) => {
     const mias = marcasTocadas();
     if (!mias.length) {
@@ -15736,7 +15758,11 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
     if (btn) btn.disabled = true;
     pintarEstado('Guardando…');
     try {
-      const r = await api('POST', `/asistencias/${asistenciaId}/lista`, { marcas: mias });
+      const r = await api(
+        'POST',
+        `/asistencias/${asistenciaId}/lista${vaIgualAunqueSeaFutura ? '?igual_asi=true' : ''}`,
+        { marcas: mias, ...(vaIgualAunqueSeaFutura ? { igual_asi: true } : {}) }
+      );
       borrarBorrador(CLAVE);
       sinGuardar = false;
       tocadas.clear(); // ya están guardadas: dejan de ser "lo suyo sin mandar"
@@ -15868,6 +15894,24 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
 
   const btnGuardar = document.getElementById('plGuardar');
   if (btnGuardar) btnGuardar.addEventListener('click', () => guardar(false));
+
+  /*
+   * «Marcar igual», en el aviso de la actividad que todavía no ocurre.
+   *
+   * Se contesta una vez y desde ahí todos los guardados —el de a mano y el
+   * automático— llevan la confirmación. El aviso se queda puesto, sin el
+   * botón: quien esté marcando tiene que seguir viendo de qué día es esta
+   * lista, que es de lo que se trata.
+   */
+  const btnFutura = document.getElementById('plFuturaOk');
+  if (btnFutura) {
+    btnFutura.addEventListener('click', () => {
+      vaIgualAunqueSeaFutura = true;
+      btnFutura.remove();
+      pintarEstado('Se marcará como asistencia del día de la actividad', 'aviso-texto');
+      if (sinGuardar) guardar(false);
+    });
+  }
 
   // Buscador y filtros: dar con una persona entre muchas sin desplazarse
   function filtrar() {

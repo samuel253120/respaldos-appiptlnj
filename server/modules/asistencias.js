@@ -1065,6 +1065,16 @@ module.exports = {
           cuerpos,
           solo_los_suyos: cuerpos.length < convocadosEnTotal,
           cuerpos_convocados: convocadosEnTotal,
+          /*
+           * Si el día todavía no llega. Lo contesta el servidor y no la
+           * pantalla porque el «hoy» que vale es el de la zona horaria que la
+           * iglesia tiene configurada, no el del reloj del teléfono, que puede
+           * estar en otro huso o simplemente mal puesto. Sirve para avisar
+           * ANTES de marcar; al guardar se vuelve a preguntar, que es donde de
+           * verdad se cierra la puerta.
+           */
+          futura: Boolean(actividad.fecha
+            && String(actividad.fecha).slice(0, 10) > require('../fechas').hoy()),
         },
         personas,
         // Quién pasó esta lista y cuándo, y quién la corrigió después
@@ -1344,6 +1354,41 @@ module.exports = {
             : `${nombre} no es de los cuerpos que a usted le toca pasar. Solo puede pasar lista a los suyos.`,
         });
       }
+      /*
+       * ── Y UNA LISTA DE UN DÍA QUE NO HA LLEGADO SE PREGUNTA ──
+       *
+       * Que una actividad se pueda PROGRAMAR con fecha adelante está bien y es
+       * a propósito: el campo lo declara así, y la agenda del año se arma en
+       * enero. Pasarle lista es otra cosa. Medido en la v1.379.0 sobre una
+       * actividad a setenta y dos días: 200, «guardadas: 2», sin una palabra, y
+       * la marca entró al informe como cualquier otra.
+       *
+       * Es una pregunta y no un rechazo, porque adelantar una justificación que
+       * ya avisaron es legítimo: «no puedo ir el domingo, estoy de viaje» se
+       * anota cuando se sabe, no cuando pasa. Lo que no puede es entrar sin que
+       * nadie lo mire.
+       *
+       * VA AL FINAL de todo lo que se rechaza —el estado inválido, el motivo
+       * que no existe, la persona que no está convocada—: confirmar algo que
+       * después se va a rechazar igual es hacer contestar dos veces.
+       *
+       * El día de hoy se pregunta con `hoy()`, que mira la zona horaria que la
+       * iglesia tiene configurada. Con `toISOString()` —que devuelve siempre la
+       * hora universal— en Chile, entre las 20:00 y la medianoche, la reunión de
+       * esta noche habría sido «del día siguiente».
+       */
+      const confirmado = req.query.igual_asi === 'true' || req.body.igual_asi === true;
+      const { hoy, comoSeLee } = require('../fechas');
+      if (!confirmado && actividad.fecha && String(actividad.fecha).slice(0, 10) > hoy()) {
+        return res.status(400).json({
+          error: `Esta actividad es del ${comoSeLee(String(actividad.fecha).slice(0, 10))}, `
+            + 'que todavía no llega. Lo que marque queda anotado como asistencia de ese día y el '
+            + 'informe la cuenta igual que las demás. Si está adelantando justificaciones que ya le '
+            + 'avisaron, confirme; si se equivocó de actividad, vuelva y elija la correcta.',
+          confirmar: 'lista_de_actividad_futura',
+        });
+      }
+
       /*
        * Cómo estaba cada marca ANTES de guardar.
        *
