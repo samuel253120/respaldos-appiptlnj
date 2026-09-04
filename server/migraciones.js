@@ -3568,7 +3568,7 @@ function solicitudesConSeguimiento() {
 // crean fichas nuevas a partir de datos escritos a mano, y equivocarse ahí
 // significa duplicar personas, perder ayudas o repetir un número de solicitud.
 module.exports = {
-  ejecutarMigraciones, categoriasDeLasDeudas, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
+  ejecutarMigraciones, categoriasDeTesoreria, categoriasDeLasDeudas, ayudasConFichaDelBeneficiario, solicitudesConSeguimiento,
   cadaIglesiaConSuCodigo, solicitudesNumeradasPorIglesia,
   devolverLosQueLaDirectivaSaco, marcasDeAsistenciaConSuCuerpo, actividadesConVariosCuerpos,
   elConteoDeLeidosSeGuarda,

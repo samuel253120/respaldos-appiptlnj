@@ -576,7 +576,7 @@ async function niSePuedeApuntarALoAjeno(E, admin) {
   noSeGuarda('ni se le carga un movimiento a una cuenta de allá',
     await norte('POST', '/api/tesoreria', {
       fecha: '2026-08-20', tipo: 'Egreso', monto: 50000, concepto: 'Metido',
-      cuenta_id: E.cuentaSur.id, iglesia_id: E.sur.id, categoria: 'Otros',
+      cuenta_id: E.cuentaSur.id, iglesia_id: E.sur.id, categoria: 'Otro',
     }));
 
   // La puerta de atrás: llevarse lo propio hacia la iglesia del otro

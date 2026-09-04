@@ -94,6 +94,14 @@ const SOLO_DEL_SERVIDOR = [
   'companeroDe',              // dos campos que no pueden ser la misma persona
   'alcanceLoDecideElModulo',  // el alcance de esta referencia lo resuelve el módulo
   'oculto',                   // el campo no sale del servidor: se filtra antes
+  /*
+   * Contra qué tabla se comprueba al guardar, cuando la lista del desplegable
+   * no está escrita en el módulo sino guardada en un módulo que mantiene la
+   * iglesia. La pantalla no lo necesita: ella ya pide las opciones por
+   * `optionsRoute`, que es la misma lista vista desde el otro lado. Esto es la
+   * comprobación del guardado, y de ésas no viaja ninguna.
+   */
+  'opcionesDe',
 ];
 
 /**

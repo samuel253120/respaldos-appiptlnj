@@ -65,9 +65,44 @@
  * ── Y SOLO LAS LISTAS ESCRITAS ──
  *
  * Los diecinueve campos cuya lista viene de una ruta —las categorías de
- * tesorería, las cuentas activas, los tipos de actividad— no se comprueban acá:
- * su lista vive en una tabla que la iglesia mantiene y cambia sola. Comprobarla
- * contra una copia sería inventar una segunda verdad.
+ * tesorería, las cuentas activas, los tipos de actividad— no se comprueban con
+ * la comprobación de más arriba: su lista vive en una tabla que la iglesia
+ * mantiene y cambia sola, y compararla contra una copia escrita en el código
+ * sería inventar una segunda verdad.
+ *
+ * ── LAS LISTAS QUE VIVEN EN UNA TABLA ──
+ *
+ * Pero de ahí no se sigue que no haya que comprobarlas: se sigue que hay que
+ * comprobarlas CONTRA LA TABLA, que es la única verdad y no una copia de nada.
+ * Sin eso, las listas que la iglesia mantiene con más cuidado eran justamente
+ * las únicas que nadie hacía cumplir.
+ *
+ * MEDIDO en la v1.341.0, contra el sistema andando, en la categoría de un
+ * movimiento de tesorería:
+ *
+ *   categoría «Categoría Que No Existe» ....  201, guardado así
+ *   categoría en blanco ....................  201, guardado como «Ofrendas»
+ *   sin mandar el campo ....................  201, guardado como «Ofrendas»
+ *
+ * Los dos últimos son el mismo caso: el campo es obligatorio, pero el valor de
+ * fábrica se aplica ANTES de comprobar los obligatorios, así que un movimiento
+ * sin categoría no se rechaza nunca —se le pone la de fábrica y se guarda—. En
+ * la medición esa categoría estaba borrada, así que el movimiento quedó
+ * clasificado bajo una palabra que no existía en ninguna lista.
+ *
+ * DE PASO SE NORMALIZA. Si el valor está en la tabla escrito con otras
+ * mayúsculas, se guarda como está escrito ALLÁ. Eso cierra un hueco medido en
+ * la misma revisión: se creó «Pro-Templo Sede Sur», se anotaron $500.000 con
+ * «pro-templo sede sur» —que entraba, porque nada se comprobaba— y después la
+ * categoría se borró sin problema, porque la cuenta de usos preguntaba por el
+ * nombre exacto y no encontraba ninguno. Con una sola forma de escribirlo, las
+ * dos mitades del módulo vuelven a hablar del mismo dato.
+ *
+ * SE DECLARA CAMPO POR CAMPO, con `opcionesDe: { modulo, columna }`, y hoy lo
+ * declara uno solo: la categoría de un movimiento de tesorería. Los otros
+ * dieciocho siguen como estaban, y se irán encendiendo cuando a cada módulo le
+ * toque su revisión: encenderlos todos de una sería cambiarle el comportamiento
+ * a dieciocho módulos que nadie ha mirado todavía.
  */
 
 /** Los valores que un campo admite, venga su lista como texto o como objeto. */
@@ -105,4 +140,43 @@ function loQueNoEstaEnLaLista(def, data, cambia) {
   return null;
 }
 
-module.exports = { loQueNoEstaEnLaLista, loQueOfrece, tieneListaPropia };
+/**
+ * El reparo por un valor que no está en la tabla donde vive su lista.
+ *
+ * Devuelve el texto del reparo, o null. Cuando el valor SÍ está, deja `data`
+ * con la forma exacta en que está escrito en la tabla: es la única manera de
+ * que el resto del sistema —la cuenta de usos que decide si una categoría se
+ * puede borrar, los informes que agrupan— vea siempre el mismo texto.
+ *
+ * La lista se pide con `LIMIT 1` sobre un `lower()`: no se traen las filas para
+ * compararlas en memoria porque estas tablas las mantiene la iglesia y pueden
+ * tener cientos.
+ */
+function loQueNoEstaEnSuTabla(db, def, data, cambia) {
+  for (const f of def.fields || []) {
+    const suya = f.opcionesDe;
+    if (!suya || !suya.modulo || !suya.columna) continue;
+    if (!cambia(f.name)) continue;
+
+    // Vacío no es un valor inventado, igual que más arriba: es no haber
+    // contestado, y de eso se ocupa la comprobación de obligatorios.
+    const val = data[f.name];
+    if (val === null || val === undefined || String(val).trim() === '') continue;
+
+    const enLaLista = db
+      .prepare(`SELECT "${suya.columna}" AS valor FROM "${suya.modulo}" WHERE lower("${suya.columna}") = lower(?) LIMIT 1`)
+      .get(String(val).trim());
+
+    if (enLaLista) {
+      data[f.name] = enLaLista.valor;   // una sola forma de escribirlo
+      continue;
+    }
+
+    const donde = suya.label || require('./registry').getModule(suya.modulo)?.label || suya.modulo;
+    return `«${String(val).trim()}» no está en ${donde}. `
+      + `Elija uno de la lista, o créelo primero en ${donde}.`;
+  }
+  return null;
+}
+
+module.exports = { loQueNoEstaEnLaLista, loQueNoEstaEnSuTabla, loQueOfrece, tieneListaPropia };

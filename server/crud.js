@@ -1590,6 +1590,19 @@ function buildRouter() {
         if (fueraDeLista) return res.status(400).json({ error: fueraDeLista });
 
         /*
+         * Y lo mismo para los campos cuya lista NO está escrita en el módulo
+         * sino guardada en una tabla que mantiene la iglesia.
+         *
+         * Ésos quedaban fuera de la comprobación de arriba con un argumento que
+         * vale para una copia y no para una tabla: comparar contra la tabla no
+         * inventa ninguna segunda verdad, porque la tabla ES la verdad. Medido
+         * antes de esto: la categoría de un movimiento admitía «Categoría Que
+         * No Existe» con un 201. El detalle está en server/opciones.js.
+         */
+        const fueraDeSuTabla = opciones.loQueNoEstaEnSuTabla(db, def, data, cambia);
+        if (fueraDeSuTabla) return res.status(400).json({ error: fueraDeSuTabla });
+
+        /*
          * Y que el archivo que se adjunta esté de verdad en el disco.
          *
          * Un campo de archivo obligatorio se cumplía con cualquier texto: la

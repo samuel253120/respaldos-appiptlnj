@@ -311,7 +311,7 @@ async function entrar(rut = RUT, clave = CLAVE) {
   const concepto = `Prueba de seguridad ${Date.now()}`;
   const mov = await api('POST', '/api/tesoreria', {
     fecha: hoy(),
-    tipo: 'Ingreso', categoria: 'Ofrenda', monto: 12345, concepto,
+    tipo: 'Ingreso', categoria: 'Ofrendas', monto: 12345, concepto,
     cuenta_id: cuenta && cuenta.id, iglesia_id: iglesia && iglesia.id,
   });
   const movId = mov.datos && mov.datos.id;
@@ -788,11 +788,11 @@ async function entrar(rut = RUT, clave = CLAVE) {
   } else {
     const marca = `Prueba ${Date.now()}`;
     const movCuerpo = await api('POST', '/api/tesoreria', {
-      fecha: hoy(), tipo: 'Ingreso', categoria: 'Otros ingresos',
+      fecha: hoy(), tipo: 'Ingreso', categoria: 'Donaciones',
       concepto: `${marca} cuerpo`, monto: 12345, cuenta_id: deCuerpo.id,
     });
     const movIglesia = await api('POST', '/api/tesoreria', {
-      fecha: hoy(), tipo: 'Ingreso', categoria: 'Otros ingresos',
+      fecha: hoy(), tipo: 'Ingreso', categoria: 'Donaciones',
       concepto: `${marca} iglesia`, monto: 54321, cuenta_id: deIglesia.id,
     });
 
@@ -802,7 +802,7 @@ async function entrar(rut = RUT, clave = CLAVE) {
 
     // Y no se puede mentir: decir que un movimiento de la iglesia es del cuerpo
     const mentira = await api('POST', '/api/tesoreria', {
-      fecha: hoy(), tipo: 'Ingreso', categoria: 'Otros ingresos',
+      fecha: hoy(), tipo: 'Ingreso', categoria: 'Donaciones',
       concepto: `${marca} mentira`, monto: 100, cuenta_id: deIglesia.id, cuerpo_id: deCuerpo.cuerpo_id,
     });
     revisar('y no se le puede poner a mano el de otro', !mentira.datos.cuerpo_id,
@@ -876,7 +876,7 @@ async function entrar(rut = RUT, clave = CLAVE) {
         'la diferencia tendría que llevarse al menos los 12.345 del cuerpo');
 
       const alGuardar = await soloIglesia.api('POST', '/api/tesoreria', {
-        fecha: hoy(), tipo: 'Ingreso', categoria: 'Otros ingresos',
+        fecha: hoy(), tipo: 'Ingreso', categoria: 'Donaciones',
         concepto: `${marca} a escondidas`, monto: 999, cuenta_id: deCuerpo.id,
       });
       revisar('ni le registra plata al cuerpo escribiendo la cuenta a mano',

@@ -23,6 +23,8 @@
  *     son las opciones
  *   · que vacío no cuente como valor inventado
  *   · que las listas que vienen de una ruta no se comprueben contra una copia
+ *   · que ésas se comprueben CONTRA SU TABLA, que es la otra mitad de la regla
+ *     y llegó en la v1.344.0
  *   · y —lo que hace que esto se pueda publicar— que una ficha que YA trae un
  *     valor fuera de su lista se siga pudiendo guardar
  */
@@ -100,7 +102,10 @@ test('las listas que vienen de una ruta no se comprueban contra una copia', () =
   /*
    * Diecinueve campos sacan sus opciones de una tabla que la iglesia mantiene
    * —las categorías de tesorería, los tipos de actividad— y esa lista cambia
-   * sola. Comprobarla acá contra una copia sería inventar una segunda verdad.
+   * sola. Comprobarla ACÁ contra una copia sería inventar una segunda verdad.
+   *
+   * Lo que sí se hace, desde la v1.344.0, es comprobarlas contra su tabla, que
+   * es una función aparte y está probada más abajo.
    */
   const TESORERIA = getModule('tesoreria');
   const categoria = TESORERIA.fields.find((f) => f.name === 'categoria');
@@ -211,4 +216,164 @@ test('ningún desplegable declara una lista vacía o con huecos', () => {
     }
   }
   assert.deepEqual(malos, []);
+});
+
+/* ------------------------------- la otra mitad: las listas que viven en una tabla */
+
+/*
+ * De «no se comprueban contra una copia» no se sigue que no haya que
+ * comprobarlas: se sigue que hay que comprobarlas CONTRA LA TABLA, que es la
+ * única verdad y no una copia de nada. Sin eso, las listas que la iglesia
+ * mantiene con más cuidado eran las únicas que nadie hacía cumplir.
+ *
+ * MEDIDO en la v1.341.0, contra el sistema andando, en la categoría de un
+ * movimiento de tesorería:
+ *
+ *   categoría «Categoría Que No Existe» ....  201, guardado así
+ *   categoría en blanco ....................  201, guardado como «Ofrendas»
+ *   sin mandar el campo ....................  201, guardado como «Ofrendas»
+ */
+const { db } = require('../../server/db');
+
+const enSuTabla = (def, data, existing) => {
+  const r = opciones.loQueNoEstaEnSuTabla(db, def, data, comoEnCrud(data, existing));
+  return { reparo: r, data };
+};
+
+const MARCA_T = `t${process.pid}`;
+const unaCategoriaLlamada = (nombre) => {
+  const ya = db.prepare('SELECT id FROM categorias_tesoreria WHERE lower(nombre) = lower(?)').get(nombre);
+  if (ya) return ya.id;
+  return db.prepare("INSERT INTO categorias_tesoreria (nombre, tipo, activo) VALUES (?, 'Ambos', 1)")
+    .run(nombre).lastInsertRowid;
+};
+
+test('la categoría de un movimiento declara contra qué tabla se comprueba', () => {
+  const categoria = getModule('tesoreria').fields.find((f) => f.name === 'categoria');
+  assert.deepEqual(categoria.opcionesDe,
+    { modulo: 'categorias_tesoreria', columna: 'nombre', label: 'Categorías de Tesorería' });
+});
+
+test('una categoría que no está en la tabla se rechaza', () => {
+  const { reparo } = enSuTabla(getModule('tesoreria'), { categoria: `No existe ${MARCA_T}` });
+  assert.match(reparo, /no está en Categorías de Tesorería/);
+  assert.match(reparo, /créelo primero/, 'y dice qué hacer');
+});
+
+test('una que sí está, pasa', () => {
+  const nombre = `Pro-Templo Sede Sur ${MARCA_T}`;
+  unaCategoriaLlamada(nombre);
+  assert.equal(enSuTabla(getModule('tesoreria'), { categoria: nombre }).reparo, null);
+});
+
+test('y se guarda como está escrita en la lista, no como la escribió quien anotó', () => {
+  /*
+   * Cierra un hueco medido en la misma revisión: se creó «Pro-Templo Sede Sur»,
+   * se anotaron $500.000 con «pro-templo sede sur» —que entraba, porque nada se
+   * comprobaba— y después la categoría se borró sin problema, porque la cuenta
+   * de usos preguntaba por el nombre exacto y no encontraba ninguno.
+   */
+  const nombre = `Ofrenda de aniversario ${MARCA_T}`;
+  unaCategoriaLlamada(nombre);
+  const { reparo, data } = enSuTabla(getModule('tesoreria'), { categoria: nombre.toLowerCase() });
+  assert.equal(reparo, null, 'se acepta escrita de cualquier forma');
+  assert.equal(data.categoria, nombre, 'y se guarda con la forma de la lista');
+});
+
+test('vacío no cuenta como valor inventado: de eso se ocupa lo obligatorio', () => {
+  for (const v of ['', '   ', null, undefined]) {
+    assert.equal(enSuTabla(getModule('tesoreria'), { categoria: v }).reparo, null, JSON.stringify(v));
+  }
+});
+
+test('una desactivada se sigue admitiendo: existe, aunque ya no se ofrezca', () => {
+  /*
+   * Es la misma razón por la que la comprobación mira solo lo que este guardado
+   * está cambiando: un movimiento viejo clasificado con una categoría que la
+   * iglesia después apagó no puede quedar imposible de corregir.
+   */
+  const nombre = `Actividades de verano ${MARCA_T}`;
+  const id = unaCategoriaLlamada(nombre);
+  db.prepare('UPDATE categorias_tesoreria SET activo = 0 WHERE id = ?').run(id);
+  assert.equal(enSuTabla(getModule('tesoreria'), { categoria: nombre }).reparo, null);
+});
+
+test('lo que este guardado NO está cambiando no se mira', () => {
+  /*
+   * Un movimiento que ya trae una categoría que no está en la lista se tiene
+   * que poder seguir guardando: si no, corregirle el monto sería imposible por
+   * algo que quien lo corrige no eligió.
+   */
+  const vieja = `La que ya no está ${MARCA_T}`;
+  const { reparo } = enSuTabla(
+    getModule('tesoreria'),
+    { categoria: vieja, monto: 5000 },
+    { categoria: vieja, monto: 1000 }
+  );
+  assert.equal(reparo, null);
+});
+
+test('un campo sin «opcionesDe» no se mira, y hoy lo declara uno solo', () => {
+  assert.equal(enSuTabla(AYUDAS, { tipo_ayuda: 'Alimentos' }).reparo, null);
+
+  const cuantos = allModules()
+    .flatMap((m) => (m.fields || []).filter((f) => f.opcionesDe).map((f) => `${m.name}.${f.name}`));
+  assert.deepEqual(cuantos, ['tesoreria.categoria'],
+    'los otros dieciocho se encenderán cuando a cada módulo le toque su revisión');
+});
+
+/* ------------------------------- y guardando de verdad, por el motor */
+
+/*
+ * Las pruebas de arriba llaman a la comprobación. Ésta pasa por el MOTOR, que
+ * es lo único que la persona toca. Se escribió al romper a propósito la llamada
+ * en crud.js y ver que no se caía ninguna: la regla estaba escrita, comprobada
+ * y sin conectar, que es exactamente el motivo por el que existe `andando.js`.
+ */
+const { elSistemaAndando, cerrarElSistema } = require('./andando');
+
+test.after(cerrarElSistema);
+
+test('guardando de verdad: una categoría que no está en la lista se rechaza', async () => {
+  const api = await elSistemaAndando();
+
+  const iglesia = db
+    .prepare("INSERT INTO iglesias (nombre, codigo, estado) VALUES (?, ?, 'Activa')")
+    .run(`Central de la categoría ${MARCA_T}`, `IGCAT${String(process.pid).slice(-4)}`).lastInsertRowid;
+  const caja = db
+    .prepare("INSERT INTO cuentas_tesoreria (nombre, tipo, estado, iglesia_id) VALUES (?, 'Corriente', 'Activa', ?)")
+    .run(`Caja de la categoría ${MARCA_T}`, iglesia).lastInsertRowid;
+
+  const unMovimiento = (categoria) => api('POST', '/tesoreria', {
+    fecha: db.prepare("SELECT date('now','localtime') d").get().d,
+    tipo: 'Ingreso', categoria, concepto: 'La ofrenda del domingo',
+    monto: 90000, cuenta_id: caja, metodo: 'Efectivo', iglesia_id: iglesia,
+  });
+
+  const inventada = await unMovimiento(`Categoría Que No Existe ${MARCA_T}`);
+  assert.equal(inventada.estado, 400, 'antes de esto contestaba 201 y lo guardaba así');
+  assert.match(inventada.json.error, /no está en Categorías de Tesorería/);
+
+  const buena = `Ofrenda del domingo ${MARCA_T}`;
+  unaCategoriaLlamada(buena);
+  const derecho = await unMovimiento(buena);
+  assert.equal(derecho.estado, 201, `una que sí está tiene que entrar: ${JSON.stringify(derecho.json)}`);
+  assert.equal(derecho.json.categoria, buena);
+});
+
+test('guardando de verdad: se guarda como está escrita en la lista', async () => {
+  const api = await elSistemaAndando();
+  const caja = db.prepare("SELECT id, iglesia_id FROM cuentas_tesoreria WHERE nombre = ?")
+    .get(`Caja de la categoría ${MARCA_T}`);
+  const buena = `Pro-Templo del norte ${MARCA_T}`;
+  unaCategoriaLlamada(buena);
+
+  const r = await api('POST', '/tesoreria', {
+    fecha: db.prepare("SELECT date('now','localtime') d").get().d,
+    tipo: 'Ingreso', categoria: buena.toLowerCase(), concepto: 'Aporte para el templo',
+    monto: 500000, cuenta_id: caja.id, metodo: 'Efectivo', iglesia_id: caja.iglesia_id,
+  });
+  assert.equal(r.estado, 201, JSON.stringify(r.json));
+  assert.equal(r.json.categoria, buena,
+    'con una sola forma de escribirlo, la cuenta de usos que cuida el borrado vuelve a verlo');
 });

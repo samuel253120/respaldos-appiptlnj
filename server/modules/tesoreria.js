@@ -203,6 +203,14 @@ module.exports = {
       // La lista la mantiene la iglesia en Categorías de Tesorería, y se acota
       // sola: al registrar un gasto no aparecen las categorías de ingreso.
       optionsRoute: '/categorias_tesoreria/opciones?tipo={tipo}',
+      /*
+       * Y al guardar se comprueba CONTRA ESA TABLA, que es donde vive la lista.
+       * Sin esto entraba cualquier texto —medido: «Categoría Que No Existe»
+       * contestaba 201— y el módulo de Categorías era, para el servidor,
+       * decorativo: acotaba el desplegable del navegador y nada más. Ver
+       * server/opciones.js.
+       */
+      opcionesDe: { modulo: 'categorias_tesoreria', columna: 'nombre', label: 'Categorías de Tesorería' },
       help: 'Se mantienen en «Categorías de Tesorería». Se ofrecen solo las que corresponden al tipo de movimiento.',
     },
     { name: 'concepto', label: 'Concepto / Descripción', type: 'text', required: true, seccion: 'Monto y forma de pago' },

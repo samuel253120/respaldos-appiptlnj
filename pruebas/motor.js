@@ -23,6 +23,37 @@ const { spawnSync } = require('child_process');
 
 const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), 'motor-'));
 
+/*
+ * La base descartable arranca con sus categorías de tesorería puestas.
+ *
+ * El sistema de verdad las siembra en cada arranque del servidor, así que una
+ * base SIN ellas no es un estado que exista nunca. Acá no arrancaba ninguno, y
+ * mientras nada comprobara la categoría de un movimiento eso daba igual. Desde
+ * la v1.344.0 sí se comprueba —contra la tabla donde vive la lista— y una
+ * prueba que anota un movimiento para llegar a otra cosa quedaba dependiendo de
+ * que otro archivo hubiera creado esa categoría primero. Los archivos del motor
+ * corren en paralelo, así que eso es una carrera, no una prueba.
+ *
+ * Se siembra acá, una vez, antes de repartir el trabajo.
+ */
+function sembrarLasCategorias() {
+  const antes = process.env.DATA_DIR;
+  process.env.DATA_DIR = carpeta;
+  process.env.PRUEBAS_DEL_MOTOR = '1';
+  try {
+    require('../server/registry').allModules();   // crea las tablas de los módulos
+    const migraciones = require('../server/migraciones');
+    migraciones.categoriasDeTesoreria();
+    migraciones.categoriasDeLasDeudas();
+  } catch (e) {
+    console.error(`⚠️  no se pudieron sembrar las categorías de la base de prueba: ${e.message}`);
+  } finally {
+    if (antes === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = antes;
+  }
+}
+sembrarLasCategorias();
+
 // Se le nombran los archivos uno por uno en vez de darle la carpeta: así se
 // sabe exactamente qué corre, y un archivo de apoyo que viva ahí al lado no
 // se toma por prueba. Cualquier «algo.test.js» que se agregue entra solo.

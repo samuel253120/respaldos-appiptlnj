@@ -328,7 +328,7 @@ test('guardando de verdad: la plata tampoco entra por la puerta de atrás', asyn
   assert.ok(caja, `el cuerpo tendría que haber estrenado su caja: ${JSON.stringify(cajas).slice(0, 200)}`);
 
   const movimiento = {
-    tipo: 'Ingreso', categoria: 'Ofrenda', monto: 1000, fecha: '2026-02-01',
+    tipo: 'Ingreso', categoria: 'Ofrendas', monto: 1000, fecha: '2026-02-01',
     cuenta_id: caja.id, concepto: `Ofrenda ${m}`, igual_asi: true,
   };
   const mientras = await api('POST', '/tesoreria', movimiento);
