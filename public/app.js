@@ -10116,6 +10116,9 @@ async function renderInformeAsistencia(contenedor, precarga) {
           ${pieDelDocumento()} ·
           <b>S</b> asistió · <b>J</b> justificó · <b>N</b> faltó · la casilla en blanco es un día con actividad
           a la que todavía no se le pasa lista, para llenarla a mano; la casilla gris, un día sin reunión del cuerpo.<br>
+          ${d.sinCuerpo ? `<b>${esc(String(d.sinCuerpo))} marca(s)</b> de actividades de este cuerpo quedaron sin cuerpo
+          anotado y no entran en esta hoja: no se sabe de quién es la fila. Revíselas en la Toma de Asistencia de
+          esas actividades.<br>` : ''}
           Salen los integrantes vigentes del cuerpo —activos y en período de prueba—. Un día en que hubo dos
           actividades del cuerpo cuenta como una sola columna, con lo mejor de las dos. Los días todavía sin lista
           no entran en ninguna cuenta: no le bajan el porcentaje a nadie.

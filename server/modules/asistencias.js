@@ -79,6 +79,34 @@ function cuerposQueLeTocan(actividad, usuario) {
 }
 
 /**
+ * Cómo se llama el cuerpo de una marca cuando no se le puede poner nombre.
+ *
+ * Una marca guarda a qué cuerpo corresponde y puede quedarse sin él: el
+ * sistema lo repara al arrancar, pero su propio aviso reconoce que hay casos
+ * que no puede resolver —«la persona pertenece a varios de los cuerpos
+ * convocados, o a ninguno; se dejaron como estaban»—, y una copia restaurada o
+ * una planilla importada traen los suyos.
+ *
+ * Lo que quedaba así no se veía en NINGUNA vista por cuerpo y no se decía:
+ * medido en la v1.378.0 sobre la base cargada, el informe por cuerpo de cuatro
+ * meses entregaba UNA fila, con el nombre del cuerpo en blanco y 25.400 marcas
+ * dentro. Una fila sin nombre con veinticinco mil marcas no se lee como un
+ * aviso: se lee como un cuerpo que se llama así.
+ *
+ * Así que se nombran, y se nombran acá —una vez, en el servidor— para que lo
+ * digan igual la pantalla, la hoja impresa y la planilla que se baja a Excel.
+ * Son dos cosas distintas y conviene no confundirlas: la marca que nunca supo
+ * de qué cuerpo era, y la que apunta a un cuerpo que ya no está.
+ */
+const SIN_CUERPO = '(sin cuerpo anotado)';
+function comoSeLlamaElCuerpo(fila) {
+  if (fila.cuerpo) return fila.cuerpo;
+  return fila.cuerpo_id ? `(cuerpo n.º ${fila.cuerpo_id}, ya borrado)` : SIN_CUERPO;
+}
+/** La misma, para pasársela a un `.map()` sin perder el resto de la fila. */
+const conElCuerpoNombrado = (fila) => ({ ...fila, cuerpo: comoSeLlamaElCuerpo(fila) });
+
+/**
  * ── QUÉ ES «LA MISMA ACTIVIDAD» ──
  *
  * Una sola definición, para los dos caminos por los que se crea una actividad:
@@ -1702,7 +1730,8 @@ module.exports = {
                     FROM asistencia_detalle d LEFT JOIN cuerpos c ON c.id = d.cuerpo_id
                    ${where} GROUP BY d.cuerpo_id ORDER BY c.nombre`)
         .all(...params)
-        .map(porcentajes);
+        .map(porcentajes)
+        .map(conElCuerpoNombrado);
 
       // Una fila por persona, salga del registro que salga
       const porMiembro = db
@@ -1737,7 +1766,8 @@ module.exports = {
                       FROM asistencia_detalle d LEFT JOIN cuerpos c ON c.id = d.cuerpo_id
                      ${where} GROUP BY d.cuerpo_id ORDER BY c.nombre`)
           .all(...params)
-          .map(porcentajes);
+          .map(porcentajes)
+          .map(conElCuerpoNombrado);
       }
 
       /*
@@ -1766,7 +1796,8 @@ module.exports = {
                       LEFT JOIN asistencias a ON a.id = d.asistencia_id
                       LEFT JOIN cuerpos c ON c.id = d.cuerpo_id
                      ${whereConVisitas} ORDER BY d.fecha DESC LIMIT 500`)
-          .all(...params);
+          .all(...params)
+          .map(conElCuerpoNombrado);
       }
 
       res.json({
@@ -1797,3 +1828,11 @@ module.exports.avanceDe = avanceDe;
  * sale de acá y no se copia allá.
  */
 module.exports.idsDeCuerpos = idsDeCuerpos;
+/*
+ * Y las dos preguntas que este módulo contesta sobre sí mismo y que conviene
+ * poder hacerle sueltas: qué es «la misma actividad» y cómo se nombra el cuerpo
+ * de una marca que no lo tiene.
+ */
+module.exports.lasQueYaEstaban = lasQueYaEstaban;
+module.exports.comoSeLlamaElCuerpo = comoSeLlamaElCuerpo;
+module.exports.SIN_CUERPO = SIN_CUERPO;

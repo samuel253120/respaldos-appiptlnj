@@ -109,6 +109,30 @@ function armar(db, cuerpo, mes) {
       .filter(Boolean)
   );
 
+  /*
+   * ── LO QUE LA HOJA NO PUEDE MOSTRAR, Y LO DICE ──
+   *
+   * La consulta de arriba pide las marcas de ESTE cuerpo, así que una marca sin
+   * cuerpo anotado no entra —no se sabe de quién es la fila— y hasta la
+   * v1.379.0 desaparecía sin una palabra. El sistema repara esas marcas al
+   * arrancar, pero su propio aviso reconoce que hay casos que no puede
+   * resolver, y una copia restaurada o una planilla importada traen los suyos.
+   *
+   * Se cuentan las de las actividades que convocaron a este cuerpo, que son las
+   * que uno esperaría ver en esta hoja, y la hoja lo dice al pie. No se
+   * inventan filas ni se reparten entre los integrantes: no se sabe de quién
+   * son, y una hoja que se firma no puede decir lo que no sabe.
+   */
+  const sinCuerpo = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM asistencia_detalle d
+         JOIN asistencias a ON a.id = d.asistencia_id
+        WHERE d.cuerpo_id IS NULL AND d.fecha >= ? AND d.fecha <= ?
+          AND COALESCE(d.visita, 0) = 0
+          AND EXISTS (SELECT 1 FROM json_each(a.cuerpos) WHERE json_each.value = ?)`
+    )
+    .get(primero, ultimo, cuerpo.id).n;
+
   /** Un día tiene reunión si ese día se le pasó lista al cuerpo. */
   const conReunion = new Set();
   const porPersona = new Map(); // clave de persona -> { día -> estado }
@@ -185,7 +209,7 @@ function armar(db, cuerpo, mes) {
 
   return {
     cuerpo: { id: cuerpo.id, nombre: cuerpo.nombre, tipo: cuerpo.tipo },
-    mes, anio, numeroDeMes, dias, diasConReunion, diasProgramados, integrantes, porDia,
+    mes, anio, numeroDeMes, dias, diasConReunion, diasProgramados, integrantes, porDia, sinCuerpo,
   };
 }
 
