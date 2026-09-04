@@ -286,16 +286,59 @@ test('vacío no cuenta como valor inventado: de eso se ocupa lo obligatorio', ()
   }
 });
 
-test('una desactivada se sigue admitiendo: existe, aunque ya no se ofrezca', () => {
+test('una desactivada tampoco se admite: existe, pero la iglesia la sacó de circulación', () => {
   /*
-   * Es la misma razón por la que la comprobación mira solo lo que este guardado
-   * está cambiando: un movimiento viejo clasificado con una categoría que la
-   * iglesia después apagó no puede quedar imposible de corregir.
+   * CAMBIÓ EN LA v1.352.0. Antes bastaba con que existiera en la tabla: una
+   * desactivada dejaba de OFRECERSE en el desplegable y se seguía ACEPTANDO
+   * por la API, así que desmarcar «En uso» quedaba a medias. Medido en el
+   * módulo de Tipos de Actividad: una actividad con un tipo desactivado
+   * entraba con un 201.
+   *
+   * Lo que la desactivación protege —que lo ya anotado no quede huérfano—
+   * sigue igual, y lo cuida la prueba de abajo: la comprobación mira solo lo
+   * que este guardado está CAMBIANDO.
    */
   const nombre = `Actividades de verano ${MARCA_T}`;
   const id = unaCategoriaLlamada(nombre);
   db.prepare('UPDATE categorias_tesoreria SET activo = 0 WHERE id = ?').run(id);
-  assert.equal(enSuTabla(getModule('tesoreria'), { categoria: nombre }).reparo, null);
+
+  const { reparo } = enSuTabla(getModule('tesoreria'), { categoria: nombre });
+  assert.match(reparo || '', /ya no está en uso/);
+  assert.match(reparo || '', /vuelva a marcarlo «En uso»/, 'y dice cómo deshacerlo');
+});
+
+test('pero un movimiento viejo con una categoría ya apagada se sigue pudiendo corregir', () => {
+  /*
+   * Es el contrapeso de la de arriba, y la razón por la que la comprobación
+   * mira solo lo que cambia: un movimiento de marzo clasificado con una
+   * categoría que la iglesia apagó en agosto no puede quedar imposible de
+   * guardar por algo que quien le corrige el monto no eligió.
+   */
+  const nombre = `Pro-Templo del verano ${MARCA_T}`;
+  const id = unaCategoriaLlamada(nombre);
+  db.prepare('UPDATE categorias_tesoreria SET activo = 0 WHERE id = ?').run(id);
+
+  const { reparo } = enSuTabla(
+    getModule('tesoreria'),
+    { categoria: nombre, monto: 5000 },
+    { categoria: nombre, monto: 1000 }
+  );
+  assert.equal(reparo, null, 'no la está cambiando: le está corrigiendo el monto');
+});
+
+test('una tilde no la deja fuera de su propia lista', () => {
+  /*
+   * El `lower()` de SQLite es solo para la A-Z: deja las tildes como están. Así
+   * que «PRO-TEMPLO DEL AÑO» no calzaba con «Pro-Templo del Año» y el sistema
+   * contestaba que no estaba en la lista, estando. En español eso no es un
+   * detalle: pasa con cualquier nombre con tilde o eñe.
+   */
+  const nombre = `Reparación del Año ${MARCA_T}`;
+  unaCategoriaLlamada(nombre);
+
+  const datos = { categoria: nombre.toUpperCase() };
+  assert.equal(enSuTabla(getModule('tesoreria'), datos).reparo, null);
+  assert.equal(datos.categoria, nombre, 'y queda escrita como está en la lista');
 });
 
 test('lo que este guardado NO está cambiando no se mira', () => {
@@ -313,13 +356,14 @@ test('lo que este guardado NO está cambiando no se mira', () => {
   assert.equal(reparo, null);
 });
 
-test('un campo sin «opcionesDe» no se mira, y hoy lo declara uno solo', () => {
+test('un campo sin «opcionesDe» no se mira, y hoy lo declaran dos', () => {
   assert.equal(enSuTabla(AYUDAS, { tipo_ayuda: 'Alimentos' }).reparo, null);
 
   const cuantos = allModules()
-    .flatMap((m) => (m.fields || []).filter((f) => f.opcionesDe).map((f) => `${m.name}.${f.name}`));
-  assert.deepEqual(cuantos, ['tesoreria.categoria'],
-    'los otros dieciocho se encenderán cuando a cada módulo le toque su revisión');
+    .flatMap((m) => (m.fields || []).filter((f) => f.opcionesDe).map((f) => `${m.name}.${f.name}`))
+    .sort();
+  assert.deepEqual(cuantos, ['asistencias.tipo_reunion', 'tesoreria.categoria'],
+    'los otros diecisiete se encenderán cuando a cada módulo le toque su revisión');
 });
 
 /* ------------------------------- y guardando de verdad, por el motor */

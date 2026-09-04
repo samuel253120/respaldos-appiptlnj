@@ -440,6 +440,15 @@ module.exports = {
        * sigue diciendo lo que decía.
        */
       optionsRoute: '/tipos_actividad/opciones',
+      /*
+       * Y la lista se comprueba al guardar, no solo se ofrece (v1.352.0).
+       * El desplegable acotaba lo que se ve en el navegador y nada más: por la
+       * API entraba cualquier texto —medido: «Tipo Que No Existe», 201— y un
+       * informe agrupado por tipo empezaba a mostrar filas que nadie creó.
+       * Declarando de qué tabla sale la lista, el motor la comprueba contra
+       * ella y de paso deja el nombre escrito como está en la lista.
+       */
+      opcionesDe: { modulo: 'tipos_actividad', columna: 'nombre', label: 'Tipos de Actividad' },
       // La que viene elegida se fija en Configuración; si la guardada ya no
       // existe en la lista, se usa la primera y no una que el select no ofrece.
       get default() {

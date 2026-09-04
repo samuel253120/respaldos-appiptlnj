@@ -283,7 +283,9 @@ test('guardando de verdad: un cuerpo que se cierra deja de recibir cosas', async
   assert.equal(bien.estado, 400, 'le inventarió un bien nuevo');
 
   const actividad = await api('POST', '/asistencias', {
-    fecha: '2026-02-15', cuerpos: [cu], tipo_reunion: 'Culto', igual_asi: true,
+    // El tipo tiene que ser uno de la lista: desde la v1.352.0 el motor lo
+    // comprueba, y lo que esta prueba mira es el reparo por el cuerpo inactivo.
+    fecha: '2026-02-15', cuerpos: [cu], tipo_reunion: 'Servicio General', igual_asi: true,
   });
   assert.equal(actividad.estado, 400, 'lo convocó a una actividad');
   assert.match(actividad.json.error, /está marcado como inactivo/i);

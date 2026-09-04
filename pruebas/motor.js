@@ -24,7 +24,7 @@ const { spawnSync } = require('child_process');
 const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), 'motor-'));
 
 /*
- * La base descartable arranca con sus categorías de tesorería puestas.
+ * La base descartable arranca con las listas que mantiene la iglesia puestas.
  *
  * El sistema de verdad las siembra en cada arranque del servidor, así que una
  * base SIN ellas no es un estado que exista nunca. Acá no arrancaba ninguno, y
@@ -34,9 +34,12 @@ const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), 'motor-'));
  * que otro archivo hubiera creado esa categoría primero. Los archivos del motor
  * corren en paralelo, así que eso es una carrera, no una prueba.
  *
+ * Lo mismo vale, desde la v1.352.0, para los tipos de actividad y los motivos
+ * de ausencia: el tipo de una actividad también se comprueba contra su tabla.
+ *
  * Se siembra acá, una vez, antes de repartir el trabajo.
  */
-function sembrarLasCategorias() {
+function sembrarLasListas() {
   const antes = process.env.DATA_DIR;
   process.env.DATA_DIR = carpeta;
   process.env.PRUEBAS_DEL_MOTOR = '1';
@@ -45,14 +48,15 @@ function sembrarLasCategorias() {
     const migraciones = require('../server/migraciones');
     migraciones.categoriasDeTesoreria();
     migraciones.categoriasDeLasDeudas();
+    migraciones.listasDeAsistenciaComoDatos();
   } catch (e) {
-    console.error(`⚠️  no se pudieron sembrar las categorías de la base de prueba: ${e.message}`);
+    console.error(`⚠️  no se pudieron sembrar las listas de la base de prueba: ${e.message}`);
   } finally {
     if (antes === undefined) delete process.env.DATA_DIR;
     else process.env.DATA_DIR = antes;
   }
 }
-sembrarLasCategorias();
+sembrarLasListas();
 
 // Se le nombran los archivos uno por uno en vez de darle la carpeta: así se
 // sabe exactamente qué corre, y un archivo de apoyo que viva ahí al lado no

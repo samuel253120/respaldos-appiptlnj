@@ -150,7 +150,26 @@ function loQueNoEstaEnLaLista(def, data, cambia) {
  *
  * La lista se pide con `LIMIT 1` sobre un `lower()`: no se traen las filas para
  * compararlas en memoria porque estas tablas las mantiene la iglesia y pueden
- * tener cientos.
+ * tener cientos. Cuando ese tiro no acierta —y solo entonces— se recorren los
+ * nombres en memoria, porque el `lower()` de SQLite ES SOLO PARA LA A-Z: deja
+ * las tildes como están, así que «SALIDA A LA CÁRCEL» no calzaba con «Salida a
+ * la Cárcel» y el sistema contestaba que no estaba en la lista, estando. Se vio
+ * probando esa fila exacta. En español eso no es un detalle: pasa con cualquier
+ * nombre que lleve tilde o eñe.
+ *
+ * Y NO BASTA CON QUE EXISTA: si la tabla lleva la columna «activo» —la casilla
+ * «En uso» de estos módulos—, tampoco se admite una que la iglesia haya
+ * apagado (v1.352.0). Desmarcar «En uso» es lo que estos módulos ofrecen en
+ * vez de borrar, justamente para no dejar huérfano lo ya anotado, y quedaba a
+ * medias: dejaba de OFRECERSE en el desplegable y se seguía ACEPTANDO por la
+ * API. Medido antes de esto: una actividad con un tipo desactivado entraba con
+ * un 201.
+ *
+ * Alcanza solo lo que este guardado está CAMBIANDO, que es lo que `cambia()`
+ * decide comparando contra lo que ya había. Así, una actividad de marzo cuyo
+ * tipo se desactivó en agosto se sigue pudiendo abrir y corregirle la hora:
+ * eso no la empeora. Lo que se frena es ponerle hoy, a propósito, un valor
+ * que la iglesia sacó de circulación.
  */
 function loQueNoEstaEnSuTabla(db, def, data, cambia) {
   for (const f of def.fields || []) {
@@ -163,17 +182,40 @@ function loQueNoEstaEnSuTabla(db, def, data, cambia) {
     const val = data[f.name];
     if (val === null || val === undefined || String(val).trim() === '') continue;
 
-    const enLaLista = db
-      .prepare(`SELECT "${suya.columna}" AS valor FROM "${suya.modulo}" WHERE lower("${suya.columna}") = lower(?) LIMIT 1`)
-      .get(String(val).trim());
+    // PRAGMA no admite parámetros, y el nombre de la tabla sale del módulo.
+    const tieneEnUso = db
+      .prepare(`PRAGMA table_info("${suya.modulo}")`).all().some((c) => c.name === 'activo');
 
-    if (enLaLista) {
+    const buscado = String(val).trim();
+    let enLaLista = db
+      .prepare(
+        `SELECT "${suya.columna}" AS valor${tieneEnUso ? ', activo' : ''} FROM "${suya.modulo}" ` +
+          `WHERE lower("${suya.columna}") = lower(?) LIMIT 1`
+      )
+      .get(buscado);
+
+    if (!enLaLista) {
+      const igualDando = (a, b) =>
+        String(a).trim().toLocaleLowerCase('es') === String(b).trim().toLocaleLowerCase('es');
+      enLaLista = db
+        .prepare(`SELECT "${suya.columna}" AS valor${tieneEnUso ? ', activo' : ''} FROM "${suya.modulo}"`)
+        .all()
+        .find((fila) => igualDando(fila.valor, buscado));
+    }
+
+    const donde = suya.label || require('./registry').getModule(suya.modulo)?.label || suya.modulo;
+
+    if (enLaLista && (!tieneEnUso || enLaLista.activo)) {
       data[f.name] = enLaLista.valor;   // una sola forma de escribirlo
       continue;
     }
 
-    const donde = suya.label || require('./registry').getModule(suya.modulo)?.label || suya.modulo;
-    return `«${String(val).trim()}» no está en ${donde}. `
+    if (enLaLista) {
+      return `«${enLaLista.valor}» ya no está en uso en ${donde}. `
+        + `Elija otro de la lista, o vuelva a marcarlo «En uso» en ${donde}.`;
+    }
+
+    return `«${buscado}» no está en ${donde}. `
       + `Elija uno de la lista, o créelo primero en ${donde}.`;
   }
   return null;
