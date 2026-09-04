@@ -297,3 +297,55 @@ test('y lo que no es el nombre se puede cambiar aunque tenga movimientos', () =>
   assert.equal(alGuardar({ ...fila, tipo: 'Ambos' }, fila), null);
   assert.equal(alGuardar({ ...fila, notas: 'Rifas y once solidarias' }, fila), null);
 });
+
+/* ------------------------------------------------- lo que queda anotado */
+
+/*
+ * Las categorías son el vocabulario con que queda clasificado cada peso, y no
+ * estaban entre los módulos que el Registro de Cambios vigila. Eso dejaba
+ * anotada justo la operación que el módulo no deja hacer, y sin anotar las dos
+ * que sí cambian las cosas en silencio.
+ *
+ * MEDIDO en la v1.341.0, catorce cambios en una misma sesión: 7 borrados → 7
+ * anotados; 1 renombrado → 0; 6 desactivaciones → 0. Los borrados quedaban
+ * porque TODO lo que se borra se anota en cualquier módulo.
+ */
+test('las categorías están entre los módulos que el Registro de Cambios vigila', () => {
+  const { MODULOS_VIGILADOS } = require('../../server/bitacora');
+  assert.ok(MODULOS_VIGILADOS.includes('categorias_tesoreria'),
+    'sin esto, renombrar o desactivar una categoría no deja rastro en ninguna parte');
+});
+
+test('y están junto al dinero, que es de lo que hablan', () => {
+  const { MODULOS_VIGILADOS } = require('../../server/bitacora');
+  for (const delDinero of ['tesoreria', 'cuentas_tesoreria', 'traspasos']) {
+    assert.ok(MODULOS_VIGILADOS.includes(delDinero));
+  }
+});
+
+test('renombrar una categoría sin usar queda anotado', () => {
+  const fila = unaCategoria(`Pro-Tenplo del sur ${MARCA}`, 'Ingreso');
+  const antes = db.prepare(
+    "SELECT COUNT(*) c FROM registro_cambios WHERE modulo = 'Categorías de Tesorería' AND registro_id = ?"
+  ).get(fila.id).c;
+
+  require('../../server/bitacora').anotarCambio({
+    def: CATEGORIAS, accion: 'Cambio',
+    fila: { ...fila, nombre: `Pro-Templo del sur ${MARCA}` },
+    usuario: { id: 1, nombre: 'La que ordenó la lista' },
+    detalle: `Nombre de la categoría: ${fila.nombre} → Pro-Templo del sur ${MARCA}`,
+  });
+
+  const linea = db.prepare(
+    `SELECT * FROM registro_cambios WHERE modulo = 'Categorías de Tesorería' AND registro_id = ?
+      ORDER BY id DESC LIMIT 1`
+  ).get(fila.id);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) c FROM registro_cambios WHERE modulo = 'Categorías de Tesorería' AND registro_id = ?")
+      .get(fila.id).c,
+    antes + 1
+  );
+  assert.match(linea.detalle, /Pro-Tenplo del sur/, 'el detalle dice cómo se llamaba');
+  assert.match(linea.detalle, /Pro-Templo del sur/, 'y cómo quedó');
+  assert.ok(linea.usuario, 'y quién lo hizo');
+});

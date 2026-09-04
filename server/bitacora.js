@@ -136,6 +136,31 @@ function anotarPastor(pastorId, datos) {
 const MODULOS_VIGILADOS = [
   // El dinero
   'tesoreria', 'cuentas_tesoreria', 'traspasos', 'cuotas_cuerpo', 'ayudas_sociales',
+  /*
+   * Y LAS PALABRAS CON QUE SE ESCRIBE EL DINERO.
+   *
+   * Las categorías de tesorería no son un módulo de listas más: son el
+   * vocabulario con que queda clasificado cada peso que entra y sale. No
+   * estaban acá, y eso dejaba anotada justo la operación que el módulo no deja
+   * hacer y sin anotar las dos que sí cambian las cosas en silencio.
+   *
+   * MEDIDO en la v1.341.0, catorce cambios hechos en una misma sesión:
+   *
+   *   7 categorías borradas ........ 7 anotadas
+   *   1 categoría renombrada ....... 0 anotadas
+   *   6 categorías desactivadas .... 0 anotadas
+   *
+   * Los siete borrados quedaban porque TODO lo que se borra se anota, en
+   * cualquier módulo —la regla de más arriba—, y borrar es precisamente lo que
+   * el módulo frena cuando importa. Renombrar y desactivar, que son las dos que
+   * pueden cambiar en silencio cómo queda clasificada la plata de la iglesia,
+   * no dejaban rastro en ninguna parte: si dentro de un año el informe anual no
+   * cuadra con el del año pasado, el Registro de Cambios no tenía la respuesta.
+   *
+   * Son pocas líneas al año —una iglesia tiene veintitantas categorías y las
+   * toca de vez en cuando—, así que no hay ruido que temer acá.
+   */
+  'categorias_tesoreria',
   // Las llaves
   'usuarios', 'perfiles_permisos',
   // Lo que no tiene historial propio
@@ -923,4 +948,7 @@ module.exports = {
   // El paso que decide una evaluación de período de prueba, que mueve la ficha
   // del integrante con un UPDATE directo y no pasa por el motor.
   anotarPasoDeIntegrante,
+  // Qué módulos deja anotados el Registro de Cambios, para poder comprobar que
+  // uno esté en la lista sin tener que provocar el guardado entero.
+  MODULOS_VIGILADOS,
 };

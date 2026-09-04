@@ -401,19 +401,25 @@ async function entrar(rut = RUT, clave = CLAVE) {
   console.log('\n4d · Lo que se borra, en cualquier módulo');
   // Borrar es lo único que no se deshace, y con la ficha se va su historial:
   // si no queda acá, no queda en ninguna parte.
-  const cat = await api('POST', '/api/categorias_tesoreria', {
-    nombre: `Prueba borrado ${Date.now()}`, tipo: 'Ingreso', activo: 1,
+  /*
+   * Se usa un módulo que de verdad NO está en la lista de los vigilados: las
+   * categorías de tesorería servían de ejemplo hasta la v1.346.0, y desde esa
+   * versión están vigiladas —son el vocabulario con que se escribe el dinero—
+   * así que dejaron de probar lo que esta comprobación quiere probar.
+   */
+  const cat = await api('POST', '/api/motivos_ausencia', {
+    nombre: `Prueba borrado ${Date.now()}`, activo: 1,
   });
   if (cat.estado === 201 || cat.estado === 200) {
     const comoSeLlamaba = cat.datos.nombre;
-    await api('DELETE', `/api/categorias_tesoreria/${cat.datos.id}`);
+    await api('DELETE', `/api/motivos_ausencia/${cat.datos.id}`);
     const registro = (await api('GET', '/api/registro_cambios?page=1&limit=10')).datos.rows;
     const anotado = registro.find((r) => r.accion === 'Eliminación' && (r.detalle || '').includes(comoSeLlamaba));
     revisar('un módulo que no es del dinero también deja rastro al borrarse', !!anotado,
       'no apareció la eliminación en el Registro de Cambios');
     revisar('y se sabe quién fue', !!(anotado && anotado.usuario), anotado ? 'sin usuario' : '');
   } else {
-    revisar('se pudo crear una categoría de prueba', false, `respondió ${cat.estado}: ` + JSON.stringify(cat.datos).slice(0, 120));
+    revisar('se pudo crear un motivo de prueba', false, `respondió ${cat.estado}: ` + JSON.stringify(cat.datos).slice(0, 120));
   }
 
   /* 4d-bis · Lo que entra por planilla ------------------------------------- */
