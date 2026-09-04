@@ -79,6 +79,106 @@ function cuerposQueLeTocan(actividad, usuario) {
 }
 
 /**
+ * ── QUÉ ES «LA MISMA ACTIVIDAD» ──
+ *
+ * Una sola definición, para los dos caminos por los que se crea una actividad:
+ * el formulario y la ruta que la repite. La ruta ya se saltaba los días que la
+ * tenían y lo decía con todas sus letras —«una lista duplicada es peor que no
+ * tenerla: la gente marca en una y el informe cuenta las dos»—; el formulario
+ * no preguntaba nada. Medido en la v1.377.0: la misma reunión, el mismo día y
+ * el mismo cuerpo, tres veces seguidas, tres 201 y ni una palabra.
+ *
+ * Dos maneras de comparar habrían sido dos verdades, así que se compara acá y
+ * una sola vez. Es la misma cuando coinciden:
+ *
+ *   · el día,
+ *   · el tipo de actividad,
+ *   · y AL MENOS UN cuerpo convocado.
+ *
+ * Lo del «al menos uno» es lo que cambió respecto de la ruta de repetir, que
+ * comparaba el JSON de los cuerpos letra por letra: «[3,10]» y «[10,3]» son la
+ * misma convocatoria y no se parecían en nada, y una actividad que convoca a
+ * tres cuerpos duplica la lista de los tres aunque el cuarto sea distinto.
+ *
+ * LA HORA DESEMPATA. Un servicio en la mañana y otro en la tarde son dos
+ * actividades de verdad del mismo día, y eso es exactamente lo que dice la
+ * hora: si las dos la tienen puesta y no es la misma, no se pregunta nada. Si
+ * a una le falta, no se sabe, y entonces sí se pregunta.
+ */
+function esOtraHora(una, otra) {
+  return Boolean(una && otra && String(una).slice(0, 5) !== String(otra).slice(0, 5));
+}
+
+/**
+ * Las actividades que ya existen para esos días, por día.
+ *
+ * Devuelve un Map fecha -> la primera que coincide. Una sola consulta, porque
+ * la ruta de repetir pregunta por doscientas fechas de una vez.
+ */
+function lasQueYaEstaban(db, { fechas, tipo_reunion, cuerpos, hora_inicio }, exceptoId) {
+  const dias = (fechas || []).filter(Boolean);
+  const ids = idsDeCuerpos(cuerpos);
+  if (!dias.length || !ids.length || !tipo_reunion) return new Map();
+  const filas = db
+    .prepare(
+      `SELECT * FROM asistencias
+        WHERE fecha IN (${dias.map(() => '?').join(',')})
+          AND tipo_reunion = ?
+          AND id <> ?
+          AND EXISTS (SELECT 1 FROM json_each(asistencias.cuerpos)
+                       WHERE json_each.value IN (${ids.map(() => '?').join(',')}))
+        ORDER BY id`
+    )
+    .all(...dias, tipo_reunion, exceptoId || 0, ...ids);
+  const salida = new Map();
+  for (const f of filas) {
+    if (esOtraHora(hora_inicio, f.hora_inicio)) continue;
+    if (!salida.has(f.fecha)) salida.set(f.fecha, f);
+  }
+  return salida;
+}
+
+/**
+ * La pregunta que se le hace a quien está creando una que ya existe.
+ *
+ * Es una PREGUNTA y no un rechazo: dos reuniones del mismo tipo el mismo día
+ * existen, y el sistema no está para discutírselo a quien tiene el cuaderno
+ * delante. Lo que no puede es dejarlo pasar en silencio.
+ *
+ * Se le dice todo lo que hace falta para reconocerla —cómo se llama, a qué
+ * hora, con qué cuerpos, y si ya tiene lista pasada— y se le ofrece un botón
+ * que lleva hasta ella: «ábrala en vez de crearla de nuevo» sin decir dónde
+ * está obliga a salir, buscarla a mano y volver a llenar el formulario, que es
+ * justo lo que nadie hace.
+ */
+function avisoDeActividadRepetida(db, otra) {
+  const { comoSeLee } = require('../fechas');
+  const cuantas = db
+    .prepare('SELECT COUNT(*) AS n FROM asistencia_detalle WHERE asistencia_id = ?')
+    .get(otra.id).n;
+  const nombresDeCuerpos = idsDeCuerpos(otra.cuerpos)
+    .map((id) => (db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(id) || {}).nombre)
+    .filter(Boolean);
+  const senas = [
+    otra.nombre ? `«${otra.nombre}»` : null,
+    otra.hora_inicio ? `a las ${String(otra.hora_inicio).slice(0, 5)}` : 'sin hora anotada',
+    nombresDeCuerpos.length ? `con ${nombresDeCuerpos.join(', ')}` : null,
+    cuantas ? `y ${cuantas} marca(s) ya tomadas` : 'y todavía sin lista',
+  ].filter(Boolean).join(', ');
+
+  return {
+    error:
+      `Ya hay un ${otra.tipo_reunion} el ${comoSeLee(String(otra.fecha).slice(0, 10))} `
+      + `(${senas}). Si es esta misma, ábrala en vez de crearla de nuevo: con dos listas del `
+      + 'mismo culto la gente marca en una, el informe cuenta las dos y el porcentaje del cuerpo '
+      + 'queda a la mitad sin que nadie haya faltado. Si de verdad fueron dos reuniones distintas '
+      + 'ese día, ponga la hora de cada una y confirme.',
+    confirmar: 'actividad_repetida',
+    ir: { texto: '📋 Abrir la que ya existe', a: `#/m/asistencias/ficha/${otra.id}` },
+  };
+}
+
+/**
  * ¿A esta persona se le acota lo que ve de una actividad, o lo alcanza todo?
  *
  * Lo alcanza todo quien no tiene ni cuerpos ni iglesias asignadas: el
@@ -535,13 +635,33 @@ module.exports = {
   ],
 
   hooks: {
-    beforeSave(data, { existing, db }) {
-      const ids = idsDeCuerpos(data.cuerpos !== undefined ? data.cuerpos : existing ? existing.cuerpos : null);
+    beforeSave(data, { existing, db, id, confirmado }) {
+      const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
+      const ids = idsDeCuerpos(dato('cuerpos'));
       if (!ids.length) return 'Indique al menos un cuerpo convocado a la actividad';
       // La iglesia se toma del primer cuerpo, para que la actividad y sus
       // integrantes queden en la misma congregación
       const cuerpo = db.prepare('SELECT iglesia_id FROM cuerpos WHERE id = ?').get(ids[0]);
       if (cuerpo && cuerpo.iglesia_id) data.iglesia_id = cuerpo.iglesia_id;
+
+      /*
+       * Y si ya hay una igual ese día, se pregunta (ver «QUÉ ES LA MISMA
+       * ACTIVIDAD», arriba). También al editar: mover una actividad al día en
+       * que ya está la misma deja las dos listas exactamente igual de
+       * duplicadas que crearla de nuevo, y por ese lado no entraba nadie a
+       * mirar. La propia actividad no se cuenta como su gemela.
+       */
+      if (!confirmado) {
+        const fecha = dato('fecha');
+        const otras = lasQueYaEstaban(db, {
+          fechas: [fecha ? String(fecha).slice(0, 10) : null],
+          tipo_reunion: dato('tipo_reunion'),
+          cuerpos: ids,
+          hora_inicio: dato('hora_inicio'),
+        }, id);
+        const otra = otras.values().next().value;
+        if (otra) return avisoDeActividadRepetida(db, otra);
+      }
       return null;
     },
 
@@ -1342,13 +1462,21 @@ module.exports = {
        * Pasa al repetir dos veces lo mismo —se probó, se borró la mitad y se
        * volvió a intentar—, y una lista duplicada es peor que no tenerla: la
        * gente marca en una y el informe cuenta las dos.
+       *
+       * La pregunta la contesta `lasQueYaEstaban` (ver «QUÉ ES LA MISMA
+       * ACTIVIDAD», arriba), que es la misma que usa el formulario desde la
+       * v1.378.0. Acá se comparaba el JSON de los cuerpos letra por letra, así
+       * que «[3,10]» y «[10,3]» —la misma convocatoria— no se parecían en
+       * nada; ahora basta con que compartan un cuerpo, que es de quien se
+       * duplicaría la lista. La diferencia se ve: acá no se pregunta, se salta
+       * el día y se dice cuántos fueron.
        */
-      const mismaYa = db.prepare(
-        `SELECT fecha FROM asistencias
-          WHERE tipo_reunion = ? AND fecha IN (${fechas.map(() => '?').join(',')})
-            AND COALESCE(iglesia_id, 0) = ? AND COALESCE(cuerpos, '') = COALESCE(?, '')`
-      ).all(actividad.tipo_reunion, ...fechas, actividad.iglesia_id || 0, actividad.cuerpos);
-      const yaEstaban = new Set(mismaYa.map((f) => f.fecha));
+      const yaEstaban = new Set(lasQueYaEstaban(db, {
+        fechas,
+        tipo_reunion: actividad.tipo_reunion,
+        cuerpos: actividad.cuerpos,
+        hora_inicio: actividad.hora_inicio,
+      }, actividad.id).keys());
       const porCrear = fechas.filter((f) => !yaEstaban.has(f));
 
       const crear = db.prepare(

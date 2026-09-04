@@ -44,11 +44,20 @@ for (let i = 0; i < 3; i++) {
 }
 const TIPO = db.prepare('SELECT nombre FROM tipos_actividad WHERE activo = 1 ORDER BY id LIMIT 1').get().nombre;
 
-/** Una actividad con su lista pasada, lista para borrar. */
-async function conSuLista(api, nombre) {
+/**
+ * Una actividad con su lista pasada, lista para borrar.
+ *
+ * Cada una en SU DÍA. Desde la v1.378.0 crear dos veces la misma actividad
+ * —mismo día, mismo tipo y algún cuerpo en común— hace una pregunta antes de
+ * guardar, y dos de estas pruebas armaban su actividad el mismo 21 de junio: la
+ * segunda ya no se creaba, y lo que fallaba después era el borrado, que no
+ * tiene nada que ver.
+ */
+async function conSuLista(api, fecha, nombre) {
   const act = (await api('POST', '/asistencias', {
-    fecha: '2026-06-21', cuerpos: [cuerpo], tipo_reunion: TIPO, nombre,
+    fecha, cuerpos: [cuerpo], tipo_reunion: TIPO, nombre,
   })).json;
+  assert.ok(act && act.id, `la actividad no se creó: ${JSON.stringify(act).slice(0, 200)}`);
   const lista = (await api('GET', `/asistencias/${act.id}/lista`)).json;
   await api('POST', `/asistencias/${act.id}/lista`, {
     marcas: (lista.personas || []).map((p) => ({
@@ -62,7 +71,7 @@ const cuantasMarcas = (id) =>
 
 test('borrar una actividad con su lista pregunta antes, diciendo cuántas se lleva', async () => {
   const api = await elSistemaAndando();
-  const act = await conSuLista(api, `Culto LS ${marca}`);
+  const act = await conSuLista(api, '2026-06-21', `Culto LS ${marca}`);
   assert.equal(cuantasMarcas(act.id), 3, 'la lista quedó pasada');
 
   const sinConfirmar = await api('DELETE', `/asistencias/${act.id}`);
@@ -77,7 +86,7 @@ test('borrar una actividad con su lista pregunta antes, diciendo cuántas se lle
 
 test('confirmando se borra, y la lista se va con ella', async () => {
   const api = await elSistemaAndando();
-  const act = await conSuLista(api, `Culto LS confirmado ${marca}`);
+  const act = await conSuLista(api, '2026-06-23', `Culto LS confirmado ${marca}`);
   const r = await api('DELETE', `/asistencias/${act.id}?igual_asi=true`);
   assert.equal(r.estado, 200, r.texto.slice(0, 160));
   assert.equal(cuantasMarcas(act.id), 0);
@@ -89,8 +98,9 @@ test('y la constancia dice cuántas se llevó', () => {
     .prepare(
       /*
        * Se busca por el DETALLE y no por el «registro»: el nombre con que una
-       * actividad se presenta es «{tipo} — {fecha}», que es igual para las tres
-       * de esta prueba. El nombre propio de la actividad va en el detalle.
+       * actividad se presenta es «{tipo} — {fecha}», y el nombre propio —lo
+       * único que distingue a las de esta prueba de las de cualquier otro
+       * archivo que corra a la vez— va en el detalle.
        */
       `SELECT detalle FROM registro_cambios
         WHERE modulo = 'Asistencias' AND accion = 'Eliminación' AND detalle LIKE ?

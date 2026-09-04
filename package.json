@@ -1,6 +1,6 @@
 {
   "name": "sistema-gestion-iglesias",
-  "version": "1.377.0",
+  "version": "1.378.0",
   "description": "Sistema integral para la gestión de múltiples iglesias: miembros, cuerpos, asistencias, tesorería, inventarios, actas, documentos, ayudas sociales, certificados, credenciales, solicitudes y usuarios.",
   "main": "server/index.js",
   "scripts": {
