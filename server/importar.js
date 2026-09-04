@@ -70,15 +70,78 @@ function normalizarNumero(valor) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Busca un registro del módulo referido por su texto de presentación. */
-function buscarPorTexto(refDef, texto) {
-  const buscado = String(texto).trim().toLowerCase();
-  const filas = db.prepare(`SELECT * FROM "${refDef.name}" LIMIT 5000`).all();
-  return filas.find((r) => displayOf(refDef, r).trim().toLowerCase() === buscado) || null;
+/**
+ * EL NOMBRE ESCRITO EN LA PLANILLA, LLEVADO AL REGISTRO QUE NOMBRA.
+ *
+ * Es la comodidad que este archivo anuncia primero —«los campos de relación
+ * aceptan el NOMBRE en vez del número interno»— y estaba resuelta de la peor
+ * manera posible: trayendo la tabla entera desde la base y recorriéndola en
+ * memoria UNA VEZ POR CADA CELDA, con un tope de cinco mil filas. Las dos
+ * mitades de esa frase eran un problema distinto, y las dos se midieron en la
+ * v1.384.0 sobre una base con 5.601 miembros:
+ *
+ *   · **El tope mentía.** El 5.000.º miembro de la tabla entraba por su nombre
+ *     y el 5.001.º contestaba «no se encontró "Miembro4399 Grande4399" en
+ *     Miembros», siendo que estaba ahí y que por su número entraba. No
+ *     dependía de la persona sino del orden en que fue inscrita, así que el
+ *     día que la membresía pasara de cinco mil las planillas iban a empezar a
+ *     rechazar gente de a poco —los últimos inscritos primero— con un mensaje
+ *     que invita a corregir el archivo, que es lo único que no estaba mal.
+ *
+ *   · **Y costaba 165 veces más.** Las mismas 500 filas: por número 202 ms,
+ *     por nombre 33.401 ms —67 ms por celda—. Llevado al tope de cinco mil
+ *     filas por archivo, cinco minutos y medio por una sola columna, con el
+ *     sistema entero detenido todo ese rato, que es como trabaja esta puerta.
+ *
+ * AHORA se arma UN ÍNDICE por módulo y por importación: se recorre la tabla
+ * una sola vez —sin tope— y queda un mapa de «texto de presentación → número».
+ * Buscar deja de costar una consulta y pasa a costar nada, y alcanza a todos.
+ *
+ * Se conservan dos cosas del comportamiento anterior a propósito:
+ *
+ *   · **Gana el primero.** Si dos registros se presentan con el mismo texto
+ *     —dos personas homónimas—, el nombre resuelve al de menor número, que es
+ *     lo que devolvía el `find` de antes. Que sea ambiguo es un problema de la
+ *     planilla, no de acá, y cambiar a cuál apunta sería cambiar callado lo
+ *     que un archivo de años importaba.
+ *
+ *   · **Lo que se acaba de importar se puede nombrar.** La búsqueda anterior
+ *     consultaba la base en cada celda, así que una fila podía nombrar por su
+ *     texto a otra creada más arriba en el mismo archivo. Un índice armado una
+ *     vez lo habría roto, y por eso el índice se ACTUALIZA con cada fila que
+ *     entra (ver más abajo, en la ruta).
+ */
+function indiceDeNombres(refDef) {
+  const indice = new Map();
+  for (const fila of db.prepare(`SELECT * FROM "${refDef.name}"`).all()) {
+    const texto = displayOf(refDef, fila).trim().toLowerCase();
+    if (!texto || indice.has(texto)) continue;   // gana el primero
+    indice.set(texto, fila.id);
+  }
+  return indice;
+}
+
+/** El número del registro que se presenta con ese texto, o null. */
+function idDelQueSeLlama(refDef, texto, indices) {
+  let indice = indices && indices.get(refDef.name);
+  if (!indice) {
+    indice = indiceDeNombres(refDef);
+    if (indices) indices.set(refDef.name, indice);
+  }
+  const id = indice.get(String(texto).trim().toLowerCase());
+  return id === undefined ? null : id;
+}
+
+/** Deja en los índices ya armados la fila que se acaba de crear. */
+function anotarEnLosIndices(indices, def, fila) {
+  const indice = indices && indices.get(def.name);
+  if (!indice) return;                            // no se armó: se armará al día
+  const texto = displayOf(def, fila).trim().toLowerCase();
+  if (texto && !indice.has(texto)) indice.set(texto, fila.id);
 }
 
 /** Prepara y valida una fila; devuelve { datos, errores }. */
-function prepararFila(def, fila, user) {
+function prepararFila(def, fila, user, indices) {
   const datos = {};
   const errores = [];
 
@@ -126,12 +189,12 @@ function prepararFila(def, fila, user) {
         }
         valor = Number(valor);
       } else {
-        const encontrado = buscarPorTexto(refDef, valor);
+        const encontrado = idDelQueSeLlama(refDef, valor, indices);
         if (!encontrado) {
           errores.push(`${f.label}: no se encontró "${valor}" en ${refDef.label}`);
           continue;
         }
-        valor = encontrado.id;
+        valor = encontrado;
       }
     } else if (f.type === 'multiref') {
       const refDef = getModule(f.ref);
@@ -142,12 +205,12 @@ function prepararFila(def, fila, user) {
           ids.push(Number(parte));
           continue;
         }
-        const encontrado = refDef && buscarPorTexto(refDef, parte);
+        const encontrado = refDef && idDelQueSeLlama(refDef, parte, indices);
         if (!encontrado) {
           errores.push(`${f.label}: no se encontró "${parte}"`);
           continue;
         }
-        ids.push(encontrado.id);
+        ids.push(encontrado);
       }
       valor = ids;
     } else if (f.type === 'boolean') {
@@ -319,10 +382,17 @@ router.post('/:modulo', (req, res) => {
 
     const errores = [];
     let listas = 0;
+    /*
+     * Los índices de nombres, uno por módulo referido, armados a lo más una vez
+     * cada uno y compartidos por todas las filas del archivo (ver
+     * `indiceDeNombres`). Viven lo que dura esta importación: la de al lado
+     * arma los suyos, porque entremedio la base pudo cambiar.
+     */
+    const indices = new Map();
 
     const ejecutar = db.transaction(() => {
       filas.forEach((fila, i) => {
-        const { datos, errores: errFila } = prepararFila(def, fila, req.user);
+        const { datos, errores: errFila } = prepararFila(def, fila, req.user, indices);
         if (errFila.length) {
           errores.push({ fila: i + 1, errores: errFila });
           return;
@@ -350,6 +420,9 @@ router.post('/:modulo', (req, res) => {
          * tesorería. La fila quedaba guardada y a medias.
          */
         const guardada = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(info.lastInsertRowid);
+        // Y queda nombrable por las filas de más abajo, igual que cuando cada
+        // celda consultaba la base (ver `indiceDeNombres`).
+        if (guardada) anotarEnLosIndices(indices, def, guardada);
         if (guardada && def.hooks && def.hooks.afterSave) {
           def.hooks.afterSave(guardada, { user: req.user, isNew: true, db });
         }
@@ -392,4 +465,4 @@ router.post('/:modulo', (req, res) => {
  * de verdad importa de esta puerta: que le aplique a una fila de planilla las
  * mismas reglas que el formulario le aplica a la misma fila escrita a mano.
  */
-module.exports = { router, prepararFila };
+module.exports = { router, prepararFila, anotarEnLosIndices };
