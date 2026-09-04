@@ -13,6 +13,41 @@
  * Un motivo que ya se usó no se borra: se desactiva, como los tipos de
  * actividad y las categorías de tesorería.
  */
+/**
+ * ¿Este guardado dejaría a la iglesia sin ningún motivo que ofrecer?
+ *
+ * Desmarcar «En uso» es la salida que el propio módulo recomienda en vez de
+ * borrar, y no había ningún piso: se podían apagar todos. Acá el caso pesa MÁS
+ * que en los dos módulos hermanos, y por una razón precisa: el motivo es
+ * OBLIGATORIO cuando alguien queda justificado, y no hay valor de fábrica al
+ * que caer. Con la lista en cero no se guarda mal: no se guarda.
+ *
+ * MEDIDO en la v1.362.0, sobre una instalación nueva con sus seis motivos:
+ *
+ *   desactivados uno por uno ............ 6 · ninguno dijo nada
+ *   lo que ofrece el desplegable ........ 0
+ *   justificar a alguien ................ 400 «Indique el motivo de cada justificación»
+ *   marcarlo «Ausente» a secas .......... 200
+ *
+ * La única salida que quedaba era la última, y pierde justamente lo que se
+ * quería anotar: que la persona SÍ avisó.
+ *
+ * `como` es cómo quedaría ESTA fila, o null si se está borrando.
+ */
+function dejariaSinNingunMotivo(db, id, como) {
+  const vivos = db
+    .prepare('SELECT COUNT(*) AS c FROM motivos_ausencia WHERE id != ? AND activo = 1')
+    .get(id).c;
+  if (vivos) return false;
+  return !(como && Number(como.activo) !== 0);
+}
+
+/** El reparo, escrito para quien lo va a leer. */
+const EL_AVISO_DE_QUEDARSE_SIN_MOTIVOS =
+  'Con eso no quedaría ningún motivo en uso, y entonces no se podría justificar ninguna ausencia: '
+  + 'el desplegable saldría vacío y el motivo es obligatorio, así que a quien avisó habría que '
+  + 'marcarlo «Ausente» a secas. Deje al menos uno en uso, o cree antes el que va a usar.';
+
 module.exports = {
   name: 'motivos_ausencia',
   label: 'Motivos de Ausencia',
@@ -64,6 +99,17 @@ module.exports = {
      * el nombre de una razón, y la razón no cambió.
      */
     beforeSave(data, { db, isNew, existing, confirmado }) {
+      /*
+       * Lo primero: que este guardado no deje a quien pasa lista sin ningún
+       * motivo que elegir. Va antes que lo del nombre porque no depende de él
+       * —se llega acá desmarcando «En uso»— y porque es lo que impide que
+       * justificar una ausencia quede imposible.
+       */
+      if (!isNew && existing) {
+        const comoQuedaria = { activo: data.activo !== undefined ? data.activo : existing.activo };
+        if (dejariaSinNingunMotivo(db, existing.id, comoQuedaria)) return EL_AVISO_DE_QUEDARSE_SIN_MOTIVOS;
+      }
+
       if (isNew || !existing || data.nombre === undefined) return null;
 
       const seLlamaba = String(existing.nombre || '');
@@ -133,6 +179,11 @@ module.exports = {
           'borrar sin dejarlas sin motivo. Desmárquelo en «En uso» y dejará de ofrecerse, sin tocar las que ya están.'
         );
       }
+
+      // Y que borrarlo no deje la lista en cero: es la misma comprobación que
+      // al desmarcar «En uso», con esta fila fuera.
+      if (dejariaSinNingunMotivo(db, row.id, null)) return EL_AVISO_DE_QUEDARSE_SIN_MOTIVOS;
+
       return null;
     },
   },
