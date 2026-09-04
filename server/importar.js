@@ -122,26 +122,27 @@ function indiceDeNombres(refDef) {
 }
 
 /** El número del registro que se presenta con ese texto, o null. */
-function idDelQueSeLlama(refDef, texto, indices) {
-  let indice = indices && indices.get(refDef.name);
+function idDelQueSeLlama(refDef, texto, memoria) {
+  const llave = `planilla:como-se-presentan:${refDef.name}`;
+  let indice = memoria && memoria.get(llave);
   if (!indice) {
     indice = indiceDeNombres(refDef);
-    if (indices) indices.set(refDef.name, indice);
+    if (memoria) memoria.set(llave, indice);
   }
   const id = indice.get(String(texto).trim().toLowerCase());
   return id === undefined ? null : id;
 }
 
 /** Deja en los índices ya armados la fila que se acaba de crear. */
-function anotarEnLosIndices(indices, def, fila) {
-  const indice = indices && indices.get(def.name);
+function anotarEnLosIndices(memoria, def, fila) {
+  const indice = memoria && memoria.get(`planilla:como-se-presentan:${def.name}`);
   if (!indice) return;                            // no se armó: se armará al día
   const texto = displayOf(def, fila).trim().toLowerCase();
   if (texto && !indice.has(texto)) indice.set(texto, fila.id);
 }
 
 /** Prepara y valida una fila; devuelve { datos, errores }. */
-function prepararFila(def, fila, user, indices) {
+function prepararFila(def, fila, user, memoria) {
   const datos = {};
   const errores = [];
   /*
@@ -204,7 +205,7 @@ function prepararFila(def, fila, user, indices) {
       if (/^\d+$/.test(String(valor))) {
         valor = Number(valor);
       } else {
-        const encontrado = idDelQueSeLlama(refDef, valor, indices);
+        const encontrado = idDelQueSeLlama(refDef, valor, memoria);
         if (!encontrado) {
           errores.push(`${f.label}: no se encontró "${valor}" en ${refDef.label}`);
           noResolvieron.add(f.name);
@@ -221,7 +222,7 @@ function prepararFila(def, fila, user, indices) {
           ids.push(Number(parte));
           continue;
         }
-        const encontrado = refDef && idDelQueSeLlama(refDef, parte, indices);
+        const encontrado = refDef && idDelQueSeLlama(refDef, parte, memoria);
         if (!encontrado) {
           errores.push(`${f.label}: no se encontró "${parte}"`);
           continue;
@@ -391,7 +392,20 @@ function prepararFila(def, fila, user, indices) {
      * correcto: un egreso que deja una cuenta en rojo puede ser cierto, pero
      * no es algo que deba pasar sin que nadie lo mire.
      */
-    const err = def.hooks.beforeSave(datos, { user, isNew: true, id: null, existing: null, db, confirmado: false });
+    const err = def.hooks.beforeSave(datos, {
+      user, isNew: true, id: null, existing: null, db, confirmado: false,
+      /*
+       * Y LO QUE ESTA IMPORTACIÓN YA MIRÓ, para que la regla del módulo no lo
+       * vuelva a mirar quinientas veces.
+       *
+       * La regla de la ficha repetida de Miembros traía las fichas de la
+       * iglesia entera para comparar nombres —no se puede preguntar en la base,
+       * porque compara sin tildes y en minúsculas— y eso, una vez por fila,
+       * era el 97,5% de lo que costaba una importación. Un módulo puede usarla
+       * o no; el que no la use no cambia en nada.
+       */
+      memoria,
+    });
     if (err) errores.push(typeof err === 'string' ? err : err.error);
   }
 
@@ -424,16 +438,17 @@ router.post('/:modulo', (req, res) => {
     const errores = [];
     let listas = 0;
     /*
-     * Los índices de nombres, uno por módulo referido, armados a lo más una vez
-     * cada uno y compartidos por todas las filas del archivo (ver
-     * `indiceDeNombres`). Viven lo que dura esta importación: la de al lado
-     * arma los suyos, porque entremedio la base pudo cambiar.
+     * LA MEMORIA DE ESTA IMPORTACIÓN: lo que ya se miró y no hace falta volver
+     * a mirar. Guarda los índices de nombres —uno por módulo referido, ver
+     * `indiceDeNombres`— y lo que las reglas de los módulos quieran recordar
+     * mientras dure. Vive lo que dura esta importación y nada más: la de al
+     * lado arma la suya, porque entremedio la base pudo cambiar.
      */
-    const indices = new Map();
+    const memoria = new Map();
 
     const ejecutar = db.transaction(() => {
       filas.forEach((fila, i) => {
-        const { datos, errores: errFila } = prepararFila(def, fila, req.user, indices);
+        const { datos, errores: errFila } = prepararFila(def, fila, req.user, memoria);
         if (errFila.length) {
           errores.push({ fila: i + 1, errores: errFila });
           return;
@@ -463,7 +478,7 @@ router.post('/:modulo', (req, res) => {
         const guardada = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(info.lastInsertRowid);
         // Y queda nombrable por las filas de más abajo, igual que cuando cada
         // celda consultaba la base (ver `indiceDeNombres`).
-        if (guardada) anotarEnLosIndices(indices, def, guardada);
+        if (guardada) anotarEnLosIndices(memoria, def, guardada);
         if (guardada && def.hooks && def.hooks.afterSave) {
           def.hooks.afterSave(guardada, { user: req.user, isNew: true, db });
         }

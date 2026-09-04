@@ -231,6 +231,9 @@ test('el gancho recibe si ya se confirmó', () => {
   const fuente = require('fs').readFileSync(
     require('path').join(__dirname, '../../server/modules/miembros.js'), 'utf8'
   );
-  assert.match(fuente, /beforeSave\(data, \{ id, existing, db, confirmado \}\)/,
+  // Se mira que `confirmado` ESTÉ entre lo que recibe, no la lista entera: al
+  // gancho se le fueron sumando cosas —`memoria`, en la v1.387.0— y una prueba
+  // que copia la firma completa se pone roja por un cambio que no le incumbe.
+  assert.match(fuente, /beforeSave\(data, \{[^}]*\bconfirmado\b[^}]*\}\)/,
     'sin `confirmado` no hay manera de decir que sí, y la pregunta se vuelve un muro');
 });

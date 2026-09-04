@@ -91,10 +91,10 @@ test('la tabla que se busca se lee una sola vez, no una por cada celda', () => {
     return original.call(this, sql);
   };
   try {
-    const indices = new Map();
+    const memoria = new Map();
     for (let i = 0; i < 8; i++) {
       const { errores } = prepararFila(
-        integrantes, unaFila(`Repetida${i} Lectura${marca}`), { id: 1, rol: 'admin' }, indices);
+        integrantes, unaFila(`Repetida${i} Lectura${marca}`), { id: 1, rol: 'admin' }, memoria);
       assert.deepEqual(errores, [], `la fila ${i} tiene que resolver`);
     }
   } finally {
@@ -136,18 +136,18 @@ test('una fila puede nombrar por su texto a la que entró más arriba en el mism
   });
   assert.equal(r.json.correctas, 2, JSON.stringify(r.json).slice(0, 300));
 
-  const indices = new Map();
+  const memoria = new Map();
   // primero se arma el índice con una consulta cualquiera…
-  prepararFila(integrantes, unaFila(`Otra Cualquiera NP ${marca}`), { id: 1, rol: 'admin' }, indices);
+  prepararFila(integrantes, unaFila(`Otra Cualquiera NP ${marca}`), { id: 1, rol: 'admin' }, memoria);
   // …y después entra alguien nuevo: el índice tiene que enterarse
   const nueva = db.prepare("INSERT INTO no_miembros (nombres, apellidos, iglesia_id) VALUES (?,?,?)")
     .run('Posterior', `Al indice NP ${marca}`, iglesia).lastInsertRowid;
   const { anotarEnLosIndices } = require('../../server/importar');
-  anotarEnLosIndices(indices, getModule('no_miembros'),
+  anotarEnLosIndices(memoria, getModule('no_miembros'),
     db.prepare('SELECT * FROM no_miembros WHERE id = ?').get(nueva));
 
   const despues = prepararFila(
-    integrantes, unaFila(`Posterior Al indice NP ${marca}`), { id: 1, rol: 'admin' }, indices);
+    integrantes, unaFila(`Posterior Al indice NP ${marca}`), { id: 1, rol: 'admin' }, memoria);
   assert.deepEqual(despues.errores, [],
     'la fila de más abajo tiene que poder nombrar a la que entró más arriba');
   assert.equal(despues.datos.no_miembro_id, nueva);

@@ -137,31 +137,64 @@ function comoSeDistingue(ficha) {
  * mismo que en Miembros: el LOWER de SQLite no sabe de tildes, y las tildes
  * son justamente lo que hay que pasar por alto.
  */
-function lasQueSeLlamanIgual(db, ficha, id) {
-  if (!ficha.iglesia_id) return [];
-  const nombres = comoSeCompara(ficha.nombres);
-  const apellidos = comoSeCompara(ficha.apellidos);
-  if (!nombres) return [];
+/**
+ * Cómo se agrupan dos fichas que serían «la misma persona».
+ *
+ * Con apellidos, mandan el primer nombre y los apellidos; sin apellidos, manda
+ * el nombre completo. El caso mezclado —una con apellidos y otra sin— no se
+ * junta nunca, y por eso las dos formas de la llave no se pueden confundir: la
+ * segunda mitad de la primera nunca va vacía.
+ */
+function comoSeAgrupa(nombres, apellidos) {
+  const n = comoSeCompara(nombres);
+  const a = comoSeCompara(apellidos);
+  if (!n) return null;
+  return a ? `${n.split(' ')[0]}|${a}` : `${n}|`;
+}
 
-  const iguales = (otra) => {
-    const suyoNombres = comoSeCompara(otra.nombres);
-    const suyoApellidos = comoSeCompara(otra.apellidos);
-    if (apellidos && suyoApellidos) {
-      return suyoNombres.split(' ')[0] === nombres.split(' ')[0] && suyoApellidos === apellidos;
-    }
-    if (!apellidos && !suyoApellidos) return suyoNombres === nombres;
-    return false; // el caso mezclado: ver el comentario de arriba
-  };
-
-  return db
+/**
+ * Las fichas de la iglesia, ordenadas por cómo se agrupan (ver arriba).
+ *
+ * Igual que en Miembros y por lo mismo: la comparación no se puede hacer en la
+ * base, así que se traen las fichas; y traerlas una vez por FILA DE UNA
+ * PLANILLA era lo que dejaba al sistema entero sin contestarle a nadie mientras
+ * se importaba. El índice se guarda en la memoria del trabajo que lo pide —una
+ * importación le pasa la suya, un guardado suelto no le pasa ninguna— y se pone
+ * al día solo con las fichas nacidas después de la última mirada, así que las
+ * filas de más abajo del archivo ven a las de más arriba.
+ */
+function elIndiceDeLaIglesia(db, iglesiaId, memoria) {
+  const llave = `no_miembros:como-se-llaman:${iglesiaId}`;
+  let guardado = memoria && memoria.get(llave);
+  if (!guardado) {
+    guardado = { hasta: 0, por: new Map() };
+    if (memoria) memoria.set(llave, guardado);
+  }
+  const nuevas = db
     .prepare(
       `SELECT id, nombres, apellidos, rut, fecha_nacimiento, miembro_id
-         FROM no_miembros WHERE iglesia_id = ? AND id IS NOT ?`
+         FROM no_miembros WHERE iglesia_id = ? AND id > ?`
     )
-    .all(ficha.iglesia_id, id || 0)
-    .filter((otra) => iguales(otra)
-      // dos RUT distintos son dos personas distintas: no hay nada que preguntar
-      && !(otra.rut && ficha.rut && otra.rut !== ficha.rut));
+    .all(iglesiaId, guardado.hasta);
+  for (const otra of nuevas) {
+    if (otra.id > guardado.hasta) guardado.hasta = otra.id;
+    const como = comoSeAgrupa(otra.nombres, otra.apellidos);
+    if (!como) continue;
+    if (!guardado.por.has(como)) guardado.por.set(como, []);
+    guardado.por.get(como).push(otra);
+  }
+  return guardado.por;
+}
+
+function lasQueSeLlamanIgual(db, ficha, id, memoria) {
+  if (!ficha.iglesia_id) return [];
+  const como = comoSeAgrupa(ficha.nombres, ficha.apellidos);
+  if (!como) return [];
+
+  const candidatas = elIndiceDeLaIglesia(db, ficha.iglesia_id, memoria).get(como) || [];
+  return candidatas.filter((otra) => Number(otra.id) !== Number(id || 0)
+    // dos RUT distintos son dos personas distintas: no hay nada que preguntar
+    && !(otra.rut && ficha.rut && otra.rut !== ficha.rut));
 }
 
 /**
@@ -258,8 +291,8 @@ function loEntregadoAcadaFicha(db, recuerdo) {
  * argumento de verdad para abrir esa en vez de crear otra: crear una nueva no
  * pierde el historial, lo parte en dos, y eso desde el formulario no se ve.
  */
-function avisoDeFichaRepetida(db, ficha, id) {
-  const iguales = lasQueSeLlamanIgual(db, ficha, id);
+function avisoDeFichaRepetida(db, ficha, id, memoria) {
+  const iguales = lasQueSeLlamanIgual(db, ficha, id, memoria);
   if (!iguales.length) return null;
 
   const susAyudas = (otra) => db
@@ -481,7 +514,7 @@ module.exports = {
      * revisarlo siempre trancaría a quien viene a anotarle el teléfono que por
      * fin dio, que es la mitad de lo que se hace en este registro.
      */
-    beforeSave(data, { id, existing, db, confirmado, user }) {
+    beforeSave(data, { id, existing, db, confirmado, user, memoria }) {
       if (confirmado) return null;
       const porElRut = avisoDeRutYaInscrito(data, { existing, db, usuario: user });
       if (porElRut) return porElRut;
@@ -490,7 +523,7 @@ module.exports = {
         .some((campo) => data[campo] !== undefined
           && comoSeCompara(data[campo]) !== comoSeCompara(antesDeGuardar[campo]));
       if (!id || cambiaElNombre) {
-        const repetida = avisoDeFichaRepetida(db, { ...antesDeGuardar, ...data }, id);
+        const repetida = avisoDeFichaRepetida(db, { ...antesDeGuardar, ...data }, id, memoria);
         if (repetida) return repetida;
       }
       return null;

@@ -188,23 +188,63 @@ function comoSeDistingue(ficha) {
  * iglesia de 600 fichas y 8,9 ms sobre una de 4.400. Se paga solo al crear una
  * ficha o al cambiarle el nombre, que es algo que se hace de a una y a mano.
  */
-function lasQueSeLlamanIgual(db, ficha, id) {
+/**
+ * LAS FICHAS DE LA IGLESIA, ORDENADAS POR CÓMO SE COMPARAN.
+ *
+ * La pregunta «¿no será la misma persona que ya está?» no se puede hacer en la
+ * base: compara el PRIMER nombre y los apellidos sin tildes, en minúsculas y
+ * con los espacios apretados, y eso no es una columna. Así que se traen las
+ * fichas de la iglesia y se comparan acá.
+ *
+ * Traerlas una vez por ficha guardada no se nota. Traerlas una vez por FILA DE
+ * UNA PLANILLA sí: con 5.601 miembros era lo que costaba el 97,5% de una
+ * importación —7,4 ms de los 7,6 que tardaba cada fila—, y era la razón de que
+ * subir un archivo de cinco mil filas dejara al sistema entero sin contestarle
+ * a nadie durante 58 segundos.
+ *
+ * Por eso el índice se puede GUARDAR en la memoria del trabajo que lo pide: la
+ * importación le pasa la suya y las cinco mil filas se reparten un solo
+ * armado; un guardado suelto no le pasa ninguna y el índice se arma y se
+ * bota, que es exactamente lo que pasaba antes.
+ *
+ * Y se pone al día solo: cada vez que se consulta pregunta por las fichas
+ * nacidas después de la última mirada —una consulta por número, que no cuesta
+ * nada— así que las filas de más abajo de la planilla ven a las de más arriba,
+ * igual que cuando cada una preguntaba de nuevo.
+ */
+function elIndiceDeLaIglesia(db, iglesiaId, memoria) {
+  const llave = `miembros:como-se-llaman:${iglesiaId}`;
+  let guardado = memoria && memoria.get(llave);
+  if (!guardado) {
+    guardado = { hasta: 0, por: new Map() };
+    if (memoria) memoria.set(llave, guardado);
+  }
+  const nuevas = db
+    .prepare('SELECT id, nombres, apellidos, rut, fecha_nacimiento FROM miembros WHERE iglesia_id = ? AND id > ?')
+    .all(iglesiaId, guardado.hasta);
+  for (const otra of nuevas) {
+    if (otra.id > guardado.hasta) guardado.hasta = otra.id;
+    const como = `${comoSeCompara(otra.nombres).split(' ')[0]}|${comoSeCompara(otra.apellidos)}`;
+    if (!guardado.por.has(como)) guardado.por.set(como, []);
+    guardado.por.get(como).push(otra);
+  }
+  return guardado.por;
+}
+
+function lasQueSeLlamanIgual(db, ficha, id, memoria) {
   const nombre = comoSeCompara(ficha.nombres).split(' ')[0];
   const apellidos = comoSeCompara(ficha.apellidos);
   if (!nombre || !apellidos || !ficha.iglesia_id) return [];
 
-  return db
-    .prepare('SELECT id, nombres, apellidos, rut, fecha_nacimiento FROM miembros WHERE iglesia_id = ? AND id IS NOT ?')
-    .all(ficha.iglesia_id, id || 0)
-    .filter((otra) => comoSeCompara(otra.nombres).split(' ')[0] === nombre
-      && comoSeCompara(otra.apellidos) === apellidos
-      // dos RUT distintos son dos personas distintas: no hay nada que preguntar
-      && !(otra.rut && ficha.rut && otra.rut !== ficha.rut));
+  const candidatas = elIndiceDeLaIglesia(db, ficha.iglesia_id, memoria).get(`${nombre}|${apellidos}`) || [];
+  return candidatas.filter((otra) => Number(otra.id) !== Number(id || 0)
+    // dos RUT distintos son dos personas distintas: no hay nada que preguntar
+    && !(otra.rut && ficha.rut && otra.rut !== ficha.rut));
 }
 
 /** El aviso, o null si no hay ninguna que se llame igual. */
-function avisoDeFichaRepetida(db, ficha, id) {
-  const iguales = lasQueSeLlamanIgual(db, ficha, id);
+function avisoDeFichaRepetida(db, ficha, id, memoria) {
+  const iguales = lasQueSeLlamanIgual(db, ficha, id, memoria);
   if (!iguales.length) return null;
 
   const listadas = iguales.slice(0, 3)
@@ -781,7 +821,7 @@ module.exports = {
   },
 
   hooks: {
-    beforeSave(data, { id, existing, db, confirmado }) {
+    beforeSave(data, { id, existing, db, confirmado, memoria }) {
       const rutDe = (d, e) => (d.rut !== undefined ? d.rut : e ? e.rut : null);
 
       /*
@@ -798,7 +838,7 @@ module.exports = {
           .some((campo) => data[campo] !== undefined
             && comoSeCompara(data[campo]) !== comoSeCompara(antesDeGuardar[campo]));
         if (!id || cambiaElNombre) {
-          const repetida = avisoDeFichaRepetida(db, { ...antesDeGuardar, ...data }, id);
+          const repetida = avisoDeFichaRepetida(db, { ...antesDeGuardar, ...data }, id, memoria);
           if (repetida) return repetida;
         }
       }
