@@ -1227,15 +1227,37 @@ function avisoOtroDocumentoDeMiembros() {
 
 /**
  * Las actividades a las que se toma asistencia pasaron a la lista que usa la
- * iglesia. Las que tienen el mismo sentido se renombran solas; de las demás
- * no queda ningún nombre antiguo dando vueltas: pasan a "Otros", que es lo
- * que la lista ofrece para lo que no calza en ninguna.
+ * iglesia. Las que tenían el mismo sentido con otro nombre se renombran solas
+ * —«Culto general» pasó a llamarse «Servicio General»— para no dejar dos
+ * entradas queriendo decir lo mismo.
  *
  * No se borra ninguna actividad ni ninguna asistencia: solo cambia el nombre
- * con que están clasificadas, y queda anotado cuáles fueron por si alguien
- * quiere ponerles después la que corresponde.
+ * con que están clasificadas.
+ *
+ * CORRE UNA SOLA VEZ (v1.350.0). Antes no dejaba constancia, así que volvía a
+ * correr entera en cada arranque del servidor, y eso hacía dos daños que se
+ * midieron en la revisión del módulo:
+ *
+ *   · Tenía escrita a mano, dentro suyo, la lista de los doce tipos que traía
+ *     el sistema, y a toda actividad cuyo tipo no estuviera ahí le ponía
+ *     «Otros». Un tipo que la iglesia agregara —«Escuela Dominical»— seguía
+ *     ofreciéndose en el desplegable, pero sus actividades amanecían como
+ *     «Otros» al reinicio siguiente. Esa parte SE RETIRÓ, y no por la
+ *     constancia sino porque sobra: desde que la lista es un dato, la
+ *     migración de más arriba mete en ella cualquier nombre que las
+ *     actividades estén usando, así que ya no queda ningún nombre suelto que
+ *     limpiar. Lo que hacía era borrar los tipos de la iglesia.
+ *
+ *   · El renombrado tampoco distinguía de dónde venía un nombre: una
+ *     «Vigilia» creada por la iglesia se convertía en «Servicio Vigilia»
+ *     porque así se llamaba la vieja. Con la constancia deja de repetirse:
+ *     en una base ya migrada no vuelve a correr nunca, y en una nueva corre
+ *     cuando todavía no hay ninguna actividad que tocar.
  */
 function tiposDeActividad() {
+  const NOMBRE = 'tipos_de_actividad_con_los_nombres_nuevos';
+  if (yaAplicada(NOMBRE)) return;
+
   const columnas = db.prepare('PRAGMA table_info("asistencias")').all().map((c) => c.name);
   if (!columnas.includes('tipo_reunion')) return;
 
@@ -1246,11 +1268,6 @@ function tiposDeActividad() {
     'Vigilia': 'Servicio Vigilia',
     'Otra': 'Otros',
   };
-  const nuevos = [
-    'Servicio General', 'Servicio Especial', 'Servicio Vigilia', 'Clase de Dorcas',
-    'Estudio Bíblico', 'Oración', 'Ensayo', 'Salida a Visitar', 'Salida a Gira',
-    'Reunión Administrativa', 'Reunión Directivas', 'Otros',
-  ];
 
   const renombrar = db.prepare('UPDATE asistencias SET tipo_reunion = ? WHERE tipo_reunion = ?');
   let renombradas = 0;
@@ -1262,22 +1279,7 @@ function tiposDeActividad() {
   }
   if (renombradas) console.log(`🔁 asistencias: ${renombradas} actividad(es) pasaron a los nombres nuevos.`);
 
-  const marcas = nuevos.map(() => '?').join(',');
-  const sobran = db
-    .prepare(
-      `SELECT tipo_reunion AS tipo, COUNT(*) AS n FROM asistencias
-        WHERE tipo_reunion IS NOT NULL AND tipo_reunion != '' AND tipo_reunion NOT IN (${marcas})
-        GROUP BY tipo_reunion`
-    )
-    .all(...nuevos);
-  if (sobran.length) {
-    db.prepare(`UPDATE asistencias SET tipo_reunion = 'Otros' WHERE tipo_reunion NOT IN (${marcas})`).run(...nuevos);
-    console.log(
-      `🔁 asistencias: ${sobran.reduce((t, f) => t + f.n, 0)} actividad(es) tenían un tipo que ya no está en la lista ` +
-        `y quedaron como "Otros" (${sobran.map((f) => `${f.tipo}: ${f.n}`).join(', ')}).\n` +
-        '   Sus asistencias no se tocaron; si alguna corresponde a otra actividad, ábrala y elíjala.'
-    );
-  }
+  marcarAplicada(NOMBRE);
 }
 
 
@@ -3584,4 +3586,5 @@ module.exports = {
   elEstadoDeCadaCuerpo,
   losNombresCopiadosQueQuedaronViejos,
   laCategoriaCentralAhoraEsMatriz,
+  tiposDeActividad, listasDeAsistenciaComoDatos,
 };
