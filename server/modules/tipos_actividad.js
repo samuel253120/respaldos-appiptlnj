@@ -15,6 +15,38 @@
  * de asistencia de años anteriores dejarían de cuadrar. Desactivado deja de
  * ofrecerse en las actividades nuevas y lo antiguo queda como estaba.
  */
+/**
+ * ¿Este guardado dejaría a la iglesia sin ningún tipo que ofrecer?
+ *
+ * Desmarcar «En uso» es la salida que el propio módulo recomienda en vez de
+ * borrar, y está bien, pero no había ningún piso: se podían apagar todos.
+ * MEDIDO en la v1.349.0, contra el sistema andando: se desactivaron los quince
+ * tipos, uno por uno, y ninguno dijo nada; la ruta que los ofrece pasó a
+ * devolver cero; y una actividad nueva se guardó igual —201— con el valor de
+ * fábrica escrito en el código. Con la lista en cero, quien pasa lista se
+ * encuentra un desplegable vacío y la actividad se guarda de todos modos, con
+ * un nombre que no está en ninguna lista viva.
+ *
+ * Se pregunta por el estado en que quedaría la lista DESPUÉS del cambio, que es
+ * lo que cubre las dos puertas por las que se llega: desactivar el último y
+ * borrar el último.
+ *
+ * `como` es cómo quedaría ESTA fila, o null si se está borrando.
+ */
+function dejariaSinNingunTipo(db, id, como) {
+  const vivos = db
+    .prepare('SELECT COUNT(*) AS c FROM tipos_actividad WHERE id != ? AND activo = 1')
+    .get(id).c;
+  if (vivos) return false;
+  return !(como && Number(como.activo) !== 0);
+}
+
+/** El reparo, escrito para quien lo va a leer. */
+const EL_AVISO_DE_QUEDARSE_SIN_TIPOS =
+  'Con eso no quedaría ningún tipo de actividad en uso: al pasar lista el desplegable saldría '
+  + 'vacío y no habría con qué decir si la reunión fue un servicio, un ensayo o una salida. '
+  + 'Deje al menos uno en uso, o cree antes el que va a usar.';
+
 module.exports = {
   name: 'tipos_actividad',
   label: 'Tipos de Actividad',
@@ -69,6 +101,17 @@ module.exports = {
      * ninguno.
      */
     beforeSave(data, { db, isNew, existing, confirmado }) {
+      /*
+       * Lo primero: que este guardado no deje a quien pasa lista sin ningún
+       * tipo que elegir. Va antes que lo del nombre porque no depende de él
+       * —se llega acá desmarcando «En uso»— y porque es lo que impide que la
+       * pantalla de asistencia quede sin poder clasificar nada.
+       */
+      if (!isNew && existing) {
+        const comoQuedaria = { activo: data.activo !== undefined ? data.activo : existing.activo };
+        if (dejariaSinNingunTipo(db, existing.id, comoQuedaria)) return EL_AVISO_DE_QUEDARSE_SIN_TIPOS;
+      }
+
       if (isNew || !existing || data.nombre === undefined) return null;
 
       const seLlamaba = String(existing.nombre || '');
@@ -138,6 +181,11 @@ module.exports = {
           'dejarlas sin tipo. Desmárquelo en «En uso» y dejará de ofrecerse para las nuevas, sin tocar las que ya están.'
         );
       }
+
+      // Y que borrarlo no deje la lista en cero: es la misma comprobación que
+      // al desmarcar «En uso», con esta fila fuera.
+      if (dejariaSinNingunTipo(db, row.id, null)) return EL_AVISO_DE_QUEDARSE_SIN_TIPOS;
+
       return null;
     },
   },
