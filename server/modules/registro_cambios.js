@@ -52,7 +52,21 @@ module.exports = {
     },
     {
       name: 'accion', label: 'Qué pasó', type: 'select', readonly: true,
-      options: ['Creación', 'Cambio', 'Eliminación'],
+      /*
+       * TODAS las que el sistema escribe, no solo las tres de todos los días.
+       *
+       * Esta lista es el desplegable con que se filtra el registro, así que lo
+       * que no esté acá no se puede buscar. Estaban las tres primeras y el
+       * sistema escribía once: las ocho de las credenciales y las listas de
+       * asistencia no se podían filtrar, aunque se vieran en la tabla. Se notó
+       * al agregar «Importación» en la v1.389.0, y una prueba del motor
+       * comprueba que ninguna acción que el servidor escriba falte de acá.
+       */
+      options: [
+        'Creación', 'Cambio', 'Eliminación', 'Importación',
+        'Corrección de lista',
+        'Emisión', 'Reemplazo', 'Revocación', 'Repetición', 'Impresión', 'Envío', 'Retiro',
+      ],
     },
     { name: 'registro', label: 'Registro', type: 'text', readonly: true },
     { name: 'registro_id', label: 'Número del registro', type: 'number', readonly: true },

@@ -320,6 +320,49 @@ function anotarCambio({ def, accion, fila, detalle, usuario }) {
 }
 
 /**
+ * UNA IMPORTACIÓN DEJA SU PROPIA LÍNEA, ADEMÁS DE LAS DE CADA FICHA.
+ *
+ * Cada fila importada dejaba su línea, que es lo correcto, pero dejaba
+ * EXACTAMENTE la misma línea que dejaría alguien escribiendo esa ficha a mano.
+ * Medido en la v1.386.0 con 40 movimientos de tesorería importados de una vez:
+ * 40 líneas «Creación / Tesorería», y ninguna que dijera de dónde salieron.
+ *
+ * Ante cuarenta ingresos idénticos de un mismo día, el Registro de Cambios
+ * contestaba cuarenta veces «los creó la tesorera» y no podía contestar la
+ * pregunta que de verdad se hace en una revisión de cuentas: ¿esto se anotó uno
+ * por uno, o entró un archivo? Un archivo se puede haber subido dos veces, o
+ * ser el equivocado, y esa diferencia no quedaba escrita en ninguna parte.
+ *
+ * Son DOS cosas y las dos hacen falta: esta línea, que dice que hubo una
+ * importación, cuántas filas traía y cuántas entraron; y la marca «Por
+ * planilla» en la línea de cada ficha, que contesta lo mismo mirando una sola
+ * (ver `registrarGuardado`, más abajo).
+ *
+ * Se anota DENTRO de la misma transacción que las fichas: si la importación se
+ * deshace —una revisión previa, un error a mitad de camino— esta línea se
+ * deshace con ella, porque entonces no hubo tal importación.
+ */
+function anotarImportacion({ def, total, correctas, conError, usuario, iglesiaId }) {
+  try {
+    db.prepare(
+      `INSERT INTO registro_cambios (fecha, hora, modulo, accion, registro, registro_id, detalle, usuario, iglesia_id, created_by)
+       VALUES (date('now','localtime'), strftime('%H:%M','now','localtime'), ?, 'Importación', ?, NULL, ?, ?, ?, ?)`
+    ).run(
+      def.label,
+      `${correctas} de ${total} fila(s) de una planilla`,
+      `Se subió una planilla de ${total} fila(s) a ${def.label}: entraron ${correctas}`
+        + (conError ? ` y ${conError} quedaron con problemas, así que no entraron.` : '.')
+        + ' Cada ficha que entró lo dice también en su propia línea.',
+      usuario ? usuario.nombre : 'Sistema',
+      iglesiaId || null,
+      usuario ? usuario.id : null
+    );
+  } catch (e) {
+    console.error('No se pudo anotar la importación en el registro de cambios:', e.message);
+  }
+}
+
+/**
  * ── LOS PERMISOS, ESCRITOS COMO SE LEEN ──
  *
  * El módulo abre diciendo que existe para dos cosas: el dinero y las llaves. La
@@ -699,13 +742,19 @@ function anotarPasoDeIntegrante(integranteId, { estado, fecha, usuario, hasta })
   anotar({ miembroId: ficha.miembro_id, iglesiaId: ficha.iglesia_id, usuario, fecha, ...que });
 }
 
-function registrarGuardado(def, { isNew, antes, despues, datos, user }) {
+function registrarGuardado(def, { isNew, antes, despues, datos, user, origen }) {
   const iglesia = despues.iglesia_id || null;
+  /*
+   * De dónde viene este guardado, cuando no viene de alguien escribiendo la
+   * ficha. Hoy hay uno solo —la planilla— y se antepone al detalle para que la
+   * línea conteste sola de dónde salió (ver `anotarImportacion`, más arriba).
+   */
+  const deDonde = origen ? `${origen} · ` : '';
 
   // 0. El dinero y las llaves, en el Registro de Cambios
   if (MODULOS_VIGILADOS.includes(def.name)) {
     if (isNew) {
-      anotarCambio({ def, accion: 'Creación', fila: despues, usuario: user, detalle: resumenDe(def, despues) });
+      anotarCambio({ def, accion: 'Creación', fila: despues, usuario: user, detalle: deDonde + resumenDe(def, despues) });
     } else {
       const lista = cambios(def, antes, datos);
       if (lista.length) {
@@ -1173,6 +1222,9 @@ function anotarCredencial({ pastorId, texto, fecha, usuario }) {
 
 module.exports = {
   anotar, anotarIglesia, anotarPastor, anotarCredencial, registrarGuardado, registrarEliminado,
+  // La línea propia de una importación: que hubo una, de cuántas filas y
+  // cuántas entraron. Las de cada ficha no lo pueden decir solas.
+  anotarImportacion,
   // Para los actos que no son «guardar una ficha» y aun así tienen que quedar
   // anotados: emitir una credencial, revocarla, volver a imprimirla.
   anotarCambio,

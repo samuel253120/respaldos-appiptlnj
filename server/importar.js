@@ -490,10 +490,31 @@ router.post('/:modulo', (req, res) => {
         if (guardada) {
           bitacora.registrarGuardado(def, {
             isNew: true, antes: {}, despues: guardada, datos, user: req.user,
+            // Y que la línea diga de dónde salió: sin esto es idéntica a la de
+            // alguien que escribió la ficha a mano (ver server/bitacora.js).
+            origen: 'Por planilla',
           });
         }
         listas++;
       });
+      /*
+       * Y LA IMPORTACIÓN MISMA, que las líneas de cada ficha no pueden contar.
+       *
+       * Va acá adentro a propósito, y por eso NO pregunta si esto era una
+       * revisión previa: una revisión se deshace entera —es lo último que hace
+       * esta transacción— y esta línea se deshace con ella, que es justamente
+       * lo correcto, porque entonces no hubo tal importación. Preguntarlo
+       * además sería una segunda respuesta a la misma pregunta.
+       *
+       * Lo que sí se pregunta es si entró alguna: un archivo cuyas filas se
+       * rechazaron todas no importó nada, y no hay nada que anotar.
+       */
+      if (listas) {
+        bitacora.anotarImportacion({
+          def, total: filas.length, correctas: listas, conError: errores.length,
+          usuario: req.user, iglesiaId: require('./alcance').iglesiaPrincipal(req.user),
+        });
+      }
       if (prueba) throw new Error('__revision__'); // deshace todo: solo era una revisión
     });
 
