@@ -142,13 +142,22 @@ test('la pregunta se hereda de la ficha guardada, no solo de lo que se manda', (
 
 /*
  * El horario completo NO va en el listado, y se midió por qué: la columna es
- * angosta —el listado lleva siete— y «22:00 a 02:30 del día siguiente» parte en
- * cuatro líneas la fila de cada vigilia y en dos la de todos los demás
- * servicios. El listado sigue mostrando la hora de inicio.
+ * angosta y «22:00 a 02:30 del día siguiente» parte en cuatro líneas la fila de
+ * cada vigilia y en dos la de todos los demás servicios.
+ *
+ * Antes se exigía además que el listado mostrara la HORA DE INICIO. Dejó de ser
+ * cierto en la v1.391.0, cuando la corporación pidió que la pantalla mostrara
+ * solo seis datos —quién llevó el culto y cuánta gente hubo— y la hora salió
+ * con ellos. No es lo mismo que lo de arriba: la hora sale porque no se
+ * necesita a la vista, y el horario armado no entra porque no cabe. Lo que sí
+ * se sigue exigiendo es que ninguno de los dos deje la ficha ni la hoja
+ * impresa.
  */
-test('el listado sigue mostrando la hora de inicio, que es la que se busca', () => {
-  assert.ok(servicios.listFields.includes('hora_inicio'), 'el listado se quedó sin la hora');
+test('el horario armado no va en el listado, pero sí en la ficha y en la hoja', () => {
   assert.ok(!servicios.listFields.includes('horario'), 'el horario entero parte en cuatro líneas cada fila');
+  assert.ok(servicios.computed.some((c) => c.name === 'horario'), 'el horario armado tiene que existir igual');
+  assert.ok(servicios.camposAlBorrar.includes('hora_inicio'),
+    'y la hora, ya fuera del listado, tiene que seguir quedando anotada al borrar');
 });
 
 test('la hoja impresa muestra el horario armado', () => {

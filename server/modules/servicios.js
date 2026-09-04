@@ -232,7 +232,42 @@ module.exports = {
    * encuentre tal como se dice. «Juan 3» también sirve, y «3:16» solo.
    */
   buscaTambien: [citaBuscable('mensaje'), citaBuscable('salmo')],
-  listFields: ['fecha', 'hora_inicio', 'tipo', 'predicador', 'cita_mensaje', 'asistencia_total', 'ofrenda_total'],
+  /*
+   * LO QUE SE VE DE UN SERVICIO SIN ABRIRLO.
+   *
+   * Seis datos, pedidos así por la corporación: la fecha, qué servicio fue,
+   * quiénes lo llevaron —coordinador, salmista y predicador— y cuánta gente
+   * hubo. Es lo que se mira para saber «quién estuvo a cargo del culto del
+   * viernes», que es la pregunta con que se abre esta pantalla.
+   *
+   * Salieron tres que estaban: la HORA DE INICIO —la fecha ya ordena, y la hora
+   * casi siempre es la misma—, el PASAJE DEL MENSAJE y la OFRENDA. Los tres
+   * siguen en la ficha y en la hoja impresa, y la ofrenda además está en
+   * Tesorería, que es donde se responde por ella.
+   *
+   * Dos cosas cuelgan de esta lista y se van con ella, a propósito:
+   *
+   *   · el Excel que se baja desde esta pantalla trae estas columnas, porque
+   *     baja lo que se ve;
+   *   · y el acotar por rango de ofrenda desaparece, porque el sistema solo
+   *     deja filtrar por una cifra que esté a la vista (ver `tieneRangoDeMonto`
+   *     en server/registry.js). El informe de servicios sigue entregándola.
+   *
+   * Lo que NO se va con ella es la constancia de un borrado: ver
+   * `camposAlBorrar`, acá abajo.
+   */
+  listFields: ['fecha', 'tipo', 'coordinador', 'salmista', 'predicador', 'asistencia_total'],
+
+  /*
+   * Y AL BORRAR UN SERVICIO SE ANOTA TAMBIÉN LO QUE EL LISTADO YA NO MUESTRA.
+   *
+   * La constancia de un borrado se arma con lo que el listado muestra (ver
+   * `resumenDe` en server/bitacora.js), así que sacar la ofrenda de la vista la
+   * habría sacado también de ahí: borrar un servicio dejaría de decir cuánta
+   * plata tenía anotada, que es justamente lo que hay que poder responder
+   * después. Se nombran acá las tres que salieron de la vista.
+   */
+  camposAlBorrar: ['hora_inicio', 'cita_mensaje', 'ofrenda_total'],
   defaultSort: { field: 'fecha', dir: 'desc' },
 
   // Citas armadas al leer, para verlas de un vistazo en el listado y al imprimir
@@ -290,9 +325,20 @@ module.exports = {
 
     // ---- El salmo: quién lo leyó y qué leyó, que es una sola cosa ----
     {
-      name: 'salmista', label: 'Salmista (quien leyó el salmo)', type: 'persona', ref: 'miembros', buscador: true,
+      /*
+       * «Salmista» a secas, y la explicación abajo.
+       *
+       * La etiqueta decía «Salmista (quien leyó el salmo)», que en el
+       * formulario se lee bien porque hay ancho de sobra. Desde que este campo
+       * se ve en el listado (v1.391.0) no: en un teléfono de 390 px la etiqueta
+       * se corta —«SALMISTA (QUIEN LEYÓ EL SAL…»— y encima empuja el nombre a
+       * dos líneas, así que la tarjeta de cada servicio quedaba desigual. El
+       * paréntesis era ayuda, no nombre, y la ayuda tiene su lugar: se pasa
+       * abajo, donde el formulario ya la muestra.
+       */
+      name: 'salmista', label: 'Salmista', type: 'persona', ref: 'miembros', buscador: true,
       seccion: 'El salmo',
-      help: 'Búsquelo entre los miembros o escriba el nombre si no está registrado.',
+      help: 'Quien leyó el salmo. Búsquelo entre los miembros o escriba el nombre si no está registrado.',
     },
     {
       name: 'salmo_libro', label: 'Salmo: libro', type: 'select', options: LIBROS, buscador: true,
