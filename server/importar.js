@@ -231,7 +231,31 @@ function prepararFila(def, fila, user, memoria) {
       }
       valor = ids;
     } else if (f.type === 'boolean') {
-      valor = /^(s[ií]|1|true|verdadero|x|activo)$/i.test(String(valor)) ? 1 : 0;
+      /*
+       * UN SÍ QUE NO SE ENTIENDE NO ES UN NO.
+       *
+       * Se aceptaba «sí, si, 1, true, verdadero, x, activo» y CUALQUIER OTRA
+       * COSA se guardaba como «No», callando. Medido en la v1.386.0 sobre la
+       * columna «Cobra cuota» de un cuerpo: «Y», «S» y «yes» quedaron todos en
+       * No, y también «tal vez». Una planilla exportada de otro sistema con
+       * Y/N —o escrita por alguien que puso «S»— dejaba todos los cuerpos sin
+       * cobrar cuota, todos los integrantes sin eximir y todas las actas sin
+       * quórum, y el informe decía que las quinientas filas habían entrado
+       * perfectas. Era el único dato que la planilla cambiaba sin decirlo.
+       *
+       * Ahora se entienden las formas que de verdad aparecen en un archivo
+       * —incluidas las de una sola letra y las inglesas—, y lo que no se
+       * entiende se rechaza como cualquier otro dato que no se entiende. Una
+       * casilla VACÍA sigue sin ser ninguna de las dos cosas: se salta más
+       * arriba y el campo se queda con lo que traiga de fábrica.
+       */
+      const texto = String(valor);
+      if (/^(s[ií]?|1|true|verdadero|v|x|activo|y|yes)$/i.test(texto)) valor = 1;
+      else if (/^(no?|0|false|falso|f|inactivo)$/i.test(texto)) valor = 0;
+      else {
+        errores.push(`${f.label}: "${fila[f.name]}" no es un sí ni un no`);
+        continue;
+      }
     } else if (f.type === 'date') {
       valor = normalizarFecha(valor);
     } else if (f.type === 'money' || f.type === 'number') {
