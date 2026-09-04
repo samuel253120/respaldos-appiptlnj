@@ -199,7 +199,17 @@ test('el cambio de estado a mano y la evaluación escriben el mismo texto', () =
     despues: { id: otraFicha, miembro_id: luisa, cuerpo_id: cuerpo, iglesia_id: iglesia, estado: 'Activo' },
     datos: { estado: 'Activo' }, user: USUARIO,
   });
-  const [aMano] = db.prepare('SELECT * FROM bitacora WHERE id > ? ORDER BY id').all(desde);
+  /*
+   * Acotado a ESA persona, no a «lo que se escribió después».
+   *
+   * Los archivos del motor comparten UNA base y corren en paralelo: entre el
+   * `desde` y esta lectura, otro archivo puede haber dado de alta a un miembro
+   * suyo, y entonces la primera línea que aparece es la de él. Se vio pasar,
+   * con «Alta del miembro en el sistema.» en lugar de la que se espera.
+   */
+  const [aMano] = db
+    .prepare('SELECT * FROM bitacora WHERE id > ? AND miembro_id = ? ORDER BY id')
+    .all(desde, luisa);
   assert.equal(aMano.descripcion, porLaEvaluacion.descripcion);
   assert.equal(aMano.tipo, porLaEvaluacion.tipo);
 
@@ -227,7 +237,17 @@ test('lo que cambia entre los dos caminos es la fecha, y por una razón', () => 
     despues: { id: otraFicha, miembro_id: eva, cuerpo_id: cuerpo, iglesia_id: iglesia, estado: 'Activo' },
     datos: { estado: 'Activo' }, user: USUARIO,
   });
-  const [aMano] = db.prepare('SELECT * FROM bitacora WHERE id > ? ORDER BY id').all(desde);
+  /*
+   * Acotado a ESA persona, no a «lo que se escribió después».
+   *
+   * Los archivos del motor comparten UNA base y corren en paralelo: entre el
+   * `desde` y esta lectura, otro archivo puede haber dado de alta a un miembro
+   * suyo, y entonces la primera línea que aparece es la de él. Se vio pasar,
+   * con «Alta del miembro en el sistema.» en lugar de la que se espera.
+   */
+  const [aMano] = db
+    .prepare('SELECT * FROM bitacora WHERE id > ? AND miembro_id = ? ORDER BY id')
+    .all(desde, eva);
   assert.equal(aMano.fecha, hoy);
 });
 
