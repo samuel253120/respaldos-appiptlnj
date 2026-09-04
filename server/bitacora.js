@@ -177,6 +177,18 @@ const MODULOS_VIGILADOS = [
    * sobra en el registro.
    */
   'asistencias',
+  /*
+   * Y LA LISTA CON QUE SE CLASIFICAN.
+   *
+   * Es más discutible que en tesorería —la asistencia no es el libro de la
+   * plata— pero renombrar o desactivar un tipo cambia cómo se lee un informe de
+   * años, y desde la v1.353.0 renombrar uno en uso ARRASTRA las actividades a
+   * su nombre nuevo. Que eso no dejara rastro en ninguna parte era justo lo que
+   * pasaba con las categorías de tesorería antes de la v1.346.0.
+   *
+   * Son unas quince y se tocan de año en año: no hay ruido que temer.
+   */
+  'tipos_actividad',
 ];
 
 /**
