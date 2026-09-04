@@ -660,9 +660,30 @@ module.exports = {
       data.iglesia_id = cuenta.iglesia_id || null;
       data.cuerpo_id = cuenta.cuerpo_id || null;
 
+      /*
+       * LA CLASE, CONTRA LA MISMA LISTA QUE OFRECE LA RUTA (v1.361.0).
+       *
+       * El campo trae su lista de `/deudas/clases`, que la acota según la
+       * dirección, y eso está bien pensado. Pero el motor comprueba las listas
+       * ESCRITAS en el módulo, no las que vienen de una ruta —y con razón: una
+       * lista escrita al lado sería una segunda verdad—, así que por la API
+       * entraba cualquier texto. MEDIDO en la v1.355.0: clase «Lo Que Sea»
+       * contestó 201, se guardó tal cual, y dejó su movimiento de $ 300.000 en
+       * la caja, porque «Compra a crédito» es la única clase que NO desembolsa
+       * y cualquier texto inventado se comporta como un préstamo.
+       *
+       * Se comprueba acá, contra las mismas constantes que sirve la ruta: no es
+       * una copia, es la misma lista.
+       */
       const direccion = data.direccion !== undefined
         ? data.direccion : existing ? existing.direccion : POR_PAGAR;
       const clase = data.clase !== undefined ? data.clase : existing ? existing.clase : null;
+      const laEstaCambiando = data.clase !== undefined
+        && (!existing || String(existing.clase || '') !== String(data.clase || ''));
+
+      if (laEstaCambiando && !CLASES.includes(clase)) {
+        return `«${clase}» no es una clase de deuda. Las que hay son: ${CLASES.join(', ')}.`;
+      }
       if (direccion === POR_COBRAR && !CLASES_POR_COBRAR.includes(clase)) {
         return `Una deuda «${POR_COBRAR}» solo puede ser un préstamo en dinero: la organización no `
           + 'vende a plazo. Cambie la clase o la dirección.';
