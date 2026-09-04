@@ -171,6 +171,39 @@ function loQueNoEstaEnLaLista(def, data, cambia) {
  * eso no la empeora. Lo que se frena es ponerle hoy, a propósito, un valor
  * que la iglesia sacó de circulación.
  */
+/**
+ * Busca un valor en la tabla donde vive su lista, escrito como sea.
+ *
+ * Devuelve `{ valor, activo }` con la forma EXACTA en que está escrito en la
+ * tabla, o null. Vive suelta porque no la usa solo el motor: la pantalla de
+ * pasar lista escribe sus marcas derecho en la base, sin pasar por el guardado
+ * del módulo, y necesita comprobar el motivo de una justificación con esta
+ * misma cuenta (v1.363.0). Dos maneras de comparar habrían sido dos verdades.
+ */
+function laFilaDeLaLista(db, { modulo, columna }, valor) {
+  const buscado = String(valor === null || valor === undefined ? '' : valor).trim();
+  if (!buscado) return null;
+
+  // PRAGMA no admite parámetros, y el nombre de la tabla sale del módulo.
+  const tieneEnUso = db
+    .prepare(`PRAGMA table_info("${modulo}")`).all().some((c) => c.name === 'activo');
+  const columnas = `"${columna}" AS valor${tieneEnUso ? ', activo' : ', 1 AS activo'}`;
+
+  const rapido = db
+    .prepare(`SELECT ${columnas} FROM "${modulo}" WHERE lower("${columna}") = lower(?) LIMIT 1`)
+    .get(buscado);
+  if (rapido) return rapido;
+
+  const igualDando = (a, b) =>
+    String(a).trim().toLocaleLowerCase('es') === String(b).trim().toLocaleLowerCase('es');
+  return db.prepare(`SELECT ${columnas} FROM "${modulo}"`).all()
+    .find((fila) => igualDando(fila.valor, buscado)) || null;
+}
+
+/** Dónde vive esa lista, dicho como lo lee quien recibe el reparo. */
+const dondeVive = (suya) =>
+  suya.label || require('./registry').getModule(suya.modulo)?.label || suya.modulo;
+
 function loQueNoEstaEnSuTabla(db, def, data, cambia) {
   for (const f of def.fields || []) {
     const suya = f.opcionesDe;
@@ -182,30 +215,13 @@ function loQueNoEstaEnSuTabla(db, def, data, cambia) {
     const val = data[f.name];
     if (val === null || val === undefined || String(val).trim() === '') continue;
 
-    // PRAGMA no admite parámetros, y el nombre de la tabla sale del módulo.
-    const tieneEnUso = db
-      .prepare(`PRAGMA table_info("${suya.modulo}")`).all().some((c) => c.name === 'activo');
-
     const buscado = String(val).trim();
-    let enLaLista = db
-      .prepare(
-        `SELECT "${suya.columna}" AS valor${tieneEnUso ? ', activo' : ''} FROM "${suya.modulo}" ` +
-          `WHERE lower("${suya.columna}") = lower(?) LIMIT 1`
-      )
-      .get(buscado);
+    // `laFilaDeLaLista` devuelve activo = 1 cuando la tabla no lleva esa
+    // columna, así que acá se pregunta por él sin más.
+    const enLaLista = laFilaDeLaLista(db, suya, buscado);
+    const donde = dondeVive(suya);
 
-    if (!enLaLista) {
-      const igualDando = (a, b) =>
-        String(a).trim().toLocaleLowerCase('es') === String(b).trim().toLocaleLowerCase('es');
-      enLaLista = db
-        .prepare(`SELECT "${suya.columna}" AS valor${tieneEnUso ? ', activo' : ''} FROM "${suya.modulo}"`)
-        .all()
-        .find((fila) => igualDando(fila.valor, buscado));
-    }
-
-    const donde = suya.label || require('./registry').getModule(suya.modulo)?.label || suya.modulo;
-
-    if (enLaLista && (!tieneEnUso || enLaLista.activo)) {
+    if (enLaLista && enLaLista.activo) {
       data[f.name] = enLaLista.valor;   // una sola forma de escribirlo
       continue;
     }
@@ -221,4 +237,7 @@ function loQueNoEstaEnSuTabla(db, def, data, cambia) {
   return null;
 }
 
-module.exports = { loQueNoEstaEnLaLista, loQueNoEstaEnSuTabla, loQueOfrece, tieneListaPropia };
+module.exports = {
+  loQueNoEstaEnLaLista, loQueNoEstaEnSuTabla, loQueOfrece, tieneListaPropia,
+  laFilaDeLaLista, dondeVive,
+};

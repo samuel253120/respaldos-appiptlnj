@@ -356,14 +356,15 @@ test('lo que este guardado NO está cambiando no se mira', () => {
   assert.equal(reparo, null);
 });
 
-test('un campo sin «opcionesDe» no se mira, y hoy lo declaran dos', () => {
+test('un campo sin «opcionesDe» no se mira, y hoy lo declaran tres', () => {
   assert.equal(enSuTabla(AYUDAS, { tipo_ayuda: 'Alimentos' }).reparo, null);
 
   const cuantos = allModules()
     .flatMap((m) => (m.fields || []).filter((f) => f.opcionesDe).map((f) => `${m.name}.${f.name}`))
     .sort();
-  assert.deepEqual(cuantos, ['asistencias.tipo_reunion', 'tesoreria.categoria'],
-    'los otros diecisiete se encenderán cuando a cada módulo le toque su revisión');
+  assert.deepEqual(cuantos,
+    ['asistencia_detalle.motivo', 'asistencias.tipo_reunion', 'tesoreria.categoria'],
+    'los otros dieciséis se encenderán cuando a cada módulo le toque su revisión');
 });
 
 /* ------------------------------- y guardando de verdad, por el motor */

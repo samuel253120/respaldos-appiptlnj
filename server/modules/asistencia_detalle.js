@@ -99,6 +99,16 @@ module.exports = {
       name: 'motivo', label: 'Motivo de la justificación', type: 'select',
       // Los mantiene la iglesia (módulo «Motivos de Ausencia»).
       optionsRoute: '/motivos_ausencia/opciones',
+      /*
+       * Y la lista se comprueba al guardar, no solo se ofrece (v1.363.0). El
+       * desplegable acotaba lo que se ve en el navegador y nada más: por la API
+       * entraba cualquier texto —medido: «Motivo Que No Existe», 201—, entraba
+       * uno desactivado, y «enfermedad» en minúscula quedaba como se escribió,
+       * partiendo en dos el informe de asistencia por motivo. Declarando de qué
+       * tabla sale la lista, el motor la comprueba contra ella y de paso deja
+       * el nombre escrito como está en la lista.
+       */
+      opcionesDe: { modulo: 'motivos_ausencia', columna: 'nombre', label: 'Motivos de Ausencia' },
       showIf: { field: 'estado', equals: 'Justificado' },
       required: true,
     },

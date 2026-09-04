@@ -919,6 +919,37 @@ module.exports = {
         }
         if (m.estado === 'Justificado') {
           if (!m.motivo) return res.status(400).json({ error: 'Indique el motivo de cada justificación' });
+
+          /*
+           * Y EL MOTIVO TIENE QUE SER UNO DE LA LISTA (v1.363.0).
+           *
+           * Ésta es la puerta por la que entran TODAS las marcas: escribe
+           * derecho en la base, sin pasar por el guardado del módulo, así que
+           * declarar la lista en el campo no alcanzaba acá. Medido antes de
+           * esto: «Motivo Que No Existe» entró con un 200, uno desactivado
+           * también, y «enfermedad» en minúscula quedó como se escribió
+           * —y el informe agrupa por el texto guardado, así que salía como un
+           * motivo aparte—.
+           *
+           * Se pregunta con la MISMA cuenta que usa el motor para los demás
+           * desplegables (server/opciones.js): dos maneras de comparar habrían
+           * sido dos verdades.
+           */
+          const cual = { modulo: 'motivos_ausencia', columna: 'nombre', label: 'Motivos de Ausencia' };
+          const enLaLista = require('../opciones').laFilaDeLaLista(db, cual, m.motivo);
+          if (!enLaLista) {
+            return res.status(400).json({
+              error: `«${m.motivo}» no está en Motivos de Ausencia. Elija uno de la lista, o créelo primero en Motivos de Ausencia.`,
+            });
+          }
+          if (!enLaLista.activo) {
+            return res.status(400).json({
+              error: `«${enLaLista.valor}» ya no está en uso en Motivos de Ausencia. `
+                + 'Elija otro de la lista, o vuelva a marcarlo «En uso» en Motivos de Ausencia.',
+            });
+          }
+          m.motivo = enLaLista.valor;   // una sola forma de escribirlo
+
           if (motivosConDetalle().includes(m.motivo) && !String(m.detalle || '').trim()) {
             return res.status(400).json({ error: `El motivo "${m.motivo}" necesita que se especifique el detalle` });
           }
