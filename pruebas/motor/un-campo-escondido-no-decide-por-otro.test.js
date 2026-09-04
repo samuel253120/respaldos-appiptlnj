@@ -31,6 +31,10 @@ exigirBaseDescartable();
 
 const { seAplica } = require('../../server/crud');
 const { getModule } = require('../../server/registry');
+const { db } = require('../../server/db');
+const { elSistemaAndando, cerrarElSistema } = require('./andando');
+
+test.after(cerrarElSistema);
 
 const CAMPOS = [
   { name: 'estado' },
@@ -96,23 +100,33 @@ test('en el sistema de verdad hay una sola cadena así, y es la del detalle', ()
 test('y el caso real se guarda', async () => {
   /*
    * Lo mismo, pero por la ruta de verdad y sobre el módulo de verdad: una
-   * asistencia «Presente» a la que le llega un motivo puesto —como lo mandaba
-   * la pantalla— y sin detalle. Antes contestaba 400.
+   * asistencia «Presente» a la que le llega un motivo puesto —como lo manda la
+   * pantalla, que dibuja el desplegable escondido con su primera opción— y sin
+   * detalle. Antes contestaba 400 y el botón Guardar no hacía nada.
+   *
+   * Se hace pasando lista, que desde la v1.381.0 es la única puerta por la que
+   * se escribe una marca. La ficha suelta, que era por donde iba esta prueba,
+   * ya no escribe.
    */
-  const { db } = require('../../server/db');
-  const { elSistemaAndando, cerrarElSistema } = require('./andando');
-  test.after(cerrarElSistema);
-
   const api = await elSistemaAndando();
-  const m = `${process.pid}-${Math.random().toString(36).slice(2, 7)}`;
-  const iglesia = db.prepare("INSERT INTO iglesias (nombre, codigo, estado) VALUES (?, ?, 'Activa')")
-    .run(`Iglesia ${m}`, `AS${m}`.slice(0, 18)).lastInsertRowid;
+  const m = `${process.pid % 100000}`;
+  const iglesia = db.prepare(
+    "INSERT INTO iglesias (nombre, codigo, estado) VALUES (?, ?, 'Activa')"
+  ).run(`Escondida ${m}`, `ESC-${m}`).lastInsertRowid;
+  const cuerpo = db.prepare(
+    "INSERT INTO cuerpos (nombre, tipo, iglesia_id, estado) VALUES (?, 'Cuerpo', ?, 'Activo')"
+  ).run(`Damas escondidas ${m}`, iglesia).lastInsertRowid;
   const miembro = db.prepare(
-    'INSERT INTO miembros (nombres, apellidos, iglesia_id, estado) VALUES (?, ?, ?, ?)'
-  ).run('Persona', m, iglesia, 'Activo').lastInsertRowid;
+    "INSERT INTO miembros (nombres, apellidos, iglesia_id, estado) VALUES (?, ?, ?, 'Activo')"
+  ).run('Persona', `Escondida ${m}`, iglesia).lastInsertRowid;
+  db.prepare(
+    `INSERT INTO integrantes_cuerpo (cuerpo_id, miembro_id, persona_tipo, estado, fecha_ingreso, iglesia_id)
+     VALUES (?,?,'Miembro','Activo','2026-01-01',?)`
+  ).run(cuerpo, miembro, iglesia);
+  const TIPO = db.prepare('SELECT nombre FROM tipos_actividad WHERE activo = 1 ORDER BY id LIMIT 1').get().nombre;
   const asistencia = db.prepare(
-    "INSERT INTO asistencias (fecha, iglesia_id) VALUES ('2026-04-06', ?)"
-  ).run(iglesia).lastInsertRowid;
+    'INSERT INTO asistencias (fecha, tipo_reunion, iglesia_id, cuerpos) VALUES (?,?,?,?)'
+  ).run('2026-04-06', TIPO, iglesia, JSON.stringify([cuerpo])).lastInsertRowid;
 
   /*
    * Y UN MOTIVO QUE SÍ PIDE EXPLICACIÓN, porque si no la prueba pasa por el
@@ -126,30 +140,29 @@ test('y el caso real se guarda', async () => {
     .run(`Emergencia ${m}`);
   const queExige = `Emergencia ${m}`;
 
-  const creado = await api('POST', '/asistencia_detalle', {
-    asistencia_id: asistencia, persona_tipo: 'Miembro', miembro_id: miembro,
-    estado: 'Presente', iglesia_id: iglesia, fecha: '2026-04-06',
-  });
-  assert.equal(creado.estado, 201, JSON.stringify(creado.json));
-
   // Primero, que la condición del detalle DE VERDAD alcance a este motivo: si
   // no, lo de abajo no comprobaría nada.
   const detalle = getModule('asistencia_detalle').fields.find((x) => x.name === 'detalle');
   assert.ok(detalle.showIf.in.includes(queExige),
     `el motivo sembrado tiene que estar entre los que piden explicación: ${JSON.stringify(detalle.showIf.in)}`);
 
-  const guardado = await api('PUT', `/asistencia_detalle/${creado.json.id}`, {
-    estado: 'Presente', motivo: queExige, detalle: '',
+  const marcar = (estado) => api('POST', `/asistencias/${asistencia}/lista`, {
+    marcas: [{ miembro_id: miembro, cuerpo_id: cuerpo, estado, motivo: queExige, detalle: '' }],
   });
+
+  const guardado = await marcar('Presente');
   assert.equal(guardado.estado, 200,
     `un «Presente» con un motivo colgando no puede exigir detalle: ${JSON.stringify(guardado.json)}`);
+  const quedo = db.prepare('SELECT estado, motivo, detalle FROM asistencia_detalle WHERE asistencia_id = ?')
+    .get(asistencia);
+  assert.equal(quedo.estado, 'Presente');
+  assert.equal(quedo.motivo, null, 'y el motivo que venía colgando no se guarda: no fue una justificación');
+  assert.equal(quedo.detalle, null);
 
   // Y al revés: en un «Justificado», ese mismo motivo sí exige la explicación.
-  const justificado = await api('PUT', `/asistencia_detalle/${creado.json.id}`, {
-    estado: 'Justificado', motivo: queExige, detalle: '',
-  });
+  const justificado = await marcar('Justificado');
   assert.equal(justificado.estado, 400, 'ahí sí se pide');
-  assert.match(justificado.json.error, /Detalle del motivo/);
+  assert.match(justificado.json.error, /detalle/i);
 });
 
 test('pero un «Justificado» con un motivo que pide explicación sí la exige', () => {

@@ -1210,11 +1210,39 @@ module.exports = {
               error: `«${m.motivo}» no está en Motivos de Ausencia. Elija uno de la lista, o créelo primero en Motivos de Ausencia.`,
             });
           }
+          /*
+           * Uno DESACTIVADO no se puede poner de nuevo… salvo que ya estuviera
+           * puesto en esa misma marca.
+           *
+           * Es el criterio del motor con todos los desplegables: se mira lo que
+           * ESTE guardado está cambiando, y desactivar una opción no puede
+           * dejar imposibles de corregir los registros que ya la tenían. Acá
+           * faltaba, y no se notaba porque la marca tenía una segunda puerta
+           * —su ficha suelta— donde el motor sí lo aplicaba. Cerrada esa puerta
+           * (v1.381.0), corregirle el detalle a una justificación cuyo motivo se
+           * apagó después quedaba sin ninguna forma de hacerse: contestaba 400
+           * pidiendo elegir otro motivo, que es cambiar lo que no se quería
+           * cambiar.
+           *
+           * Se pregunta por la PERSONA y no por el par persona-cuerpo: a esta
+           * altura el cuerpo todavía puede venir sin resolver —lo pone más
+           * abajo `primerCuerpoDe`—, y quien está en dos cuerpos con el mismo
+           * motivo lo tiene igual de puesto en los dos.
+           */
           if (!enLaLista.activo) {
-            return res.status(400).json({
-              error: `«${enLaLista.valor}» ya no está en uso en Motivos de Ausencia. `
-                + 'Elija otro de la lista, o vuelva a marcarlo «En uso» en Motivos de Ausencia.',
-            });
+            const yaLoTenia = db
+              .prepare(
+                `SELECT 1 FROM asistencia_detalle
+                  WHERE asistencia_id = ? AND COALESCE(miembro_id, 0) = ?
+                    AND COALESCE(no_miembro_id, 0) = ? AND motivo = ?`
+              )
+              .get(actividad.id, Number(m.miembro_id) || 0, Number(m.no_miembro_id) || 0, enLaLista.valor);
+            if (!yaLoTenia) {
+              return res.status(400).json({
+                error: `«${enLaLista.valor}» ya no está en uso en Motivos de Ausencia. `
+                  + 'Elija otro de la lista, o vuelva a marcarlo «En uso» en Motivos de Ausencia.',
+              });
+            }
           }
           m.motivo = enLaLista.valor;   // una sola forma de escribirlo
 

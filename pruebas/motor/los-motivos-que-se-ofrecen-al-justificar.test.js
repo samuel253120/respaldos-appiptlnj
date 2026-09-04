@@ -67,6 +67,21 @@ async function loQueSeOfrece(api) {
   return r.json;
 }
 
+/**
+ * Una marca justificada con ese motivo, por la única puerta que escribe.
+ *
+ * Se creaban por la ficha suelta de la marca, que desde la v1.381.0 no escribe:
+ * la marca se escribe pasando lista. Lo que este archivo comprueba no cambia
+ * —que un motivo en uso no se borre, y que desactivarlo no toque lo anotado—;
+ * cambia por dónde se deja puesta la marca que lo usa.
+ */
+const marcarCon = (api, motivo) => {
+  db.prepare('DELETE FROM asistencia_detalle WHERE asistencia_id = ?').run(actividad);
+  return api('POST', `/asistencias/${actividad}/lista`, {
+    marcas: [{ miembro_id: miembro, cuerpo_id: cuerpo, estado: 'Justificado', motivo }],
+  });
+};
+
 /* ────────────────────────── la única regla del módulo ─────────────────── */
 
 test('un motivo que ya se usó no se borra: se desactiva', async () => {
@@ -77,11 +92,8 @@ test('un motivo que ya se usó no se borra: se desactiva', async () => {
   const otro = unMotivo('El que nadie usó');
   assert.equal(motivos.hooks.beforeDelete(otro, { db }), null);
 
-  const marcada = await api('POST', '/asistencia_detalle', {
-    asistencia_id: actividad, persona_tipo: 'Miembro', miembro_id: miembro, iglesia_id: iglesia,
-    cuerpo_id: cuerpo, fecha: '2026-08-02', estado: 'Justificado', motivo: suyo.nombre,
-  });
-  assert.equal(marcada.estado, 201, marcada.texto.slice(0, 200));
+  const marcada = await marcarCon(api, suyo.nombre);
+  assert.equal(marcada.estado, 200, marcada.texto.slice(0, 200));
 
   const aviso = motivos.hooks.beforeDelete(suyo, { db });
   assert.equal(typeof aviso, 'string', 'usado, tiene que negarse');
@@ -92,11 +104,7 @@ test('un motivo que ya se usó no se borra: se desactiva', async () => {
 test('y el rechazo llega hasta quien lo pide, no solo hasta el gancho', async () => {
   const api = await elSistemaAndando();
   const suyo = unMotivo('Emergencia del hogar');
-  db.prepare('DELETE FROM asistencia_detalle WHERE asistencia_id = ?').run(actividad);
-  await api('POST', '/asistencia_detalle', {
-    asistencia_id: actividad, persona_tipo: 'Miembro', miembro_id: miembro, iglesia_id: iglesia,
-    cuerpo_id: cuerpo, fecha: '2026-08-02', estado: 'Justificado', motivo: suyo.nombre,
-  });
+  await marcarCon(api, suyo.nombre);
 
   const r = await api('DELETE', `/motivos_ausencia/${suyo.id}`);
   assert.equal(r.estado, 400, `medido: la regla no se ejecutaba en ninguna prueba (${r.texto.slice(0, 140)})`);
@@ -116,18 +124,13 @@ test('la ruta ofrece los que están en uso', async () => {
 test('y deja de ofrecer uno desactivado, sin tocar lo ya anotado', async () => {
   const api = await elSistemaAndando();
   const suyo = unMotivo('Se usó y se apagó');
-  db.prepare('DELETE FROM asistencia_detalle WHERE asistencia_id = ?').run(actividad);
-  const marcada = await api('POST', '/asistencia_detalle', {
-    asistencia_id: actividad, persona_tipo: 'Miembro', miembro_id: miembro, iglesia_id: iglesia,
-    cuerpo_id: cuerpo, fecha: '2026-08-02', estado: 'Justificado', motivo: suyo.nombre,
-  });
-  assert.equal(marcada.estado, 201, marcada.texto.slice(0, 200));
+  await marcarCon(api, suyo.nombre);
 
   db.prepare('UPDATE motivos_ausencia SET activo = 0 WHERE id = ?').run(suyo.id);
   assert.ok(!(await loQueSeOfrece(api)).map((o) => o.id).includes(suyo.nombre),
     'es para lo que sirve desmarcar «En uso»');
   assert.equal(
-    db.prepare('SELECT motivo FROM asistencia_detalle WHERE id = ?').get(marcada.json.id).motivo,
+    db.prepare('SELECT motivo FROM asistencia_detalle WHERE asistencia_id = ?').get(actividad).motivo,
     suyo.nombre, 'y la marca sigue diciendo lo que decía'
   );
 });

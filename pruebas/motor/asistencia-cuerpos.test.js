@@ -153,23 +153,17 @@ test('y cada cuerpo lo cuenta en lo suyo', () => {
   assert.equal(cuenta(otro, 'Justificado'), 0);
 });
 
-test('el módulo no admite dos marcas de la misma persona en el mismo cuerpo', () => {
-  // Una por cuerpo, no una por persona: el límite se corrió, no se quitó.
-  const def = require('../../server/modules/asistencia_detalle');
-  const quien = tambienEnOtro[0];
-  const error = def.hooks.beforeSave(
-    { asistencia_id: actividad, miembro_id: quien, cuerpo_id: directiva, estado: 'Presente' },
-    { id: null, existing: null, db }
-  );
-  assert.match(String(error), /ya tiene su marca en este cuerpo/);
-});
-
-test('pero sí admite la de la misma persona en otro cuerpo', () => {
-  const def = require('../../server/modules/asistencia_detalle');
-  const quien = soloDirectiva[0];
-  const error = def.hooks.beforeSave(
-    { asistencia_id: actividad, miembro_id: quien, cuerpo_id: caballeros, estado: 'Presente' },
-    { id: null, existing: null, db }
-  );
-  assert.equal(error, null);
-});
+/*
+ * UNA MARCA POR PAR PERSONA-CUERPO: la regla se comprueba donde vive.
+ *
+ * Acá había dos pruebas que se lo preguntaban al gancho de guardado del módulo
+ * de marcas. Desde la v1.381.0 ese gancho no existe —la marca se escribe
+ * pasando lista, no una por una— y el límite lo garantiza el borrar-e-insertar
+ * por par persona-cuerpo de esa ruta. Preguntárselo a un gancho que ya nadie
+ * llama era comprobar nada, así que la pregunta se mudó entera a
+ * pruebas/motor/la-marca-se-escribe-pasando-lista.test.js, que levanta el
+ * sistema y la hace por la puerta de verdad.
+ *
+ * Lo de este archivo —que las dos marcas del mismo día sean independientes— se
+ * sigue comprobando arriba, que es lo suyo.
+ */

@@ -55,15 +55,22 @@ const unMotivo = (nombre, pideDetalle = 0) => {
   return db.prepare('SELECT * FROM motivos_ausencia WHERE id = ?').get(id);
 };
 
-/** Una marca justificada con ese motivo. Devuelve su id. */
+/**
+ * Una marca justificada con ese motivo. Devuelve su id.
+ *
+ * Se creaba por la ficha suelta de la marca, que desde la v1.381.0 no escribe:
+ * la marca se escribe pasando lista. Lo que este archivo comprueba —que
+ * renombrar un motivo en uso pregunte, y que al confirmar el nombre nuevo se
+ * lleve las marcas— no depende de por dónde entró la marca; depende de que
+ * exista una que lo use.
+ */
 async function unaMarca(api, motivo, detalle) {
   db.prepare('DELETE FROM asistencia_detalle WHERE asistencia_id = ?').run(actividad);
-  const r = await api('POST', '/asistencia_detalle', {
-    asistencia_id: actividad, persona_tipo: 'Miembro', miembro_id: miembro, iglesia_id: iglesia,
-    cuerpo_id: cuerpo, fecha: '2026-08-02', estado: 'Justificado', motivo, detalle,
+  const r = await api('POST', `/asistencias/${actividad}/lista`, {
+    marcas: [{ miembro_id: miembro, cuerpo_id: cuerpo, estado: 'Justificado', motivo, detalle }],
   });
-  assert.equal(r.estado, 201, r.texto.slice(0, 220));
-  return r.json.id;
+  assert.equal(r.estado, 200, r.texto.slice(0, 220));
+  return db.prepare('SELECT id FROM asistencia_detalle WHERE asistencia_id = ?').get(actividad).id;
 }
 
 const laMarca = (id) => db.prepare('SELECT * FROM asistencia_detalle WHERE id = ?').get(id);

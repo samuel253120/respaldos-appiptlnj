@@ -71,6 +71,13 @@ const limpiar = () =>
 const laMarca = () =>
   db.prepare('SELECT motivo, detalle FROM asistencia_detalle WHERE asistencia_id = ?').get(actividad);
 
+/*
+ * Este archivo se escribió cuando la marca tenía DOS puertas y las dos tenían
+ * que preguntarle lo mismo a la fila del motivo. Desde la v1.381.0 la ficha
+ * suelta no escribe —la marca se escribe pasando lista—, así que lo que se
+ * comprueba por ella es que no deje pasar nada, una sola vez y abajo. Todo lo
+ * demás se le pregunta a la puerta que queda.
+ */
 const porLaFicha = (api, motivo, det) => {
   limpiar();
   return api('POST', '/asistencia_detalle', {
@@ -90,33 +97,27 @@ const porLaLista = (api, motivo, det) => {
 test('escrito de cualquier manera, un motivo que pide explicación la pide', async () => {
   const api = await elSistemaAndando();
   for (const comoSeEscribe of [EXIGE, EXIGE.toLowerCase(), EXIGE.toUpperCase()]) {
-    for (const [rotulo, porDonde] of [['la ficha', porLaFicha], ['la toma de lista', porLaLista]]) {
-      const r = await porDonde(api, comoSeEscribe, null);
-      assert.equal(r.estado, 400,
-        `«${comoSeEscribe}» por ${rotulo} entró sin explicación: ${r.texto.slice(0, 140)}`);
-      assert.match(r.json.error, /detalle/i);
-      assert.equal(laMarca(), undefined, 'y no quedó ninguna marca');
-    }
+    const r = await porLaLista(api, comoSeEscribe, null);
+    assert.equal(r.estado, 400,
+      `«${comoSeEscribe}» entró sin explicación: ${r.texto.slice(0, 140)}`);
+    assert.match(r.json.error, /detalle/i);
+    assert.equal(laMarca(), undefined, 'y no quedó ninguna marca');
   }
 });
 
-test('con la explicación escrita, entra por las dos', async () => {
+test('con la explicación escrita, entra', async () => {
   const api = await elSistemaAndando();
-  for (const [rotulo, porDonde, esperado] of [
-    ['la ficha', porLaFicha, 201], ['la toma de lista', porLaLista, 200],
-  ]) {
-    const r = await porDonde(api, EXIGE.toLowerCase(), 'Estaba de duelo');
-    assert.equal(r.estado, esperado, `por ${rotulo}: ${r.texto.slice(0, 160)}`);
-    assert.equal(laMarca().motivo, EXIGE, 'y el motivo queda escrito como está en la lista');
-    assert.equal(laMarca().detalle, 'Estaba de duelo');
-  }
+  const r = await porLaLista(api, EXIGE.toLowerCase(), 'Estaba de duelo');
+  assert.equal(r.estado, 200, r.texto.slice(0, 160));
+  assert.equal(laMarca().motivo, EXIGE, 'y el motivo queda escrito como está en la lista');
+  assert.equal(laMarca().detalle, 'Estaba de duelo');
 });
 
 test('y un motivo que NO pide explicación no la pide, escrito como sea', async () => {
   const api = await elSistemaAndando();
   for (const comoSeEscribe of [NO_EXIGE, NO_EXIGE.toUpperCase()]) {
-    const r = await porLaFicha(api, comoSeEscribe, null);
-    assert.equal(r.estado, 201, `«${comoSeEscribe}»: ${r.texto.slice(0, 160)}`);
+    const r = await porLaLista(api, comoSeEscribe, null);
+    assert.equal(r.estado, 200, `«${comoSeEscribe}»: ${r.texto.slice(0, 160)}`);
     assert.equal(laMarca().detalle, null, 'y el detalle se suelta, no se inventa');
   }
 });
@@ -140,14 +141,24 @@ test('cambiarle la casilla al motivo cambia la regla en el acto', async () => {
   const api = await elSistemaAndando();
   const suyo = `Viaje ${MARCA}`;
   const id = unMotivo('Viaje', false);
-  assert.equal((await porLaFicha(api, suyo, null)).estado, 201, 'sin la casilla, no pide nada');
+  assert.equal((await porLaLista(api, suyo, null)).estado, 200, 'sin la casilla, no pide nada');
 
   db.prepare('UPDATE motivos_ausencia SET pide_detalle = 1 WHERE id = ?').run(id);
-  const r = await porLaFicha(api, suyo, null);
+  const r = await porLaLista(api, suyo, null);
   assert.equal(r.estado, 400, 'con la casilla marcada, la pide desde ese mismo momento');
 });
 
-test('las dos puertas preguntan lo mismo, y a la misma pieza', () => {
+test('y por la ficha suelta no entra ninguna, con explicación o sin ella', async () => {
+  const api = await elSistemaAndando();
+  limpiar();
+  const r = await porLaFicha(api, EXIGE, 'Estaba de duelo');
+  assert.equal(r.estado, 400, r.texto.slice(0, 160));
+  assert.match(r.json.error, /pasando lista en la pantalla de Asistencia/,
+    'desde la v1.381.0 la marca tiene una sola puerta, y es la que pregunta todo esto');
+  assert.equal(laMarca(), undefined);
+});
+
+test('la puerta que queda pregunta a la misma pieza', () => {
   const fs = require('fs');
   const path = require('path');
   const fuente = fs.readFileSync(path.join(__dirname, '../../server/modules/asistencias.js'), 'utf8');

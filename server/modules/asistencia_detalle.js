@@ -99,6 +99,62 @@ module.exports = {
    */
   dateField: 'fecha',
   defaultSort: { field: 'id', dir: 'desc' },
+
+  /*
+   * ── LA MARCA SE ESCRIBE PASANDO LISTA, NO A MANO ──
+   *
+   * La primera línea de este archivo lo dice desde siempre: «no se llena aquí
+   * una por una, sino marcando la lista en la pantalla de Asistencia». Lo que
+   * no estaba dicho en ninguna parte que el programa mirara es que ESA es la
+   * única puerta. El módulo no tiene entrada en el menú, pero viaja entero en
+   * la descripción del sistema, así que la pantalla genérica lo atendía como a
+   * los otros cuarenta —listado, ficha, formulario, y los botones de crear,
+   * editar y borrar dibujados—, y la importación por planilla también.
+   *
+   * Y esa segunda puerta no hacía ninguna de las cinco cosas que hace la toma
+   * de lista. MEDIDO en la v1.380.0, sobre la base cargada:
+   *
+   *   · corregirle el estado a una marca la MUDABA DE IGLESIA —el gancho la
+   *     sellaba con la de la actividad, deshaciendo la v1.375.0—: la encargada
+   *     de la otra congregación pasó de ver «1 presente · 1 actividad» a
+   *     «0 · 0», y de 200 a 403 al abrir la marca de su propia integrante;
+   *   · toda marca creada por la ficha nacía SIN CUERPO, se mandara el que se
+   *     mandara —el campo es de solo lectura, así que se descartaba, y el
+   *     respaldo del gancho apuntaba a `actividad.cuerpo_id`, una columna que
+   *     dejó de existir cuando una actividad pasó a convocar a varios—, y una
+   *     marca sin cuerpo no aparece en ninguna vista por cuerpo (v1.379.0);
+   *   · no se comprobaba que la persona estuviera convocada: ocho personas de
+   *     otro cuerpo llevaron una reunión de 28/56 (50 %) a 36/64 (56 %), y el
+   *     cuerpo, que tiene 56 integrantes, pasó a decir que convocó a 64. Por la
+   *     toma de lista, las mismas ocho dan 403;
+   *   · no quedaba constancia: la misma corrección deja una línea en el
+   *     Registro de Cambios por la toma de lista —«Corrigió 1 marca(s)…»— y
+   *     CERO por la ficha. Borrar una marca a mano tampoco dejaba nada.
+   *
+   * Se cierra la puerta en vez de repetir en ella las cinco comprobaciones,
+   * por dos razones. La primera es la de siempre: dos maneras de comprobar
+   * habrían sido dos verdades, y la que vale es la de la ruta que pasa lista.
+   * La segunda es que esa ficha nunca fue una puerta estable —guardar una
+   * lista BORRA y vuelve a insertar la marca de cada persona, que es lo que
+   * permite que dos personas marquen a la vez, así que cada marca estrena
+   * número: medido, la marca 30001 pasó a ser la 30005 al volver a guardar la
+   * misma lista, y el enlace a su ficha contestó 404—.
+   *
+   * LEER no se toca: el listado, la ficha, los filtros y la planilla siguen
+   * igual, con el mismo alcance de siempre. Lo que se cierra es escribir.
+   *
+   * Y esto NO toca el permiso de tomar asistencia. Ese permiso vive en este
+   * módulo —«crear» y «editar» aquí es lo que deja pasar lista— y lo pregunta
+   * la propia ruta de la lista con `can()`, que mira los permisos de la
+   * persona, no lo que el módulo admite por su puerta genérica.
+   */
+  soloLectura: {
+    alGuardar: 'Las marcas de asistencia se escriben pasando lista en la pantalla de Asistencia, '
+      + 'no una por una: ahí se comprueba que la persona esté convocada, se le pone su cuerpo y su '
+      + 'iglesia, y queda constancia de quién la marcó.',
+    alBorrar: 'Una marca no se borra suelta: corrija la lista de esa actividad en la pantalla de '
+      + 'Asistencia, que deja escrito qué cambió y quién lo cambió.',
+  },
   fields: [
     { name: 'asistencia_id', label: 'Actividad', type: 'ref', ref: 'asistencias', required: true },
     /*
@@ -202,65 +258,29 @@ module.exports = {
     { name: 'visita', label: 'Visita', type: 'boolean', readonly: true, default: 0 },
   ],
 
-  hooks: {
-    beforeSave(data, { id, existing, db }) {
-      const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
-      const asistenciaId = dato('asistencia_id');
-
-      const actividad = db.prepare('SELECT * FROM asistencias WHERE id = ?').get(asistenciaId);
-      if (!actividad) return 'La actividad indicada no existe';
-
-      // La marca apunta a uno de los dos registros, y se suelta el otro lado
-      const tipo = REGISTROS.includes(dato('persona_tipo')) ? dato('persona_tipo') : 'Miembro';
-      data.persona_tipo = tipo;
-      const campo = tipo === 'No miembro' ? 'no_miembro_id' : 'miembro_id';
-      const otro = tipo === 'No miembro' ? 'miembro_id' : 'no_miembro_id';
-      const personaId = Number(dato(campo));
-      if (!personaId) return 'Falta indicar a quién corresponde esta marca';
-      data[campo] = personaId;
-      data[otro] = null;
-
-      /**
-       * Una sola marca por persona EN CADA CUERPO de la actividad.
-       *
-       * No una por persona: la asistencia se lleva por cuerpo. Quien está en
-       * Damas y en la Directiva tiene una marca en cada una, y pueden no
-       * coincidir —justificado donde avisó, ausente donde no—.
-       */
-      const cuerpoId = dato('cuerpo_id');
-      const repetida = db
-        .prepare(
-          `SELECT id FROM asistencia_detalle
-            WHERE asistencia_id = ? AND "${campo}" = ? AND COALESCE(cuerpo_id, 0) = ? AND id != ?`
-        )
-        .get(asistenciaId, personaId, Number(cuerpoId) || 0, id || 0);
-      if (repetida) return 'Esa persona ya tiene su marca en este cuerpo para esta actividad';
-
-      /*
-       * Lo que no es justificación no lleva motivo ni detalle. Y si lo es, la
-       * explicación se le pide a la FILA del motivo y no a una lista de
-       * nombres: ver `pideExplicacion`. Esto corre después de que el motor haya
-       * dejado el motivo escrito como está en la lista, que es justamente lo
-       * que le faltaba a la comprobación de obligatorios.
-       */
-      if (dato('estado') !== 'Justificado') {
-        data.motivo = null;
-        data.detalle = null;
-      } else if (!pideExplicacion(db, dato('motivo'))) {
-        data.detalle = null;
-      } else if (!String(dato('detalle') || '').trim()) {
-        return `El motivo «${dato('motivo')}» necesita que se especifique el detalle: `
-          + 'está marcado como que pide explicación en Motivos de Ausencia.';
-      }
-
-      // El cuerpo lo trae la marca; si no viene, se cae al de la actividad
-      // (las de un solo cuerpo lo llevan en su ficha)
-      if (data.cuerpo_id === undefined) data.cuerpo_id = cuerpoId || actividad.cuerpo_id || null;
-      data.fecha = actividad.fecha || null;
-      data.iglesia_id = actividad.iglesia_id || null;
-      return null;
-    },
-  },
+  /*
+   * SIN GANCHO DE GUARDADO, y a propósito.
+   *
+   * Tenía uno de sesenta renglones —normalizaba el registro de la persona,
+   * impedía dos marcas de la misma persona en el mismo cuerpo, exigía la
+   * explicación del motivo que la pide, y sellaba el cuerpo, la fecha y la
+   * iglesia—. Con la puerta cerrada (ver `soloLectura`, arriba) no lo llamaba
+   * nadie: la toma de lista escribe derecho en la base, sin pasar por el
+   * guardado del módulo, y la importación por planilla se rechaza antes de
+   * mirar las filas.
+   *
+   * Un gancho que no se alcanza es peor que ninguno: parece que protege. Las
+   * cuatro reglas que hacía valer viven donde de verdad se aplican, en
+   * `POST /asistencias/:id/lista` (server/modules/asistencias.js):
+   *
+   *   · el registro de la persona y su cuerpo los resuelve `integrantesConvocados`;
+   *   · una sola marca por par persona-cuerpo la garantiza el borrar-e-insertar
+   *     por ese mismo par;
+   *   · el motivo se comprueba contra su lista y la explicación se le pide a la
+   *     FILA del motivo, con la misma `pideExplicacion` que exporta este archivo;
+   *   · la fecha sale de la actividad y la iglesia sale del CUERPO de la marca
+   *     (`laIglesiaDe`), que es lo que el gancho hacía mal.
+   */
 };
 
 // Se conserva el nombre de siempre para quien lo consulta de afuera (la

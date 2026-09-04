@@ -175,7 +175,23 @@ test('integrantesDe trae las fichas de los dos registros', () => {
 
 /* ── 3. La asistencia ──────────────────────────────────────────────── */
 
-test('una marca de asistencia apunta a un registro y suelta el otro', () => {
+/*
+ * A QUIÉN APUNTA UNA MARCA: a uno de los dos registros, nunca a los dos.
+ *
+ * Acá había dos pruebas que se lo preguntaban al gancho de guardado del módulo
+ * de marcas —una le mandaba los dos lados puestos y comprobaba que soltara uno;
+ * la otra, ninguno—. Desde la v1.381.0 ese gancho no existe: la marca se
+ * escribe pasando lista, y ahí la persona no llega como dos campos sueltos sino
+ * resuelta desde los integrantes convocados, así que no hay forma de armar una
+ * que apunte a los dos ni a ninguno. La pregunta se hacía a una pieza que ya no
+ * decide nada.
+ *
+ * Lo que este archivo cuida —que a quien no está inscrito se le pueda marcar
+ * igual que a los demás, y que salga en la planilla del grupo— se sigue
+ * comprobando abajo, y por la puerta de verdad. La marca de Nelson se pone con
+ * la toma de lista, como la pone la iglesia.
+ */
+test('a quien no está inscrito se le marca por la toma de lista, como a los demás', () => {
   const actividad = db
     .prepare(
       `INSERT INTO asistencias (fecha, tipo_reunion, iglesia_id, cuerpos)
@@ -183,24 +199,14 @@ test('una marca de asistencia apunta a un registro y suelta el otro', () => {
     )
     .run(iglesia, JSON.stringify([grupo])).lastInsertRowid;
 
-  const datos = {
-    asistencia_id: actividad, persona_tipo: 'No miembro', no_miembro_id: nelson,
-    miembro_id: ana, // llega mal armado a propósito: los dos lados puestos
-    estado: 'Presente', cuerpo_id: grupo,
-  };
-  const error = detalle.hooks.beforeSave(datos, { id: null, existing: null, db });
-  assert.equal(error, null, String(error));
-  assert.equal(datos.no_miembro_id, Number(nelson));
-  assert.equal(datos.miembro_id, null, 'el otro lado se suelta: si no, la marca diría dos personas');
-});
-
-test('una marca sin nadie indicado se rechaza', () => {
-  const actividad = db.prepare('SELECT id FROM asistencias ORDER BY id DESC LIMIT 1').get().id;
-  const error = detalle.hooks.beforeSave(
-    { asistencia_id: actividad, persona_tipo: 'No miembro', estado: 'Presente', cuerpo_id: grupo },
-    { id: null, existing: null, db }
-  );
-  assert.match(String(error), /a quién corresponde/);
+  const convocados = require('../../server/modules/asistencias')
+    .integrantesConvocados({ id: actividad, cuerpos: JSON.stringify([grupo]), iglesia_id: iglesia }, db,
+      { id: 1, rol: 'admin' });
+  const suya = [...convocados.values()].find((p) => Number(p.no_miembro_id) === Number(nelson));
+  assert.ok(suya, 'sale entre los convocados del grupo, que es lo que permite marcarlo');
+  assert.equal(suya.persona_tipo, 'No miembro');
+  assert.equal(suya.miembro_id, null, 'apunta a un registro y suelta el otro: no puede decir dos personas');
+  assert.equal(Number(suya.cuerpo_id), Number(grupo));
 });
 
 test('la planilla mensual del grupo trae también a quien no está inscrito', () => {
