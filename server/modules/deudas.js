@@ -84,7 +84,9 @@ const CONTRAPARTES = [UNA_PERSONA, UNA_INSTITUCION, OTRA_CAJA];
 
 /** En qué estado está. Cerrarla es lo que pide la llave. */
 const VIGENTE = 'Vigente';
-const CERRADAS = ['Pagada', 'Condonada'];
+const PAGADA = 'Pagada';
+const CONDONADA = 'Condonada';
+const CERRADAS = [PAGADA, CONDONADA];
 const ESTADOS = [VIGENTE, ...CERRADAS];
 
 /** Un monto como se lee acá. */
@@ -298,14 +300,67 @@ function elAvisoDeLaCajaEnRojo(data, { existing, db, cuentaId }) {
  * y alguien le corrige una coma, no se le pide nada—.
  */
 function loQueImpideCerrarla(data, { existing, user }) {
-  const ahora = data.estado !== undefined ? data.estado : existing ? existing.estado : VIGENTE;
-  if (!CERRADAS.includes(ahora)) return null;
-  if (existing && CERRADAS.includes(existing.estado)) return null;
+  if (!estaCerrandola(data, existing)) return null;
   if (require('../permissions').can(user, 'deudas_cerrar', 'view')) return null;
   return (
     'No tiene la llave para dar por cerrada una deuda. Puede anotarla y corregirla; declarar que ya '
     + 'no se debe la cierra, y eso se concede aparte en «Permisos».'
   );
+}
+
+/** ¿ESTE guardado es el que la cierra? Corregirle una coma a una ya cerrada, no. */
+function estaCerrandola(data, existing) {
+  const ahora = data.estado !== undefined ? data.estado : existing ? existing.estado : VIGENTE;
+  if (!CERRADAS.includes(ahora)) return false;
+  if (existing && CERRADAS.includes(existing.estado)) return false;
+  return true;
+}
+
+/**
+ * El aviso de darla por PAGADA cuando todavía falta plata, o null.
+ *
+ * Cerrar una deuda es lo único de este módulo que pide una llave propia, y su
+ * cabecera explica bien por qué: «anotar que se debe es trabajo de todos los
+ * días; declarar que ya no se debe es cerrar el asunto». Se comprobaba QUIÉN lo
+ * hace. No se comprobaba lo único que el sistema sabe con certeza: cuánto
+ * falta.
+ *
+ * MEDIDO en la v1.355.0, deuda de $ 300.000 en 3 cuotas y sin un peso pagado:
+ * se marcó «Pagada» y contestó 200 sin una palabra; el plan de esa misma deuda
+ * seguía diciendo «falta $ 300.000, 0 de 3 cuotas pagadas»; y la fila del
+ * listado mostraba «Pagada» y «Falta pagar $ 300.000» una al lado de la otra.
+ *
+ * SOLO SE PREGUNTA POR «PAGADA», y a propósito. «Condonada» es la palabra que
+ * este módulo ya ofrece para una deuda que se perdona sin pagarse: ahí que
+ * quede plata sin pagar no es una contradicción, es lo que la palabra
+ * significa. La contradicción es decir que se pagó lo que no se pagó.
+ *
+ * No se rechaza: una deuda se puede haber pagado por fuera del sistema y eso
+ * hay que poder anotarlo. Lo que no puede es pasar callado, y el aviso nombra
+ * los dos caminos correctos antes de ofrecer el atajo.
+ */
+function elAvisoDeCerrarlaDebiendo(data, { existing, db }) {
+  if (!existing || !estaCerrandola(data, existing)) return null;
+  const estado = data.estado !== undefined ? data.estado : existing.estado;
+  if (estado !== PAGADA) return null;
+
+  const comoQuedaria = {
+    ...existing,
+    monto: data.monto !== undefined ? data.monto : existing.monto,
+  };
+  const { resumen } = require('../plan-de-cuotas').planDe(db, comoQuedaria);
+  if (resumen.falta <= 0) return null;
+
+  const deCuanto = `${enPesos(resumen.falta)} de ${enPesos(resumen.total)}`;
+  return {
+    error: `Esta deuda todavía tiene ${enPesos(resumen.falta)} sin pagar.`,
+    confirmar:
+      `Según sus pagos anotados, de esta deuda falta ${deCuanto}. Darla por «Pagada» va a dejar la `
+      + 'ficha diciendo que se pagó entera y el libro de la plata diciendo que no. '
+      + 'Si el pago se hizo, anótelo en el plan de cuotas y la deuda se cierra sola con la cuenta '
+      + 'cuadrada; si se perdonó, ciérrela como «Condonada», que es la palabra para eso. '
+      + '¿La doy por pagada igual?',
+  };
 }
 
 module.exports = {
@@ -350,7 +405,17 @@ module.exports = {
        * corregirla cada vez que entra un peso, y un día no se corrige.
        */
       name: 'falta', label: 'Falta pagar', type: 'money', reservado: 'tesoreria_montos',
-      calc: (fila, { db }) => require('../plan-de-cuotas').planDe(db, fila).resumen.falta,
+      /*
+       * Una deuda CERRADA no debe nada: eso es lo que quiere decir cerrarla, y
+       * es lo mismo que ya hacía la columna de al lado, que no muestra próxima
+       * cuota. Antes seguía calculando, y la fila mostraba «Pagada» y «Falta
+       * pagar $ 300.000» una al lado de la otra. Lo que se dejó de pagar sigue
+       * a la vista donde corresponde: dentro del plan, en lo pagado contra el
+       * total.
+       */
+      calc: (fila, { db }) => (CERRADAS.includes(fila.estado)
+        ? 0
+        : require('../plan-de-cuotas').planDe(db, fila).resumen.falta),
     },
     {
       name: 'proxima', label: 'Próxima cuota', type: 'badge',
@@ -543,6 +608,9 @@ module.exports = {
         const alReves = elAvisoDeDarLaVuelta(data, { existing, db });
         if (alReves) return alReves;
 
+        const debiendo = elAvisoDeCerrarlaDebiendo(data, { existing, db });
+        if (debiendo) return debiendo;
+
         const enRojo = elAvisoDeLaCajaEnRojo(data, { existing, db, cuentaId });
         if (enRojo) return enRojo;
       }
@@ -718,5 +786,6 @@ module.exports = {
 
   // Lo que hace falta afuera: las reglas y los rótulos, en un solo lugar
   POR_PAGAR, POR_COBRAR, DIRECCIONES, CLASES, CLASES_POR_PAGAR, CLASES_POR_COBRAR,
-  UNA_PERSONA, UNA_INSTITUCION, OTRA_CAJA, VIGENTE, CERRADAS, ESTADOS, conQuien, enPesos,
+  UNA_PERSONA, UNA_INSTITUCION, OTRA_CAJA, VIGENTE, PAGADA, CONDONADA, CERRADAS, ESTADOS,
+  conQuien, enPesos,
 };

@@ -62,8 +62,17 @@ const laDeuda = (extra = {}) => ({
   estado: 'Vigente', ...extra,
 });
 
-const alGuardar = (data, { existing = null, user = ADMIN } = {}) =>
-  DEUDAS.hooks.beforeSave(data, { user, existing, db, isNew: !existing, id: existing ? existing.id : null });
+/*
+ * `confirmado` va en true por omisión desde la v1.358.0: estas pruebas miran
+ * los REPAROS del guardado —los que no se pueden contestar— y no las preguntas.
+ * Sin esto, cerrar una deuda sin pagos anotados devuelve la pregunta de
+ * «todavía falta plata» en vez del null que esperan las de la llave de cerrar.
+ * Las preguntas tienen sus propios archivos, donde se comprueba el texto.
+ */
+const alGuardar = (data, { existing = null, user = ADMIN, confirmado = true } = {}) =>
+  DEUDAS.hooks.beforeSave(data, {
+    user, existing, db, confirmado, isNew: !existing, id: existing ? existing.id : null,
+  });
 
 // ------------------------------------------------------------ la ficha ----
 
