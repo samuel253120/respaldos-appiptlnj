@@ -121,6 +121,7 @@ function normalize(def) {
   revisarLoReservado(def);
   revisarLoQueSeBuscaDeMas(def);
   revisarLosFiltros(def);
+  revisarLoQueSeEscribeSolo(def);
 }
 
 /**
@@ -188,6 +189,27 @@ function revisarLoReservado(def) {
       `El campo "${f.name}" de ${def.name} se declara reservado a «${llave}», que no existe como llave. ` +
       `Agréguela a LLAVES en server/permissions.js con su valor de fábrica; si no, el comodín de la matriz ` +
       `se la daría a todos y el campo quedaría reservado solo de nombre.`
+    );
+  }
+}
+
+/**
+ * Un módulo que se escribe solo tiene que decir QUÉ contestar.
+ *
+ * `soloLectura` cierra tres puertas de una vez —el guardado, el borrado y la
+ * importación por planilla— y además le quita a la pantalla los botones que
+ * no llevan a ninguna parte. Si no trae los dos mensajes, el motor dejaría
+ * pasar lo que la declaración dice que no se puede: se revienta acá, que es
+ * donde se nota.
+ */
+function revisarLoQueSeEscribeSolo(def) {
+  if (!def.soloLectura) return;
+  for (const cual of ['alGuardar', 'alBorrar']) {
+    if (typeof def.soloLectura[cual] === 'string' && def.soloLectura[cual].trim()) continue;
+    throw new Error(
+      `El módulo ${def.name} se declara de solo lectura y no dice qué contestar en «${cual}». `
+      + 'Escriba ahí, con las palabras del módulo, por qué no se puede: es lo que el motor le '
+      + 'contesta a quien lo intente, y sin eso la puerta queda abierta.'
     );
   }
 }
@@ -388,4 +410,5 @@ module.exports = {
   normalizarParaPruebas: normalize,
   revisarDeQuienCopiaParaPruebas: revisarDeQuienCopia,
   revisarLosFiltrosParaPruebas: revisarLosFiltros,
+  revisarLoQueSeEscribeSoloParaPruebas: revisarLoQueSeEscribeSolo,
 };

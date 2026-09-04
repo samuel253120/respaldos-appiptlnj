@@ -241,12 +241,17 @@ app.get('/api/meta', authRequired, (req, res) => {
           enElPapel: enElPapel === undefined ? null : !!enElPapel,
         })),
       ],
-      perms: {
-        view: can(req.user, m.name, 'view'),
-        create: can(req.user, m.name, 'create'),
-        edit: can(req.user, m.name, 'edit'),
-        delete: can(req.user, m.name, 'delete'),
-      },
+      /*
+       * Lo que esta persona puede hacer acá, y NO MÁS DE LO QUE EL MÓDULO
+       * ADMITE. Un módulo que se escribe solo —el Registro de Cambios— le
+       * contesta 400 a cualquiera, y la pantalla igual le ofrecía al
+       * administrador «Nuevo cambio registrado», «Importar» y el lápiz y el
+       * tarro de basura de cada fila, porque miraba únicamente sus permisos.
+       * Cuatro botones que prometen algo que el módulo se niega a hacer por
+       * diseño, y el que los apreta no aprende nada: el sistema se lo dice
+       * después, con un error.
+       */
+      perms: require('./permissions').loQuePuedeHacerEn(m, req.user),
     }));
   // Iglesia local en la que trabaja el usuario. Si no tiene una asignada pero
   // el sistema administra una sola, se muestra esa; con varias, "Todas".

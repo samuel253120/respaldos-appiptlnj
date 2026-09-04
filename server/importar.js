@@ -273,6 +273,14 @@ router.use(authRequired);
 router.post('/:modulo', (req, res) => {
   const def = getModule(req.params.modulo);
   if (!def) return res.status(404).json({ error: 'Módulo no encontrado' });
+  /*
+   * Un módulo que se escribe solo no se llena con una planilla. Se contesta
+   * ANTES de mirar las filas: rechazar quinientas una por una diría quinientas
+   * veces lo mismo, y lo que hay que decir es que por acá no se entra.
+   */
+  if (def.soloLectura && def.soloLectura.alGuardar) {
+    return res.status(400).json({ error: def.soloLectura.alGuardar });
+  }
 
   requirePerm(def.name, 'create')(req, res, () => {
     const filas = Array.isArray(req.body && req.body.filas) ? req.body.filas : null;

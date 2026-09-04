@@ -598,6 +598,32 @@ function permisosEfectivos(usuario, modulos) {
 }
 
 /**
+ * Lo que esta persona puede hacer en un módulo, como se lo dice la descripción
+ * del sistema a la pantalla.
+ *
+ * No es solo la matriz de permisos: es la matriz Y lo que el módulo admite. Un
+ * módulo que se escribe solo —el Registro de Cambios— le contesta 400 a
+ * cualquiera, y la pantalla igual le ofrecía al administrador «Nuevo cambio
+ * registrado», «Importar» y el lápiz y el tarro de basura de cada fila, porque
+ * miraba únicamente sus permisos. Un botón que promete algo que el sistema se
+ * niega a hacer por diseño no enseña nada: contesta con un error después de
+ * apretarlo.
+ *
+ * Vive acá y no dentro de la ruta que arma esa descripción para que se pueda
+ * comprobar sin levantar el servidor, que es lo mismo que se hizo con la
+ * descripción de un campo (ver server/meta-liviana.js).
+ */
+function loQuePuedeHacerEn(def, usuario) {
+  const seEscribeSolo = !!def.soloLectura;
+  return {
+    view: can(usuario, def.name, 'view'),
+    create: !seEscribeSolo && can(usuario, def.name, 'create'),
+    edit: !seEscribeSolo && can(usuario, def.name, 'edit'),
+    delete: !seEscribeSolo && can(usuario, def.name, 'delete'),
+  };
+}
+
+/**
  * Todo lo que se puede permitir, en una sola lista: los módulos y las llaves
  * del sistema. Es lo que consume el editor, para que lo que se ve ahí sea
  * exactamente lo que el sistema comprueba, sin nada escondido.
@@ -663,6 +689,7 @@ function nombreDelPermiso(clave) {
 
 module.exports = {
   ROLES, ACCIONES, MATRIX, SALUD, LLAVES, llavesDeFabrica, todoLoQueSePuedePermitir,
+  loQuePuedeHacerEn,
   can, permisosDelRol, permisosPropios, permisosDelPerfil, permisosEfectivos,
   loQueConcede, loQueSeGana, nombreDelPermiso,
 };

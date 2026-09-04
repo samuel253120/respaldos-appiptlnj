@@ -93,6 +93,21 @@ module.exports = {
       res.json(filas.map((f) => ({ id: f.modulo, label: f.modulo })));
     });
   },
+  /*
+   * El registro lo escribe el sistema y nadie más: no se le agrega una línea,
+   * no se le corrige una, no se le borra una, ni siendo administrador. Si se
+   * pudiera maquillar, dejaría de valer como registro.
+   *
+   * Está dicho acá, en una declaración, y no en dos ganchos de guardado. Con
+   * los ganchos la regla se cumplía —el servidor contestaba 400— pero la
+   * pantalla no se enteraba: le ofrecía al administrador «Nuevo cambio
+   * registrado», «Importar» y el lápiz y el tarro de basura de cada fila.
+   * Ahora la miran el motor, la pantalla y la importación por planilla.
+   */
+  soloLectura: {
+    alGuardar: 'El registro de cambios lo escribe el sistema solo: no se agrega ni se corrige a mano.',
+    alBorrar: 'El registro de cambios no se borra: para eso está.',
+  },
   hooks: {
     /*
      * Cada línea, como la puede leer quien la está mirando.
@@ -105,14 +120,6 @@ module.exports = {
     alLeer(fila, { usuario }) {
       fila.detalle = require('../bitacora').elDetalleQueSeLee(fila, usuario);
       return fila;
-    },
-    // El registro lo escribe el sistema y nadie más. Si se pudiera corregir a
-    // mano, dejaría de valer como registro.
-    beforeSave() {
-      return 'El registro de cambios lo escribe el sistema solo: no se agrega ni se corrige a mano.';
-    },
-    beforeDelete() {
-      return 'El registro de cambios no se borra: para eso está.';
     },
   },
 };

@@ -1883,8 +1883,34 @@ function buildRouter() {
       return seguir(req, res);
     };
 
-    router.post(base, requirePerm(def.name, 'create'), conLoQueVaAntes(true, save(true)));
-    router.put(`${base}/:id(\\d+)`, requirePerm(def.name, 'edit'), conLoQueVaAntes(false, save(false)));
+    /*
+     * ── UN MÓDULO QUE SE ESCRIBE SOLO ──
+     *
+     * `soloLectura` dice que a este módulo no se le agrega, no se le corrige y
+     * no se le borra nada A MANO: lo escribe el sistema. Es el Registro de
+     * Cambios, y la razón es suya: un registro que se puede maquillar no sirve
+     * para lo que existe.
+     *
+     * Estaba dicho SOLO en sus dos ganchos, y eso dejaba la mitad de fuera: la
+     * descripción del sistema seguía diciéndole a la pantalla que el
+     * administrador podía crear, editar y borrar ahí, así que el listado le
+     * ofrecía «Nuevo cambio registrado», «Importar» y el lápiz y el tarro de
+     * basura de cada fila. Cuatro botones que contestaban 400.
+     *
+     * Ahora es UNA declaración y la miran los tres: el motor —acá—, la
+     * descripción que arma los botones (server/index.js) y la importación por
+     * planilla (server/importar.js), que es la otra puerta por la que entran
+     * datos. Con sus palabras, no con un mensaje del motor: «no se agrega ni
+     * se corrige a mano» explica por qué, y eso solo lo sabe el módulo.
+     */
+    const seEscribeSolo = (cual) => (req, res, next) => {
+      const dice = def.soloLectura && def.soloLectura[cual];
+      if (!dice) return next();
+      return res.status(400).json({ error: dice });
+    };
+
+    router.post(base, seEscribeSolo('alGuardar'), requirePerm(def.name, 'create'), conLoQueVaAntes(true, save(true)));
+    router.put(`${base}/:id(\\d+)`, seEscribeSolo('alGuardar'), requirePerm(def.name, 'edit'), conLoQueVaAntes(false, save(false)));
 
     // ---- eliminar ----
     /*
@@ -1908,7 +1934,7 @@ function buildRouter() {
       return siguiente();
     };
 
-    router.delete(`${base}/:id(\\d+)`, requirePerm(def.name, 'delete'), conLlaveDeBorrar, (req, res) => {
+    router.delete(`${base}/:id(\\d+)`, seEscribeSolo('alBorrar'), requirePerm(def.name, 'delete'), conLlaveDeBorrar, (req, res) => {
       const row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(req.params.id);
       if (!row) return res.status(404).json({ error: 'Registro no encontrado' });
       if (!alcance.alcanza(def, row, req.user)) {

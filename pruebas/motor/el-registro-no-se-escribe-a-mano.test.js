@@ -27,7 +27,6 @@ exigirBaseDescartable();
 const { db } = require('../../server/db');
 const { getModule } = require('../../server/registry');
 const { elSistemaAndando, cerrarElSistema } = require('./andando');
-const { prepararFila } = require('../../server/importar');
 
 test.after(cerrarElSistema);
 
@@ -88,18 +87,23 @@ test('las tres se le niegan al ADMINISTRADOR, que es de quien hay que cuidarlas'
     'el administrador puede todo sobre todo, y aun así el registro se le niega');
 });
 
-test('la planilla tampoco entra por el otro camino', () => {
+test('la planilla tampoco entra por el otro camino', async () => {
   /*
    * La importación es la otra puerta por la que entran datos al sistema, y en
-   * su momento se saltó reglas que el formulario sí aplicaba. Acá consulta el
-   * mismo gancho, así que una planilla de líneas inventadas se rechaza fila
-   * por fila.
+   * su momento se saltó reglas que el formulario sí aplicaba. Se rechaza ANTES
+   * de mirar las filas: contestar quinientas veces lo mismo no dice más que
+   * decirlo una, y lo que hay que decir es que por acá no se entra.
    */
-  const { errores } = prepararFila(registro, {
-    fecha: '2026-08-04', modulo: 'Tesorería', accion: 'Cambio', registro: 'De planilla NM',
-  }, { id: 1, rol: 'admin' });
-  assert.ok(errores.some((e) => /lo escribe el sistema solo/.test(e)),
-    `la planilla no fue rechazada: ${JSON.stringify(errores)}`);
+  const api = await elSistemaAndando();
+  const r = await api('POST', '/importar/registro_cambios', {
+    prueba: true,
+    filas: [{ fecha: '2026-08-04', modulo: 'Tesorería', accion: 'Cambio', registro: 'De planilla NM' }],
+  });
+  assert.equal(r.estado, 400, `contestó ${r.estado}: ${r.texto.slice(0, 160)}`);
+  assert.match(r.json.error, /lo escribe el sistema solo/);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) c FROM registro_cambios WHERE registro = 'De planilla NM'").get().c, 0
+  );
 });
 
 test('y su propio borrado no se anota, porque no puede ocurrir', () => {
@@ -109,11 +113,41 @@ test('y su propio borrado no se anota, porque no puede ocurrir', () => {
   assert.match(bitacora, /BORRADOS_QUE_NO_SE_ANOTAN = \[[^\]]*'registro_cambios'/);
 });
 
-test('los dos ganchos siguen declarados en el módulo', () => {
-  // Por si alguien los borra creyendo que sobran: las tres pruebas de arriba
-  // se ponen rojas, y esta dice cuál es la pieza que falta.
-  assert.equal(typeof registro.hooks.beforeSave, 'function');
-  assert.equal(typeof registro.hooks.beforeDelete, 'function');
-  assert.match(registro.hooks.beforeSave(), /no se agrega ni se corrige a mano/);
-  assert.match(registro.hooks.beforeDelete(), /para eso está/);
+test('la regla está declarada, y con las palabras del módulo', () => {
+  // Por si alguien la borra creyendo que sobra: las cuatro pruebas de arriba se
+  // ponen rojas, y esta dice cuál es la pieza que falta.
+  assert.match(registro.soloLectura.alGuardar, /no se agrega ni se corrige a mano/);
+  assert.match(registro.soloLectura.alBorrar, /para eso está/);
+});
+
+test('y el motor no deja declararla a medias', () => {
+  /*
+   * Sin los dos mensajes, el motor no tendría qué contestar y la puerta
+   * quedaría abierta. Se revienta al arrancar, que es donde se nota.
+   */
+  const { revisarLoQueSeEscribeSoloParaPruebas } = require('../../server/registry');
+  assert.throws(
+    () => revisarLoQueSeEscribeSoloParaPruebas({ name: 'inventado', soloLectura: { alGuardar: 'no' } }),
+    /no dice qué contestar en «alBorrar»/
+  );
+  assert.throws(
+    () => revisarLoQueSeEscribeSoloParaPruebas({ name: 'inventado', soloLectura: true }),
+    /no dice qué contestar en «alGuardar»/
+  );
+});
+
+test('y la pantalla no ofrece los botones que el módulo se niega a atender', () => {
+  /*
+   * Antes de esto, el listado le ofrecía al ADMINISTRADOR «Nuevo cambio
+   * registrado», «Importar» y el lápiz y el tarro de basura de cada fila, y
+   * los cuatro contestaban 400. La descripción del sistema miraba solo sus
+   * permisos, que los tiene todos.
+   */
+  const { loQuePuedeHacerEn } = require('../../server/permissions');
+  const admin = { id: 1, rol: 'admin' };
+  assert.deepEqual(loQuePuedeHacerEn(registro, admin),
+    { view: true, create: false, edit: false, delete: false });
+  assert.deepEqual(loQuePuedeHacerEn(getModule('tesoreria'), admin),
+    { view: true, create: true, edit: true, delete: true },
+    'y donde sí se escribe, no cambia nada');
 });
