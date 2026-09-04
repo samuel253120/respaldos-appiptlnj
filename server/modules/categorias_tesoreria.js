@@ -17,6 +17,47 @@
  */
 const TIPOS = ['Ingreso', 'Egreso', 'Ambos'];
 
+/**
+ * ¿Este cambio dejaría a la tesorería sin ninguna categoría que ofrecer?
+ *
+ * Al anotar un ingreso se ofrecen las de «Ingreso» y las de «Ambos»; al anotar
+ * un gasto, las de «Egreso» y las de «Ambos». Si las de un lado se apagan
+ * todas, el desplegable de ese lado queda vacío y no hay con qué clasificar.
+ *
+ * MEDIDO en la v1.341.0: se desactivaron las seis categorías de ingreso, una
+ * por una, y ninguna dijo nada. Después la ruta que las ofrece devolvió cero, y
+ * la ofrenda del domingo se anotó igual —201— clasificada con el valor de
+ * fábrica. La iglesia quedaba anotando toda su plata bajo una palabra que ella
+ * misma había apagado, sin enterarse.
+ *
+ * Se pregunta por el estado en que quedaría la lista DESPUÉS del cambio, así
+ * que sirve igual para desactivar, para cambiarle el tipo y para borrar. `como`
+ * dice cómo quedaría esta fila: `null` es «ya no está».
+ */
+function loQueDejariaSinCategorias(db, id, como) {
+  const vivas = db
+    .prepare('SELECT id, tipo, activo FROM categorias_tesoreria WHERE id != ? AND activo = 1')
+    .all(id)
+    .map((f) => String(f.tipo));
+  if (como && Number(como.activo) !== 0) vivas.push(String(como.tipo));
+
+  const sinNada = ['Ingreso', 'Egreso']
+    .filter((lado) => !vivas.some((t) => t === lado || t === 'Ambos'));
+  return sinNada.length ? sinNada : null;
+}
+
+/** El reparo, escrito para quien lo va a leer. */
+function elAvisoDeQuedarseSinCategorias(lados) {
+  const deQue = lados.length === 2
+    ? 'ni para los ingresos ni para los gastos'
+    : lados[0] === 'Ingreso' ? 'para los ingresos' : 'para los gastos';
+  const elCaso = lados.includes('Ingreso') ? 'la ofrenda del domingo' : 'la cuenta de la luz';
+  return (
+    `Con eso no quedaría ninguna categoría ${deQue}: el desplegable saldría vacío y no habría `
+    + `con qué clasificar ${elCaso}. Deje al menos una en uso, o cree antes la que va a usar.`
+  );
+}
+
 module.exports = {
   name: 'categorias_tesoreria',
   label: 'Categorías de Tesorería',
@@ -61,6 +102,21 @@ module.exports = {
      * verdad haya un préstamo el movimiento cae en una categoría que existe.
      */
     beforeSave(data, { db, isNew, existing }) {
+      /*
+       * Lo primero: que este guardado no deje a la tesorería sin con qué
+       * clasificar. Va antes que lo del nombre porque no depende de él —se
+       * llega acá desactivándola o cambiándole el tipo— y porque es lo que
+       * impide que el sistema quede sin poder anotar un peso.
+       */
+      if (!isNew && existing) {
+        const comoQuedaria = {
+          tipo: data.tipo !== undefined ? data.tipo : existing.tipo,
+          activo: data.activo !== undefined ? data.activo : existing.activo,
+        };
+        const sinNada = loQueDejariaSinCategorias(db, existing.id, comoQuedaria);
+        if (sinNada) return elAvisoDeQuedarseSinCategorias(sinNada);
+      }
+
       if (isNew || !existing || data.nombre === undefined) return null;
       const seLlamaba = String(existing.nombre || '');
       const seVaALlamar = String(data.nombre || '');
@@ -152,6 +208,12 @@ module.exports = {
           'sin tocar los que ya están.'
         );
       }
+
+      // Y que borrarla no deje la lista de un lado en cero: es la misma
+      // comprobación que al desactivar, con esta fila fuera.
+      const sinNada = loQueDejariaSinCategorias(db, row.id, null);
+      if (sinNada) return elAvisoDeQuedarseSinCategorias(sinNada);
+
       return null;
     },
   },

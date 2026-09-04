@@ -349,3 +349,83 @@ test('renombrar una categoría sin usar queda anotado', () => {
   assert.match(linea.detalle, /Pro-Templo del sur/, 'y cómo quedó');
   assert.ok(linea.usuario, 'y quién lo hizo');
 });
+
+/* ------------------------------------------------- que quede con qué clasificar */
+
+/*
+ * Desmarcar «En uso» es la salida que el propio módulo recomienda en vez de
+ * borrar, y está bien. Pero no había ningún piso: se podían apagar todas.
+ *
+ * MEDIDO en la v1.341.0: se desactivaron las seis categorías de ingreso, una
+ * por una, y ninguna dijo nada; la ruta que las ofrece devolvió cero; y la
+ * ofrenda del domingo se anotó igual —201— con el valor de fábrica. La iglesia
+ * quedaba anotando toda su plata bajo una palabra que ella misma había apagado.
+ *
+ * Se prueba sobre una lista PROPIA, no sobre la de la base: los archivos del
+ * motor corren en paralelo y apagar de verdad las categorías de todos sería
+ * dejar a los demás sin poder anotar nada. Se apaga todo lo que hay, se hacen
+ * las comprobaciones y se deja como estaba.
+ */
+function conSoloEstasEncendidas(cuales, hacer) {
+  const encendidas = db.prepare('SELECT id FROM categorias_tesoreria WHERE activo = 1').all().map((f) => f.id);
+  const apagar = db.prepare('UPDATE categorias_tesoreria SET activo = 0 WHERE id = ?');
+  const prender = db.prepare('UPDATE categorias_tesoreria SET activo = 1 WHERE id = ?');
+  db.transaction(() => { for (const id of encendidas) apagar.run(id); }).immediate();
+  try {
+    for (const id of cuales) prender.run(id);
+    return hacer();
+  } finally {
+    db.transaction(() => {
+      for (const id of cuales) apagar.run(id);
+      for (const id of encendidas) prender.run(id);
+    }).immediate();
+  }
+}
+
+test('apagar la última categoría de un tipo se frena', () => {
+  const unica = unaCategoria(`Ofrenda única ${MARCA}`, 'Ambos');
+  const freno = conSoloEstasEncendidas([unica.id], () =>
+    alGuardar({ ...unica, activo: 0 }, { ...unica, activo: 1 }));
+  assert.ok(freno, 'sin ninguna encendida no hay con qué clasificar nada');
+  assert.match(freno, /ni para los ingresos ni para los gastos/);
+  assert.match(freno, /Deje al menos una en uso/);
+});
+
+test('y borrarla, también', () => {
+  const unica = unaCategoria(`Ofrenda única para borrar ${MARCA}`, 'Ambos');
+  const freno = conSoloEstasEncendidas([unica.id], () => alBorrar(unica));
+  assert.ok(freno);
+  assert.match(freno, /el desplegable saldría vacío/);
+});
+
+test('el aviso dice de qué lado se quedaría sin nada', () => {
+  const deIngreso = unaCategoria(`Diezmo único ${MARCA}`, 'Ingreso');
+  const deEgreso = unaCategoria(`Gasto único ${MARCA}`, 'Egreso');
+  const freno = conSoloEstasEncendidas([deIngreso.id, deEgreso.id], () =>
+    alGuardar({ ...deIngreso, activo: 0 }, { ...deIngreso, activo: 1 }));
+  assert.match(freno, /para los ingresos/, 'se quedaría sin las de ingreso');
+  assert.ok(!/gastos/.test(freno), 'las de gasto siguen, así que no se las nombra');
+  assert.match(freno, /la ofrenda del domingo/, 'y pone el caso de ese lado');
+});
+
+test('cambiarle el tipo también cuenta: de «Ambos» a «Egreso» deja los ingresos en cero', () => {
+  const unica = unaCategoria(`La de los dos lados ${MARCA}`, 'Ambos');
+  const freno = conSoloEstasEncendidas([unica.id], () =>
+    alGuardar({ ...unica, tipo: 'Egreso' }, unica));
+  assert.ok(freno, 'no hace falta apagarla para dejar un lado sin nada');
+  assert.match(freno, /para los ingresos/);
+});
+
+test('con otra encendida del mismo lado, apagarla no se frena', () => {
+  const una = unaCategoria(`Ofrenda de la mañana ${MARCA}`, 'Ambos');
+  const otra = unaCategoria(`Ofrenda de la tarde ${MARCA}`, 'Ambos');
+  const freno = conSoloEstasEncendidas([una.id, otra.id], () =>
+    alGuardar({ ...una, activo: 0 }, { ...una, activo: 1 }));
+  assert.equal(freno, null, 'apagar una de dos es exactamente lo que hay que poder hacer');
+});
+
+test('y crear una nueva nunca se frena por esto', () => {
+  const freno = conSoloEstasEncendidas([], () =>
+    alGuardar({ nombre: `Recién creada ${MARCA}`, tipo: 'Ingreso', activo: 1 }, null));
+  assert.equal(freno, null, 'crear es justamente la salida que el aviso propone');
+});
