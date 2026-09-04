@@ -28,6 +28,38 @@ const CON_DETALLE_DE_FABRICA = ['Emergencia', 'Otra actividad de la iglesia', 'O
 /** De qué registro sale la persona: miembro inscrito o no. */
 const { REGISTROS } = require('../integrantes');
 
+/** Dónde vive la lista de motivos, dicho una sola vez. */
+const LA_LISTA_DE_MOTIVOS = { modulo: 'motivos_ausencia', columna: 'nombre', label: 'Motivos de Ausencia' };
+
+/**
+ * ¿ESTE motivo pide explicación? Se le pregunta a su FILA, no a una lista de
+ * nombres.
+ *
+ * La comprobación de obligatorios del motor decide si el detalle hace falta
+ * mirando `showIf`, que compara el motivo contra una lista de NOMBRES exactos.
+ * Y esa comprobación corre ANTES de que el motivo quede escrito como está en la
+ * lista, así que bastaba con escribirlo distinto para que no calzara con
+ * ninguno y el detalle dejara de exigirse.
+ *
+ * MEDIDO en la v1.363.0, con el motivo ya comprobado contra la tabla:
+ *
+ *   «Otro motivo» sin explicación ............ 400 · lo exige
+ *   «otro motivo» sin explicación ............ 201 · GUARDADA, detalle en blanco
+ *   «OTRO MOTIVO» sin explicación ............ 201 · GUARDADA, detalle en blanco
+ *
+ * Las tres quedaban con el mismo motivo escrito —el de la lista— y solo la
+ * primera con explicación. Preguntándole a la fila, la caja de las letras deja
+ * de decidir nada: es la casilla «Pide explicación» de esa fila la que manda.
+ */
+function pideExplicacion(db, motivo) {
+  const fila = require('../opciones').laFilaDeLaLista(db, LA_LISTA_DE_MOTIVOS, motivo);
+  if (!fila) return false;
+  const suya = db
+    .prepare('SELECT pide_detalle FROM motivos_ausencia WHERE nombre = ? LIMIT 1')
+    .get(fila.valor);
+  return !!(suya && suya.pide_detalle);
+}
+
 function motivosQuePidenDetalle() {
   try {
     const { db } = require('../db');
@@ -204,12 +236,21 @@ module.exports = {
         .get(asistenciaId, personaId, Number(cuerpoId) || 0, id || 0);
       if (repetida) return 'Esa persona ya tiene su marca en este cuerpo para esta actividad';
 
-      // Lo que no es justificación no lleva motivo ni detalle
+      /*
+       * Lo que no es justificación no lleva motivo ni detalle. Y si lo es, la
+       * explicación se le pide a la FILA del motivo y no a una lista de
+       * nombres: ver `pideExplicacion`. Esto corre después de que el motor haya
+       * dejado el motivo escrito como está en la lista, que es justamente lo
+       * que le faltaba a la comprobación de obligatorios.
+       */
       if (dato('estado') !== 'Justificado') {
         data.motivo = null;
         data.detalle = null;
-      } else if (!motivosQuePidenDetalle().includes(dato('motivo'))) {
+      } else if (!pideExplicacion(db, dato('motivo'))) {
         data.detalle = null;
+      } else if (!String(dato('detalle') || '').trim()) {
+        return `El motivo «${dato('motivo')}» necesita que se especifique el detalle: `
+          + 'está marcado como que pide explicación en Motivos de Ausencia.';
       }
 
       // El cuerpo lo trae la marca; si no viene, se cae al de la actividad
@@ -226,3 +267,5 @@ module.exports = {
 // migración que siembra la lista lo usa para saber cuáles piden explicación).
 module.exports.MOTIVOS_CON_DETALLE = CON_DETALLE_DE_FABRICA;
 module.exports.motivosQuePidenDetalle = motivosQuePidenDetalle;
+module.exports.pideExplicacion = pideExplicacion;
+module.exports.LA_LISTA_DE_MOTIVOS = LA_LISTA_DE_MOTIVOS;

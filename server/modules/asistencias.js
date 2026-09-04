@@ -935,7 +935,7 @@ module.exports = {
            * desplegables (server/opciones.js): dos maneras de comparar habrían
            * sido dos verdades.
            */
-          const cual = { modulo: 'motivos_ausencia', columna: 'nombre', label: 'Motivos de Ausencia' };
+          const cual = require('./asistencia_detalle').LA_LISTA_DE_MOTIVOS;
           const enLaLista = require('../opciones').laFilaDeLaLista(db, cual, m.motivo);
           if (!enLaLista) {
             return res.status(400).json({
@@ -950,7 +950,10 @@ module.exports = {
           }
           m.motivo = enLaLista.valor;   // una sola forma de escribirlo
 
-          if (motivosConDetalle().includes(m.motivo) && !String(m.detalle || '').trim()) {
+          // A la FILA, no a una lista de nombres: ver `pideExplicacion` en
+          // server/modules/asistencia_detalle.js.
+          if (require('./asistencia_detalle').pideExplicacion(db, m.motivo)
+              && !String(m.detalle || '').trim()) {
             return res.status(400).json({ error: `El motivo "${m.motivo}" necesita que se especifique el detalle` });
           }
         }
