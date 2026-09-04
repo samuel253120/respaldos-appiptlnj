@@ -4698,6 +4698,12 @@ async function viewFicha(name, id, pestana) {
     if (name === 'miembros') alPie(renderMenoresACargo, Number(id));
     if (name === 'miembros') alPie(renderAccesoMiembro, Number(id));
     if (name === 'no_miembros') alPie(renderInscribirNoMiembro, Number(id), row);
+    /*
+     * Y quién tocó ESTA ficha, en cualquier módulo que deje rastro. Va al
+     * final porque es lo último que se pregunta —primero qué dice la ficha,
+     * después quién la dejó así— y no se dibuja cuando no hay ninguna línea.
+     */
+    alPie(renderElRegistroDeLaFicha, name, Number(id));
   };
 
   pintarPestanasDeLaFicha(name, Number(id), row, pintarLosDatos, pestana);
@@ -16552,6 +16558,82 @@ async function renderHistorial(panel, id, contenedor, estado) {
   } catch (e) {
     contenedor.innerHTML = '';
   }
+}
+
+/**
+ * «¿Quién cambió este monto?», desde la ficha del movimiento.
+ *
+ * Es la frase con que el Registro de Cambios explica para qué existe, y era
+ * justamente lo que no se podía preguntar: la pantalla no nombraba ese módulo
+ * ni una vez —cero enlaces en todo el sistema—, así que para saber quién tocó
+ * un movimiento había que abrir el Registro entero y buscar por el texto del
+ * concepto, mirando la lista. El servidor sí sabía acotarlo; nadie se lo pedía.
+ *
+ * Y NO BASTA CON EL NÚMERO DEL REGISTRO. Medido: pedir la línea del
+ * movimiento n.º 1 por su número trae TRES —una es de un miembro y otra de un
+ * usuario, que también son el n.º 1 en su tabla—. Van los dos juntos, el
+ * módulo y el número, que es como el Registro identifica una ficha.
+ *
+ * Va al pie de sus datos y no en una pestaña, por lo mismo que el resto de lo
+ * que cuelga de acá: la mayoría de las fichas no tiene ninguna línea y una
+ * pestaña que a veces está vacía es peor que no tenerla. Cuando no hay nada,
+ * no se dibuja nada.
+ *
+ * Y se le PREGUNTA AL SERVIDOR en vez de mirar una lista de módulos escrita
+ * acá. Dejan líneas más que los que el Registro vigila: la configuración del
+ * sistema, los mensajes y la ficha de una iglesia anotan por su cuenta, sin
+ * estar en esa lista. Una copia acá se quedaría vieja sin que nadie lo note,
+ * que es lo que ya le pasó dos veces a la lista de vigilados.
+ *
+ * A quien no puede abrir el Registro de Cambios no se le ofrece: `MOD` solo
+ * trae los módulos que esa persona alcanza. Y lo que se muestra ya viene
+ * recortado de cifras reservadas, como en el módulo (ver server/sensibles.js).
+ */
+const LINEAS_DEL_REGISTRO_DE_A = 5;
+
+async function renderElRegistroDeLaFicha(name, id, contenedor, cuantas) {
+  const suyo = MOD['registro_cambios'];
+  const m = MOD[name];
+  if (!suyo || !m) return;
+  const tope = cuantas || LINEAS_DEL_REGISTRO_DE_A;
+
+  let datos;
+  try {
+    datos = await api('GET', `/registro_cambios?f_modulo=${encodeURIComponent(m.label)}`
+      + `&f_registro_id=${encodeURIComponent(id)}&limit=${tope}&sort=id&dir=desc`);
+  } catch (e) {
+    return; // el registro es un extra de la ficha: si no llega, la ficha se ve igual
+  }
+  if (!datos.rows.length) return;
+
+  contenedor.innerHTML = `
+    <div class="card" style="margin-top:18px">
+      <div class="toolbar">
+        <b>${suyo.icon} ${esc(suyo.label)}</b>
+        <span style="color:var(--muted);font-size:13px">${datos.total} línea(s)</span>
+        <span class="spacer"></span>
+        <a class="btn secondary sm" href="#/m/registro_cambios">Ver el registro completo</a>
+      </div>
+      <ul class="historial">
+        ${datos.rows.map((r) => `
+          <li class="auto">
+            <div class="hf">${fechaCorta(r.fecha)}</div>
+            <div class="hc">
+              <span class="badge ${badgeClass(r.accion)}">${esc(r.accion)}</span>
+              <div class="hd">${r.detalle ? esc(r.detalle) : '<span class="sin">Sin detalle</span>'}</div>
+              <div class="hm">${esc(r.hora || '')} · ${esc(r.usuario || 'Sistema')}</div>
+            </div>
+          </li>`).join('')}
+      </ul>
+      ${datos.rows.length < datos.total ? `
+        <div class="hist-mas">
+          <span>Mostrando ${datos.rows.length} de ${datos.total}.</span>
+          <button class="btn sm secondary" id="regMas">Ver ${datos.total - datos.rows.length} más</button>
+        </div>` : ''}
+    </div>`;
+
+  const mas = document.getElementById('regMas');
+  if (mas) mas.addEventListener('click', () => renderElRegistroDeLaFicha(name, id, contenedor, datos.total));
 }
 
 /**
