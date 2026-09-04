@@ -15385,6 +15385,13 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
   const MOTIVOS = (ASIS.motivos && ASIS.motivos.length)
     ? ASIS.motivos
     : await opcionesDelCampo('asistencia_detalle', 'motivo');
+  /*
+   * Y los tres estados salen del módulo, como los motivos: estaban escritos acá
+   * con sus tres nombres, y también en el módulo, en la toma de lista y dos
+   * veces en la hoja mensual. Coincidían hasta que alguien tocara uno (v1.384.0).
+   */
+  const ESTADOS = (await opcionesDelCampo('asistencia_detalle', 'estado'))
+    .map((o) => (o && o.id !== undefined ? o.id : o));
   const CON_DETALLE = datos.motivos_con_detalle || [];
   const CLAVE = `pasarlista:${asistenciaId}`;
 
@@ -15483,7 +15490,7 @@ async function renderPasarLista(asistenciaId, contenedor, opciones) {
         ${p.rut ? `<span class="mut">${esc(rutFormatear(p.rut))}</span>` : ''}
       </div>
       <div class="pl-botones">
-        ${['Presente', 'Ausente', 'Justificado'].map((e) => `
+        ${ESTADOS.map((e) => `
           <button type="button" class="pl-b ${e.toLowerCase()} ${p.estado === e ? 'on' : ''}" data-estado="${e}" ${puedeEditar ? '' : 'disabled'}>${e}</button>`).join('')}
       </div>
       <div class="pl-just" ${p.estado === 'Justificado' ? '' : 'hidden'}>

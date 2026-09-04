@@ -1177,7 +1177,9 @@ module.exports = {
       const marcas = Array.isArray(req.body && req.body.marcas) ? req.body.marcas : null;
       if (!marcas) return res.status(400).json({ error: 'No se recibió ninguna marca' });
 
-      const validos = ['Presente', 'Ausente', 'Justificado'];
+      // Los tres estados los declara el módulo de la marca, que es su dueño:
+      // estaban escritos también acá y coincidían por costumbre (v1.384.0).
+      const validos = require('./asistencia_detalle').ESTADOS;
       for (const m of marcas) {
         if (!m.miembro_id && !m.no_miembro_id) {
           return res.status(400).json({ error: 'Falta indicar a quién corresponde una de las marcas' });

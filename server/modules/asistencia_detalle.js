@@ -32,6 +32,41 @@ const { REGISTROS } = require('../integrantes');
 const LA_LISTA_DE_MOTIVOS = { modulo: 'motivos_ausencia', columna: 'nombre', label: 'Motivos de Ausencia' };
 
 /**
+ * ── LOS TRES ESTADOS DE UNA MARCA, DICHOS UNA SOLA VEZ ──
+ *
+ * Estaban escritos en cinco sitios: acá como opciones del campo, en la toma de
+ * lista como lista de válidos, en la pantalla como los tres botones, y dos
+ * veces más en la hoja mensual —el peso con que se resuelve un día de dos
+ * actividades y la letra S/J/N—. Coincidían, que es lo que pasa hasta que
+ * alguien toca uno: el día que la iglesia quiera un cuarto estado —«Atrasado»
+ * es el que siempre aparece— el formulario lo aceptaría y la toma de lista lo
+ * rechazaría, que es la manera más incómoda de descubrirlo.
+ *
+ * El dueño de lo que significa un estado es este módulo, así que se declaran
+ * acá y los demás preguntan.
+ */
+const ESTADOS = ['Presente', 'Ausente', 'Justificado'];
+
+/**
+ * Cuál gana cuando hay dos marcas el mismo día, de mejor a peor.
+ *
+ * UN DÍA, UNA COLUMNA en la hoja mensual: si el cuerpo tuvo el ensayo en la
+ * mañana y el culto en la tarde, la columna dice lo mejor de las dos. Es otro
+ * orden que el de arriba —ahí manda cómo se ofrecen en pantalla, acá cuál pesa
+ * más— y por eso son dos listas y no una ordenada de cualquier modo.
+ */
+const DE_MEJOR_A_PEOR = ['Presente', 'Justificado', 'Ausente'];
+
+/**
+ * Con qué letra se escribe cada estado en la planilla de siempre.
+ *
+ * S estuvo, J justificó, N faltó. Es la hoja que la iglesia llevaba a mano y
+ * esas son sus letras; van acá porque son otra forma de nombrar el estado, no
+ * una decisión de la hoja.
+ */
+const LETRA_DE = { Presente: 'S', Justificado: 'J', Ausente: 'N' };
+
+/**
  * ¿ESTE motivo pide explicación? Se le pregunta a su FILA, no a una lista de
  * nombres.
  *
@@ -180,8 +215,8 @@ module.exports = {
       required: true, showIf: { field: 'persona_tipo', equals: 'No miembro' },
     },
     {
-      name: 'estado', label: 'Estado', type: 'select', required: true, default: 'Presente',
-      options: ['Presente', 'Ausente', 'Justificado'],
+      name: 'estado', label: 'Estado', type: 'select', required: true, default: ESTADOS[0],
+      options: ESTADOS,
     },
     {
       name: 'motivo', label: 'Motivo de la justificación', type: 'select',
@@ -313,3 +348,12 @@ module.exports.MOTIVOS_CON_DETALLE = CON_DETALLE_DE_FABRICA;
 module.exports.motivosQuePidenDetalle = motivosQuePidenDetalle;
 module.exports.pideExplicacion = pideExplicacion;
 module.exports.LA_LISTA_DE_MOTIVOS = LA_LISTA_DE_MOTIVOS;
+/*
+ * Y los tres estados, para que no vuelvan a estar escritos en cinco sitios: los
+ * piden la toma de lista (server/modules/asistencias.js), la hoja mensual
+ * (server/planilla-asistencia.js) y la pantalla, que los saca de las opciones
+ * declaradas arriba, que son estas mismas.
+ */
+module.exports.ESTADOS = ESTADOS;
+module.exports.DE_MEJOR_A_PEOR = DE_MEJOR_A_PEOR;
+module.exports.LETRA_DE = LETRA_DE;

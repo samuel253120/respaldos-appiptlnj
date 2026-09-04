@@ -126,7 +126,10 @@ module.exports = function importarAsistencia(origen, { lote, prueba, iglesiaId }
     // ---------- Las marcas ----------
     // Primero se juntan las del mismo par actividad + persona: en el sistema
     // anterior venían por cuerpo, y una misma persona podía traer varias.
-    const PESO = { Presente: 3, Justificado: 2, Ausente: 1 };
+    // Cuál gana lo declara el módulo de la marca, que es su dueño: acá estaba
+    // escrito de nuevo, y era el sexto sitio con los tres estados (v1.384.0).
+    const { DE_MEJOR_A_PEOR } = require('../modules/asistencia_detalle');
+    const PESO = Object.fromEntries(DE_MEJOR_A_PEOR.map((e, i) => [e, DE_MEJOR_A_PEOR.length - i]));
     const porPersona = new Map();
     marcas.forEach((m, k) => {
       const i = k + actividades.length;

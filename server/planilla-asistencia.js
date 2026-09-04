@@ -26,8 +26,14 @@ const { personasDelCuerpo, clavePersona } = require('./integrantes');
  * forma de que la cuenta cuadre: la columna «T.» cuenta días con reunión, y
  * S + J + N tiene que dar exactamente eso.
  */
-const PESO = { Presente: 3, Justificado: 2, Ausente: 1 };
-const LETRA = { Presente: 'S', Justificado: 'J', Ausente: 'N' };
+const { DE_MEJOR_A_PEOR, LETRA_DE: LETRA } = require('./modules/asistencia_detalle');
+/*
+ * El peso sale del orden que declara el módulo de la marca, de mejor a peor:
+ * el primero pesa más. Estaba escrito acá con sus tres números, y la letra
+ * también, así que los tres estados vivían en cinco sitios y coincidían por
+ * costumbre (v1.384.0).
+ */
+const PESO = Object.fromEntries(DE_MEJOR_A_PEOR.map((e, i) => [e, DE_MEJOR_A_PEOR.length - i]));
 
 /**
  * El trato, abreviado, como se escribe en la planilla de siempre.
