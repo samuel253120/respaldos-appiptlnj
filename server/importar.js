@@ -28,7 +28,7 @@ const { getModule, displayOf } = require('./registry');
 const { authRequired, requirePerm } = require('./auth');
 const {
   coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, revisarLimites, dondeEsUnico,
-  buscarDuplicado, avisoDeDuplicado, referenciasFueraDeAlcance, seAplica,
+  buscarDuplicado, avisoDeDuplicado, referenciasRotas, referenciasFueraDeAlcance, seAplica,
 } = require('./crud');
 const rut = require('./rut');
 const bitacora = require('./bitacora');
@@ -144,6 +144,20 @@ function anotarEnLosIndices(indices, def, fila) {
 function prepararFila(def, fila, user, indices) {
   const datos = {};
   const errores = [];
+  /*
+   * LAS COLUMNAS QUE VENÍAN ESCRITAS Y NO SE PUDIERON RESOLVER.
+   *
+   * Un nombre que no se encuentra deja el campo sin valor, y el campo sin valor
+   * hacía saltar además al obligatorio: la fila salía con DOS errores, «no se
+   * encontró "Miembro4399 Grande4399" en Miembros» y «Falta Miembro», sobre una
+   * casilla que sí venía llena. El segundo manda a buscar una celda vacía que
+   * no existe, que es la peor pista posible.
+   *
+   * Es cosa de la referencia SIMPLE. La de varios que no encuentra a nadie
+   * guarda una lista vacía —`[]`, no un vacío—, así que el obligatorio nunca
+   * se quejaba de ella.
+   */
+  const noResolvieron = new Set();
 
   for (const f of def.fields) {
     /*
@@ -181,17 +195,19 @@ function prepararFila(def, fila, user, indices) {
     if (f.type === 'ref') {
       const refDef = getModule(f.ref);
       if (!refDef) continue;
+      /*
+       * El número se acepta tal cual y es `referenciasRotas` —la misma
+       * comprobación del formulario, llamada más abajo— la que dice si existe.
+       * Antes se comprobaba acá, a mano y solo para esta clase de campo, con
+       * un aviso propio; ahora las dos puertas contestan lo mismo.
+       */
       if (/^\d+$/.test(String(valor))) {
-        const existe = db.prepare(`SELECT id FROM "${refDef.name}" WHERE id = ?`).get(Number(valor));
-        if (!existe) {
-          errores.push(`${f.label}: no existe el registro #${valor} en ${refDef.label}`);
-          continue;
-        }
         valor = Number(valor);
       } else {
         const encontrado = idDelQueSeLlama(refDef, valor, indices);
         if (!encontrado) {
           errores.push(`${f.label}: no se encontró "${valor}" en ${refDef.label}`);
+          noResolvieron.add(f.name);
           continue;
         }
         valor = encontrado;
@@ -281,6 +297,30 @@ function prepararFila(def, fila, user, indices) {
    * Las dos comprobaciones son las MISMAS del formulario, llamadas desde acá:
    * no hay una regla de planilla y otra de pantalla, hay una sola.
    */
+  /*
+   * QUE LO QUE LA FILA NOMBRA EXISTA, TAMBIÉN CUANDO SON VARIOS.
+   *
+   * El motor lo comprueba desde la 1.97.2 para las dos clases de campo —el que
+   * apunta a un registro y el que apunta a varios— y esta puerta lo hacía a
+   * mano, con un aviso propio, y SOLO para el primero. Los que apuntan a varios
+   * —los cuerpos convocados a una actividad, las iglesias de un usuario— se
+   * comprobaban únicamente cuando venían por nombre; por número entraban tal
+   * cual. Medido en la v1.384.0 con el cuerpo n.º 999999, que no existe:
+   *
+   *   formulario ............ 400 «Cuerpos convocados: no existe cuerpo / grupo n.º 999999»
+   *   planilla, por nombre .. rechazada, «no se encontró "Cuerpo Que No Existe"»
+   *   planilla, por número .. ENTRÓ
+   *
+   * Y la actividad quedó guardada diciendo que convoca a un cuerpo, con cero
+   * personas en su lista: no hay a quién marcar y no hay manera de que aparezca
+   * nadie. Una actividad imposible de completar que igual cuenta en la agenda.
+   *
+   * Ahora se llama a la misma función que llama el formulario, que además
+   * pregunta UNA VEZ POR TABLA y no una por referencia.
+   */
+  const rotas = referenciasRotas(def, datos);
+  for (const cual of rotas) errores.push(cual);
+
   const ajenas = referenciasFueraDeAlcance(def, datos, user);
   for (const cual of ajenas) errores.push(cual);
 
@@ -296,6 +336,7 @@ function prepararFila(def, fila, user, indices) {
      * pedía los dos y no había manera de que entrara.
      */
     if (f.required && seAplica(f, datos, null, def.fields)
+        && !noResolvieron.has(f.name)
         && (valor === undefined || valor === null || valor === '')) {
       errores.push(`Falta ${f.label}`);
     }
