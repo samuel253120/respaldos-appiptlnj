@@ -243,6 +243,39 @@ const LLAVES = [
       'se puede delegar sin entregar esa llave.',
   },
   {
+    name: 'asistencia_explicacion',
+    label: 'Explicación de una justificación',
+    group: 'Datos reservados',
+    acciones: ['view'],
+    /*
+     * De fábrica la tienen el administrador y el pastor, como la de salud, y
+     * por la misma razón: es donde aterriza un motivo de salud.
+     *
+     * Cuando alguien justifica una ausencia por «Emergencia» o por «Otro
+     * motivo», el sistema EXIGE escribir la explicación. Es texto libre, lo
+     * llena quien pasa la lista, y ahí es donde queda escrito por qué alguien
+     * no fue. Medido en la v1.382.0: una secretaria que tiene negados los
+     * campos médicos de la ficha de una miembro —no le llegan ni las
+     * enfermedades ni las alergias— leía entera la explicación de su
+     * justificación, daba con ella buscando una palabra de esa explicación
+     * («?q=aborto» devolvía su fila) y la bajaba en la planilla.
+     *
+     * LO QUE ESTA LLAVE NO TAPA, a propósito: la pantalla de pasar lista. Ahí
+     * la explicación se escribe y se corrige, y quien está pasando la lista de
+     * su cuerpo tiene delante a esas veinte personas de todas maneras. Lo que
+     * se cierra es lo otro: recorrer, buscar y bajar en planilla las treinta
+     * mil explicaciones del sistema, que es una cosa distinta de anotar la de
+     * hoy.
+     */
+    defecto: ['admin', 'pastor'],
+    ayuda:
+      'El texto que se escribe al justificar una ausencia («Detalle del motivo»). Es donde queda '
+      + 'escrito por qué alguien no fue, así que ahí aterriza el motivo de salud. Quien no lo tenga '
+      + 've la marca completa menos ese texto, no lo baja en la planilla y tampoco puede dar con una '
+      + 'persona buscando por lo que dice. Pasar lista no se toca: en esa pantalla se sigue '
+      + 'escribiendo y corrigiendo.',
+  },
+  {
     name: 'miembros_identidad',
     label: 'RUT y fecha de nacimiento de las fichas',
     group: 'Datos reservados',

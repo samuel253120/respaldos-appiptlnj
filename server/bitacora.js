@@ -1182,6 +1182,30 @@ module.exports = {
   // Qué módulos deja anotados el Registro de Cambios, para poder comprobar que
   // uno esté en la lista sin tener que provocar el guardado entero.
   MODULOS_VIGILADOS,
+  /*
+   * ¿PUEDE ESTE MÓDULO DEJAR UNA LÍNEA CON EL CONTENIDO DE SUS FICHAS?
+   *
+   * Lo pregunta server/sensibles.js. El detalle de una línea es una copia de lo
+   * que decía una ficha —copiaDe: '*'—, así que puede traer cualquier grupo
+   * reservado, y quien no alcanza uno de los que puede traer no puede buscar
+   * por ese texto: probando palabras se averiguaría lo que el recorte esconde.
+   *
+   * Pero «cualquiera» no es cualquiera: es cualquiera de los módulos que de
+   * verdad dejan una línea con lo suyo dentro. Los que no —porque no se
+   * vigilan y su borrado tampoco se anota— no pueden aportar ni una palabra, y
+   * contarlos le cerraría la búsqueda del registro a media iglesia por un
+   * módulo que nunca aparece ahí. Pasó al reservar la explicación de una
+   * justificación (v1.383.0): Toma de Asistencia no está vigilada y su borrado
+   * está en la lista de los que no se anotan.
+   *
+   * La cuenta la hace este archivo porque es el que decide las dos listas: en
+   * sensibles sería la misma verdad escrita dos veces.
+   */
+  dejaLineaPropia(def) {
+    if (!def || !def.name) return true;                       // sin saber, lo más estricto
+    if (MODULOS_VIGILADOS.includes(def.name)) return true;    // se anota al crear y al corregir
+    return !BORRADOS_QUE_NO_SE_ANOTAN.includes(def.name);     // y todo lo demás, al borrar
+  },
   // El detalle de una línea recortado para quien la lee (ver más arriba).
   elDetalleQueSeLee,
   // Los permisos en palabras, para poder comprobarlos sin provocar un guardado.

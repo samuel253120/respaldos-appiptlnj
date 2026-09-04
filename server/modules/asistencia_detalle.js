@@ -208,7 +208,31 @@ module.exports = {
       // «pide explicación» vale en cuanto se guarda.
       get showIf() { return { field: 'motivo', in: motivosQuePidenDetalle() }; },
       required: true,
-      help: 'Obligatorio en los motivos que estén marcados como que piden explicación.',
+      /*
+       * Y VA BAJO LLAVE, porque es donde aterriza un motivo de salud.
+       *
+       * Es texto libre y obligatorio: cuando el motivo es «Emergencia» o «Otro
+       * motivo», el sistema exige escribir por qué alguien no fue. La ficha de
+       * un miembro tiene sus campos médicos detrás de la llave de salud; esto
+       * no tenía ninguna. Medido en la v1.382.0: una secretaria a la que la
+       * ficha de esa misma persona le llega SIN enfermedades ni alergias leía
+       * entera la explicación, daba con ella buscando una palabra suya y la
+       * bajaba en la planilla.
+       *
+       * La llave es propia y no la de salud (ver `asistencia_explicacion` en
+       * server/permissions.js): lo que se escribe acá a veces es una
+       * enfermedad y a veces un viaje, y quien responde por la asistencia no
+       * es necesariamente quien responde por la ficha médica.
+       *
+       * La pantalla de pasar lista NO pasa por este recorte, a propósito: ahí
+       * la explicación se escribe y se corrige, y quien pasa la lista de su
+       * cuerpo tiene delante a esas personas igual. Lo que se cierra es
+       * recorrer, buscar y bajar en planilla las treinta mil del sistema.
+       */
+      reservado: 'asistencia_explicacion',
+      help: 'Obligatorio en los motivos que estén marcados como que piden explicación. '
+        + 'Escriba lo justo: esto queda guardado y lo lee quien tenga la llave «Explicación de una '
+        + 'justificación». Si el motivo es de salud, basta con decirlo así.',
     },
     // Se copian de la actividad, para poder filtrar e informar sin cruzar tablas
     { name: 'cuerpo_id', label: 'Cuerpo / Grupo', type: 'ref', ref: 'cuerpos', readonly: true },

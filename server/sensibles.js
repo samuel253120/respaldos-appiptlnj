@@ -186,13 +186,24 @@ function gruposQueViajan(def) {
  * Se leen de los propios módulos y no de una lista escrita a mano: el día que
  * alguien reserve un grupo nuevo, lo que dependa de esto se entera solo. Se
  * pregunta al registro, que es quien ya tiene los módulos montados.
+ *
+ * Y «cualquiera» son los que DE VERDAD dejan una línea con lo suyo dentro. Un
+ * módulo que no se vigila y cuyo borrado tampoco se anota no puede aportar ni
+ * una palabra al detalle de una línea, y contarlo le cerraría la búsqueda del
+ * Registro de Cambios a media iglesia por un grupo que nunca va a aparecer ahí.
+ * Quién deja línea lo decide server/bitacora.js, que es quien lleva las dos
+ * listas: preguntárselo evita tener la misma verdad escrita dos veces.
  */
 let losGrupos = null;
 function todosLosGrupos() {
   if (losGrupos) return losGrupos;
   const { allModules } = require('./registry');
+  const { dejaLineaPropia } = require('./bitacora');
   const salida = new Set();
-  for (const def of allModules()) for (const grupo of gruposQueViajan(def)) salida.add(grupo);
+  for (const def of allModules()) {
+    if (!dejaLineaPropia(def)) continue;
+    for (const grupo of gruposQueViajan(def)) salida.add(grupo);
+  }
   losGrupos = [...salida];
   return losGrupos;
 }
