@@ -233,6 +233,65 @@ function ponerElDesembolso(db, deuda, usuario) {
 }
 
 /**
+ * Deja los PAGOS de esta deuda al día con lo que ahora dice su ficha.
+ *
+ * Al guardar, el módulo ponía al día el desembolso —su monto, su fecha, su
+ * caja y su signo— y no volvía a mirar los pagos, que también son movimientos
+ * suyos. MEDIDO en la v1.355.0, con un préstamo de $ 200.000 y un pago de
+ * $ 100.000 anotado, tres correcciones corrientes dejaban el libro diciendo
+ * algo que no pasó:
+ *
+ *   «Por pagar» → «Por cobrar»    el desembolso se daba vuelta y el pago no:
+ *                                 los dos quedaban Egreso y la caja perdía
+ *                                 $ 300.000 por un préstamo de $ 200.000
+ *
+ *   se muda de caja               el desembolso se mudaba y el pago se quedaba:
+ *                                 la caja vieja cargaba el egreso de una deuda
+ *                                 que ya no era suya
+ *
+ *   deja de ser entre dos cajas   el espejo del desembolso se retiraba y el del
+ *                                 pago se quedaba: $ 200.000 de ingreso
+ *                                 fantasma en la otra caja, para siempre
+ *
+ * Las tres son de las que se hacen a la semana de anotar algo: me equivoqué de
+ * caja, era al revés, la deuda no era con la corporación. Así que ahora los
+ * pagos siguen a su deuda igual que el desembolso, y en la misma transacción:
+ * su signo, su categoría, su caja —con la iglesia y el cuerpo que salen de
+ * ella— y su espejo, si corresponde.
+ *
+ * LO QUE NO SE TOCA es lo que dice cada pago de sí mismo: su fecha, su monto,
+ * su método, su comprobante, su concepto y a qué cuota se imputó. Esos son el
+ * hecho —lo que de verdad se pagó ese día— y no cambian porque la ficha se
+ * corrija. Lo que cambia es dónde y de qué lado queda anotado.
+ *
+ * Devuelve cuántos se movieron, para poder decirlo.
+ */
+function ponerLosPagosAlDia(db, deuda) {
+  const pagos = losPagosDe(db, deuda.id);
+  if (!pagos.length) return 0;
+
+  const { pago: signo } = losSignosDe(deuda);
+  const categoria = laCategoriaDe(deuda, false);
+  const alDia = db.prepare(
+    `UPDATE tesoreria SET tipo = ?, categoria = ?, cuenta_id = ?, iglesia_id = ?, cuerpo_id = ?
+      WHERE id = ?`
+  );
+
+  let movidos = 0;
+  for (const m of pagos) {
+    const cambia = m.tipo !== signo
+      || m.categoria !== categoria
+      || String(m.cuenta_id) !== String(deuda.cuenta_id);
+    alDia.run(signo, categoria, deuda.cuenta_id, deuda.iglesia_id || null, deuda.cuerpo_id || null, m.id);
+    // El espejo se revisa SIEMPRE, cambie o no el movimiento propio: la deuda
+    // puede haber dejado de ser interna sin que el pago mismo se mueva.
+    const puesto = ponerElEspejo(db, db.prepare('SELECT * FROM tesoreria WHERE id = ?').get(m.id), deuda);
+    if (cambia || puesto.creado || puesto.retirado) movidos += 1;
+  }
+  return movidos;
+}
+
+/**
  * Anota un pago de esta deuda y deja su movimiento. Devuelve el movimiento.
  *
  * `cuotaId` puede venir en nulo: es un abono a cuenta, que también salda deuda
@@ -279,5 +338,6 @@ function retirarUnPago(db, deudaId, movimientoId) {
 module.exports = {
   CATEGORIA_DESEMBOLSO, CATEGORIA_PAGO, CATEGORIA_COBRO, CATEGORIA_PRESTADO, NOTA,
   tieneDesembolso, esInterna, losSignosDe, laCategoriaDe, elDesembolsoDe, losPagosDe,
-  elEspejoDe, ponerElEspejo, ponerElDesembolso, anotarUnPago, retirarUnPago, SIN_ESPEJOS,
+  elEspejoDe, ponerElEspejo, ponerElDesembolso, ponerLosPagosAlDia, anotarUnPago, retirarUnPago,
+  SIN_ESPEJOS,
 };

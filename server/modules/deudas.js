@@ -175,6 +175,39 @@ function laOtraParte(data, { existing, db, user, cuentaId }) {
 }
 
 /**
+ * El aviso de dar vuelta una deuda que ya tiene pagos anotados, o null.
+ *
+ * Cambiar la dirección le da vuelta el signo a TODA la plata de esta deuda: lo
+ * que estaba anotado como que salió pasa a decir que entró, y al revés. Sobre
+ * una deuda recién creada eso es corregir un error de tecleo y no merece
+ * pregunta; sobre una que ya tiene pagos, es reescribir lo que dice el libro de
+ * varios movimientos, y eso se pregunta antes.
+ *
+ * No se rechaza: dar vuelta una deuda mal anotada es exactamente lo que hay que
+ * poder hacer. Lo que no puede es pasar callado.
+ */
+function elAvisoDeDarLaVuelta(data, { existing, db }) {
+  if (!existing || data.direccion === undefined) return null;
+  if (String(data.direccion) === String(existing.direccion)) return null;
+
+  const pagos = require('../deuda-tesoreria').losPagosDe(db, existing.id);
+  if (!pagos.length) return null;
+
+  const suma = pagos.reduce((s, m) => s + Math.round(Number(m.monto) || 0), 0);
+  const cuantos = `${pagos.length.toLocaleString('es-CL')} pago(s) por ${enPesos(suma)}`;
+  const antes = existing.direccion === POR_PAGAR ? 'salían de' : 'entraban a';
+  const ahora = existing.direccion === POR_PAGAR ? 'entrar a' : 'salir de';
+  return {
+    error: `Esta deuda tiene ${cuantos} anotados.`,
+    confirmar:
+      `Esta deuda tiene ${cuantos} anotados. Al cambiarla de «${existing.direccion}» a `
+      + `«${data.direccion}» esos movimientos se dan vuelta: hasta ahora ${antes} la caja y pasan `
+      + `a ${ahora} ella. De cada pago no se toca nada más: la fecha, el monto, el método y a qué `
+      + 'cuota se imputó quedan igual. ¿Le doy vuelta la dirección?',
+  };
+}
+
+/**
  * El aviso de que esta deuda dejaría una caja en rojo, o null.
  *
  * EL MÓDULO YA CERRABA ESTA PUERTA, PERO SOLO LA CHICA (v1.356.0). La ruta que
@@ -500,6 +533,16 @@ module.exports = {
        * arriba son reparos, y un reparo no se confirma.
        */
       if (!confirmado) {
+        /*
+         * De las dos que se pueden contestar «igual así», primero la que
+         * reescribe plata ya anotada: la confirmación es una sola para todo el
+         * guardado, así que la pregunta que se muestra tiene que ser la que más
+         * importa. Un saldo en rojo se ve en la cartola; una deuda dada vuelta
+         * cambia lo que dicen movimientos que ya estaban.
+         */
+        const alReves = elAvisoDeDarLaVuelta(data, { existing, db });
+        if (alReves) return alReves;
+
         const enRojo = elAvisoDeLaCajaEnRojo(data, { existing, db, cuentaId });
         if (enRojo) return enRojo;
       }
@@ -532,7 +575,14 @@ module.exports = {
      */
     afterSave(fila, { user, db }) {
       require('../plan-de-cuotas').ponerLasQueFalten(db, fila);
-      require('../deuda-tesoreria').ponerElDesembolso(db, fila, user);
+      const puente = require('../deuda-tesoreria');
+      puente.ponerElDesembolso(db, fila, user);
+      /*
+       * Y los pagos con él. Antes se ponía al día el desembolso y nada más, y
+       * los pagos —que también son movimientos de esta deuda— se quedaban con
+       * el signo, la caja y el espejo de antes. Ver `ponerLosPagosAlDia`.
+       */
+      puente.ponerLosPagosAlDia(db, fila);
     },
 
     /**
