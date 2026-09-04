@@ -402,24 +402,34 @@ async function entrar(rut = RUT, clave = CLAVE) {
   // Borrar es lo único que no se deshace, y con la ficha se va su historial:
   // si no queda acá, no queda en ninguna parte.
   /*
-   * Se usa un módulo que de verdad NO está en la lista de los vigilados: las
-   * categorías de tesorería servían de ejemplo hasta la v1.346.0, y desde esa
-   * versión están vigiladas —son el vocabulario con que se escribe el dinero—
-   * así que dejaron de probar lo que esta comprobación quiere probar.
+   * Se usa un módulo que de verdad NO está en la lista de los vigilados, y esa
+   * condición se COMPRUEBA acá mismo. Es la tercera vez que hay que cambiar de
+   * ejemplo: las categorías de tesorería sirvieron hasta la v1.346.0 y los
+   * motivos de ausencia hasta la v1.366.0, y las dos veces entraron a la lista
+   * de vigilados por buenas razones. Cuando el ejemplo queda vigilado, esta
+   * comprobación deja de probar lo que quiere probar SIN PONERSE ROJA, que es
+   * la peor manera de romperse; por eso ahora lo dice.
    */
-  const cat = await api('POST', '/api/motivos_ausencia', {
-    nombre: `Prueba borrado ${Date.now()}`, activo: 1,
+  const EJEMPLO = 'no_miembros';
+  const { MODULOS_VIGILADOS } = require('../server/bitacora');
+  revisar(`el ejemplo (${EJEMPLO}) sigue fuera de los módulos vigilados`,
+    !MODULOS_VIGILADOS.includes(EJEMPLO),
+    'entró a la lista: hay que elegir otro, o esta comprobación no prueba nada');
+
+  const laIglesia = (await api('GET', '/api/iglesias?page=1&limit=1')).datos.rows[0];
+  const cat = await api('POST', `/api/${EJEMPLO}`, {
+    nombres: `Prueba borrado ${Date.now()}`, apellidos: 'De la Suite', iglesia_id: laIglesia && laIglesia.id,
   });
   if (cat.estado === 201 || cat.estado === 200) {
-    const comoSeLlamaba = cat.datos.nombre;
-    await api('DELETE', `/api/motivos_ausencia/${cat.datos.id}`);
+    const comoSeLlamaba = cat.datos.nombres;
+    await api('DELETE', `/api/${EJEMPLO}/${cat.datos.id}`);
     const registro = (await api('GET', '/api/registro_cambios?page=1&limit=10')).datos.rows;
     const anotado = registro.find((r) => r.accion === 'Eliminación' && (r.detalle || '').includes(comoSeLlamaba));
     revisar('un módulo que no es del dinero también deja rastro al borrarse', !!anotado,
       'no apareció la eliminación en el Registro de Cambios');
     revisar('y se sabe quién fue', !!(anotado && anotado.usuario), anotado ? 'sin usuario' : '');
   } else {
-    revisar('se pudo crear un motivo de prueba', false, `respondió ${cat.estado}: ` + JSON.stringify(cat.datos).slice(0, 120));
+    revisar('se pudo crear la ficha de prueba', false, `respondió ${cat.estado}: ` + JSON.stringify(cat.datos).slice(0, 120));
   }
 
   /* 4d-bis · Lo que entra por planilla ------------------------------------- */

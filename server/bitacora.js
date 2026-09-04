@@ -208,6 +208,24 @@ const MODULOS_VIGILADOS = [
    * Son unas quince y se tocan de año en año: no hay ruido que temer.
    */
   'tipos_actividad',
+  /*
+   * Y LOS MOTIVOS CON QUE SE JUSTIFICA UNA AUSENCIA.
+   *
+   * Por lo mismo que los tipos de actividad, y con una razón más desde la
+   * v1.365.0: renombrar un motivo en uso ARRASTRA las marcas de asistencia a su
+   * nombre nuevo, y una operación que mueve datos de años tiene que quedar
+   * anotada. Cambiarle la casilla «Pide explicación» también cambia cómo se lee
+   * un informe: desde ese momento, ese motivo exige un porqué.
+   *
+   * HABÍA UNA SEÑAL de que esto se decidió hace tiempo y nadie lo volvió a
+   * mirar: este módulo era el ejemplo que usaba la suite de seguridad para
+   * comprobar que «un módulo que no es del dinero también deja rastro al
+   * borrarse», y lo era precisamente porque no estaba vigilado. Heredó ese
+   * puesto en la v1.346.0, cuando las categorías de tesorería sí entraron acá.
+   * Ahora el puesto pasa a No Miembros, y la suite comprueba de paso que su
+   * ejemplo siga estando fuera de esta lista.
+   */
+  'motivos_ausencia',
 ];
 
 /**
