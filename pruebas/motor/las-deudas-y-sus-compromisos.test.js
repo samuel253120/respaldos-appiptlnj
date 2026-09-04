@@ -38,10 +38,19 @@ let n = 0;
 const marca = () => `${++n}-${process.pid}`;
 
 /** Una caja de la iglesia, o de un cuerpo si se le pasa uno. */
-const caja = (nombre, { cuerpoId = null, iglesiaId = 1, estado = 'Activa' } = {}) => db
+/*
+ * Las cajas de esta suite nacen CON PLATA (v1.356.0).
+ *
+ * Nacían en cero, y mientras nadie mirara el saldo eso daba igual. Desde que
+ * entregar un préstamo pregunta si deja la caja en rojo, una caja en cero hace
+ * saltar esa pregunta en pruebas que no tratan de eso —«pero sí puede prestar
+ * dinero» empezó a recibir el aviso en vez del null que espera—. Una iglesia
+ * que presta tiene de dónde: el dato irreal era el cero.
+ */
+const caja = (nombre, { cuerpoId = null, iglesiaId = 1, estado = 'Activa', saldo = 9000000 } = {}) => db
   .prepare(`INSERT INTO cuentas_tesoreria (nombre, ambito, iglesia_id, cuerpo_id, tipo, estado, saldo_inicial)
-            VALUES (?, ?, ?, ?, 'Proyecto / Trabajo', ?, 0)`)
-  .run(`${nombre} Deuda ${marca()}`, cuerpoId ? 'Cuerpo / Grupo' : 'Iglesia local', iglesiaId, cuerpoId, estado)
+            VALUES (?, ?, ?, ?, 'Proyecto / Trabajo', ?, ?)`)
+  .run(`${nombre} Deuda ${marca()}`, cuerpoId ? 'Cuerpo / Grupo' : 'Iglesia local', iglesiaId, cuerpoId, estado, saldo)
   .lastInsertRowid;
 
 const ADMIN = { id: 1, rol: 'admin' };

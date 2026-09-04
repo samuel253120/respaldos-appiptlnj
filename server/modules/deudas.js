@@ -175,6 +175,88 @@ function laOtraParte(data, { existing, db, user, cuentaId }) {
 }
 
 /**
+ * El aviso de que esta deuda dejaría una caja en rojo, o null.
+ *
+ * EL MÓDULO YA CERRABA ESTA PUERTA, PERO SOLO LA CHICA (v1.356.0). La ruta que
+ * anota un pago pregunta antes de dejar la caja en negativo, y lo dejó escrito:
+ * «si no, pagar desde el plan sería la manera de saltarse lo que el formulario
+ * frena». La puerta que quedaba abierta era la del propio formulario, y mueve
+ * MÁS plata: el DESEMBOLSO —la entrega del préstamo— lo escribe el guardado de
+ * la ficha, derecho en Tesorería, sin pasar por esa comprobación.
+ *
+ * MEDIDO en la v1.355.0, misma caja, mismo día:
+ *   un pago de $ 99.000.000 desde el plan ......... 400 · pregunta antes
+ *   un préstamo entregado de $ 5.900.000 .......... 201 · sin preguntar nada
+ * La caja tenía $ 900.000 y quedó en $ -5.000.000.
+ *
+ * SE MIRA LA CAJA QUE PIERDE LA PLATA, que no siempre es la de la ficha:
+ *
+ *   «Por cobrar» ................ sale de la caja de la deuda
+ *   «Por pagar» con otra caja ... sale de la OTRA, que es la que presta
+ *
+ * Una compra a crédito no mueve un peso al contraerse, así que no se pregunta
+ * nada. Y al corregir una deuda ya guardada se descuenta su propio movimiento,
+ * porque si no la comprobación lo contaría dos veces.
+ */
+function elAvisoDeLaCajaEnRojo(data, { existing, db, cuentaId }) {
+  const como = (campo, porDefecto) => (data[campo] !== undefined
+    ? data[campo] : existing ? existing[campo] : porDefecto);
+
+  const comoQuedaria = {
+    id: existing ? existing.id : null,
+    direccion: como('direccion', POR_PAGAR),
+    clase: como('clase', null),
+    contraparte_tipo: como('contraparte_tipo', null),
+    contraparte_cuenta_id: como('contraparte_cuenta_id', null),
+    cuenta_id: cuentaId,
+    monto: como('monto', 0),
+    fecha: como('fecha', null),
+  };
+
+  const puente = require('../deuda-tesoreria');
+  if (!puente.tieneDesembolso(comoQuedaria)) return null;
+
+  const { desembolso: signo } = puente.losSignosDe(comoQuedaria);
+  const interna = puente.esInterna(comoQuedaria);
+
+  // De qué caja sale la plata, y con qué nombre llamarla en el aviso
+  let deQueCaja = null;
+  let queEs = null;
+  if (signo === 'Egreso') {
+    deQueCaja = comoQuedaria.cuenta_id;
+    queEs = 'Este préstamo entregado';
+  } else if (interna) {
+    deQueCaja = comoQuedaria.contraparte_cuenta_id;
+    queEs = 'Este préstamo, que sale de la otra caja,';
+  }
+  if (!deQueCaja) return null;
+
+  /*
+   * Al corregir, su propio movimiento no cuenta: ya está en el saldo de esa
+   * caja, y sumarlo otra vez haría preguntar por una plata que no se está
+   * moviendo de nuevo.
+   */
+  let excluirMovimiento = null;
+  if (existing) {
+    const ya = puente.elDesembolsoDe(db, existing.id);
+    if (ya) {
+      const espejo = puente.elEspejoDe(db, ya.id);
+      excluirMovimiento = String(ya.cuenta_id) === String(deQueCaja)
+        ? ya.id
+        : (espejo && String(espejo.cuenta_id) === String(deQueCaja) ? espejo.id : null);
+    }
+  }
+
+  return require('../saldos').avisoSiQuedaEnRojo(deQueCaja, {
+    tipo: 'Egreso',
+    monto: Math.round(Number(comoQuedaria.monto) || 0),
+    fecha: comoQuedaria.fecha,
+    excluirMovimiento,
+    queEs,
+  });
+}
+
+/**
  * Lo que impide cerrar una deuda, o null.
  *
  * Cerrar es declarar que ya no se debe, y eso no es lo mismo que anotar que se
@@ -371,7 +453,7 @@ module.exports = {
   ],
 
   hooks: {
-    beforeSave(data, { user, existing, db }) {
+    beforeSave(data, { user, existing, db, confirmado }) {
       // La caja manda: de ella salen la iglesia y el cuerpo de esta deuda
       const cuentaId = data.cuenta_id !== undefined ? data.cuenta_id : existing ? existing.cuenta_id : null;
       if (!cuentaId) return 'Indique la caja de esta deuda';
@@ -410,6 +492,17 @@ module.exports = {
 
       const noPuedeCerrar = loQueImpideCerrarla(data, { existing, user });
       if (noPuedeCerrar) return noPuedeCerrar;
+
+      /*
+       * ¿Y esta deuda deja alguna caja en rojo? Se pregunta, no se bloquea: una
+       * caja puede quedar en rojo de verdad. Va al final porque es la única de
+       * las comprobaciones que se puede contestar «igual así»: las de más
+       * arriba son reparos, y un reparo no se confirma.
+       */
+      if (!confirmado) {
+        const enRojo = elAvisoDeLaCajaEnRojo(data, { existing, db, cuentaId });
+        if (enRojo) return enRojo;
+      }
 
       /*
        * Al cerrarla se le pone la fecha del día si nadie la escribió: una deuda
