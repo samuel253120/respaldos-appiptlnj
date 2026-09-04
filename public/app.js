@@ -10019,7 +10019,9 @@ async function renderInformeAsistencia(contenedor, precarga) {
    * La planilla mensual del cuerpo, tal como se llevaba en la hoja de cálculo.
    *
    * Una fila por integrante, una columna por día del mes, y en el cruce la
-   * letra: S estuvo, J justificó, N faltó. En blanco los días sin reunión.
+   * letra: S estuvo, J justificó, N faltó. La casilla en blanco es un día con
+   * actividad al que todavía no se le pasa lista —eso es lo que se llena a
+   * mano—, y la gris un día en que el cuerpo no tuvo nada.
    * A la derecha, cómo le fue a cada uno; al pie, cómo estuvo cada día.
    *
    * Sale apaisada: treinta y un columnas no caben de otra forma en una hoja.
@@ -10029,10 +10031,19 @@ async function renderInformeAsistencia(contenedor, precarga) {
       'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
     const titulo = `REGISTRO DE ASISTENCIAS · ${d.cuerpo.nombre.toUpperCase()} · ${MESES[d.numeroDeMes - 1]} ${d.anio}`;
     const hubo = new Set(d.diasConReunion);
+    /*
+     * Y los días que tienen actividad y todavía no tienen lista. Van con su
+     * columna, en blanco: esta hoja se imprime para llenarla a mano, y el mes
+     * que uno quiere imprimir es justamente el que no tiene ninguna marca.
+     * Hasta la v1.377.0 salía sin una sola columna (ver server/planilla-asistencia.js).
+     */
+    const porLlenar = new Set(d.diasProgramados || []);
+    const enLaHoja = (dia) => hubo.has(dia) || porLlenar.has(dia);
     const pct = (n) => `${n}%`;
 
-    /** La celda de un día: con letra si hubo reunión, vacía si no. */
+    /** La celda de un día: con letra si ya tiene lista, en blanco si falta. */
     const celda = (p, dia) => {
+      if (porLlenar.has(dia)) return '<td class="por-llenar"></td>';
       if (!hubo.has(dia)) return '<td class="sin-reunion"></td>';
       const l = p.marcas[dia];
       return `<td class="marca ${l === 'S' ? 'si' : l === 'J' ? 'jus' : 'no'}">${l}</td>`;
@@ -10044,14 +10055,14 @@ async function renderInformeAsistencia(contenedor, precarga) {
         <td colspan="2">${esc(etiqueta)}</td>
         ${d.dias.map((dia) => hubo.has(dia)
           ? `<td>${esc(String(saca(d.porDia[dia])))}</td>`
-          : '<td class="sin-reunion"></td>').join('')}
+          : `<td class="${porLlenar.has(dia) ? 'por-llenar' : 'sin-reunion'}"></td>`).join('')}
         <td colspan="7"></td>
       </tr>`;
 
     const sinNada = !d.integrantes.length
       ? '<div class="empty-state" style="padding:26px">Este cuerpo no tiene integrantes vigentes.</div>'
-      : !d.diasConReunion.length
-        ? '<div class="empty-state" style="padding:26px">No se pasó lista a este cuerpo en ese mes.</div>'
+      : !d.diasConReunion.length && !porLlenar.size
+        ? '<div class="empty-state" style="padding:26px">Este cuerpo no tuvo ninguna actividad en ese mes.</div>'
         : '';
 
     return `
@@ -10065,7 +10076,7 @@ async function renderInformeAsistencia(contenedor, precarga) {
             <tr>
               <th class="col-n">N°</th>
               <th class="col-nombre">NOMBRE Y APELLIDOS</th>
-              ${d.dias.map((dia) => `<th class="col-dia ${hubo.has(dia) ? '' : 'sin-reunion'}">${dia}</th>`).join('')}
+              ${d.dias.map((dia) => `<th class="col-dia ${enLaHoja(dia) ? '' : 'sin-reunion'}">${dia}</th>`).join('')}
               <th class="col-tot" title="Reuniones que hubo en el mes">T.</th>
               <th class="col-tot si" title="Veces que asistió">S</th>
               <th class="col-tot si">% S</th>
@@ -10103,9 +10114,11 @@ async function renderInformeAsistencia(contenedor, precarga) {
         </div>`}
         <div class="informe-pie mut">
           ${pieDelDocumento()} ·
-          <b>S</b> asistió · <b>J</b> justificó · <b>N</b> faltó · en blanco, ese día no hubo reunión del cuerpo.<br>
+          <b>S</b> asistió · <b>J</b> justificó · <b>N</b> faltó · la casilla en blanco es un día con actividad
+          a la que todavía no se le pasa lista, para llenarla a mano; la casilla gris, un día sin reunión del cuerpo.<br>
           Salen los integrantes vigentes del cuerpo —activos y en período de prueba—. Un día en que hubo dos
-          actividades del cuerpo cuenta como una sola columna, con lo mejor de las dos.
+          actividades del cuerpo cuenta como una sola columna, con lo mejor de las dos. Los días todavía sin lista
+          no entran en ninguna cuenta: no le bajan el porcentaje a nadie.
         </div>
       </div>`;
   }

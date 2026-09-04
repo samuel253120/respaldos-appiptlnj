@@ -1370,6 +1370,14 @@ table.planilla-mes .col-tot { width: 30px; font-weight: 600; }
 /* El día sin reunión va en gris y en blanco: no es que nadie fuera, es que no
    hubo nada a lo que ir, y confundir las dos cosas arruina la planilla. */
 table.planilla-mes .sin-reunion { background: #f4f6f9; }
+/* Y el día que SÍ tiene actividad pero todavía no tiene lista va en blanco y
+   con el borde entero: es la casilla que hay que llenar a mano en la reunión.
+   Tiene que quedar blanca en las filas pares y en el pie, que se pintan solos,
+   porque si no la casilla que hay que llenar se confunde con el día en que no
+   hubo nada. */
+table.planilla-mes .por-llenar { background: #fff; }
+table.planilla-mes tbody tr:nth-child(even) td.por-llenar { background: #fff; }
+table.planilla-mes tfoot .pie td.por-llenar { background: #fff; }
 table.planilla-mes td.marca { font-weight: 700; }
 table.planilla-mes .si  { color: #15803d; }
 table.planilla-mes .jus { color: #1d4ed8; }
@@ -1402,6 +1410,7 @@ table.planilla-mes tfoot .pie.no td  { color: #b91c1c; }
   table.planilla-mes tfoot { display: table-row-group; }
   table.planilla-mes tr { break-inside: avoid; }
   table.planilla-mes .sin-reunion { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  table.planilla-mes .por-llenar { background: #fff !important; }
 }
 @page planilla { size: Letter landscape; margin: 8mm; }
 .planilla-hoja { page: planilla; }

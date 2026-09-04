@@ -77,6 +77,38 @@ function armar(db, cuerpo, mes) {
     )
     .all(cuerpo.id, primero, ultimo);
 
+  /*
+   * ── LOS DÍAS QUE VAN EN LA HOJA ──
+   *
+   * Son dos cosas distintas y hasta la v1.377.0 se contestaban con una sola:
+   *
+   *   · los días con LISTA PASADA, que son los que tienen marcas. De ellos
+   *     cuelga toda la cuenta: la columna «T.», los porcentajes de cada
+   *     integrante y el pie de cada día;
+   *   · los días PROGRAMADOS, que tienen actividad y todavía no tienen lista.
+   *
+   * La hoja se armaba solo con los primeros, y esta hoja se imprime apaisada y
+   * se lleva a la reunión: el mes que uno quiere imprimir para ir llenándolo a
+   * mano es justamente el que no tiene ninguna marca. Medido en la v1.374.0
+   * sobre el cuerpo con más actividades de junio —diez— la hoja salía con sus
+   * cincuenta y un integrantes y CERO columnas.
+   *
+   * Los programados no entran en ninguna cuenta: un día en que no se pasó lista
+   * no le baja el porcentaje a nadie. Van como columna en blanco, que es lo que
+   * hay que llenar.
+   */
+  const programados = new Set(
+    db
+      .prepare(
+        `SELECT fecha FROM asistencias
+          WHERE fecha >= ? AND fecha <= ?
+            AND EXISTS (SELECT 1 FROM json_each(asistencias.cuerpos) WHERE json_each.value = ?)`
+      )
+      .all(primero, ultimo, cuerpo.id)
+      .map((a) => Number(String(a.fecha).slice(8, 10)))
+      .filter(Boolean)
+  );
+
   /** Un día tiene reunión si ese día se le pasó lista al cuerpo. */
   const conReunion = new Set();
   const porPersona = new Map(); // clave de persona -> { día -> estado }
@@ -91,6 +123,8 @@ function armar(db, cuerpo, mes) {
     if (!suyas[dia] || PESO[f.estado] > PESO[suyas[dia]]) suyas[dia] = f.estado;
   }
   const diasConReunion = [...conReunion].sort((a, b) => a - b);
+  // Los que están esperando su lista: los programados que todavía no la tienen
+  const diasProgramados = [...programados].filter((d) => !conReunion.has(d)).sort((a, b) => a - b);
   const porcentaje = (n, total) => (total ? Math.round((n / total) * 100) : 0);
 
   const integrantes = gente.map((m, i) => {
@@ -151,7 +185,7 @@ function armar(db, cuerpo, mes) {
 
   return {
     cuerpo: { id: cuerpo.id, nombre: cuerpo.nombre, tipo: cuerpo.tipo },
-    mes, anio, numeroDeMes, dias, diasConReunion, integrantes, porDia,
+    mes, anio, numeroDeMes, dias, diasConReunion, diasProgramados, integrantes, porDia,
   };
 }
 
