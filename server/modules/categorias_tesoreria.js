@@ -14,6 +14,18 @@
  * a esos movimientos clasificados con un nombre que ya no existe en ninguna
  * parte, y los informes de años anteriores dejarían de cuadrar. Desactivada
  * deja de ofrecerse en los movimientos nuevos y lo antiguo queda como estaba.
+ *
+ * RENOMBRARLA SÍ SE PUEDE, y el nombre nuevo **se lleva los movimientos
+ * consigo**: se pregunta primero, diciendo cuántos son, y los dos cambios van
+ * en la misma transacción. Lo que cambia es la etiqueta con que está
+ * clasificado un movimiento, no el movimiento —fecha, monto, concepto y cuenta
+ * quedan intactos—, así que el informe sigue cuadrando en una sola línea en vez
+ * de partirse en dos. Queda anotado en el Registro de Cambios, con cuántos.
+ *
+ * Con dos excepciones, y las dos por el mismo motivo: las siete categorías que
+ * escribe el propio sistema (ver server/categorias-del-sistema.js) no se
+ * renombran ni se borran, porque el sistema seguiría anotando con el nombre de
+ * antes y al día siguiente el informe volvería a partirse.
  */
 const TIPOS = ['Ingreso', 'Egreso', 'Ambos'];
 
@@ -73,7 +85,8 @@ module.exports = {
   fields: [
     {
       name: 'nombre', label: 'Nombre de la categoría', type: 'text', required: true, unique: true,
-      help: 'Como se verá al registrar un movimiento y en los informes. Ej: «Diezmos», «Servicios públicos».',
+      help: 'Como se verá al registrar un movimiento y en los informes. Ej: «Diezmos», «Servicios públicos». '
+        + 'Si le cambia el nombre a una que ya se usó, los movimientos que la tienen pasan también al nombre nuevo.',
     },
     {
       name: 'tipo', label: 'Se usa en', type: 'select', required: true, default: 'Ingreso', options: TIPOS,
@@ -101,7 +114,7 @@ module.exports = {
      * que no le estorben. Desactivada sigue existiendo, así que el día que de
      * verdad haya un préstamo el movimiento cae en una categoría que existe.
      */
-    beforeSave(data, { db, isNew, existing }) {
+    beforeSave(data, { db, isNew, existing, confirmado }) {
       /*
        * Lo primero: que este guardado no deje a la tesorería sin con qué
        * clasificar. Va antes que lo del nombre porque no depende de él —se
@@ -134,43 +147,93 @@ module.exports = {
       }
 
       /*
-       * Y UNA QUE YA SE USÓ TAMPOCO SE RENOMBRA.
+       * UNA QUE YA SE USÓ SE RENOMBRA, Y SE LLEVA SUS MOVIMIENTOS CONSIGO.
        *
-       * El módulo frenaba el borrado de una categoría en uso con un buen
-       * argumento —dejaría los movimientos «clasificados con un nombre que ya
-       * no existe»— y dejaba el renombrado abierto y sin cartel, haciendo
-       * exactamente el mismo daño. Eran dos puertas al mismo sitio: una cuidada
-       * con esmero y la otra de par en par.
+       * Antes el renombrado pasaba callado y hacía el mismo daño que el borrado
+       * —que sí estaba frenado—: los movimientos guardan el NOMBRE, así que
+       * seguían diciendo el viejo. MEDIDO en la v1.341.0, con tres diezmos
+       * anotados por $445.000: borrar «Diezmos» contestó 400 con su mensaje;
+       * renombrarla a «Diezmos y primicias» contestó 200 sin una palabra, y el
+       * informe quedó partido en dos —«Diezmos $445.000» y «Diezmos y primicias
+       * $150.000»— para siempre.
        *
-       * MEDIDO en la v1.341.0, con tres diezmos anotados por $445.000:
+       * En la v1.345.0 esto se cerró rechazando el renombrado. Estaba mal
+       * elegido: le quitaba a la iglesia una cosa que necesita hacer —corregir
+       * el nombre de una categoría— para evitar un efecto que se puede evitar
+       * de otra manera. Se cambió a pedido, en la v1.349.0.
        *
-       *   borrar «Diezmos» ................... 400, con un mensaje que explica
-       *   renombrarla a «Diezmos y primicias»  200, sin una palabra
+       * LO QUE SE HACE AHORA: se pregunta, y si dice que sí, el nombre nuevo se
+       * lleva los movimientos. Los dos pasos van en la MISMA transacción del
+       * motor —el arrastre está en `afterSave`, más abajo— así que o cambian los
+       * dos o no cambia ninguno.
        *
-       * Y el informe, que agrupa por el texto guardado, quedó partido en dos:
-       * «Diezmos $445.000» y «Diezmos y primicias $150.000», para siempre. Un
-       * cambio de nombre pensado para ordenar parte en dos la cuenta de los
-       * diezmos sin que nadie se entere.
+       * Y NO ES REESCRIBIR EL LIBRO, que era el reparo. Lo que cambia es la
+       * ETIQUETA con que está clasificado un movimiento, no el movimiento: la
+       * fecha, el monto, el concepto y la cuenta quedan intactos. La categoría
+       * es el nombre de un concepto, y el concepto no cambió: lo que la iglesia
+       * llamaba «Pro-Templo» y ahora llama «Pro-Templo Sede Sur» es lo mismo.
+       * Que el movimiento guarde el nombre y no un número es una decisión de
+       * este sistema —para que borrar no deje huérfano a nadie—, y no tiene por
+       * qué costarle a la iglesia el derecho a corregir una palabra.
        *
-       * NO SE ARRASTRAN LOS MOVIMIENTOS, y ésa es la decisión de fondo: este es
-       * un libro contable. Reescribir cuatrocientas anotaciones para que digan
-       * algo que no decían el día que se hicieron es justamente lo que la
-       * cabecera de este módulo se niega a hacer. Lo que se hace es lo mismo que
-       * ya decía el rechazo del borrado: se crea la categoría nueva y se
-       * desmarca la vieja. Lo viejo sigue diciendo lo que decía —que es lo
-       * correcto— y lo nuevo entra con el nombre nuevo.
+       * QUEDA ANOTADO, con cuántos movimientos se movieron: desde la v1.346.0
+       * las categorías están entre los módulos que vigila el Registro de
+       * Cambios, así que esto no pasa en silencio.
        */
-      const usos = db.prepare('SELECT COUNT(*) AS c FROM tesoreria WHERE categoria = ?').get(seLlamaba).c;
-      if (usos) {
-        return (
-          `«${seLlamaba}» está en ${usos.toLocaleString('es-CL')} movimiento(s) de tesorería, así que no se le `
-          + 'puede cambiar el nombre: esos movimientos seguirían diciendo «' + seLlamaba + '» y quedarían '
-          + 'clasificados con una categoría que ya no está en la lista, con el informe partido en dos. '
-          + `Para empezar a usar «${seVaALlamar}»: créela como una categoría nueva y desmarque ésta en `
-          + '«En uso». Lo ya anotado sigue diciendo lo que decía, que es lo que corresponde en un libro.'
-        );
+      const usos = db
+        .prepare('SELECT COUNT(*) AS c FROM tesoreria WHERE lower(categoria) = lower(?)')
+        .get(seLlamaba).c;
+      if (usos && !confirmado) {
+        const cuantos = `${usos.toLocaleString('es-CL')} movimiento(s) de tesorería`;
+        return {
+          error: `«${seLlamaba}» está en ${cuantos}.`,
+          confirmar:
+            `«${seLlamaba}» está en ${cuantos}. Al cambiarle el nombre a «${seVaALlamar}», esos `
+            + 'movimientos pasan a quedar clasificados con el nombre nuevo, para que el informe siga '
+            + 'cuadrando en una sola línea en vez de partirse en dos. De cada movimiento no se toca '
+            + 'nada más: la fecha, el monto, el concepto y la cuenta quedan igual. '
+            + '¿Le cambio el nombre?',
+        };
       }
       return null;
+    },
+
+    /**
+     * El nombre nuevo se lleva los movimientos.
+     *
+     * Va acá y no en `beforeSave` porque tiene que ocurrir DESPUÉS de que la
+     * categoría quede guardada, y dentro de la misma transacción del motor: o
+     * cambian los dos o no cambia ninguno. Si esto fallara a mitad de camino,
+     * la categoría tampoco se guarda y todo queda como estaba.
+     *
+     * Se compara sin distinguir mayúsculas para alcanzar también lo que se
+     * anotó antes de la v1.344.0, cuando el guardado todavía no normalizaba la
+     * categoría a como está escrita en la lista.
+     */
+    afterSave(row, { db, isNew, existing, user }) {
+      if (isNew || !existing) return;
+      const seLlamaba = String(existing.nombre || '');
+      const seLlama = String(row.nombre || '');
+      if (!seLlamaba || seLlamaba === seLlama) return;
+
+      const movidos = db
+        .prepare('UPDATE tesoreria SET categoria = ? WHERE lower(categoria) = lower(?)')
+        .run(seLlama, seLlamaba).changes;
+      if (!movidos) return;
+
+      /*
+       * Y queda dicho cuántos se movieron. El motor anota solo el cambio de la
+       * ficha —«Nombre de la categoría: X → Y»—, que no dice lo que de verdad
+       * pasó con la plata. Esta línea sí.
+       */
+      require('../bitacora').anotarCambio({
+        def: module.exports,
+        accion: 'Cambio',
+        fila: row,
+        usuario: user,
+        detalle: `Al cambiar el nombre, ${movidos.toLocaleString('es-CL')} movimiento(s) de tesorería `
+          + `pasaron de «${seLlamaba}» a «${seLlama}»`,
+      });
     },
 
     /**
@@ -221,8 +284,12 @@ module.exports = {
     /**
      * Las categorías que se pueden elegir para un movimiento, según sea un
      * ingreso o un egreso. Devuelve el nombre como valor, porque es el nombre
-     * lo que se guarda en el movimiento: así, si algún día la categoría se
-     * borra o se renombra, lo ya registrado sigue diciendo lo que decía.
+     * lo que se guarda en el movimiento.
+     *
+     * Esa decisión —guardar el nombre y no un número— es la que hace que borrar
+     * una categoría en uso dejaría huérfanos a sus movimientos, y por eso el
+     * módulo lo frena. Renombrarla, en cambio, sí se puede: el guardado se
+     * lleva los movimientos al nombre nuevo (ver `afterSave`).
      */
     router.get('/categorias_tesoreria/opciones', requirePerm('tesoreria', 'view'), (req, res) => {
       const tipo = TIPOS.includes(req.query.tipo) ? req.query.tipo : null;

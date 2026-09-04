@@ -19,7 +19,7 @@
  *
  * Lo que cuida este archivo:
  *   · que las siete no se puedan borrar, tengan movimientos o no
- *   · que no se puedan renombrar
+ *   · que las siete del sistema no se puedan renombrar
  *   · que SÍ se puedan desactivar, que es la salida buena
  *   · y que los cinco archivos que las escriben las tomen de un solo sitio, para
  *     que la lista protegida no se vuelva una copia que se desincroniza
@@ -245,57 +245,142 @@ test('y repetirlo no duplica ninguna', () => {
   assert.equal(antes, 1);
 });
 
-/* ------------------------------------------------- y la que ya se usó tampoco */
+/* ------------------------------------------------- y la que ya se usó se lleva lo suyo */
 
 /*
- * La otra puerta al mismo daño. El módulo frenaba el BORRADO de una categoría en
- * uso con un buen argumento —dejaría los movimientos «clasificados con un nombre
- * que ya no existe»— y dejaba el RENOMBRADO abierto y sin cartel.
+ * Antes el renombrado pasaba callado y hacía el mismo daño que el borrado, que
+ * sí estaba frenado: los movimientos guardan el NOMBRE, así que seguían
+ * diciendo el viejo. MEDIDO en la v1.341.0, con tres diezmos por $445.000:
+ * borrar contestó 400 con su mensaje; renombrar contestó 200 sin una palabra, y
+ * el informe quedó partido en «Diezmos $445.000» y «Diezmos y primicias
+ * $150.000», para siempre.
  *
- * MEDIDO en la v1.341.0, con tres diezmos anotados por $445.000: borrar contestó
- * 400 con su mensaje; renombrar contestó 200 sin una palabra, y el informe quedó
- * partido en «Diezmos $445.000» y «Diezmos y primicias $150.000», para siempre.
+ * La v1.345.0 lo cerró rechazando el renombrado, y estaba mal elegido: le
+ * quitaba a la iglesia una cosa que necesita hacer. Desde la v1.349.0 se
+ * pregunta y, si dice que sí, el nombre nuevo SE LLEVA LOS MOVIMIENTOS.
  */
-const conUnMovimiento = (nombre) => {
+const conUnMovimiento = (nombre, cuantos = 1) => {
   const fila = unaCategoria(nombre, 'Ingreso');
-  db.prepare(
-    `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto)
-     VALUES (date('now','localtime'), 'Ingreso', ?, 'Un diezmo', 120000)`
-  ).run(nombre);
+  for (let i = 0; i < cuantos; i++) {
+    db.prepare(
+      `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto)
+       VALUES (date('now','localtime'), 'Ingreso', ?, 'Un diezmo', 120000)`
+    ).run(nombre);
+  }
   return fila;
 };
 
-test('una categoría de la iglesia que ya se usó no se renombra', () => {
-  const fila = conUnMovimiento(`Diezmos del norte ${MARCA}`);
-  const freno = alGuardar({ ...fila, nombre: `Diezmos y primicias ${MARCA}` }, fila);
-  assert.ok(freno, 'renombrarla hace el mismo daño que borrarla, que sí estaba frenado');
-  assert.match(freno, /movimiento\(s\) de tesorería/);
-  assert.match(freno, /no se le puede cambiar el nombre/);
+/** `afterSave` como lo corre el motor, dentro de su transacción. */
+const alTerminarDeGuardar = (row, existing) =>
+  CATEGORIAS.hooks.afterSave(row, { db, isNew: false, existing, user: { id: 1, nombre: 'La que ordenó la lista' } });
+
+const cuantosDicen = (nombre) => db
+  .prepare('SELECT COUNT(*) c FROM tesoreria WHERE categoria = ?').get(nombre).c;
+
+test('renombrar una categoría que ya se usó se pregunta primero', () => {
+  const fila = conUnMovimiento(`Diezmos del norte ${MARCA}`, 3);
+  const r = alGuardar({ ...fila, nombre: `Diezmos y primicias ${MARCA}` }, fila);
+  assert.ok(r && typeof r === 'object', 'no es un rechazo: es una pregunta');
+  assert.ok(r.confirmar, 'la pantalla la convierte en dos botones');
+  assert.match(r.confirmar, /3 movimiento\(s\)/, 'dice cuántos son');
+  assert.match(r.confirmar, /pasan a quedar clasificados con el nombre nuevo/);
+  assert.match(r.confirmar, /la fecha, el monto, el concepto y la cuenta quedan igual/,
+    'y dice lo que NO se toca, que es lo que a nadie le da lo mismo');
 });
 
-test('y el rechazo dice cuántos son y qué hacer en cambio', () => {
+test('y contestando que sí, no se frena', () => {
   const fila = conUnMovimiento(`Ofrenda de misiones ${MARCA}`);
-  const freno = alGuardar({ ...fila, nombre: `Misiones ${MARCA}` }, fila);
-  assert.match(freno, /1 movimiento\(s\)/, 'dice cuántos hay');
-  assert.match(freno, new RegExp(`Misiones ${MARCA}`), 'nombra el nombre nuevo que se quería');
-  assert.match(freno, /créela como una categoría nueva y desmarque ésta en «En uso»/);
+  const r = CATEGORIAS.hooks.beforeSave(
+    { ...fila, nombre: `Misiones ${MARCA}` },
+    { db, isNew: false, existing: fila, id: fila.id, confirmado: true }
+  );
+  assert.equal(r, null, 'quien dijo que sí ya sabe lo que va a pasar');
 });
 
-test('una que todavía no se ha usado sí se renombra: un error de tecleo se corrige', () => {
-  const fila = unaCategoria(`Pro-Tenplo ${MARCA}`, 'Ingreso');
-  assert.equal(alGuardar({ ...fila, nombre: `Pro-Templo ${MARCA}` }, fila), null);
+test('el nombre nuevo se lleva los movimientos consigo', () => {
+  const viejo = `Pro-Templo del cerro ${MARCA}`;
+  const nuevo = `Pro-Templo Sede Sur ${MARCA}`;
+  const fila = conUnMovimiento(viejo, 4);
+  assert.equal(cuantosDicen(viejo), 4);
+
+  alTerminarDeGuardar({ ...fila, nombre: nuevo }, fila);
+
+  assert.equal(cuantosDicen(viejo), 0, 'ninguno se queda con el nombre viejo');
+  assert.equal(cuantosDicen(nuevo), 4, 'los cuatro pasan al nuevo, y el informe no se parte');
 });
 
-test('y lo que no es el nombre se puede cambiar aunque tenga movimientos', () => {
+test('y de cada movimiento no se toca nada más', () => {
+  const viejo = `Ofrenda del aniversario ${MARCA}`;
+  const nuevo = `Aniversario de la iglesia ${MARCA}`;
+  const fila = unaCategoria(viejo, 'Ingreso');
+  db.prepare(
+    `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto, metodo)
+     VALUES ('2026-03-15', 'Ingreso', ?, ?, 345678, 'Transferencia')`
+  ).run(viejo, `Lo del aniversario ${MARCA}`);
+
+  alTerminarDeGuardar({ ...fila, nombre: nuevo }, fila);
+
+  const m = db.prepare('SELECT * FROM tesoreria WHERE concepto = ?').get(`Lo del aniversario ${MARCA}`);
+  assert.equal(m.categoria, nuevo, 'la etiqueta cambia');
+  assert.equal(m.fecha, '2026-03-15', 'la fecha no');
+  assert.equal(m.monto, 345678, 'ni el monto');
+  assert.equal(m.metodo, 'Transferencia', 'ni el método');
+  assert.equal(m.tipo, 'Ingreso');
+});
+
+test('alcanza también lo que se anotó con otras mayúsculas', () => {
   /*
-   * Ésta es la que evita que la guardia se pase de la raya: desactivarla,
-   * cambiarle el tipo o escribirle una nota tiene que seguir funcionando. Lo que
-   * rompe el informe es el NOMBRE, y solo ése se cuida.
+   * Antes de la v1.344.0 el guardado no normalizaba la categoría a como está
+   * escrita en la lista, así que puede haber movimientos viejos con otra caja
+   * de letras. Se arrastran igual.
    */
+  const viejo = `Compras de la cocina ${MARCA}`;
+  const nuevo = `Cocina y comedor ${MARCA}`;
+  const fila = unaCategoria(viejo, 'Egreso');
+  db.prepare(
+    `INSERT INTO tesoreria (fecha, tipo, categoria, concepto, monto)
+     VALUES (date('now','localtime'), 'Egreso', ?, 'Ollas nuevas', 50000)`
+  ).run(viejo.toLowerCase());
+
+  alTerminarDeGuardar({ ...fila, nombre: nuevo }, fila);
+  assert.equal(cuantosDicen(nuevo), 1, 'el de minúsculas también se lleva');
+});
+
+test('el arrastre queda anotado, con cuántos se movieron', () => {
+  const viejo = `Rifas del cuerpo ${MARCA}`;
+  const nuevo = `Actividades del cuerpo ${MARCA}`;
+  const fila = conUnMovimiento(viejo, 2);
+
+  alTerminarDeGuardar({ ...fila, nombre: nuevo }, fila);
+
+  const linea = db.prepare(
+    `SELECT * FROM registro_cambios WHERE modulo = 'Categorías de Tesorería' AND registro_id = ?
+      ORDER BY id DESC LIMIT 1`
+  ).get(fila.id);
+  assert.ok(linea, 'esto no puede pasar en silencio');
+  assert.match(linea.detalle, /2 movimiento\(s\)/);
+  assert.match(linea.detalle, new RegExp(`«Rifas del cuerpo ${MARCA}».*«Actividades del cuerpo ${MARCA}»`));
+  assert.ok(linea.usuario, 'y quién lo hizo');
+});
+
+test('una que todavía no se ha usado se renombra sin preguntar nada', () => {
+  const fila = unaCategoria(`Pro-Tenplo ${MARCA}`, 'Ingreso');
+  assert.equal(alGuardar({ ...fila, nombre: `Pro-Templo ${MARCA}` }, fila), null,
+    'sin movimientos que mover no hay nada que advertir');
+});
+
+test('y lo que no es el nombre se guarda sin preguntar, aunque tenga movimientos', () => {
   const fila = conUnMovimiento(`Actividades del año ${MARCA}`);
-  assert.equal(alGuardar({ ...fila, activo: 0 }, fila), null, 'desactivarla es la salida que el rechazo ofrece');
+  assert.equal(alGuardar({ ...fila, activo: 0 }, fila), null);
   assert.equal(alGuardar({ ...fila, tipo: 'Ambos' }, fila), null);
   assert.equal(alGuardar({ ...fila, notas: 'Rifas y once solidarias' }, fila), null);
+});
+
+test('y guardar sin cambiar el nombre no mueve ningún movimiento', () => {
+  const nombre = `Donaciones del mes ${MARCA}`;
+  const fila = conUnMovimiento(nombre, 2);
+  alTerminarDeGuardar({ ...fila, notas: 'Lo que llega de afuera' }, fila);
+  assert.equal(cuantosDicen(nombre), 2, 'siguen donde estaban');
 });
 
 /* ------------------------------------------------- lo que queda anotado */
@@ -428,4 +513,81 @@ test('y crear una nueva nunca se frena por esto', () => {
   const freno = conSoloEstasEncendidas([], () =>
     alGuardar({ nombre: `Recién creada ${MARCA}`, tipo: 'Ingreso', activo: 1 }, null));
   assert.equal(freno, null, 'crear es justamente la salida que el aviso propone');
+});
+
+/* ------------------------------------------------- y renombrando de verdad */
+
+/*
+ * Las de arriba llaman a los ganchos. Ésta pasa por el MOTOR, que es lo único
+ * que la persona toca, y es donde de verdad importa: el guardado de la
+ * categoría y el arrastre de sus movimientos van en la MISMA transacción, así
+ * que o cambian los dos o no cambia ninguno.
+ */
+const { elSistemaAndando, cerrarElSistema } = require('./andando');
+
+test.after(cerrarElSistema);
+
+test('renombrando de verdad: primero pregunta, y al confirmar se lleva los movimientos', async () => {
+  const api = await elSistemaAndando();
+
+  const iglesia = db
+    .prepare("INSERT INTO iglesias (nombre, codigo, estado) VALUES (?, ?, 'Activa')")
+    .run(`Central del renombre ${MARCA}`, `IGREN${String(process.pid).slice(-4)}`).lastInsertRowid;
+  const caja = db
+    .prepare("INSERT INTO cuentas_tesoreria (nombre, tipo, estado, iglesia_id) VALUES (?, 'Corriente', 'Activa', ?)")
+    .run(`Caja del renombre ${MARCA}`, iglesia).lastInsertRowid;
+
+  const viejo = `Pro-Templo del norte ${MARCA}`;
+  const nuevo = `Pro-Templo Sede Norte ${MARCA}`;
+  const creada = await api('POST', '/categorias_tesoreria', { nombre: viejo, tipo: 'Ingreso', activo: 1 });
+  assert.equal(creada.estado, 201, JSON.stringify(creada.json));
+
+  const hoy = db.prepare("SELECT date('now','localtime') d").get().d;
+  for (const monto of [120000, 85000, 240000]) {
+    const m = await api('POST', '/tesoreria', {
+      fecha: hoy, tipo: 'Ingreso', categoria: viejo, concepto: `Aporte para el templo ${MARCA}`,
+      monto, cuenta_id: caja, metodo: 'Efectivo', iglesia_id: iglesia,
+    });
+    assert.equal(m.estado, 201, JSON.stringify(m.json));
+  }
+  assert.equal(cuantosDicen(viejo), 3);
+
+  // Sin confirmar: pregunta, y no toca nada
+  const pregunta = await api('PUT', `/categorias_tesoreria/${creada.json.id}`, {
+    ...creada.json, nombre: nuevo,
+  });
+  assert.equal(pregunta.estado, 400, 'una pregunta viaja como 400 con «confirmar»');
+  assert.ok(pregunta.json.confirmar, JSON.stringify(pregunta.json));
+  assert.match(pregunta.json.confirmar, /3 movimiento\(s\)/);
+  assert.equal(cuantosDicen(viejo), 3, 'preguntar no cambia nada');
+  assert.equal(
+    db.prepare('SELECT nombre FROM categorias_tesoreria WHERE id = ?').get(creada.json.id).nombre,
+    viejo,
+    'ni siquiera el nombre de la categoría'
+  );
+
+  // Confirmando: se guarda, y los tres movimientos se van con ella
+  const ahora = await api('PUT', `/categorias_tesoreria/${creada.json.id}`, {
+    ...creada.json, nombre: nuevo, igual_asi: true,
+  });
+  assert.equal(ahora.estado, 200, JSON.stringify(ahora.json));
+  assert.equal(ahora.json.nombre, nuevo);
+  assert.equal(cuantosDicen(viejo), 0, 'ninguno se queda atrás');
+  assert.equal(cuantosDicen(nuevo), 3, 'los tres pasan al nombre nuevo');
+});
+
+test('renombrando de verdad: el informe queda en una sola línea, no partido en dos', async () => {
+  /*
+   * Es el efecto medido en la revisión, visto desde donde se nota: el informe
+   * agrupa por el texto guardado, así que con los movimientos arrastrados las
+   * cuentas de esa categoría vuelven a sumar juntas.
+   */
+  const api = await elSistemaAndando();
+  const nuevo = `Pro-Templo Sede Norte ${MARCA}`;
+  const r = await api('GET', '/tesoreria/resumen');
+  assert.equal(r.estado, 200);
+  const suyas = (r.json.porCategoria || []).filter((c) => /Pro-Templo (del|Sede) Norte/.test(c.categoria));
+  assert.equal(suyas.length, 1, `tendría que haber UNA línea, hay ${suyas.length}: ${JSON.stringify(suyas)}`);
+  assert.equal(suyas[0].categoria, nuevo);
+  assert.equal(suyas[0].total, 445000, 'los $445.000 sumados en una sola línea');
 });
