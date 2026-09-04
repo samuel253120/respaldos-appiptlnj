@@ -12820,7 +12820,16 @@ function printGenerico(m, row, extras = {}) {
  * revisión previa (no guarda nada) → importar.
  * ===================================================================== */
 
-/** Lee texto CSV respetando comillas, saltos de línea y separador , ; o tabulador. */
+/**
+ * Lee texto CSV respetando comillas, saltos de línea y separador , ; o tabulador.
+ *
+ * Devuelve las filas Y EN QUÉ LÍNEA DEL ARCHIVO empieza cada una, que es el
+ * número que la persona ve cuando abre la planilla. No son el mismo número: la
+ * fila de encabezados no cuenta y las líneas en blanco se descartan, así que la
+ * distancia entre los dos crece a medida que se baja. Medido con un archivo de
+ * seis líneas con una en blanco al medio: la fila mala era la línea 6 y el
+ * informe la llamaba «Fila 4», o sea mandaba a corregir la que no era.
+ */
 function leerCSV(texto) {
   texto = texto.replace(/^﻿/, ''); // quitar marca de orden de bytes
   const primeraLinea = texto.split(/\r?\n/)[0] || '';
@@ -12828,26 +12837,71 @@ function leerCSV(texto) {
   const sep = cuenta(';') > cuenta(',') ? ';' : cuenta('\t') > cuenta(',') ? '\t' : ',';
 
   const filas = [];
+  const lineas = [];
   let campo = '';
   let fila = [];
   let enComillas = false;
+  let linea = 1;      // en qué línea del archivo va la lectura
+  let empiezaEn = 1;  // y en cuál empezó la fila que se está armando
+  const cerrarFila = () => {
+    fila.push(campo); filas.push(fila); lineas.push(empiezaEn); fila = []; campo = '';
+  };
   for (let i = 0; i < texto.length; i++) {
     const c = texto[i];
     if (enComillas) {
       if (c === '"') {
         if (texto[i + 1] === '"') { campo += '"'; i++; }
         else enComillas = false;
-      } else campo += c;
+      } else {
+        // un salto de línea DENTRO de unas comillas es parte del dato, pero en
+        // el archivo sigue siendo una línea más
+        if (c === '\n') linea++;
+        campo += c;
+      }
       continue;
     }
     if (c === '"') { enComillas = true; continue; }
     if (c === sep) { fila.push(campo); campo = ''; continue; }
-    if (c === '\n') { fila.push(campo); filas.push(fila); fila = []; campo = ''; continue; }
+    if (c === '\n') { cerrarFila(); linea++; empiezaEn = linea; continue; }
     if (c === '\r') continue;
     campo += c;
   }
-  if (campo !== '' || fila.length) { fila.push(campo); filas.push(fila); }
-  return filas.filter((f) => f.some((v) => String(v).trim() !== ''));
+  if (campo !== '' || fila.length) cerrarFila();
+
+  // Las líneas en blanco se botan, pero cada fila que queda se lleva su número
+  const sirven = filas
+    .map((f, i) => ({ celdas: f, linea: lineas[i] }))
+    .filter((f) => f.celdas.some((v) => String(v).trim() !== ''));
+  return { filas: sirven.map((f) => f.celdas), lineas: sirven.map((f) => f.linea) };
+}
+
+/**
+ * Cómo se nombra en el informe una fila que dio problemas.
+ *
+ * El servidor las numera por su lugar en lo que recibió —no puede saber otra
+ * cosa— y quien corrige está mirando el archivo. Se le dice la línea del
+ * archivo, que es la que su planilla le muestra al costado.
+ */
+function comoSeNombraLaFila(numero, lineasDelArchivo) {
+  const linea = lineasDelArchivo && lineasDelArchivo[numero - 1];
+  return linea ? `Línea ${linea}` : `Fila ${numero}`;
+}
+
+/**
+ * Lo que hay que decir cuando la lista de problemas viene recortada.
+ *
+ * El servidor manda como mucho cien, y el informe los listaba y se cortaba en
+ * seco: con 260 filas malas decía «260 fila(s) con problemas» y mostraba cien,
+ * sin ninguna señal de que la lista siguiera. Quien corregía los cien que veía
+ * volvía a subir el archivo convencido de haber terminado, y se encontraba con
+ * ciento sesenta más que nadie le había nombrado.
+ */
+function losProblemasQueNoCaben(r) {
+  const mostrados = (r.errores || []).length;
+  const faltan = (r.conError || 0) - mostrados;
+  if (faltan <= 0) return '';
+  return `Se muestran los primeros ${mostrados}. Hay ${faltan} fila(s) más con problemas, `
+    + 'que se van a ver cuando corrija éstas y vuelva a revisar.';
 }
 
 /** Sugiere a qué campo corresponde una columna, comparando nombres y etiquetas. */
@@ -12876,6 +12930,9 @@ function abrirImportador(m, alTerminar) {
   ));
   let columnas = [];
   let filasArchivo = [];
+  // En qué línea del archivo está cada una, para poder nombrarlas como las
+  // nombra la planilla de quien las va a corregir (ver `comoSeNombraLaFila`).
+  let lineasArchivo = [];
 
   const fondo = document.createElement('div');
   fondo.className = 'modal-fondo';
@@ -12927,13 +12984,14 @@ function abrirImportador(m, alTerminar) {
     if (!archivo) return;
     const lector = new FileReader();
     lector.onload = () => {
-      const filas = leerCSV(String(lector.result));
+      const { filas, lineas } = leerCSV(String(lector.result));
       if (filas.length < 2) {
         fondo.querySelector('#impResto').innerHTML = '<div class="resultado err">El archivo no tiene encabezados y al menos una fila de datos.</div>';
         return;
       }
       columnas = filas[0].map((c) => String(c).trim());
       filasArchivo = filas.slice(1);
+      lineasArchivo = lineas.slice(1);
       dibujarMapeo();
     };
     lector.readAsText(archivo, 'UTF-8');
@@ -13012,8 +13070,9 @@ function abrirImportador(m, alTerminar) {
         <b>${esc(titulo)}</b>
         ${r.conError ? `<div style="margin-top:6px">${r.conError} fila(s) con problemas${r.prueba ? ' — se omitirán al importar' : ''}:</div>` : ''}
         ${r.errores.length ? `<div class="lista-errores">
-          ${r.errores.map((e) => `<div><b>Fila ${e.fila}:</b> ${esc(e.errores.join(' · '))}</div>`).join('')}
+          ${r.errores.map((e) => `<div><b>${esc(comoSeNombraLaFila(e.fila, lineasArchivo))}:</b> ${esc(e.errores.join(' · '))}</div>`).join('')}
         </div>` : ''}
+        ${losProblemasQueNoCaben(r) ? `<div class="mas-problemas">${esc(losProblemasQueNoCaben(r))}</div>` : ''}
       </div>`;
     if (r.prueba) {
       fondo.querySelector('#impGuardar').style.display = r.correctas > 0 ? '' : 'none';

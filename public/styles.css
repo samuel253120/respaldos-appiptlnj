@@ -1633,6 +1633,12 @@ table.planilla-mes tfoot .pie.no td  { color: #b91c1c; }
 .lista-errores { max-height: 240px; overflow-y: auto; margin-top: 10px; font-size: 12.5px; }
 .lista-errores div { padding: 5px 0; border-bottom: 1px solid rgba(0,0,0,0.06); }
 .lista-errores b { color: inherit; }
+/*
+ * Y cuando la lista viene recortada, lo que falta se dice DEBAJO de ella y no
+ * dentro: adentro se leería como un problema más de una fila (ver
+ * `losProblemasQueNoCaben` en public/app.js).
+ */
+.mas-problemas { margin-top: 8px; font-size: 12.5px; font-weight: 600; }
 @media (max-width: 700px) { .mapeo { grid-template-columns: 1fr; } }
 
 /* ---------- Historial de versiones ---------- */
