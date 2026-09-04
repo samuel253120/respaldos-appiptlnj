@@ -27,6 +27,32 @@ function marcarAplicada(nombre) {
 }
 
 /**
+ * La lista que un desplegable ofrece HOY, preguntándosela al módulo.
+ *
+ * Varias migraciones ponen al día una columna comparándola contra la lista de
+ * valores que ese campo admite. Escribir esa lista otra vez acá es tenerla
+ * duplicada, y el día que el módulo cambie la suya la migración se queda con la
+ * copia vieja y empieza a reescribir datos buenos.
+ *
+ * NO ES UN TEMOR TEÓRICO: es exactamente lo que pasó con los tipos de
+ * actividad. La migración tenía escritos a mano los doce nombres de cuando la
+ * lista vivía en el código; la lista pasó a ser un dato que mantiene la
+ * iglesia, nadie volvió a mirar la copia, y desde entonces cada arranque del
+ * servidor convertía en «Otros» toda actividad con un tipo que la iglesia
+ * hubiera agregado. Se corrigió en la v1.350.0.
+ *
+ * Así que la lista se pide, no se copia. Y hay una prueba que vigila que
+ * ninguna migración vuelva a tener la suya: pruebas/motor/una-migracion-no-se-
+ * queda-con-una-lista-vieja.test.js.
+ */
+function laListaQueOfrece(modulo, campo) {
+  const def = require(`./modules/${modulo}`);
+  const f = (def.fields || []).find((c) => c.name === campo);
+  const opciones = (f && f.options) || [];
+  return opciones.map((o) => (o && typeof o === 'object' ? o.value : o));
+}
+
+/**
  * Pasa los valores del antiguo campo "documento_identidad" al nuevo campo
  * "rut" cuando corresponden a un RUT válido. Los que no lo son (pasaporte,
  * documento extranjero) se dejan intactos en su campo, sin perder el dato.
@@ -1354,10 +1380,9 @@ function formasDeIngreso() {
     'Traslado de otra iglesia': 'Traslado de Iglesia',
     'Nacido(a) en la iglesia': 'Nacido en la Iglesia',
   };
-  const nuevas = [
-    'Servicio General', 'Redes Sociales', 'Traslado de Iglesia', 'Nacido en la Iglesia',
-    'Campaña Evangelística', 'Invitación de Hermano(a)', 'Otro',
-  ];
+  // La lista se le pregunta al módulo, no se copia acá: ver `laListaQueOfrece`.
+  const nuevas = laListaQueOfrece('miembros', 'forma_ingreso');
+  if (!nuevas.length) return;
 
   let renombradas = 0;
   const renombrar = db.prepare('UPDATE miembros SET forma_ingreso = ? WHERE forma_ingreso = ?');
@@ -1402,7 +1427,9 @@ function tiposDeServicio() {
     'Vigilia': 'Servicio Vigilia',
     'Servicio especial': 'Servicio Especial',
   };
-  const nuevos = ['Servicio General', 'Clase de Dorcas', 'Servicio Especial', 'Servicio Vigilia', 'Otro'];
+  // La lista se le pregunta al módulo, no se copia acá: ver `laListaQueOfrece`.
+  const nuevos = laListaQueOfrece('servicios', 'tipo');
+  if (!nuevos.length) return;
 
   let renombrados = 0;
   const renombrar = db.prepare('UPDATE servicios SET tipo = ? WHERE tipo = ?');
@@ -3634,5 +3661,5 @@ module.exports = {
   elEstadoDeCadaCuerpo,
   losNombresCopiadosQueQuedaronViejos,
   laCategoriaCentralAhoraEsMatriz,
-  tiposDeActividad, listasDeAsistenciaComoDatos,
+  tiposDeActividad, listasDeAsistenciaComoDatos, laListaQueOfrece,
 };
