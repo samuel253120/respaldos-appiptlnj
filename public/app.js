@@ -604,6 +604,21 @@ function rutaOpciones(f, valores, { filtrando = false } = {}) {
     && MOD[f.ref] && MOD[f.ref].opcionesPorDefecto;
   const ruta = f.optionsRoute || suyas || f.ref || 'miembros';
   if (!ruta.includes('{')) return ruta;
+  /*
+   * En una BARRA DE FILTROS no hay formulario del que sacar esos valores, y
+   * tampoco hace falta: ahí la pregunta es «de todas las que hay, esta», no «de
+   * las que caben en esta ficha». Así que el trozo que depende de otro campo se
+   * suelta entero —`?direccion={direccion}` se va— y la ruta contesta con su
+   * lista completa. Es lo que hace falta para el filtro «Clase» de una deuda:
+   * en el formulario se acotan según la dirección; en la barra se ofrecen las
+   * tres. Un hueco en el CAMINO de la ruta no se puede soltar así, y por eso el
+   * registro no deja declarar uno (ver server/registry.js).
+   */
+  if (filtrando) {
+    const [camino, consulta] = ruta.split('?');
+    const quedan = (consulta || '').split('&').filter((par) => par && !/\{\w+\}/.test(par));
+    return camino + (quedan.length ? `?${quedan.join('&')}` : '');
+  }
   // Una ruta puede depender de otro campo del formulario, como los cargos de
   // una directiva, que salen de los integrantes del cuerpo elegido:
   //   '/directivas/integrantes?cuerpo_id={cuerpo_id}'
@@ -2477,10 +2492,32 @@ async function viewList(name, filtrosIniciales) {
   const tb = document.getElementById('toolbar');
   // El filtro por iglesia lo pone la propia barra, así que no se repite aunque
   // el módulo lo declare entre sus filtros
+  /*
+   * Los filtros que esta barra sabe DIBUJAR: un desplegable con su lista
+   * escrita, uno de sí o no, uno que apunta a otro módulo y uno cuya lista sale
+   * de una ruta. Lo que no cae en ninguno de esos no se puede pintar.
+   *
+   * Se descartaba en silencio, y eso escondía filtros que el módulo declaraba y
+   * nadie llegó a ver nunca: el «Módulo» del Registro de Cambios —el filtro más
+   * útil que puede tener ese libro— y el «En uso» de las cuatro listas que la
+   * iglesia mantiene. Ahora el registro se niega a arrancar con un filtro que la
+   * barra no pueda dibujar (ver server/registry.js), así que esta lista y la de
+   * allá dicen lo mismo o el sistema no parte.
+   */
   const filterFields = (m.filterFields || [])
     .filter((n) => n !== 'iglesia_id')
     .map((n) => fieldsBy[n])
-    .filter((f) => f && (f.type === 'select' || f.type === 'ref'));
+    .filter((f) => f && (f.type === 'select' || f.type === 'ref' || f.type === 'boolean'));
+
+  /**
+   * Lo que ofrece un filtro cuya lista NO sale de una tabla.
+   *
+   * Un sí o no se ofrece como sí o no: la casilla se guarda como 1 y 0, y
+   * «— En uso — / 1 / 0» no lo entiende nadie.
+   */
+  const opcionesDelFiltro = (f) => (f.type === 'boolean'
+    ? [{ value: '1', label: 'Sí' }, { value: '0', label: 'No' }]
+    : (f.options || []).map((o) => (typeof o === 'object' ? { value: o.value, label: o.label } : { value: o, label: o })));
   // El filtro por iglesia se ofrece cuando el usuario administra más de una
   const iglesiaField = fieldsBy['iglesia_id'] && (USER.iglesias_asignadas || 0) !== 1
     ? fieldsBy['iglesia_id']
@@ -2524,11 +2561,9 @@ async function viewList(name, filtrosIniciales) {
       ${filterFields.map((f) => `
         <select id="f_${f.name}" aria-label="Filtrar por ${esc(f.label)}">
           <option value="">— ${esc(f.label)} —</option>
-          ${(f.options || []).map((o) => {
-            const v = typeof o === 'object' ? o.value : o;
-            const l = typeof o === 'object' ? o.label : o;
-            return `<option value="${esc(v)}" ${st.filters[f.name] === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
-          }).join('')}
+          ${opcionesDelFiltro(f).map((o) =>
+            `<option value="${esc(o.value)}" ${st.filters[f.name] === String(o.value) ? 'selected' : ''}>${esc(o.label)}</option>`
+          ).join('')}
         </select>`).join('')}
       ${filtrosPropios.map((f) => `
         <select id="fp_${esc(f.nombre)}" aria-label="Filtrar por ${esc(f.label)}">
@@ -2644,8 +2679,13 @@ async function viewList(name, filtrosIniciales) {
       load();
     });
   };
-  // Los filtros que apuntan a otro módulo se llenan con sus registros
-  filterFields.filter((f) => f.type === 'ref').forEach((f) => {
+  /*
+   * Los filtros que apuntan a otro módulo se llenan con sus registros, y los
+   * que sacan su lista de una ruta, con lo que esa ruta conteste. El segundo
+   * caso es el «Módulo» del Registro de Cambios: su lista no está escrita en
+   * ninguna parte, son los módulos que de verdad tienen líneas anotadas.
+   */
+  filterFields.filter((f) => f.type === 'ref' || f.optionsRoute).forEach((f) => {
     getOptions(rutaOpciones(f, null, { filtrando: true })).then((opts) => {
       const sel = document.getElementById('f_' + f.name);
       if (!sel) return;

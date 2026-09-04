@@ -33,7 +33,19 @@ module.exports = {
   dateField: 'fecha_pago',
   searchFields: ['persona', 'notas'],
   listFields: ['fecha_pago', 'cuerpo_id', 'persona', 'anio', 'mes', 'monto'],
-  filterFields: ['cuerpo_id', 'anio', 'mes'],
+  /*
+   * Solo el mes: es lo único de los tres que la barra sabía dibujar, y los
+   * otros dos llevaban ahí desde el principio sin aparecer nunca —`cuerpo_id`
+   * es un campo oculto que resuelve el módulo, y el año es un número, y la
+   * barra pinta desplegables—. Declarar un filtro que no se dibuja no da error
+   * ni deja rastro: la barra sale con un selector menos. Desde la v1.371.0 el
+   * registro se niega a arrancar con uno así (ver server/registry.js).
+   *
+   * No se pierde nada: por el cuerpo se acota desde su propia ficha, que trae
+   * sus cuotas por su ruta y con su selector de año, y desde la dirección se
+   * puede seguir acotando por los dos con ?f_anio= y ?f_cuerpo_id=.
+   */
+  filterFields: ['mes'],
   defaultSort: { field: 'fecha_pago', dir: 'desc' },
 
   fields: [

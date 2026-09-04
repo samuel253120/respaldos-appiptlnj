@@ -120,6 +120,7 @@ function normalize(def) {
     (typeof t === 'string' ? { sql: t, reservado: null } : { sql: t.sql, reservado: t.reservado || null }));
   revisarLoReservado(def);
   revisarLoQueSeBuscaDeMas(def);
+  revisarLosFiltros(def);
 }
 
 /**
@@ -188,6 +189,57 @@ function revisarLoReservado(def) {
       `Agréguela a LLAVES en server/permissions.js con su valor de fábrica; si no, el comodín de la matriz ` +
       `se la daría a todos y el campo quedaría reservado solo de nombre.`
     );
+  }
+}
+
+/**
+ * Un filtro declarado tiene que poder DIBUJARSE.
+ *
+ * La barra del listado pinta cuatro clases de filtro: un desplegable con su
+ * lista escrita, uno de sí o no, uno que apunta a otro módulo, y uno cuya lista
+ * sale de una ruta. Lo demás lo descartaba en silencio, y en silencio es la
+ * palabra: seis módulos declaraban nueve filtros que nadie llegó a ver nunca.
+ * El más caro era el «Módulo» del Registro de Cambios —el filtro con que ese
+ * libro se lee— y después el «En uso» de las cuatro listas que la iglesia
+ * mantiene, que es justamente cómo se revisa cuáles quedaron apagadas.
+ *
+ * Un filtro declarado y no dibujado no da error ni deja rastro: la barra sale
+ * con un selector menos y nadie tiene por qué notar que falta. Por eso se
+ * revienta acá, al arrancar, que es donde sí se nota.
+ *
+ * UNA RUTA con un hueco en su CAMINO tampoco sirve: los huecos se resuelven con
+ * lo que el formulario tiene escrito, y en una barra de filtros no hay
+ * formulario. En la parte de la pregunta —`?direccion={direccion}`— sí vale: la
+ * barra suelta ese trozo entero y la ruta contesta con su lista completa, que es
+ * justo lo que un filtro necesita. En el camino no hay nada que soltar: quedaría
+ * una dirección rota.
+ */
+function revisarLosFiltros(def) {
+  const suyos = new Map((def.fields || []).map((f) => [f.name, f]));
+  for (const nombre of def.filterFields || []) {
+    if (nombre === 'iglesia_id') continue; // lo pone la barra por su cuenta
+    const campo = suyos.get(nombre);
+    const comoSeArregla = 'Declárelo como select —con `options` o con `optionsRoute`—, como ref, o como '
+      + 'boolean; si no se puede, sáquelo de filterFields: desde la dirección se sigue pudiendo acotar '
+      + 'con ?f_campo=valor.';
+    if (!campo) {
+      throw new Error(`El módulo ${def.name} filtra por «${nombre}», que no es un campo suyo. ${comoSeArregla}`);
+    }
+    const dibujable = campo.type === 'ref' || campo.type === 'boolean'
+      || (campo.type === 'select' && ((campo.options || []).length || campo.optionsRoute));
+    if (!dibujable || campo.oculto) {
+      throw new Error(
+        `El módulo ${def.name} declara el filtro «${nombre}» (${campo.oculto ? 'oculto' : campo.type}), `
+        + `que la barra del listado no sabe dibujar y descartaría sin decir nada. ${comoSeArregla}`
+      );
+    }
+    if (campo.optionsRoute && campo.optionsRoute.split('?')[0].includes('{')) {
+      throw new Error(
+        `El filtro «${nombre}» de ${def.name} saca su lista de «${campo.optionsRoute}», que lleva un hueco en `
+        + `el camino de la ruta. Esos huecos se llenan con lo que el formulario tiene escrito, y en una barra `
+        + `de filtros no hay formulario: quedaría una dirección rota.`
+      );
+    }
   }
 }
 
@@ -335,4 +387,5 @@ module.exports = {
   // Para poder comprobar desde las pruebas que un módulo mal declarado no pasa
   normalizarParaPruebas: normalize,
   revisarDeQuienCopiaParaPruebas: revisarDeQuienCopia,
+  revisarLosFiltrosParaPruebas: revisarLosFiltros,
 };

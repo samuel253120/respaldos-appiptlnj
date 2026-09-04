@@ -30,7 +30,26 @@ module.exports = {
   fields: [
     { name: 'fecha', label: 'Fecha', type: 'date', readonly: true },
     { name: 'hora', label: 'Hora', type: 'time', readonly: true },
-    { name: 'modulo', label: 'Módulo', type: 'text', readonly: true },
+    {
+      name: 'modulo', label: 'Módulo', type: 'select', readonly: true,
+      /*
+       * Es el filtro más útil que puede tener este libro —«muéstreme solo lo de
+       * Tesorería»— y estaba declarado desde el principio sin dibujarse nunca:
+       * la barra solo pintaba desplegables y enlaces, y un texto lo descartaba
+       * en silencio. Medido sobre doce líneas de tres módulos: el servidor
+       * contestaba `f_modulo=Tesorería` con las ocho que correspondían y nadie
+       * se lo pedía.
+       *
+       * Ahora es un desplegable cuya lista sale de una ruta, y no de una lista
+       * escrita acá: los módulos que de verdad tienen líneas anotadas. Escrita
+       * a mano se quedaría vieja —anotan más módulos que los que el registro
+       * vigila— y además ofrecería filtrar por módulos sin ninguna línea. Lo
+       * que se guarda es el NOMBRE del módulo, como en las demás listas que se
+       * ofrecen así, y por eso una línea vieja sigue diciendo lo que decía
+       * aunque su módulo se renombre.
+       */
+      optionsRoute: '/registro_cambios/modulos',
+    },
     {
       name: 'accion', label: 'Qué pasó', type: 'select', readonly: true,
       options: ['Creación', 'Cambio', 'Eliminación'],
@@ -53,6 +72,27 @@ module.exports = {
     { name: 'usuario', label: 'Quién', type: 'text', readonly: true },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true },
   ],
+  /**
+   * Los módulos que tienen líneas anotadas, para el filtro de la barra.
+   *
+   * Sale de la propia tabla y no de la lista de módulos del sistema: se ofrece
+   * filtrar por lo que hay, no por lo que podría haber. Y acotado a lo que esta
+   * persona alcanza, con el mismo alcance del listado: ofrecerle «Tesorería» a
+   * quien no puede ver ninguna de esas líneas sería un desplegable que siempre
+   * contesta vacío.
+   */
+  extraRoutes(router, { db, requirePerm, scopeClause }) {
+    router.get('/registro_cambios/modulos', requirePerm('registro_cambios', 'view'), (req, res) => {
+      const params = [];
+      const alcance = scopeClause(req.user, params);
+      const filas = db.prepare(
+        `SELECT DISTINCT modulo FROM registro_cambios
+          WHERE modulo IS NOT NULL AND TRIM(modulo) <> ''${alcance ? ` AND ${alcance}` : ''}
+          ORDER BY modulo`
+      ).all(...params);
+      res.json(filas.map((f) => ({ id: f.modulo, label: f.modulo })));
+    });
+  },
   hooks: {
     /*
      * Cada línea, como la puede leer quien la está mirando.
