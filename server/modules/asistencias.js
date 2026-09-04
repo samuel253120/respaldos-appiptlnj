@@ -562,9 +562,37 @@ module.exports = {
       ).run(fila.iglesia_id || null, fila.id);
     },
 
-    beforeDelete(fila, { db }) {
-      db.prepare('DELETE FROM asistencia_detalle WHERE asistencia_id = ?').run(fila.id);
-      return null;
+    /**
+     * Borrar una actividad se lleva su lista, y eso se pregunta antes.
+     *
+     * El gancho hacía el borrado de las marcas él mismo y devolvía `null`: ni
+     * preguntaba ni contaba. Medido en la v1.374.0 sobre una actividad con la
+     * lista pasada: cincuenta marcas, borrar sin confirmar contestó 200, las
+     * cincuenta se fueron, y la constancia del Registro de Cambios nombraba la
+     * fecha, los cuerpos, el tipo y el nombre —y ni una palabra de las marcas—.
+     *
+     * Ahora se pregunta, diciendo cuántas son y de qué reunión, y —esto es lo
+     * otro— se dejan de borrar acá: las arrastra el motor, que es quien las
+     * CUENTA y deja escrito «Se llevó consigo N registro(s)» en la constancia.
+     * Hacerlo a mano era lo que dejaba esa línea muda.
+     *
+     * Una actividad sin lista no pregunta nada: no hay nada que perder.
+     */
+    beforeDelete(fila, { db, confirmado }) {
+      if (confirmado) return null;
+      const cuantas = db
+        .prepare('SELECT COUNT(*) AS n FROM asistencia_detalle WHERE asistencia_id = ?')
+        .get(fila.id).n;
+      if (!cuantas) return null;
+      const { comoSeLee } = require('../fechas');
+      return {
+        error: `Esta actividad tiene ${cuantas} marca(s) de asistencia tomadas`
+          + `${fila.fecha ? ` el ${comoSeLee(fila.fecha)}` : ''}, y se van con ella: `
+          + 'quién estuvo, quién faltó y quién se justificó, con su motivo. '
+          + 'Eso no se puede deshacer, y los informes de ese período dejan de contarlo. '
+          + 'Si la actividad no ocurrió, bórrela; si ocurrió y la lista está mal, corrija la lista.',
+        confirmar: 'actividad_con_lista',
+      };
     },
   },
 
