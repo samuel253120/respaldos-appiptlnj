@@ -177,6 +177,49 @@ function laOtraParte(data, { existing, db, user, cuentaId }) {
 }
 
 /**
+ * Lo que impide que la fecha comprometida caiga antes de la última cuota, o null.
+ *
+ * MEDIDO en la v1.355.0: una deuda con la fecha comprometida el 31-12-2026 y
+ * seis cuotas desde el 05-10-2026 entró con un 201; la última cuota vencía el
+ * 05-03-2027, tres meses después del plazo que la propia ficha decía. Nadie
+ * dijo nada.
+ *
+ * Las dos fechas dicen lo mismo con otras palabras —cuándo termina de pagarse
+ * esta deuda— así que no pueden contradecirse. Se dicen las dos y los dos
+ * arreglos posibles: correr el plazo, o acortar el plan.
+ */
+function loQueImpideEsePlazo(data, { existing, db }) {
+  const como = (campo) => (data[campo] !== undefined ? data[campo] : existing ? existing[campo] : null);
+  const plazo = String(como('fecha_vencimiento') || '').slice(0, 10);
+  if (!plazo) return null;   // sin plazo —«cuando se pueda»— no hay nada que comparar
+
+  const plan = require('../plan-de-cuotas');
+  const cuantas = Math.max(1, Math.floor(Number(como('cuotas')) || 1));
+
+  /*
+   * De las cuotas guardadas si ya las hay —alguien pudo haberlas corregido a
+   * mano— y si no, de la cuenta con que se van a armar: mensuales desde la
+   * primera. Así vale igual al crear la deuda que al corregirla.
+   */
+  let ultima = null;
+  const ya = existing ? plan.lasDe(db, existing.id) : [];
+  if (ya.length === cuantas && ya.length) {
+    ultima = ya.map((c) => c.vence).filter(Boolean).sort().pop() || null;
+  } else {
+    const primera = String(como('primera_cuota') || '').slice(0, 10);
+    if (primera) ultima = plan.elMesSiguiente(primera, cuantas - 1);
+  }
+  if (!ultima || ultima <= plazo) return null;
+
+  const comoSeLee = require('../fechas').comoSeLee;
+  return (
+    `La fecha comprometida de pago (${comoSeLee(plazo)}) cae antes de la última cuota `
+    + `(${comoSeLee(ultima)}), así que el plan no alcanza a cumplirla. Corra el plazo hasta después `
+    + 'de la última cuota, o acorte el plan.'
+  );
+}
+
+/**
  * Lo que impide bajar el número de cuotas, o null.
  *
  * Bajar el plan saca las últimas, y nunca una que tenga plata encima: eso sería
@@ -698,6 +741,9 @@ module.exports = {
       const noPuedeBajar = loQueImpideBajarLasCuotas(data, { existing, db });
       if (noPuedeBajar) return noPuedeBajar;
 
+      const esePlazo = loQueImpideEsePlazo(data, { existing, db });
+      if (esePlazo) return esePlazo;
+
       /*
        * ¿Y esta deuda deja alguna caja en rojo? Se pregunta, no se bloquea: una
        * caja puede quedar en rojo de verdad. Va al final porque es la única de
@@ -874,6 +920,36 @@ module.exports = {
        * miembro» de Pastores.
        */
       const confirmado = req.body.igual_asi === true || req.body.igual_asi === 'true' || req.body.igual_asi === 1;
+
+      /*
+       * ¿Este pago se pasa de lo que falta? MEDIDO en la v1.355.0: una deuda de
+       * $ 100.000 aceptó un pago de $ 900.000 con un 201, y el plan quedó
+       * contradiciéndose consigo mismo en la misma pantalla —arriba decía
+       * saldada, abajo decía que la única cuota seguía pendiente—.
+       *
+       * Se pregunta antes que lo del saldo en rojo: la confirmación es una sola
+       * para todo el pago, y un cero de más es la explicación más probable de
+       * las dos.
+       */
+      if (!confirmado) {
+        const { resumen } = require('../plan-de-cuotas').planDe(db, deuda);
+        if (monto > resumen.falta) {
+          const deMas = monto - resumen.falta;
+          return res.status(400).json({
+            error: resumen.falta > 0
+              ? `De esta deuda faltan ${enPesos(resumen.falta)} y este pago es de ${enPesos(monto)}.`
+              : 'Esta deuda ya está saldada según sus pagos anotados.',
+            confirmar: (resumen.falta > 0
+              ? `De esta deuda faltan ${enPesos(resumen.falta)} y este pago es de ${enPesos(monto)}: `
+                + `${enPesos(deMas)} de más. `
+              : `Según sus pagos anotados, esta deuda ya está saldada, y este pago le agrega `
+                + `${enPesos(monto)} más. `)
+              + 'Revise si se le fue un dígito. Si el pago es correcto —hubo intereses, o se pagó '
+              + 'de más y se va a devolver— confirme y se anota igual.',
+          });
+        }
+      }
+
       if (!confirmado) {
         const enRojo = require('../saldos').avisoSiQuedaEnRojo(deuda.cuenta_id, {
           tipo: require('../deuda-tesoreria').losSignosDe(deuda).pago,
