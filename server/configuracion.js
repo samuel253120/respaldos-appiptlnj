@@ -18,6 +18,53 @@ const PLANOS = OPCIONES.flatMap((g) => g.items);
 
 const router = express.Router();
 
+/**
+ * Cómo quedaría guardado un valor que llega, o `DESCARTADO` si no entra.
+ *
+ * Existe para que haya UNA sola manera de contestar esa pregunta. La hacen dos
+ * partes del guardado —la comprobación del permiso del mantenimiento, que
+ * necesita saber si la opción de verdad CAMBIA, y el bucle que escribe— y
+ * cuando cada una la contestaba por su cuenta no contestaban lo mismo: la
+ * primera miraba si la clave venía, sin mirar su valor (hallazgo CO-01).
+ *
+ * Se devuelve siempre el texto tal como se guarda, porque así es como está en
+ * la base y así se puede comparar con lo que ya hay.
+ */
+const DESCARTADO = Symbol('no entra');
+
+function comoQuedaria(opcion, valor) {
+  // Ojo: "0" es una cadena, y toda cadena es verdadera en JavaScript; hay que
+  // mirar el valor, si no un "0" enviado por la API dejaría la opción activa.
+  if (opcion.tipo === 'boolean') {
+    return valor === true || valor === 1 || valor === '1' || valor === 'true' ? '1' : '0';
+  }
+  // Una opción de lista solo admite lo que declara: un valor inventado
+  // dejaría el sistema en un modo que no existe
+  if (opcion.tipo === 'select') {
+    return (opcion.opciones || []).some((x) => x.valor === String(valor)) ? String(valor) : DESCARTADO;
+  }
+  if (opcion.tipo === 'number') {
+    const n = Number(valor);
+    if (!Number.isFinite(n)) return DESCARTADO;
+    const dentro = Math.min(
+      opcion.max === undefined ? n : opcion.max,
+      Math.max(opcion.min === undefined ? n : opcion.min, Math.round(n))
+    );
+    return String(dentro);
+  }
+  return String(valor == null ? '' : valor);
+}
+
+/** ¿Este guardado deja la opción distinta de como está? */
+function quedaDistinta(clave, valor) {
+  const opcion = POR_CLAVE[clave];
+  if (!opcion) return false;
+  const quedaria = comoQuedaria(opcion, valor);
+  if (quedaria === DESCARTADO) return false;   // no entra: no cambia nada
+  const ahora = obtener(clave);
+  return String(ahora == null ? '' : ahora) !== quedaria;
+}
+
 
 // Lo mínimo que necesita la pantalla de acceso, sin sesión iniciada
 router.get('/publica', (req, res) => {
@@ -139,9 +186,32 @@ router.put('/', authRequired, (req, res) => {
    * es lo mismo: se puede querer delegar la configuración sin entregar la
    * llave que cierra la puerta. Se comprueba acá y no en la pantalla porque
    * quien manda una petición a mano no pasa por ninguna pantalla.
+   *
+   * SE PREGUNTA POR EL CAMBIO, NO POR LA PRESENCIA (hallazgo CO-01).
+   *
+   * Acá decía `c in cambios`: bastaba con que la clave VINIERA. Y la pantalla
+   * no manda lo que uno tocó, manda los setenta campos en cada guardado, así
+   * que `mantenimiento_activo` viene siempre. Medido en la v1.423.0, con una
+   * cuenta que tenía la llave de la configuración y no la del mantenimiento:
+   *
+   *   PUT con una sola clave, a mano ......  200 · entra
+   *   PUT con los 70 campos, o sea el
+   *   botón Guardar de la pantalla .......  403 · «No tiene permiso para
+   *                                          dejar el sistema en mantenimiento»
+   *
+   * Y el interruptor iba en `false`, igual que como estaba guardado: ni
+   * siquiera lo había tocado. O sea que el permiso que se creó para poder
+   * DELEGAR la configuración dejaba la pantalla inservible para quien lo
+   * recibía, con un mensaje que además le decía «Puede cambiar el resto de la
+   * configuración», que era justo lo que no podía.
+   *
+   * Ahora se compara con lo que hay guardado, con la misma cuenta que usa el
+   * bucle de más abajo para escribir: dos maneras de normalizar habrían sido
+   * dos verdades, y ese fue exactamente el defecto.
    */
   const DEL_MANTENIMIENTO = ['mantenimiento_activo', 'mantenimiento_mensaje'];
-  if (DEL_MANTENIMIENTO.some((c) => c in cambios) && !can(req.user, 'sistema_mantenimiento', 'view')) {
+  const loMueve = DEL_MANTENIMIENTO.some((c) => c in cambios && quedaDistinta(c, cambios[c]));
+  if (loMueve && !can(req.user, 'sistema_mantenimiento', 'view')) {
     return res.status(403).json({
       error: 'No tiene permiso para dejar el sistema en mantenimiento. Puede cambiar el resto de la configuración.',
     });
@@ -196,26 +266,11 @@ router.put('/', authRequired, (req, res) => {
     if (!POR_CLAVE[clave]) continue;
     const opcion = POR_CLAVE[clave];
     const comoEstaba = obtener(clave);
-    let v = valor;
-    // Ojo: "0" es una cadena, y toda cadena es verdadera en JavaScript; hay que
-    // mirar el valor, si no un "0" enviado por la API dejaría la opción activa.
-    if (opcion.tipo === 'boolean') {
-      v = valor === true || valor === 1 || valor === '1' || valor === 'true' ? '1' : '0';
-    }
-    // Una opción de lista solo admite lo que declara: un valor inventado
-    // dejaría el sistema en un modo que no existe
-    if (opcion.tipo === 'select') {
-      if (!(opcion.opciones || []).some((x) => x.valor === String(valor))) continue;
-    }
-    if (opcion.tipo === 'number') {
-      const n = Number(valor);
-      if (!Number.isFinite(n)) continue;
-      const dentro = Math.min(
-        opcion.max === undefined ? n : opcion.max,
-        Math.max(opcion.min === undefined ? n : opcion.min, Math.round(n))
-      );
-      if (dentro !== n) ajustados.push({ clave, label: opcion.label, pedido: n, quedo: dentro });
-      v = String(dentro);
+    const v = comoQuedaria(opcion, valor);
+    if (v === DESCARTADO) continue;
+    // Un número que no cabía se ajusta al límite, y se dice en cuánto quedó
+    if (opcion.tipo === 'number' && Number(valor) !== Number(v)) {
+      ajustados.push({ clave, label: opcion.label, pedido: Number(valor), quedo: Number(v) });
     }
     guardar(clave, v, req.user.id);
     if (String(comoEstaba == null ? '' : comoEstaba) !== String(v)) {

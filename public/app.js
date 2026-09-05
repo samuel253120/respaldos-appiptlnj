@@ -13417,9 +13417,23 @@ async function viewConfiguracion() {
    * formulario que después el servidor le va a rechazar.
    */
   const puedeCambiarla = tieneLlave('sistema_configuracion', 'edit');
-  const bloqueado = puedeCambiarla ? '' : ' disabled';
+
+  /*
+   * El mantenimiento tiene su propia llave, y sus dos campos también.
+   *
+   * A quien no la tenga se le muestran igual —saber si el sistema está en
+   * mantenimiento le sirve— pero bloqueados: dejarle mover un interruptor que
+   * el servidor le va a rechazar es hacerle llenar un formulario para nada.
+   * El servidor lo comprueba igual, porque quien manda una petición a mano no
+   * pasa por acá.
+   */
+  const DEL_MANTENIMIENTO = ['mantenimiento_activo', 'mantenimiento_mensaje'];
+  const puedeElMantenimiento = tieneLlave('sistema_mantenimiento');
+  const seBloquea = (o) => !puedeCambiarla
+    || (DEL_MANTENIMIENTO.includes(o.clave) && !puedeElMantenimiento);
 
   const campo = (o) => {
+    const bloqueado = seBloquea(o) ? ' disabled' : '';
     if (o.tipo === 'boolean') {
       return `<div class="fld check full">
         <input type="checkbox" id="cfg_${o.clave}" data-clave="${o.clave}" data-tipo="boolean" ${String(o.valor) === '1' ? 'checked' : ''}${bloqueado} />
