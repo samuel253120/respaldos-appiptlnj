@@ -142,19 +142,42 @@ test('y haberlo subido deja de dar derechos cuando la ficha no es suya', () => {
 
 /* ------------------------------- lo de la institución sigue igual */
 
-test('el logo, el sello y la firma se siguen entregando a quien tenga sesión', () => {
+test('el logo se sigue entregando a quien tenga sesión, sea de la iglesia que sea', () => {
   /*
-   * No pertenecen a ninguna ficha —viven en la configuración— y no son de
-   * nadie en particular: salen en las credenciales, en las actas y en los
-   * documentos que imprime medio sistema. Sin esta excepción, el sello dejaría
-   * de verse para todos menos para quien lo cargó, y la pantalla de
-   * Configuración amanecería con un hueco.
+   * No pertenece a ninguna ficha —vive en la configuración— y no es de nadie en
+   * particular: sale en la pantalla de acceso, en el menú, en las actas y en el
+   * encabezado de todo lo que imprime medio sistema. Sin esta excepción, el
+   * logo dejaría de verse para todos menos para quien lo cargó.
+   */
+  const logo = subido(ADMIN);
+  assert.equal(archivos.puedeVer(logo, EVA).ok, false, 'todavía no está en la configuración');
+  db.prepare("INSERT OR REPLACE INTO configuracion (clave, valor) VALUES ('iglesia_logo', ?)").run(logo);
+  assert.equal(archivos.puedeVer(logo, EVA).ok, true);
+  assert.equal(archivos.puedeVer(logo, DE_LA_NORTE).ok, true, 'el logo es de la institución, no de una iglesia');
+});
+
+test('el sello y la firma NO: piden el permiso de las credenciales', () => {
+  /*
+   * Acá esta prueba decía «los tres se entregan a quien tenga sesión», y era
+   * verdad hasta la v1.426.0. La intención cambió a propósito, y por eso esta
+   * prueba también (hallazgo CO-03).
+   *
+   * El logo se ve en todas partes. El sello y la firma solo salen en la
+   * credencial pastoral, y son las dos piezas que hacen difícil fabricar una
+   * falsa: el sello va cruzando la fotografía como marca de seguridad. Medido
+   * en la v1.423.0, una tesorera recibía 403 al pedir el listado de
+   * credenciales y 200 con las dos imágenes. Quien no puede ver una credencial
+   * no tiene por qué recibir las piezas con que se arma.
    */
   const sello = subido(ADMIN);
-  assert.equal(archivos.puedeVer(sello, EVA).ok, false, 'todavía no está en la configuración');
   db.prepare("INSERT OR REPLACE INTO configuracion (clave, valor) VALUES ('credencial_sello', ?)").run(sello);
-  assert.equal(archivos.puedeVer(sello, EVA).ok, true);
-  assert.equal(archivos.puedeVer(sello, DE_LA_NORTE).ok, true, 'el sello es de la institución, no de una iglesia');
+
+  const sinCredenciales = { ...EVA, permisos: JSON.stringify({ credenciales: [] }) };
+  const conCredenciales = { ...EVA, permisos: JSON.stringify({ credenciales: ['view'] }) };
+  const negado = archivos.puedeVer(sello, sinCredenciales);
+  assert.equal(negado.ok, false, 'sin el módulo de credenciales, no');
+  assert.match(negado.motivo, /credencial pastoral/, 'y se dice por qué');
+  assert.equal(archivos.puedeVer(sello, conCredenciales).ok, true, 'con él, sí');
 });
 
 test('si no se puede preguntar por la configuración, no se entrega', () => {
@@ -166,9 +189,17 @@ test('si no se puede preguntar por la configuración, no se entrega', () => {
    * ante la duda no entrega. Se descubrió al romper esto a propósito.
    */
   const src = fs.readFileSync(path.join(__dirname, '../../server/archivos.js'), 'utf8');
-  const suya = src.slice(src.indexOf('function esDeLaInstitucion'), src.indexOf('/** Borra un archivo del disco'));
-  assert.match(suya, /catch \(e\) \{\s*return false;/, 'ante la duda, no se entrega');
-  const paraBorrar = src.slice(src.indexOf('function loUsaLaConfiguracion'), src.indexOf('function esDeLaInstitucion'));
+  /*
+   * La de entregar se mudó a server/ajustes.js en la v1.426.0, porque ahora la
+   * preguntan las DOS puertas —ésta y la de la configuración, que entrega el
+   * sello y la firma— y ese archivo no depende de Express ni de la
+   * autenticación, así que las dos pueden llamarlo. Lo que se comprueba no
+   * cambió: cada pregunta falla hacia su propio lado.
+   */
+  const deAjustes = fs.readFileSync(path.join(__dirname, '../../server/ajustes.js'), 'utf8');
+  const suya = deAjustes.slice(deAjustes.indexOf('function elArchivoDeLaInstitucion'));
+  assert.match(suya.slice(0, 1200), /catch \(e\) \{[\s\S]*?return null;/, 'ante la duda, no se entrega');
+  const paraBorrar = src.slice(src.indexOf('function loUsaLaConfiguracion'), src.indexOf('function loUsaAlguien'));
   assert.match(paraBorrar, /return true;/, 'y la de borrar sigue diciendo que sí, para no borrar de más');
   /*
    * Solo el cuerpo de `puedeVer`: hasta el `}` que la cierra al margen. Un
@@ -185,7 +216,7 @@ test('si no se puede preguntar por la configuración, no se entrega', () => {
   const mirar = src.slice(desde, src.indexOf('\n}', desde) + 2);
   const cuantas = (mirar.match(/^function /gm) || []).length;
   assert.equal(cuantas, 1, `el recorte abarca ${cuantas} funciones, no una`);
-  assert.match(mirar, /esDeLaInstitucion\(archivo\)/);
+  assert.match(mirar, /elArchivoDeLaInstitucion\(archivo\)/);
   assert.doesNotMatch(mirar, /loUsaLaConfiguracion/, 'la de borrar no puede decidir quién mira');
 });
 

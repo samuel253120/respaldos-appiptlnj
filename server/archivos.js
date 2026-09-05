@@ -165,9 +165,25 @@ function puedeVer(archivo, usuario) {
    * El logo, el sello y la firma de la institución no pertenecen a ninguna
    * ficha —viven en la configuración— y no son de nadie en particular: salen
    * en las credenciales, en las actas y en los documentos que imprime medio
-   * sistema. Se siguen entregando a quien tenga sesión, como siempre.
+   * sistema.
+   *
+   * PERO NO LOS TRES IGUAL (hallazgo CO-03). El logo se ve en todas partes y se
+   * entrega a quien tenga sesión, como siempre. El sello y la firma solo salen
+   * en la credencial, y son las dos piezas que hacen difícil fabricar una
+   * falsa: piden el permiso de credenciales. Cuál lo pide lo dice el propio
+   * ajuste, en server/ajustes.js, que es donde lo pregunta también la otra
+   * puerta —la de la configuración—: dos maneras de contestarlo habrían dejado
+   * una de las dos abierta.
    */
-  if (esDeLaInstitucion(archivo)) return { ok: true };
+  const deLaInstitucion = require('./ajustes').elArchivoDeLaInstitucion(archivo);
+  if (deLaInstitucion) {
+    if (!deLaInstitucion.permiso) return { ok: true };
+    if (can(usuario, deLaInstitucion.permiso, 'view')) return { ok: true };
+    return {
+      ok: false,
+      motivo: 'Ese archivo es parte de la credencial pastoral, y su cuenta no tiene ese módulo habilitado',
+    };
+  }
 
   // Lo demás sin ficha es un archivo recién subido cuyo formulario todavía no
   // se guarda. Lo ve quien lo subió, y nadie más.
@@ -220,23 +236,6 @@ function loUsaLaConfiguracion(archivo) {
     return !!fila;
   } catch (e) {
     return true; // si no se puede preguntar, no se borra: nunca por las dudas
-  }
-}
-
-/**
- * La misma pregunta, pero para decidir si se ENTREGA el archivo.
- *
- * Es la de arriba con el modo de fallo dado vuelta, y por eso va aparte. Ante
- * la duda, aquella contesta «sí, está en uso» para no borrar nada por error;
- * si se reusara acá, un problema al consultar la base abriría el archivo a
- * todo el mundo, que es exactamente lo contrario de lo prudente. Acá, ante la
- * duda, no se entrega.
- */
-function esDeLaInstitucion(archivo) {
-  try {
-    return !!db.prepare('SELECT 1 FROM configuracion WHERE valor = ? LIMIT 1').get(archivo);
-  } catch (e) {
-    return false;
   }
 }
 

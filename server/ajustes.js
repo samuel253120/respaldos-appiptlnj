@@ -366,6 +366,23 @@ const OPCIONES = [
     items: [
       {
         clave: 'credencial_sello', label: 'Sello oficial', tipo: 'imagen', defecto: '',
+        /*
+         * PIDE EL PERMISO DE LAS CREDENCIALES PARA VERSE (hallazgo CO-03).
+         *
+         * El logo se ve en todas partes —la pantalla de acceso, el menú, el
+         * encabezado de todo lo que se imprime— y por eso se entrega a quien
+         * tenga sesión, y hasta sin ella. El sello y la firma no: solo salen en
+         * la credencial, y son justamente las dos piezas que hacen difícil
+         * fabricar una falsa. La especificación usa el sello DOS veces, y una
+         * de ellas cruzando la fotografía como marca de seguridad.
+         *
+         * Medido en la v1.423.0 con una cuenta de tesorera, sin permisos
+         * propios: «/api/credenciales» le contestaba 403 —no puede ni ver el
+         * listado— y «/api/configuracion/recurso/sello» y «/recurso/firma» le
+         * contestaban 200 con las imágenes. Quien no puede ver una credencial
+         * no tiene por qué recibir las piezas con que se arma.
+         */
+        soloConPermiso: 'credenciales',
         ayuda:
           'El sello de la corporación. Va dos veces en la credencial: completo en el reverso, y cruzando la ' +
           'fotografía del anverso como marca de seguridad. Conviene un PNG con fondo transparente. Sin él no ' +
@@ -373,6 +390,7 @@ const OPCIONES = [
       },
       {
         clave: 'credencial_firma', label: 'Firma del Pastor Presidente', tipo: 'imagen', defecto: '',
+        soloConPermiso: 'credenciales',   // igual que el sello: ver el comentario de arriba
         ayuda:
           'Va sobre la línea de firma del reverso. Conviene un PNG con fondo transparente, recortado justo a ' +
           'la firma. Sin ella no se puede emitir ni imprimir.',
@@ -636,4 +654,43 @@ function guardar(clave, valor, usuarioId) {
   ).run(clave, String(valor), usuarioId || null);
 }
 
-module.exports = { OPCIONES, POR_CLAVE, obtener, activo, numero, todas, guardar };
+/**
+ * ¿Este archivo es de la institución? Y si lo es, ¿qué permiso pide para verse?
+ *
+ * Vive acá porque lo preguntan DOS puertas distintas —la que entrega el sello y
+ * la firma desde la configuración, y la que entrega cualquier archivo subido
+ * (server/archivos.js)— y porque este archivo no depende de Express ni de la
+ * autenticación, así que las dos pueden llamarlo sin darle vueltas.
+ *
+ * Dos maneras de contestar habrían sido dos verdades: cerrar una de las puertas
+ * y dejar la otra abierta es no haber cerrado nada.
+ *
+ * Devuelve `null` si el archivo no es de la institución. Si lo es, devuelve
+ * `{ clave, permiso }`, y `permiso` es null cuando basta con tener sesión
+ * —el logo, que se ve en todas partes—.
+ */
+function elArchivoDeLaInstitucion(archivo) {
+  let fila;
+  try {
+    fila = db.prepare('SELECT clave FROM configuracion WHERE valor = ? LIMIT 1').get(archivo);
+  } catch (e) {
+    /*
+     * Ante la duda, se contesta que NO es de la institución, y quien pregunta
+     * no lo entrega. Es el modo de fallo dado vuelta respecto de la pregunta
+     * que hace la barrida nocturna —«¿lo usa alguien?»—, que ante la duda
+     * contesta que sí para no borrar nada por error. Compartir una sola de las
+     * dos funciones dejaría que un problema al consultar la base abriera el
+     * archivo a todo el mundo, o borrara el logo: cada pregunta tiene que
+     * fallar hacia su propio lado prudente.
+     */
+    return null;
+  }
+  if (!fila) return null;
+  const opcion = POR_CLAVE[fila.clave];
+  if (!opcion || opcion.tipo !== 'imagen') return null;
+  return { clave: fila.clave, permiso: opcion.soloConPermiso || null };
+}
+
+module.exports = {
+  OPCIONES, POR_CLAVE, obtener, activo, numero, todas, guardar, elArchivoDeLaInstitucion,
+};

@@ -171,9 +171,23 @@ test('vale para cualquier módulo cerrado, no solo para las ayudas', () => {
 test('no se cerró de más: el logo de la institución y el recién subido siguen igual', () => {
   const logo = 'logo-de-la-institucion-ayuda.png';
   fs.writeFileSync(path.join(UPLOADS_DIR, logo), 'PNG');
-  db.prepare("INSERT INTO configuracion (clave, valor) VALUES ('logo_prueba_ayuda', ?)").run(logo);
+  /*
+   * Con la clave DE VERDAD del logo, no con una inventada.
+   *
+   * Acá decía «logo_prueba_ayuda», que no es ninguna de las opciones que el
+   * sistema declara. Andaba porque bastaba con que el nombre del archivo
+   * apareciera en cualquier fila de la tabla de configuración, y en esa tabla
+   * viven también cosas internas —la fecha del último resumen de avisos, por
+   * ejemplo—. Desde la v1.426.0 se pregunta por la OPCIÓN: tiene que ser una de
+   * las declaradas y de tipo imagen. Es más estricto y está bien que lo sea,
+   * pero deja en evidencia que esta prueba estaba mirando otra cosa.
+   */
+  db.prepare(
+    "INSERT INTO configuracion (clave, valor) VALUES ('iglesia_logo', ?) "
+    + 'ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor'
+  ).run(logo);
   assert.equal(archivos.puedeVer(logo, SOLO_CONSULTA).ok, true,
-    'no es de ninguna ficha y sale en las credenciales y las actas: se entrega a quien tenga sesión');
+    'el logo no es de ninguna ficha y sale en todo lo que se imprime: lo ve quien tenga sesión');
 
   const recien = 'recien-subido-por-la-ayuda.txt';
   fs.writeFileSync(path.join(UPLOADS_DIR, recien), 'x');

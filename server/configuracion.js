@@ -197,6 +197,23 @@ const RECURSOS = { sello: 'credencial_sello', firma: 'credencial_firma' };
 router.get('/recurso/:cual', authRequired, (req, res) => {
   const clave = RECURSOS[req.params.cual];
   if (!clave) return res.status(404).json({ error: 'Ese recurso no existe' });
+  /*
+   * Y PIDE EL PERMISO QUE PIDA EL AJUSTE (hallazgo CO-03).
+   *
+   * Acá bastaba con tener sesión. Medido en la v1.423.0 con una cuenta de
+   * tesorera sin permisos propios: «/api/credenciales» le contestaba 403 —no
+   * puede ni ver el listado— y el sello y la firma le llegaban con un 200.
+   * Son las dos piezas que hacen difícil fabricar una credencial falsa.
+   *
+   * Cuál permiso pide cada uno lo dice el propio ajuste, y se pregunta con la
+   * misma cuenta que usa la otra puerta, la de /uploads (server/archivos.js).
+   */
+  const pide = POR_CLAVE[clave] && POR_CLAVE[clave].soloConPermiso;
+  if (pide && !can(req.user, pide, 'view')) {
+    return res.status(403).json({
+      error: `El ${req.params.cual} es parte de la credencial pastoral, y su cuenta no tiene ese módulo habilitado`,
+    });
+  }
   const archivo = obtener(clave);
   if (!archivo) return res.status(404).json({ error: `Falta cargar el ${req.params.cual} en Configuración del Sistema` });
   // Y por lo mismo que el logo: lo guardado pudo quedar puesto antes de que el
