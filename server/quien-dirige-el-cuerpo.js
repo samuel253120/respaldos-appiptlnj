@@ -131,4 +131,51 @@ function avisoSiNoEsIntegrante(db, { tipo, personaId, ficha, existing, confirmad
   };
 }
 
-module.exports = { DE_DONDE, esIntegrante, avisoSiEsDeOtraIglesia, avisoSiNoEsIntegrante };
+/* ------------------- y quien deja el cuerpo siendo quien lo dirige ---- */
+
+/**
+ * El aviso al sacar del cuerpo a la persona que lo DIRIGE.
+ *
+ * Es la otra mitad de `avisoSiNoEsIntegrante`, y faltaba. El sistema se niega a
+ * nombrar líder a quien no es integrante —«no figura entre los integrantes de
+ * este cuerpo… De los integrantes de un cuerpo sale su directiva»— y en cambio
+ * dejaba retirarlo del cuerpo sin decir una palabra, que es llegar al mismo
+ * estado por el otro lado. Medido en la v1.393.0, sobre el mismo cuerpo:
+ *
+ *   nombrar líder a quien NO es integrante .... 400, con su explicación
+ *   retirar del cuerpo al que SÍ lo dirige .... 200, sin preguntar nada
+ *
+ * y después el cuerpo seguía diciendo que lo dirige esa persona, con su ficha
+ * marcada «Retirado» y la marca «Lidera» al lado, las dos cosas a la vez.
+ *
+ * Se pregunta y no se prohíbe, por lo mismo que el cargo de la directiva: la
+ * persona se va, y eso el sistema no lo puede discutir. Lo que hace falta es que
+ * quien lo anota se entere ahora, que es cuando puede designar a otro.
+ */
+function avisoSiDejaDeDirigir(db, { cuerpoId, tipo = 'Miembro', personaId, comoSale = 'sale del cuerpo' }) {
+  if (!cuerpoId || !personaId) return null;
+  const cuerpo = db.prepare('SELECT * FROM cuerpos WHERE id = ?').get(cuerpoId);
+  if (!cuerpo) return null;
+  const suTipo = String(cuerpo.lider_tipo || 'Miembro');
+  if (suTipo !== String(tipo)) return null;
+  const quienDirige = suTipo === 'No miembro' ? cuerpo.lider_no_miembro_id : cuerpo.lider_id;
+  if (!quienDirige || Number(quienDirige) !== Number(personaId)) return null;
+
+  const donde = DE_DONDE[suTipo];
+  const ficha = donde
+    ? db.prepare(`SELECT nombres, apellidos FROM "${donde.tabla}" WHERE id = ?`).get(personaId)
+    : null;
+  const nombre = `${(ficha && ficha.nombres) || ''} ${(ficha && ficha.apellidos) || ''}`.trim() || 'Esa persona';
+  return {
+    error:
+      `${nombre} ${comoSale}, y es quien dirige «${cuerpo.nombre}». Si sigue, el cuerpo queda `
+      + 'dirigido por alguien que ya no pertenece a él, que es justamente lo que el sistema no deja '
+      + 'hacer al revés: nombrar líder a quien no es integrante. Designe a otra persona en la ficha '
+      + 'del cuerpo, o confirme para dejarlo anotado así por ahora.',
+    confirmar: 'deja_al_cuerpo_sin_quien_lo_dirija',
+  };
+}
+
+module.exports = {
+  DE_DONDE, esIntegrante, avisoSiEsDeOtraIglesia, avisoSiNoEsIntegrante, avisoSiDejaDeDirigir,
+};

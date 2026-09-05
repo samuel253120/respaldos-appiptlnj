@@ -8009,6 +8009,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y dejarlo anulado',
       seguir: 'Devolverle la validez',
     },
+    deja_al_cuerpo_sin_quien_lo_dirija: {
+      titulo: '🏅 El cuerpo se queda sin quien lo dirija',
+      volver: 'Volver y designar a otra persona',
+      seguir: 'Sacarlo igual',
+    },
   };
   const como = COMO_SE_PREGUNTA[err.datos && err.datos.confirmar] || {
     titulo: '🔎 Revise esto antes de guardar',

@@ -32,6 +32,28 @@ const {
   ESTADOS, REGISTROS, finDelPeriodoDePrueba, fichaDePersona,
 } = require('../integrantes');
 
+/**
+ * LO QUE ESTA PERSONA DEJA VACANTE AL SALIR DEL CUERPO, en una sola pregunta.
+ *
+ * Son dos cosas distintas y las dos se pierden igual: el cargo que ocupa en la
+ * directiva que ejerce, y el ser quien dirige el cuerpo. La segunda faltaba
+ * hasta la v1.396.0. Se juntan en un solo aviso a propósito: preguntar dos
+ * veces seguidas por la misma salida enseña a apretar «Está bien» sin leer, que
+ * es lo que estas preguntas existen para evitar.
+ */
+function loQueDejaVacante(db, { cuerpoId, tipo, personaId, miembroId, comoSale }) {
+  const avisos = [
+    require('../quien-dirige-el-cuerpo').avisoSiDejaDeDirigir(db, { cuerpoId, tipo, personaId, comoSale }),
+    require('../cargos-de-la-directiva').avisoDeQueOcupaUnCargo(db, { cuerpoId, miembroId, comoSale }),
+  ].filter(Boolean);
+  if (!avisos.length) return null;
+  if (avisos.length === 1) return avisos[0];
+  return {
+    error: `${avisos[0].error} Y además, ${avisos[1].error.charAt(0).toLowerCase()}${avisos[1].error.slice(1)}`,
+    confirmar: 'deja_al_cuerpo_sin_quien_lo_dirija',
+  };
+}
+
 module.exports = {
   name: 'integrantes_cuerpo',
   label: 'Integrantes de Cuerpos',
@@ -166,8 +188,13 @@ module.exports = {
        * que enterarse ahora, que es cuando puede hacer algo.
        */
       if (!confirmado && existing && existing.estado !== 'Retirado' && dato('estado') === 'Retirado') {
-        const aviso = require('../cargos-de-la-directiva')
-          .avisoDeQueOcupaUnCargo(db, { cuerpoId, miembroId: existing.miembro_id, comoSale: 'se retira del cuerpo' });
+        const aviso = loQueDejaVacante(db, {
+          cuerpoId,
+          tipo: existing.persona_tipo,
+          personaId: existing.no_miembro_id || existing.miembro_id,
+          miembroId: existing.miembro_id,
+          comoSale: 'se retira del cuerpo',
+        });
         if (aviso) return aviso;
       }
 
@@ -317,8 +344,13 @@ module.exports = {
        * la 1.249.0 con la planilla de cuotas.
        */
       if (!confirmado) {
-        const aviso = require('../cargos-de-la-directiva')
-          .avisoDeQueOcupaUnCargo(db, { cuerpoId: fila.cuerpo_id, miembroId: fila.miembro_id, comoSale: 'sale del cuerpo' });
+        const aviso = loQueDejaVacante(db, {
+          cuerpoId: fila.cuerpo_id,
+          tipo: fila.persona_tipo,
+          personaId: fila.no_miembro_id || fila.miembro_id,
+          miembroId: fila.miembro_id,
+          comoSale: 'sale del cuerpo',
+        });
         if (aviso) return aviso;
       }
       const cuotas = db.prepare('SELECT COUNT(*) c FROM cuotas_cuerpo WHERE integrante_id = ?').get(fila.id).c;
