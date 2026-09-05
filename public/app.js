@@ -13668,7 +13668,10 @@ async function viewConfiguracion() {
     if (mantenimiento && !confirm('¿Activar el modo mantenimiento?\n\nSolo podrá ingresar quien tenga permiso para cambiar la configuración; el resto verá el aviso y se cerrará su sesión.')) return;
     try {
       const r = await api('PUT', '/configuracion', cambios);
-      toast('Configuración guardada');
+      // El aviso corto dice la verdad: si algo no entró, no se guardó todo
+      toast(((r && r.descartados) || []).length
+        ? 'Se guardó, pero hay algo que no entró: mire el aviso'
+        : 'Configuración guardada');
       // Lo que se guarda es lo que se usa: si un número quedó fuera de sus
       // límites, se ajustó y se dice cuál y en cuánto quedó. Callarlo dejaría
       // la pantalla mostrando un valor que el sistema no está usando.
@@ -13684,6 +13687,22 @@ async function viewConfiguracion() {
             .map((a) => `«${esc(a.label)}» quedó en <b>${fmtNumero(a.quedo)}</b> (se pidió ${fmtNumero(a.pedido)})`)
             .join(' · ')}.</div>`
         : '';
+      /*
+       * Y lo que NO ENTRÓ, que es distinto de lo que se ajustó.
+       *
+       * El servidor descarta una lista con un valor que no existe y un número
+       * que no es un número, y antes lo hacía en silencio: contestaba que sí,
+       * la pantalla mostraba su aviso verde, y el campo volvía solo a lo de
+       * antes sin que nada lo explicara (hallazgo CO-06). Un error del que no
+       * se avisa se repite.
+       */
+      const descartados = (r && r.descartados) || [];
+      const avisoDeLoQueNoEntro = descartados.length
+        ? `<div class="resultado warn"><b>⚠️ Esto no se guardó.</b> ${descartados
+            .map((d) => `«${esc(d.label)}»: «${esc(d.pedido)}» ${esc(d.porque)}`
+              + `, así que quedó como estaba${d.quedo ? ` (${esc(String(d.quedo))})` : ''}`)
+            .join(' · ')}.</div>`
+        : '';
       // Y los campos se ponen al día con lo que de verdad quedó guardado: si
       // uno se ajustó, dejar el número pedido en pantalla sería seguir
       // mostrando algo que el sistema no está usando.
@@ -13695,7 +13714,7 @@ async function viewConfiguracion() {
           else el.value = quedo === null ? '' : quedo;
         });
       }
-      document.getElementById('cfgEstado').innerHTML = avisoDeLimites + (mantenimiento
+      document.getElementById('cfgEstado').innerHTML = avisoDeLimites + avisoDeLoQueNoEntro + (mantenimiento
         ? `<div class="resultado warn"><b>🛠️ El sistema quedó en mantenimiento.</b> Solo puede ingresar quien tenga permiso para cambiar la configuración. Desactive esta opción para volver a la normalidad.</div>`
         : '');
       // El logo se ve en toda la pantalla —el menú, lo que se imprime—, así

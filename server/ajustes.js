@@ -106,8 +106,28 @@ const OPCIONES = [
       {
         clave: 'asistencia_actividad_defecto', label: 'Actividad que viene elegida al pasar lista',
         tipo: 'select', defecto: 'Servicio General',
-        // Los que la iglesia tenga en uso hoy, no la lista de fábrica
-        opciones: require('./actividades').losQueSeUsan().map((t) => ({ valor: t, label: t })),
+        /*
+         * SE PREGUNTA CADA VEZ, no una sola al arrancar (hallazgo CO-05).
+         *
+         * Acá había una propiedad corriente, no un `get`, así que la lista se
+         * armaba UNA VEZ al cargar este archivo y se quedaba con la foto del
+         * arranque. Los tipos de actividad, en cambio, son datos que la iglesia
+         * mantiene desde su propia pantalla.
+         *
+         * Medido en la v1.423.0: se creó «Vigilia de Año Nuevo», se volvió a
+         * abrir Configuración, y el desplegable seguía ofreciendo los doce de
+         * antes. Peor todavía, la comprobación del guardado usaba ESA MISMA
+         * lista congelada, así que elegir el tipo nuevo no daba error: se
+         * descartaba, y el servidor contestaba que sí. Hasta el próximo
+         * reinicio del servidor, la actividad nueva no se podía dejar puesta.
+         *
+         * El ajuste de al lado —«Categoría que compone la directiva»— ya usaba
+         * un `get` por esta misma razón: eran dos maneras distintas en el mismo
+         * archivo, y una de las dos estaba mal.
+         */
+        get opciones() {
+          return require('./actividades').losQueSeUsan().map((t) => ({ valor: t, label: t }));
+        },
         ayuda: 'La que aparece marcada al crear una actividad nueva. Conviene poner la que más se repite.',
       },
       {

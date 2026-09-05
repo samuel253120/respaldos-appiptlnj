@@ -371,14 +371,45 @@ router.put('/', authRequired, (req, res) => {
     }
   }
 
+  /*
+   * LO QUE SE DESCARTA SE DICE (hallazgo CO-06).
+   *
+   * En este bucle hay dos maneras de que una opción no entre: una lista con un
+   * valor que no existe, y un número que no es un número. Las dos se saltaban
+   * la opción sin escribir nada y sin decir nada, y la respuesta terminaba
+   * igual en «ok: true», con lo cual la pantalla mostraba su aviso verde de
+   * «Configuración guardada».
+   *
+   * Medido en la v1.423.0: mandando «telepatia» como modo del código QR y
+   * «Marte/Olympus» como zona horaria, la respuesta fue ok = true y los dos
+   * ajustes quedaron como estaban. Lo mismo con «muchas» copias de respaldo.
+   * El campo volvía solo a lo de antes y no había nada que lo explicara.
+   *
+   * Los números FUERA DE RANGO ya estaban bien resueltos: se ajustan al límite,
+   * se devuelven en `ajustados` y la pantalla dice cuál quedó en cuánto. Esto
+   * es exactamente el mismo trato para lo que se descarta entero, y sale por
+   * separado porque no es lo mismo «lo puse en el máximo» que «no lo puse».
+   */
   const ajustados = [];
+  const descartados = [];
   const anotados = [];
   for (const [clave, valor] of Object.entries(cambios)) {
     if (!POR_CLAVE[clave]) continue;
     const opcion = POR_CLAVE[clave];
     const comoEstaba = obtener(clave);
     const v = comoQuedaria(opcion, valor);
-    if (v === DESCARTADO) continue;
+    if (v === DESCARTADO) {
+      descartados.push({
+        clave,
+        label: opcion.label,
+        pedido: String(valor == null ? '' : valor).slice(0, 80),
+        quedo: comoEstaba,
+        porque: opcion.tipo === 'select'
+          ? 'no es una de las opciones'
+          : 'no es un número',
+      });
+      continue;
+    }
     // Un número que no cabía se ajusta al límite, y se dice en cuánto quedó
     if (opcion.tipo === 'number' && Number(valor) !== Number(v)) {
       ajustados.push({ clave, label: opcion.label, pedido: Number(valor), quedo: Number(v) });
@@ -400,7 +431,7 @@ router.put('/', authRequired, (req, res) => {
   const zonaHoraria = require('./zona-horaria');
   zonaHoraria.aplicar();
 
-  res.json({ ok: true, valores: todas(), ajustados, hora: zonaHoraria.ahora() });
+  res.json({ ok: true, valores: todas(), ajustados, descartados, hora: zonaHoraria.ahora() });
 });
 
 /**
