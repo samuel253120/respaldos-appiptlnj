@@ -53,8 +53,23 @@ module.exports = {
       help: 'Aprobado: pasa a integrante oficial. No aprobado: sigue en prueba, con un plazo nuevo.',
     },
     {
+      /*
+       * El mismo rango que «Meses de período de prueba» del cuerpo —de 1 a 60
+       * y entero— porque es la misma cosa medida dos veces: cuánto dura una
+       * prueba. Sin techo esto escribía fechas imposibles: medido en la
+       * v1.399.0, 1.200 meses dejaban el plazo en 2126 y 999.999 escribían
+       * «+085359-08» en la ficha del integrante, que ni siquiera es una fecha
+       * —es lo que devuelve el calendario cuando el año pasa de 9999— y se
+       * guardaba tal cual en la columna del plazo.
+       *
+       * El mínimo es 1 y no 0: extender la prueba cero meses no es extenderla,
+       * y −6 se guardaba tal cual sin que el plazo lo reflejara, o sea que la
+       * ficha decía una cosa y hacía otra. Quien quiera los meses que define el
+       * cuerpo deja el campo en blanco, que es lo que la ayuda ya decía.
+       */
       name: 'meses_extension', label: 'Meses que se extiende la prueba', type: 'number',
       showIf: { field: 'resultado', equals: 'No aprobado (se extiende la prueba)' },
+      min: 1, max: 60, entero: true,
       help: 'Cuánto más dura su prueba, contado desde esta evaluación. En blanco, se repiten los meses del cuerpo.',
     },
     { name: 'evaluado_por', label: 'Evaluado por', type: 'text', seccion: 'El informe',
@@ -124,6 +139,29 @@ module.exports = {
             + `${ficha.fecha_oficial ? `, desde el ${comoSeLee(ficha.fecha_oficial)}` : ''}. `
             + 'La evaluación es del período de prueba, así que no hay ninguno que evaluar. '
             + 'Si tiene que dejar de serlo, cámbiele el estado en su ficha de integrante.';
+        }
+
+        /*
+         * Y NADIE SE EVALÚA ANTES DE ENTRAR AL CUERPO.
+         *
+         * La fecha de la evaluación no se comparaba con nada. El motor tiene
+         * `noAntesDe` para eso, pero no sirve acá: la fecha contra la que hay
+         * que mirar —el ingreso al cuerpo— vive en OTRO módulo, en la ficha del
+         * integrante, y esa regla compara dos fechas de la misma ficha.
+         *
+         * Medido en la v1.399.0: evaluar el 10-01-2006 a alguien que entró al
+         * cuerpo el 01-03-2026 contestaba 201, y el plazo nuevo de su prueba
+         * quedaba en 10-04-2006 —una prueba que venció hace veinte años—, con
+         * lo que la persona aparece vencida para siempre en la lista de su
+         * cuerpo. El error de tecleo de siempre, el año equivocado, que es lo
+         * que server/fechas.js viene atajando desde la 1.290.0.
+         */
+        const { comoSeLee: leer } = require('../fechas');
+        const cuando = String(dato('fecha') || '').slice(0, 10);
+        if (cuando && ficha.fecha_ingreso && cuando < String(ficha.fecha_ingreso).slice(0, 10)) {
+          return `La evaluación dice ${leer(cuando)} y ${ficha.persona || 'esa persona'} entró al `
+            + `cuerpo el ${leer(ficha.fecha_ingreso)}. No se puede evaluar un período de prueba `
+            + 'antes de que empiece: revise el año.';
         }
 
         /*
