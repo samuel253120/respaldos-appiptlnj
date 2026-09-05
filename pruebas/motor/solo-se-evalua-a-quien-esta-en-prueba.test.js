@@ -64,7 +64,7 @@ function unaFicha(cuerpo, estado, campos = {}) {
 
 /** Lo que contesta el gancho al anotar una evaluación NUEVA. */
 const alEvaluar = (integranteId, extra = {}) => evaluaciones.hooks.beforeSave(
-  { integrante_id: integranteId, fecha: '2026-05-20', resultado: 'Aprobado', evaluado_por: 'X', ...extra },
+  { integrante_id: integranteId, fecha: '2026-05-20', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'X', ...extra },
   { existing: null, db },
 );
 
@@ -113,7 +113,7 @@ test('corregir una evaluación YA anotada se sigue pudiendo, con la ficha movida
   // «En prueba» dejaría sin arreglar justamente lo que se anotó mal.
   const ficha = unaFicha(unCuerpo(), 'Activo', { fecha_oficial: '2026-05-20' });
   const aviso = evaluaciones.hooks.beforeSave(
-    { integrante_id: ficha, fecha: '2026-05-20', resultado: 'Aprobado', evaluado_por: 'La directiva' },
+    { integrante_id: ficha, fecha: '2026-05-20', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva' },
     { existing: { id: 1, integrante_id: ficha, resultado: 'Aprobado', fecha: '2026-05-20' }, db },
   );
   assert.equal(aviso, null);
@@ -126,11 +126,11 @@ test('y por la puerta, con las dos maneras de anotar una', async () => {
   const oficial = unaFicha(cuerpo, 'Activo', { fecha_oficial: '2020-01-15' });
 
   const bien = await api('POST', '/evaluaciones_integrantes',
-    { integrante_id: enPrueba, fecha: '2026-05-20', resultado: 'Aprobado', evaluado_por: 'La directiva' });
+    { integrante_id: enPrueba, fecha: '2026-05-20', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva' });
   assert.equal(bien.estado, 201, bien.texto);
 
   const mal = await api('POST', '/evaluaciones_integrantes',
-    { integrante_id: oficial, fecha: '2026-05-20', resultado: 'Aprobado', evaluado_por: 'La directiva' });
+    { integrante_id: oficial, fecha: '2026-05-20', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva' });
   assert.equal(mal.estado, 400, 'por formulario');
   assert.match(mal.json.error, /ya es integrante oficial/);
 
@@ -139,7 +139,7 @@ test('y por la puerta, con las dos maneras de anotar una', async () => {
   // ellas integrantes oficiales, sin una pregunta.
   const planilla = await api('POST', '/importar/evaluaciones_integrantes?prueba=0', {
     prueba: false,
-    filas: [{ integrante_id: oficial, fecha: '2026-05-30', resultado: 'Retirado del cuerpo', evaluado_por: 'Planilla' }],
+    filas: [{ integrante_id: oficial, fecha: '2026-05-30', resultado: 'Retirado del cuerpo', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'Planilla' }],
   });
   assert.equal(planilla.estado, 200, planilla.texto);
   assert.equal(planilla.json.correctas, 0, 'por planilla tampoco');

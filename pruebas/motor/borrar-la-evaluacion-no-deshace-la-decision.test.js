@@ -120,7 +120,7 @@ test('y por la puerta: sin confirmar no se borra, confirmando sí', async () => 
   ).run(cuerpo, miembro, `Quien${n} Sirve BE ${marca}`, iglesia).lastInsertRowid;
 
   const ev = await api('POST', '/evaluaciones_integrantes',
-    { integrante_id: ficha, fecha: '2026-05-20', resultado: 'Aprobado', evaluado_por: 'La directiva' });
+    { integrante_id: ficha, fecha: '2026-05-20', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva' });
   assert.equal(ev.estado, 201, ev.texto);
 
   const sinConfirmar = await api('DELETE', `/evaluaciones_integrantes/${ev.json.id}`);

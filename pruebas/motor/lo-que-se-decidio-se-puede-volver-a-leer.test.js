@@ -61,9 +61,9 @@ test('la lista del cuerpo dice cuántas evaluaciones tiene cada uno y en qué qu
   const sinNinguna = enPrueba();
 
   await api('POST', '/evaluaciones_integrantes',
-    { integrante_id: conDos, fecha: '2026-04-01', resultado: NO_APROBADO, meses_extension: 2, evaluado_por: 'La directiva' });
+    { integrante_id: conDos, fecha: '2026-04-01', resultado: NO_APROBADO, meses_extension: 2, informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva' });
   await api('POST', '/evaluaciones_integrantes',
-    { integrante_id: conDos, fecha: '2026-07-10', resultado: NO_APROBADO, meses_extension: 3, evaluado_por: 'La directiva' });
+    { integrante_id: conDos, fecha: '2026-07-10', resultado: NO_APROBADO, meses_extension: 3, informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva' });
 
   const r = await api('GET', `/cuerpos/${cuerpo}/integrantes`);
   assert.equal(r.estado, 200, r.texto);
@@ -81,9 +81,9 @@ test('a igual fecha, la última es la que se anotó después', async () => {
   const api = await elSistemaAndando();
   const ficha = enPrueba();
   await api('POST', '/evaluaciones_integrantes',
-    { integrante_id: ficha, fecha: '2026-06-01', resultado: NO_APROBADO, meses_extension: 2, evaluado_por: 'A' });
+    { integrante_id: ficha, fecha: '2026-06-01', resultado: NO_APROBADO, meses_extension: 2, informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'A' });
   await api('POST', '/evaluaciones_integrantes',
-    { integrante_id: ficha, fecha: '2026-06-01', resultado: 'Aprobado', evaluado_por: 'B' });
+    { integrante_id: ficha, fecha: '2026-06-01', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'B' });
 
   const r = await api('GET', `/cuerpos/${cuerpo}/integrantes`);
   const suyo = r.json.integrantes.find((g) => g.id === ficha);

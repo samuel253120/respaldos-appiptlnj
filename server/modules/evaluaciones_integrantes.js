@@ -87,7 +87,8 @@ module.exports = {
       min: 1, max: 60, entero: true,
       help: 'Cuánto más dura su prueba, contado desde esta evaluación. En blanco, se repiten los meses del cuerpo.',
     },
-    { name: 'evaluado_por', label: 'Evaluado por', type: 'text', seccion: 'El informe',
+    { name: 'evaluado_por', label: 'Evaluado por', type: 'text', required: true, seccion: 'El informe',
+      sugerencias: ['La directiva del cuerpo', 'El oficial supervisor', 'Una comisión', 'El pastor'],
       help: 'Quién o qué instancia lo evaluó: la directiva, el oficial supervisor, una comisión…' },
     {
       name: 'informe', label: 'Informe', type: 'richtext',
@@ -190,6 +191,31 @@ module.exports = {
         const cerrado = require('../cuerpo-inactivo')
           .avisoSiEstaInactivo(db, ficha.cuerpo_id, 'evaluar períodos de prueba');
         if (cerrado) return cerrado;
+      }
+
+      /*
+       * UNA EVALUACIÓN SIN INFORME NO ES UNA EVALUACIÓN.
+       *
+       * La cabecera de este módulo dice qué queda anotado en cada una: «su
+       * fecha, quién decidió y el informe —adjunto como documento o escrito acá
+       * mismo—». Las tres cosas. Medido en la v1.399.0: una evaluación con la
+       * fecha y el resultado y nada más se guardaba con 201, y movía el estado
+       * de la persona igual que cualquier otra.
+       *
+       * El informe puede venir de las dos maneras y basta con UNA: hay
+       * directivas que lo escriben acá y hay directivas que suben el papel
+       * firmado. Por eso no se exige el campo —eso obligaría a las dos— sino
+       * que haya alguna de las dos, que es lo que el módulo promete.
+       *
+       * Va después de todo lo demás a propósito: lo de arriba es a quién se
+       * puede evaluar, y esto es qué tiene que traer la evaluación. Primero se
+       * dice que la persona no corresponde y recién después se le pide el
+       * informe, que es el orden en que uno lo arreglaría.
+       */
+      const conInforme = String(dato('informe') || '').replace(/<[^>]*>/g, '').trim();
+      if (!conInforme && !dato('documento')) {
+        return 'Una evaluación tiene que dejar dicho en qué se basa: escriba el informe acá '
+          + 'mismo o adjunte el documento firmado. Con cualquiera de las dos basta.';
       }
       return null;
     },

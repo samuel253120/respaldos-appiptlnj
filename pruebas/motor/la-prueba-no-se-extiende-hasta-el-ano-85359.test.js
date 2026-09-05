@@ -70,7 +70,7 @@ test('por la puerta: lo que se pasa del rango se rechaza diciendo el límite', a
   const api = await elSistemaAndando();
   const ficha = enPrueba();
   const conMeses = (meses) => api('POST', '/evaluaciones_integrantes', {
-    integrante_id: ficha, fecha: '2026-05-20', evaluado_por: 'X',
+    integrante_id: ficha, fecha: '2026-05-20', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'X',
     resultado: 'No aprobado (se extiende la prueba)', meses_extension: meses,
   });
 
@@ -92,7 +92,7 @@ test('y medio mes tampoco, ni con el rango en regla', async () => {
   const api = await elSistemaAndando();
   const ficha = enPrueba();
   const r = await api('POST', '/evaluaciones_integrantes', {
-    integrante_id: ficha, fecha: '2026-05-20', evaluado_por: 'X',
+    integrante_id: ficha, fecha: '2026-05-20', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'X',
     resultado: 'No aprobado (se extiende la prueba)', meses_extension: 3.5,
   });
   assert.equal(r.estado, 400, '3,5 está dentro del rango y sigue sin querer decir nada');
@@ -103,7 +103,7 @@ test('en blanco se sigue pudiendo: son los meses que define el cuerpo', async ()
   const api = await elSistemaAndando();
   const ficha = enPrueba();
   const r = await api('POST', '/evaluaciones_integrantes', {
-    integrante_id: ficha, fecha: '2026-05-20', evaluado_por: 'X',
+    integrante_id: ficha, fecha: '2026-05-20', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'X',
     resultado: 'No aprobado (se extiende la prueba)',
   });
   assert.equal(r.estado, 201, r.texto);
@@ -115,7 +115,7 @@ test('la ficha nunca queda con un plazo que no es una fecha', async () => {
   const api = await elSistemaAndando();
   const ficha = enPrueba();
   await api('POST', '/evaluaciones_integrantes', {
-    integrante_id: ficha, fecha: '2026-05-20', evaluado_por: 'X',
+    integrante_id: ficha, fecha: '2026-05-20', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'X',
     resultado: 'No aprobado (se extiende la prueba)', meses_extension: 999999,
   });
   const { f } = db.prepare('SELECT fecha_fin_prueba f FROM integrantes_cuerpo WHERE id = ?').get(ficha);
@@ -127,7 +127,7 @@ test('la ficha nunca queda con un plazo que no es una fecha', async () => {
 test('nadie se evalúa antes de entrar al cuerpo', () => {
   const ficha = db.prepare('SELECT * FROM integrantes_cuerpo WHERE id = ?').get(enPrueba('2026-03-01'));
   const aviso = evaluaciones.hooks.beforeSave(
-    { integrante_id: ficha.id, fecha: '2006-01-10', resultado: 'Aprobado', evaluado_por: 'X' },
+    { integrante_id: ficha.id, fecha: '2006-01-10', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'X' },
     { existing: null, db },
   );
   assert.match(String(aviso), /10-01-2006/, 'dice la fecha que se escribió');
@@ -139,7 +139,7 @@ test('nadie se evalúa antes de entrar al cuerpo', () => {
 test('el día que entró sí, y cualquiera después', () => {
   const ficha = db.prepare('SELECT * FROM integrantes_cuerpo WHERE id = ?').get(enPrueba('2026-03-01'));
   const evaluar = (fecha) => evaluaciones.hooks.beforeSave(
-    { integrante_id: ficha.id, fecha, resultado: 'Aprobado', evaluado_por: 'X' },
+    { integrante_id: ficha.id, fecha, resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'X' },
     { existing: null, db },
   );
   assert.equal(evaluar('2026-03-01'), null, 'el mismo día no es antes');

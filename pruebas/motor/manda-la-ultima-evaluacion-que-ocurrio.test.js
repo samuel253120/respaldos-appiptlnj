@@ -58,7 +58,7 @@ test('corregir una evaluación vieja no deshace la decisión posterior', async (
   const api = await elSistemaAndando();
   const ficha = enPrueba();
   const evaluar = (datos) => api('POST', '/evaluaciones_integrantes',
-    { integrante_id: ficha, evaluado_por: 'La directiva', ...datos });
+    { integrante_id: ficha, informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva', ...datos });
 
   const vieja = await evaluar({ fecha: '2026-04-01', resultado: NO_APROBADO, meses_extension: 2 });
   assert.equal(vieja.estado, 201, vieja.texto);
@@ -69,7 +69,7 @@ test('corregir una evaluación vieja no deshace la decisión posterior', async (
   // Se corrige la VIEJA a «Aprobado». Antes, eso pasaba la ficha a Activo con
   // fecha 01-04, deshaciendo la extensión posterior.
   const corregida = await api('PUT', `/evaluaciones_integrantes/${vieja.json.id}`,
-    { integrante_id: ficha, fecha: '2026-04-01', resultado: 'Aprobado', evaluado_por: 'La directiva' });
+    { integrante_id: ficha, fecha: '2026-04-01', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva' });
   assert.equal(corregida.estado, 200, corregida.texto);
 
   const quedo = laFicha(ficha);
@@ -82,13 +82,13 @@ test('pero corregir la ÚLTIMA sí mueve la ficha, que es para lo que se corrige
   const api = await elSistemaAndando();
   const ficha = enPrueba();
   const evaluar = (datos) => api('POST', '/evaluaciones_integrantes',
-    { integrante_id: ficha, evaluado_por: 'La directiva', ...datos });
+    { integrante_id: ficha, informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva', ...datos });
 
   await evaluar({ fecha: '2026-04-01', resultado: NO_APROBADO, meses_extension: 2 });
   const ultima = await evaluar({ fecha: '2026-07-10', resultado: NO_APROBADO, meses_extension: 3 });
 
   const corregida = await api('PUT', `/evaluaciones_integrantes/${ultima.json.id}`,
-    { integrante_id: ficha, fecha: '2026-07-10', resultado: 'Aprobado', evaluado_por: 'La directiva' });
+    { integrante_id: ficha, fecha: '2026-07-10', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva' });
   assert.equal(corregida.estado, 200, corregida.texto);
 
   const quedo = laFicha(ficha);
@@ -101,7 +101,7 @@ test('anotar tarde una evaluación vieja tampoco deshace la posterior', async ()
   const api = await elSistemaAndando();
   const ficha = enPrueba();
   const evaluar = (datos) => api('POST', '/evaluaciones_integrantes',
-    { integrante_id: ficha, evaluado_por: 'La directiva', ...datos });
+    { integrante_id: ficha, informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva', ...datos });
 
   await evaluar({ fecha: '2026-07-10', resultado: NO_APROBADO, meses_extension: 3 });
   assert.equal(laFicha(ficha).fecha_fin_prueba, '2026-10-10');
@@ -120,7 +120,7 @@ test('dos del mismo día: manda la que se anotó después', async () => {
   const api = await elSistemaAndando();
   const ficha = enPrueba();
   const evaluar = (datos) => api('POST', '/evaluaciones_integrantes',
-    { integrante_id: ficha, evaluado_por: 'La directiva', ...datos });
+    { integrante_id: ficha, informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva', ...datos });
 
   await evaluar({ fecha: '2026-06-01', resultado: NO_APROBADO, meses_extension: 2 });
   const segunda = await evaluar({ fecha: '2026-06-01', resultado: 'Aprobado' });
@@ -138,7 +138,7 @@ test('la bitácora anota EL HECHO, no el estado que quedó', async () => {
   const ficha = enPrueba();
   const miembro = laFicha(ficha).miembro_id;
   const evaluar = (datos) => api('POST', '/evaluaciones_integrantes',
-    { integrante_id: ficha, evaluado_por: 'La directiva', ...datos });
+    { integrante_id: ficha, informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva', ...datos });
 
   await evaluar({ fecha: '2026-07-10', resultado: NO_APROBADO, meses_extension: 3 });
   await evaluar({ fecha: '2026-04-01', resultado: 'Aprobado' });

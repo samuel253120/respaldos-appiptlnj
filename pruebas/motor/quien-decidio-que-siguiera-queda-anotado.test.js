@@ -70,12 +70,12 @@ test('crear, corregir y borrar una evaluación deja su línea, y dice cuál es',
 
   const ev = await api('POST', '/evaluaciones_integrantes', {
     integrante_id: ficha, fecha: '2026-05-20', resultado: 'No aprobado (se extiende la prueba)',
-    meses_extension: 3, evaluado_por: 'La directiva',
+    meses_extension: 3, informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva',
   });
   assert.equal(ev.estado, 201, ev.texto);
 
   const corr = await api('PUT', `/evaluaciones_integrantes/${ev.json.id}`, {
-    integrante_id: ficha, fecha: '2026-05-20', resultado: 'Aprobado', evaluado_por: 'La directiva',
+    integrante_id: ficha, fecha: '2026-05-20', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'La directiva',
   });
   assert.equal(corr.estado, 200, corr.texto);
 
@@ -111,8 +111,8 @@ test('la promesa de la planilla se cumple: cada ficha deja su propia línea', as
   const imp = await api('POST', '/importar/evaluaciones_integrantes?prueba=0', {
     prueba: false,
     filas: [
-      { integrante_id: a, fecha: '2026-05-20', resultado: 'Aprobado', evaluado_por: 'Planilla' },
-      { integrante_id: b, fecha: '2026-05-20', resultado: 'Aprobado', evaluado_por: 'Planilla' },
+      { integrante_id: a, fecha: '2026-05-20', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'Planilla' },
+      { integrante_id: b, fecha: '2026-05-20', resultado: 'Aprobado', informe: '<p>Cumplió con lo pedido.</p>', evaluado_por: 'Planilla' },
     ],
   });
   assert.equal(imp.estado, 200, imp.texto);
