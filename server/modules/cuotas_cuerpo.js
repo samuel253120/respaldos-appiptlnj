@@ -82,7 +82,7 @@ module.exports = {
   ],
 
   hooks: {
-    beforeSave(data, { existing, id, db }) {
+    beforeSave(data, { existing, id, db, confirmado }) {
       const dato = (n) => (data[n] !== undefined ? data[n] : existing ? existing[n] : null);
       const ficha = db.prepare('SELECT * FROM integrantes_cuerpo WHERE id = ?').get(dato('integrante_id'));
       if (!ficha) return 'No encuentro la ficha del integrante que está pagando.';
@@ -90,6 +90,39 @@ module.exports = {
       data.miembro_id = ficha.miembro_id || null;
       data.persona = ficha.persona || null;
       data.iglesia_id = ficha.iglesia_id;
+
+      /*
+       * Y EL MONTO SE MIRA CONTRA LA CUOTA DEL CUERPO.
+       *
+       * El cuerpo declara cuánto es su cuota —el sistema ya la usa para
+       * proponer el monto en la planilla— y al registrar un pago a mano ese
+       * número no se miraba. Medido en la v1.412.0, sobre un cuerpo cuya cuota
+       * es de $ 5.000: un pago de $ 99.000.000 se registró con un 201 y quedó
+       * en la caja del cuerpo, sin que nada hiciera ruido.
+       *
+       * Se PREGUNTA, no se rechaza: pagar varios meses juntos, o redondear
+       * hacia arriba, se hace. El tope son diez veces la cuota porque un cero
+       * de más es exactamente eso, diez veces; quien pague el año entero de una
+       * vez va a ver la pregunta y va a poder decir que sí.
+       *
+       * Si el cuerpo no tiene cuota declarada no hay con qué comparar, y no se
+       * inventa un tope: se deja pasar.
+       */
+      const CUANTAS_CUOTAS_YA_SON_MUCHAS = 10;
+      if ('monto' in data) {
+        const suCuerpo = db.prepare('SELECT nombre, cuota_mensual FROM cuerpos WHERE id = ?').get(ficha.cuerpo_id);
+        const mensual = Number(suCuerpo && suCuerpo.cuota_mensual) || 0;
+        const pagado = Number(data.monto);
+        if (mensual > 0 && pagado >= mensual * CUANTAS_CUOTAS_YA_SON_MUCHAS && !confirmado) {
+          const { enPesos } = require('../repetido');
+          return {
+            error: `Está anotando ${enPesos(pagado)} y la cuota de ${suCuerpo.nombre} es de `
+              + `${enPesos(mensual)} al mes: son ${Math.round(pagado / mensual)} cuotas. `
+              + 'Revise si se le fue un dígito; si de verdad pagó eso, confirme.',
+            confirmar: 'el_monto_no_calza_con_la_cuota',
+          };
+        }
+      }
 
       const anio = Number(dato('anio'));
       const mes = String(dato('mes') || '');
@@ -132,6 +165,14 @@ module.exports = {
           + 'exenta en su ficha de integrante; si todavía no paga, deje el mes sin registrar.';
       }
 
+      /*
+       * Y el mes que se paga no puede estar a años de distancia. La regla vive
+       * en server/cuotas.js —escrita una sola vez— y las dos puertas la piden:
+       * es la misma lección de `aQuienNoSeLeCobra`, del hallazgo CU-01.
+       */
+      const muyAdelante = require('../cuotas').avisoSiElMesEstaMuyAdelante(anio, mes);
+      if (muyAdelante) return muyAdelante;
+
       const repetida = db
         .prepare('SELECT id FROM cuotas_cuerpo WHERE integrante_id = ? AND anio = ? AND mes = ? AND id != ?')
         .get(ficha.id, anio, mes, id || 0);
@@ -173,6 +214,27 @@ module.exports = {
         const cerrado = require('../cuerpo-inactivo')
           .avisoSiEstaInactivo(db, ficha.cuerpo_id, 'cobrar cuotas nuevas');
         if (cerrado) return cerrado;
+
+        /*
+         * Y NO SE PUDO PAGAR ANTES DE ENTRAR AL CUERPO.
+         *
+         * La fecha del pago no se comparaba con nada de la persona que paga:
+         * medido en la v1.412.0, un pago fechado el 05-01-2020 entró con un 201
+         * a nombre de alguien que ingresó al cuerpo el 10-01-2026, seis años
+         * después. El libro quedaba diciendo algo que no pudo pasar.
+         *
+         * Solo al cobrar una cuota nueva, como las de arriba: la fecha de
+         * ingreso se corrige, y si al corregirla alguna cuota vieja quedara
+         * «antes», lo que hay que poder hacer es justamente arreglarla.
+         */
+        const pagado = dato('fecha_pago');
+        if (pagado && ficha.fecha_ingreso && pagado < ficha.fecha_ingreso) {
+          const { comoSeLee } = require('../fechas');
+          return `${ficha.persona || 'Esta persona'} entró al cuerpo el `
+            + `${comoSeLee(ficha.fecha_ingreso)}, así que no pudo pagar una cuota el `
+            + `${comoSeLee(pagado)}. Revise la fecha del pago, o la de ingreso en su `
+            + 'ficha de integrante si es esa la que está mal.';
+        }
       }
 
       if (!dato('fecha_pago')) data.fecha_pago = require('../fechas').hoy();

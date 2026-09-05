@@ -55,13 +55,13 @@ function unCuerpo() {
   return id;
 }
 
-function unaFicha(cuerpo) {
+function unaFicha(cuerpo, ingreso = '2026-01-10') {
   const miembro = db.prepare("INSERT INTO miembros (nombres, apellidos, iglesia_id, estado) VALUES (?,?,?,'Activo')")
     .run(`Quien${++n}`, `Paga RE ${marca}`, iglesia).lastInsertRowid;
   return db.prepare(
     `INSERT INTO integrantes_cuerpo (cuerpo_id, miembro_id, persona_tipo, persona, estado, fecha_ingreso, iglesia_id)
-     VALUES (?, ?, 'Miembro', ?, 'Activo', '2026-01-10', ?)`
-  ).run(cuerpo, miembro, `Quien${n} Paga RE ${marca}`, iglesia).lastInsertRowid;
+     VALUES (?, ?, 'Miembro', ?, 'Activo', ?, ?)`
+  ).run(cuerpo, miembro, `Quien${n} Paga RE ${marca}`, ingreso, iglesia).lastInsertRowid;
 }
 
 const seRetira = (ficha) => db.prepare(
@@ -136,7 +136,9 @@ test('el año que se pide es el año que se suma', async () => {
    */
   const api = await elSistemaAndando();
   const cuerpo = unCuerpo();
-  const ficha = unaFicha(cuerpo);
+  // Entró en 2025, porque va a pagar cuotas de 2025: nadie paga antes de entrar
+  // al cuerpo, y desde la v1.413.0 el sistema lo dice (hallazgo CU-05).
+  const ficha = unaFicha(cuerpo, '2025-01-10');
   for (const [anio, mes] of [[2025, '07'], [2026, '07']]) {
     const r = await api('POST', '/cuotas_cuerpo',
       { integrante_id: ficha, anio, mes, monto: 5000, fecha_pago: `${anio}-${mes}-05` });

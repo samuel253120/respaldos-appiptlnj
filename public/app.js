@@ -7926,6 +7926,11 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       volver: 'Volver y corregirla',
       seguir: 'Fue esa gente, guardar',
     },
+    el_monto_no_calza_con_la_cuota: {
+      titulo: '🎟️ Revise este monto',
+      volver: 'Volver y corregirlo',
+      seguir: 'Pagó eso, guardar',
+    },
     /*
      * Las dos caras de lo mismo: la ficha de la iglesia y la del pastor
      * diciendo cosas distintas. Se ven desde los dos lados —al ponerle a una

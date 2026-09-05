@@ -159,6 +159,36 @@ function aQuienNoSeLeCobra(conexion, ficha) {
   return null;
 }
 
+/*
+ * EL MES QUE SE PAGA NO PUEDE ESTAR A AÑOS DE DISTANCIA.
+ *
+ * El año se revisaba contra 1900-2200, que para una cuota mensual no revisa
+ * nada. Medido en la v1.412.0, por la ficha suelta: la cuota de 12/2030 se
+ * registró con un 201, y quedó en el libro un mes que faltaba cuatro años.
+ *
+ * Pagar adelantado se hace —hasta el año entero— así que el tope es un año, y
+ * lo que se rechaza es el año tecleado de más.
+ *
+ * Vive acá y no en el módulo por lo mismo que `aQuienNoSeLeCobra`: una cuota
+ * entra por dos puertas, y una regla escrita en una sola es una regla que la
+ * otra no tiene. Desde la planilla se llega a un año adelante con dos clics en
+ * el botón del año siguiente.
+ */
+const MESES_QUE_SE_PUEDEN_ADELANTAR = 12;
+
+function avisoSiElMesEstaMuyAdelante(anio, mes) {
+  const enMeses = (a, m) => a * 12 + (m - 1);
+  const hoyEs = require('./fechas').hoy();
+  const faltan = enMeses(Number(anio), Number(mes))
+    - enMeses(Number(hoyEs.slice(0, 4)), Number(hoyEs.slice(5, 7)));
+  if (faltan <= MESES_QUE_SE_PUEDEN_ADELANTAR) return null;
+  // `faltan` es siempre 13 o más acá arriba del tope, así que el plural no tiene
+  // caso singular: escribirlo sería una rama que ninguna prueba puede recorrer.
+  return `Está registrando la cuota de ${nombreDelMes(mes).toLowerCase()} de ${anio}, que faltan `
+    + `${faltan} meses. Se puede pagar hasta un año adelantado; revise si se le fue un dígito `
+    + 'en el año.';
+}
+
 /**
  * Anota que una persona pagó su cuota de un mes. Devuelve { error } cuando no
  * corresponde cobrarla, para poder decirlo en pantalla tal cual.
@@ -186,6 +216,8 @@ function registrarPago(conexion, { integranteId, anio, mes, monto, fecha, metodo
   if (!/^(0[1-9]|1[0-2])$/.test(elMes)) return { error: 'Ese mes no existe.' };
   const elAnio = Number(anio);
   if (!(elAnio > 1900 && elAnio < 2200)) return { error: 'Ese año no parece correcto.' };
+  const muyAdelante = avisoSiElMesEstaMuyAdelante(elAnio, elMes);
+  if (muyAdelante) return { error: muyAdelante };
 
   const repetida = conexion
     .prepare('SELECT id FROM cuotas_cuerpo WHERE integrante_id = ? AND anio = ? AND mes = ?')
@@ -274,7 +306,7 @@ function borrarPago(conexion, cuotaId, usuario) {
 }
 
 module.exports = {
-  MESES, OPCIONES_MES, nombreDelMes, sincronizarConLaTesoreria,
+  MESES, OPCIONES_MES, nombreDelMes, sincronizarConLaTesoreria, avisoSiElMesEstaMuyAdelante,
   registrarPago, borrarPago, cuentaDeLasCuotas, avisoSiLaCuentaEstaCerrada,
   aQuienNoSeLeCobra,
 };
