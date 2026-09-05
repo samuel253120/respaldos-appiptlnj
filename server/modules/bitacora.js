@@ -93,7 +93,17 @@ module.exports = {
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
     { name: 'miembro_id', label: 'Miembro', type: 'ref', ref: 'miembros', required: true },
-    { name: 'fecha', label: 'Fecha', type: 'date', required: true },
+    /*
+     * NO va marcada como obligatoria, por lo mismo que en los otros tres
+     * historiales: el gancho la pone sola si viene en blanco, y la comprobación
+     * de obligatorios del motor corre ANTES del gancho (server/crud.js), así
+     * que el relleno no llegaba a ejecutarse nunca.
+     *
+     * Salió con el hallazgo SA-01 de la revisión de los satélites, que era de
+     * los otros dos historiales; éste no estaba en el informe y apareció al
+     * escribir la regla general en vez de arreglar los dos casos a mano.
+     */
+    { name: 'fecha', label: 'Fecha', type: 'date' },
     {
       name: 'tipo', label: 'Tipo de registro', type: 'select', required: true, default: 'Anotación',
       options: [

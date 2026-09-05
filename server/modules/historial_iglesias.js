@@ -23,7 +23,21 @@ module.exports = {
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', required: true },
-    { name: 'fecha', label: 'Fecha', type: 'date', required: true },
+        /*
+     * NO va marcada como obligatoria: el sistema la pone sola si viene en
+     * blanco, unas líneas más abajo. Marcarla lo hace al revés —la
+     * comprobación de obligatorios del motor corre ANTES del gancho que la
+     * rellena (server/crud.js)— y entonces el relleno no se ejecuta nunca: la
+     * anotación se rechaza por no traer una fecha que el sistema tenía puesta
+     * para ponerle.
+     *
+     * MEDIDO en la v1.429.0, la misma anotación sin fecha por las tres puertas:
+     * el historial de una solicitud contestaba 201 y la ponía en el día de hoy;
+     * éste y el del pastor contestaban 400, «El campo "Fecha" es obligatorio».
+     * El razonamiento estaba escrito hace tiempo en historial_solicitudes.js,
+     * que es el único de los tres que no cayó en la trampa (hallazgo SA-01).
+     */
+    { name: 'fecha', label: 'Fecha', type: 'date' },
     {
       name: 'tipo', label: 'Tipo de registro', type: 'select', required: true, default: 'Anotación',
       options: [
