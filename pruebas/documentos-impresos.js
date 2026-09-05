@@ -119,6 +119,22 @@ const DOCUMENTOS = [
    * manera de pasar. Se borra al final.
    */
   { nombre: 'la hoja de una deuda', modulo: 'deudas', sembrar: true },
+  /*
+   * LA HOJA DE UNA EVALUACIÓN, que es la única que este sistema produce con un
+   * campo de TEXTO CON FORMATO dentro de una hoja genérica.
+   *
+   * Entra acá porque la comprobación que la caza —«no imprime etiquetas HTML
+   * en crudo»— estaba escrita desde que se revisaron las actas, y nunca había
+   * corrido sobre una hoja genérica con un campo así: las actas tienen hoja
+   * propia. Medido en la v1.399.0, el renglón «Informe» salía literalmente
+   * «<p><b>Asistencia</b>: cumplió con las reuniones…», con el membrete de la
+   * institución encima.
+   *
+   * Se siembra igual que la deuda, y por lo mismo: la base de trabajo no trae
+   * evaluaciones anotadas, así que sin sembrar una la revisión pasaría por no
+   * encontrar nada, que es la peor manera de pasar.
+   */
+  { nombre: 'la hoja de una evaluación', modulo: 'evaluaciones_integrantes', sembrarEvaluacion: true },
   { nombre: 'el informe de asistencia', ruta: '#/asistencia/informes' },
   /*
    * La planilla mensual es de UN cuerpo: sin decir cuál, la pantalla contesta
@@ -157,6 +173,46 @@ async function sembrarUnaDeuda(pagina) {
       }).catch(() => null);
     }
     return d.id;
+  });
+}
+
+/**
+ * Una evaluación con su informe escrito con formato, para poder revisar su hoja.
+ *
+ * Necesita las tres piezas: un cuerpo que funcione, alguien en período de
+ * prueba dentro de él y la evaluación. Devuelve los ids para poder borrarlo
+ * todo al final, o null si algo no se pudo (y entonces la revisión lo dice, no
+ * lo calla).
+ */
+async function sembrarUnaEvaluacion(pagina) {
+  return pagina.evaluate(async () => {
+    const marca = String(Date.now()).slice(-6);
+    const iglesias = await api('GET', '/iglesias?page=1&pageSize=1');
+    const iglesia = (iglesias.items || iglesias.rows || [])[0];
+    if (!iglesia) return null;
+    const cuerpo = await api('POST', '/cuerpos', {
+      nombre: `Coro Impreso ${marca}`, tipo: 'Cuerpo', iglesia_id: iglesia.id, estado: 'Activo',
+    }).catch(() => null);
+    if (!cuerpo || !cuerpo.id) return null;
+    const persona = await api('POST', '/miembros', {
+      nombres: 'Evaluada', apellidos: `Sinapellido${marca}`, iglesia_id: iglesia.id, estado: 'Activo',
+    }).catch(() => null);
+    if (!persona || !persona.id) return null;
+    const ficha = await api('POST', '/integrantes_cuerpo', {
+      cuerpo_id: cuerpo.id, persona_tipo: 'Miembro', miembro_id: persona.id,
+      estado: 'En prueba', fecha_ingreso: '2026-03-01',
+    }).catch(() => null);
+    if (!ficha || !ficha.id) return null;
+    const ev = await api('POST', '/evaluaciones_integrantes', {
+      integrante_id: ficha.id, fecha: '2026-05-20', resultado: 'Aprobado',
+      evaluado_por: 'La directiva del cuerpo',
+      informe: '<p><b>Asistencia</b>: cumplió con las reuniones. <i>Conducta</i>: intachable.</p>'
+        + '<ul><li>Puntual</li><li>Colaboradora</li></ul>',
+      observaciones: 'Se recomienda encomendarle el trabajo con los niños.',
+    }).catch(() => null);
+    if (!ev || !ev.id) return null;
+    return { evaluacion: ev.id, ficha: ficha.id, persona: persona.id, cuerpo: cuerpo.id,
+      comoSeLlamaElCuerpo: cuerpo.nombre };
   });
 }
 
@@ -206,9 +262,19 @@ async function primerRegistro(pagina, modulo) {
   await pagina.emulateMedia({ media: 'print' });
 
   let sembrado = null;
+  let evaluacionSembrada = null;
   for (const doc of DOCUMENTOS) {
     console.log(`\n── ${doc.nombre} ──`);
     let cual = null;
+    if (doc.sembrarEvaluacion) {
+      evaluacionSembrada = await sembrarUnaEvaluacion(pagina);
+      if (!evaluacionSembrada) {
+        revisar(`${doc.nombre}: se pudo preparar una para revisar`, false,
+          'no se pudo anotar una evaluación de prueba');
+        continue;
+      }
+      doc.ruta = `#/print/evaluaciones_integrantes/${evaluacionSembrada.evaluacion}`;
+    }
     if (doc.sembrar) {
       sembrado = await sembrarUnaDeuda(pagina);
       if (!sembrado) {
@@ -217,7 +283,7 @@ async function primerRegistro(pagina, modulo) {
         continue;
       }
     }
-    if (doc.modulo) {
+    if (doc.modulo && !doc.sembrarEvaluacion) {
       cual = await primerRegistro(pagina, doc.modulo);
       if (!cual) {
         revisar(`${doc.nombre}: hay alguno para imprimir`, false,
@@ -276,6 +342,35 @@ async function primerRegistro(pagina, modulo) {
       revisar('el encabezado dice de qué registro es, y no solo qué número tiene',
         enElPapel.includes(cual.nombre.toLocaleUpperCase('es')),
         `el encabezado decía «${r.encabezado}» y el registro se llama «${cual.nombre}»`);
+    }
+
+    /*
+     * Y la de una EVALUACIÓN trae su informe PINTADO —que es todo lo que la
+     * hoja tiene que decir— y nombra al integrante con su cuerpo por su
+     * nombre. Antes de la 1.401.0 el informe salía con sus etiquetas a la
+     * vista y el cuerpo salía como un número: «Fulana — 13».
+     */
+    if (doc.sembrarEvaluacion) {
+      const pintado = await pagina.evaluate(() => {
+        const hoja = document.querySelector('.print-sheet');
+        return {
+          negrita: !!hoja.querySelector('.dato-rico b, .dato-rico strong'),
+          vinetas: hoja.querySelectorAll('.dato-rico li').length,
+        };
+      });
+      revisar('el informe sale con su formato puesto, no con sus etiquetas',
+        pintado.negrita && pintado.vinetas >= 2,
+        `negrita: ${pintado.negrita} · viñetas: ${pintado.vinetas}`);
+      /*
+       * El nombre del CUERPO, que no se parece en nada al de la persona a
+       * propósito: la primera versión de esta comprobación los tenía con la
+       * misma marca y acertaba por el apellido, así que dejaba pasar la
+       * rotura que tenía que cazar.
+       */
+      revisar('dice de qué cuerpo es la persona evaluada, por su nombre',
+        r.texto.includes(evaluacionSembrada.comoSeLlamaElCuerpo),
+        `una hoja que se archiva no puede nombrar el cuerpo con su número interno; `
+        + `se buscaba «${evaluacionSembrada.comoSeLlamaElCuerpo}»`);
     }
 
     /*
@@ -559,6 +654,15 @@ async function primerRegistro(pagina, modulo) {
       await api('DELETE', `/actas_asambleas/${ids.asamblea}?igual_asi=1`).catch(() => null);
       await api('DELETE', `/actas_reuniones/${ids.reunion}?igual_asi=1`).catch(() => null);
     }, actasConCaja);
+  }
+
+  if (evaluacionSembrada) {
+    await pagina.evaluate(async (ids) => {
+      await api('DELETE', `/evaluaciones_integrantes/${ids.evaluacion}?igual_asi=1`).catch(() => null);
+      await api('DELETE', `/integrantes_cuerpo/${ids.ficha}?igual_asi=1`).catch(() => null);
+      await api('DELETE', `/miembros/${ids.persona}?igual_asi=1`).catch(() => null);
+      await api('DELETE', `/cuerpos/${ids.cuerpo}?igual_asi=1`).catch(() => null);
+    }, evaluacionSembrada);
   }
 
   if (sembrado) {

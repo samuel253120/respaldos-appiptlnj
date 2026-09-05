@@ -47,8 +47,9 @@ const laRuta = app.slice(app.indexOf('let susDocumentos = null;'), app.indexOf('
 test('los dos trozos que se revisan son los que se creen', () => {
   // El tope es una red por si el corte se corriera y arrastrara código ajeno,
   // no una medida de cuánto puede crecer la hoja: subió en la 1.266.0 al
-  // explicarse ahí por qué el encabezado dice de qué registro es.
-  assert.ok(laHoja.length > 3000 && laHoja.length < 20000, `la hoja mide ${laHoja.length}`);
+  // explicarse ahí por qué el encabezado dice de qué registro es, y en la
+  // 1.401.0 al explicarse por qué el texto con formato se imprime pintado.
+  assert.ok(laHoja.length > 3000 && laHoja.length < 24000, `la hoja mide ${laHoja.length}`);
   assert.match(laHoja, /print-sheet print-generic/);
   // Mismo caso que el tope de arriba: es una red por si el corte se corriera,
   // no una medida. Subió en la 1.269.0 al traerse también el plan de una deuda.

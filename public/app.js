@@ -12743,6 +12743,31 @@ function printGenerico(m, row, extras = {}) {
                 ? `<img class="foto-papel" src="/uploads/${esc(v)}" alt="" />`
                 : `<i>Adjunto: ${esc(nombreArchivo(v))}</i>`}</td></tr>`;
             }
+            /*
+             * EL TEXTO CON FORMATO SE IMPRIME PINTADO, NO CON SUS ETIQUETAS.
+             *
+             * La hoja escapaba TODO, así que un campo de texto enriquecido
+             * salía con sus marcas a la vista. Medido en la v1.399.0, en el
+             * renglón «Informe» de la hoja de una evaluación —la que lleva el
+             * membrete de la institución—:
+             *
+             *   <p><b>Asistencia</b>: cumplió con las reuniones.
+             *   <i>Conducta</i>: intachable.</p><ul><li>Puntual</li>…
+             *
+             * El acta de reunión, que tiene hoja propia, ya lo hacía bien
+             * desde la 1.271.0 y con este mismo criterio: se mira el TIPO
+             * DECLARADO en el módulo, no una lista de nombres escrita acá, y
+             * lo que no sea texto con formato se sigue escapando. Así, el
+             * campo que mañana se agregue entra por el lado seguro sin que
+             * nadie tenga que acordarse de esta línea.
+             *
+             * El valor ya viene limpio del servidor —server/textorico.js le
+             * saca los guiones, los `onerror` y los enlaces `javascript:`, y
+             * eso está comprobado— así que lo que llega acá es solo formato.
+             */
+            if (f.type === 'richtext') {
+              return `<tr><td class="k">${esc(f.label)}</td><td><div class="dato-rico">${v}</div></td></tr>`;
+            }
             return `<tr><td class="k">${esc(f.label)}</td><td>${esc(v)}</td></tr>`;
           })
           .join('')}

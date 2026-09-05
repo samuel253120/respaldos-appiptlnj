@@ -66,7 +66,7 @@ module.exports = {
     'GRUPO a alguien que no está inscrito en la membresía hace falta, además, poder ver No Miembros.',
   order: 58,
   menu: false,
-  display: '{persona} — {cuerpo_id}',
+  display: '{persona} — {cuerpo_id_label}',
   dateField: 'fecha_ingreso',
   searchFields: ['persona', 'motivo_retiro', 'exento_motivo', 'observaciones'],
   listFields: ['cuerpo_id', 'persona', 'persona_tipo', 'estado', 'fecha_ingreso', 'fecha_fin_prueba', 'paga_cuota'],
