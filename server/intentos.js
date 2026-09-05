@@ -99,6 +99,47 @@ function ficha(llave) {
 }
 
 /**
+ * CONTRA QUÉ SE CUENTA: contra la cuenta, no contra cómo se tecleó su RUT.
+ *
+ * Para BUSCAR la cuenta, la entrada normaliza el RUT —`rutUtil.canonico()`
+ * deja «5.111.111-7», «5111111-7» y «51111117» en una sola forma—. Para
+ * CONTAR los errores, acá se usaba el texto tal como venía, apenas recortado
+ * de espacios. Así que la misma cuenta tenía tantos cupos de cinco intentos
+ * como maneras hubiera de escribir su RUT.
+ *
+ * MEDIDO en la v1.416.0, la misma cuenta escrita de seis maneras, cinco
+ * intentos cada una:
+ *
+ *   "5.111.111-7" ...  401 401 401 401 429   cupo propio
+ *   "5111111-7" .....  401 401 401 401 429   cupo propio
+ *   "51111117" ......  401 401 401 401 429   cupo propio
+ *   "5-111-111-7" ...  401 401 401 401 429   cupo propio
+ *   ──
+ *   "5.111.111-7 " ..  429 429 429 429 429   el mismo cupo (lo iguala el trim)
+ *   "5.111.111-7\t" ..  429 429 429 429 429   el mismo cupo
+ *
+ * Dieciséis pruebas de contraseña donde el diseño quiere cinco. Las dos
+ * últimas ya caían en el mismo cupo: la normalización existía y se quedaba
+ * corta, que es distinto de no estar.
+ *
+ * Se normaliza acá, en la llave, y no en cada puerta: así lo heredan las tres
+ * que cuentan —entrar, preguntar por la pregunta secreta y recuperar— sin que
+ * ninguna tenga que acordarse.
+ */
+const rutUtil = require('./rut');
+
+function comoSeLlama(quien) {
+  const texto = String(quien == null ? '' : quien).trim();
+  if (!texto) return '';
+  // La puerta de compatibilidad: las cuentas viejas todavía entran con su
+  // correo mientras no se les asigne un RUT (ver server/auth.js).
+  if (texto.includes('@')) return texto.toLowerCase();
+  // Y lo que no es un RUT que el sistema entienda se cuenta tal cual, en
+  // minúsculas: no se puede dejar sin contar lo que no se supo normalizar.
+  return (rutUtil.canonico(texto) || texto).toLowerCase();
+}
+
+/**
  * Las llaves con que se mira a quien intenta entrar.
  *
  * SIN RUT se cuenta SOLO por dirección, y eso tiene un uso concreto: la puerta
@@ -110,7 +151,7 @@ function ficha(llave) {
  */
 function llaves(rut, ip) {
   const suyas = [`ip:${ip || '?'}`];
-  const limpio = String(rut == null ? '' : rut).trim().toLowerCase();
+  const limpio = comoSeLlama(rut);
   if (limpio) suyas.unshift(`rut:${limpio}`);
   return suyas;
 }
@@ -169,4 +210,4 @@ try {
   /* en un script suelto puede no haber temporizadores; da igual */
 }
 
-module.exports = { esperaQueLeFalta, fallo, acierto, intentosQueLeQuedan };
+module.exports = { esperaQueLeFalta, fallo, acierto, intentosQueLeQuedan, comoSeLlama };
