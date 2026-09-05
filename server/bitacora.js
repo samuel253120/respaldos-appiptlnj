@@ -226,6 +226,31 @@ const MODULOS_VIGILADOS = [
    * ejemplo siga estando fuera de esta lista.
    */
   'motivos_ausencia',
+  /*
+   * Y LA DECISIÓN DE SI ALGUIEN SIGUE EN SU CUERPO.
+   *
+   * Las fichas de integrante están vigiladas desde hace versiones, y la
+   * evaluación es lo que las MUEVE: aprueba a alguien, le extiende la prueba o
+   * lo saca del cuerpo, con una escritura directa que el motor no ve. O sea que
+   * el registro anotaba quién entró a un cuerpo y no anotaba quién decidió que
+   * se quedara o que se fuera.
+   *
+   * MEDIDO en la v1.399.0, sobre una misma sesión de trabajo:
+   *
+   *   fichas de integrante creadas ........ 26 líneas
+   *   evaluaciones hechas una a una ....... 0 líneas
+   *   importaciones de evaluaciones ....... 3 líneas
+   *
+   * Solo quedaban las importaciones, porque ésas las anota el propio importador
+   * mire lo que mire esta lista. Y su línea prometía algo que no existía: «Cada
+   * ficha que entró lo dice también en su propia línea».
+   *
+   * Son pocas y se hacen de tarde en tarde —una por integrante cada vez que se
+   * le cumple el plazo— así que no hay ruido que temer. Y su detalle no trae
+   * nada reservado: el informe es el juicio de la directiva sobre alguien, y
+   * queda fuera del listado por lo mismo que quedan fuera los textos largos.
+   */
+  'evaluaciones_integrantes',
 ];
 
 /**
