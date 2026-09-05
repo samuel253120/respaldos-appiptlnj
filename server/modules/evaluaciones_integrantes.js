@@ -78,6 +78,66 @@ module.exports = {
       data.cuerpo_id = ficha.cuerpo_id;
       data.iglesia_id = ficha.iglesia_id;
       if (dato('resultado') !== 'No aprobado (se extiende la prueba)') data.meses_extension = null;
+
+      /*
+       * ESTO EVALÚA UN PERÍODO DE PRUEBA, ASÍ QUE HACE FALTA QUE HAYA UNO.
+       *
+       * La pantalla ya lo sabe: el botón «📋 Evaluar» de la lista del cuerpo
+       * aparece SOLO cuando el estado del integrante es «En prueba». Acá no se
+       * comprobaba nada, y lo que la pantalla no ofrece el servidor lo tiene
+       * que rechazar de todas maneras —está escrito así en el gancho de
+       * server/modules/integrantes_cuerpo.js, para la regla de al lado—.
+       *
+       * Medido en la v1.399.0, aprobando por la API a quien no está en prueba:
+       *
+       *   a quien ya es integrante oficial ...  201, y le reescribe la fecha
+       *                                         de oficial: de 15-01-2020 pasó
+       *                                         a 25-05-2026
+       *   a quien ya se retiró ..............  201, y vuelve a «Activo»
+       *                                         conservando su fecha de retiro
+       *                                         del 30-06-2025
+       *
+       * Las dos dejan la ficha diciendo dos cosas a la vez, y la primera borra
+       * el historial de alguien sin avisar: basta evaluar a la persona
+       * equivocada de una lista larga.
+       *
+       * Se mira SOLO al anotar una evaluación nueva. Corregirle a una ya
+       * anotada el informe, la fecha o el nombre de quien evaluó tiene que
+       * seguir siendo posible: para entonces la ficha ya se movió, y exigirle
+       * «En prueba» dejaría sin arreglar justamente lo que se anotó mal. Es la
+       * misma línea que separa el alta de la corrección en todo el sistema.
+       */
+      if (!existing) {
+        if (ficha.estado !== 'En prueba') {
+          const quien = ficha.persona || 'Esa persona';
+          const cuerpo = db.prepare('SELECT nombre FROM cuerpos WHERE id = ?').get(ficha.cuerpo_id);
+          const donde = cuerpo ? `«${cuerpo.nombre}»` : 'ese cuerpo';
+          const comoSeLee = require('../fechas').comoSeLee;
+          if (ficha.estado === 'Retirado') {
+            return `${quien} ya no pertenece a ${donde}: se retiró`
+              + `${ficha.fecha_retiro ? ` el ${comoSeLee(ficha.fecha_retiro)}` : ''}. `
+              + 'La evaluación es del período de prueba, así que no hay ninguno que evaluar. '
+              + 'Si volvió, ábrale su ficha de integrante y póngala «En prueba»: desde ahí se la '
+              + 'puede evaluar cuando le toque.';
+          }
+          return `${quien} ya es integrante oficial de ${donde}`
+            + `${ficha.fecha_oficial ? `, desde el ${comoSeLee(ficha.fecha_oficial)}` : ''}. `
+            + 'La evaluación es del período de prueba, así que no hay ninguno que evaluar. '
+            + 'Si tiene que dejar de serlo, cámbiele el estado en su ficha de integrante.';
+        }
+
+        /*
+         * Ni de un cuerpo que dejó de funcionar (ver server/cuerpo-inactivo.js).
+         * La regla general del motor no llega hasta acá por lo mismo que no
+         * llega a las cuotas: `cuerpo_id` no se elige, se copia de la ficha del
+         * integrante, y por eso es una columna y no una referencia. Medido: a
+         * ese mismo cuerpo no se le puede meter un integrante nuevo —lo dice
+         * con todas sus letras— y sí se le podía evaluar uno.
+         */
+        const cerrado = require('../cuerpo-inactivo')
+          .avisoSiEstaInactivo(db, ficha.cuerpo_id, 'evaluar períodos de prueba');
+        if (cerrado) return cerrado;
+      }
       return null;
     },
 
