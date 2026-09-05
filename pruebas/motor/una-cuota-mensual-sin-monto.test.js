@@ -107,8 +107,10 @@ test('encender la cuota sin poner el monto pregunta', () => {
   assert.equal(aviso && aviso.confirmar, 'cobra_cuota_sin_monto', 'es una pregunta, no un rechazo');
   assert.match(aviso.error, /Está marcando que este cuerpo cobra cuota mensual, y no dice de cuánto/);
   assert.match(aviso.error, /no se le puede registrar el pago a nadie/);
-  assert.match(aviso.error, /va a aparecer en el panel y en su estado de cumplimiento/i,
+  assert.match(aviso.error, /va a aparecer en su estado de cumplimiento/i,
     'y dice dónde va a quedar a la vista mientras tanto');
+  assert.doesNotMatch(aviso.error, /en el panel/i,
+    'desde la v1.393.0 el panel ya no lo muestra: mandarlo ahí sería mandarlo a nada');
 });
 
 test('y encenderla CON el monto, no', () => {
@@ -144,7 +146,7 @@ test('crear un cuerpo tampoco pregunta, y es a propósito', () => {
    * Un cuerpo NACE cobrando —así se decidió y está bien—, así que preguntarlo
    * al crear sería un aviso en cada cuerpo nuevo por un valor que en ese
    * momento casi nunca se sabe: el monto lo fija el cuerpo cuando se reúne.
-   * Aparece igual en el panel y en su cumplimiento desde el primer día.
+   * Aparece igual en su cumplimiento desde el primer día.
    */
   const data = { nombre: `Nuevo CQ ${marca()}`, tipo: 'Cuerpo', iglesia_id: laIglesia };
   const aviso = getModule('cuerpos').hooks.beforeSave(data, { id: null, existing: null, isNew: true, db, confirmado: false });
@@ -170,56 +172,13 @@ test('los rechazos del gancho salen ANTES que esta pregunta', () => {
   assert.match(aviso, /ya es la directiva de esta iglesia/);
 });
 
-// ------------------------------------------------------------ el panel ----
-
-const admin = { id: 1, rol: 'admin', iglesias: [], cuerpos: [] };
-
-test('el panel los junta a todos, con cuánta gente alcanza cada uno', () => {
-  const cu = cuerpo({ cobra: 1, monto: null });
-  const persona = () => db
-    .prepare("INSERT INTO miembros (nombres, apellidos, estado, iglesia_id) VALUES ('Persona', ?, 'Activo', ?)")
-    .run(`CQ ${marca()}`, laIglesia).lastInsertRowid;
-  const meter = (estado) => db
-    .prepare(`INSERT INTO integrantes_cuerpo (cuerpo_id, persona_tipo, miembro_id, iglesia_id, fecha_ingreso, estado)
-              VALUES (?, 'Miembro', ?, ?, '2026-01-05', ?)`)
-    .run(cu, persona(), laIglesia, estado);
-  meter('Activo'); meter('Activo'); meter('En prueba'); meter('Retirado');
-
-  const suyo = faltante.losQueCobranSinMonto(db, admin).find((c) => c.id === cu);
-  assert.ok(suyo, 'tiene que salir en la lista del panel');
-  assert.equal(suyo.integrantes, 3,
-    'los que pertenecen HOY —activos y en prueba—: al retirado no se le cobra, y contarlo daría un número falso');
-  assert.ok(suyo.iglesia, 'y trae el nombre de su iglesia, para distinguir dos que se llamen igual');
-});
-
-test('el que tiene monto y el que no cobra no salen', () => {
-  const conMonto = cuerpo({ cobra: 1, monto: 2500 });
-  const sinCobrar = cuerpo({ cobra: 0 });
-  const ids = faltante.losQueCobranSinMonto(db, admin).map((c) => c.id);
-  assert.ok(!ids.includes(conMonto));
-  assert.ok(!ids.includes(sinCobrar));
-});
-
-test('y la lista respeta el alcance de quien pregunta', () => {
-  /*
-   * El secretario de un cuerpo ve el suyo, no los de la organización entera.
-   * Es lo mismo que hace el resto del panel.
-   */
-  const mio = cuerpo({ cobra: 1, monto: null });
-  const ajeno = cuerpo({ cobra: 1, monto: null });
-  const suyos = faltante.losQueCobranSinMonto(db, { id: 2, rol: 'consulta', iglesias: [laIglesia], cuerpos: [mio] })
-    .map((c) => c.id);
-  assert.ok(suyos.includes(mio));
-  assert.ok(!suyos.includes(ajeno), 'un cuerpo que no tiene asignado no puede aparecerle en el panel');
-});
-
 // ------------------------------------ y andando de verdad ----
 
 const { elSistemaAndando, cerrarElSistema } = require('./andando');
 
 test.after(cerrarElSistema);
 
-test('guardando de verdad: se pregunta, se guarda, y queda dicho en los dos lugares', async () => {
+test('guardando de verdad: se pregunta, se guarda, y queda dicho en su cumplimiento', async () => {
   const api = await elSistemaAndando();
   const m = `cuota-${process.pid}`;
 
@@ -241,47 +200,16 @@ test('guardando de verdad: se pregunta, se guarda, y queda dicho en los dos luga
   const item = cump.items.find((i) => i.texto === 'Cuota mensual con monto');
   assert.ok(item && item.ok === false, `${JSON.stringify(cump).slice(0, 250)}`);
 
-  /*
-   * …y el panel. La ruta del panel vive en server/index.js y este banco de
-   * pruebas monta solo el router del motor, así que acá se le pregunta a la
-   * misma función que ella llama, y que el panel salga de verdad se comprueba
-   * sobre el sistema andando. Lo que sí se fija acá es que index.js la esté
-   * pidiendo: sin eso, la lista sería correcta y no la vería nadie.
-   */
-  const suyo = faltante.losQueCobranSinMonto(db, { id: 1, rol: 'admin', iglesias: [], cuerpos: [] })
-    .find((c) => c.id === cu.id);
-  assert.ok(suyo, 'el panel tiene que nombrarlo');
-
   // Apagarla y volver a encenderla sin monto pregunta
   assert.equal((await api('PUT', `/cuerpos/${cu.id}`, { cobra_cuota: 0 })).estado, 200);
   const pregunta = await api('PUT', `/cuerpos/${cu.id}`, { cobra_cuota: 1 });
   assert.equal(pregunta.estado, 400, `tenía que preguntar: ${pregunta.texto.slice(0, 200)}`);
   assert.equal(pregunta.json.confirmar, 'cobra_cuota_sin_monto');
 
-  // Con el monto puesto, entra sin preguntar y sale de las dos listas
+  // Con el monto puesto, entra sin preguntar y su cumplimiento queda al día
   assert.equal((await api('PUT', `/cuerpos/${cu.id}`, { cobra_cuota: 1, cuota_mensual: 3000 })).estado, 200);
   const despues = (await api('GET', `/cuerpos/${cu.id}/cumplimiento`)).json;
   assert.equal(despues.items.find((i) => i.texto === 'Cuota mensual con monto').ok, true);
-  assert.ok(!faltante.losQueCobranSinMonto(db, { id: 1, rol: 'admin', iglesias: [], cuerpos: [] })
-    .some((c) => c.id === cu.id), 'con el monto puesto tiene que salir de la lista del panel');
-});
-
-test('y el panel la pide de verdad, en el servidor y en la pantalla', () => {
-  /*
-   * La lista puede estar perfecta y no verla nadie. Estas dos líneas son las
-   * que la conectan: la ruta del panel que la arma, y la pantalla que la
-   * pinta. La misma lección que dejó la regla de la iglesia inactiva —estaba
-   * escrita, comprobada y desconectada, y ninguna prueba lo decía—.
-   */
-  const fs = require('fs');
-  const path = require('path');
-  const index = fs.readFileSync(path.join(__dirname, '../../server/index.js'), 'utf8');
-  assert.match(index, /losQueCobranSinMonto\(db, req\.user\)/);
-  assert.match(index, /cuerposSinCuota,/, 'y viaja en la respuesta del panel');
-
-  const app = fs.readFileSync(path.join(__dirname, '../../public/app.js'), 'utf8');
-  assert.match(app, /d\.cuerposSinCuota \|\| \[\]/);
-  assert.match(app, /\$\{avisoCuota\}/, 'y se pinta: armarla sin ponerla en la página no sirve de nada');
 });
 
 test('y la planilla de cuotas sigue negándose a cobrar sin monto', async () => {

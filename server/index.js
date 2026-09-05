@@ -568,26 +568,6 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     : [];
 
   /*
-   * Los cuerpos que cobran cuota mensual y no dicen de cuánto.
-   *
-   * Medido antes de esto: los DIECISÉIS de la base cobraban, ninguno tenía el
-   * monto escrito, y eso alcanzaba a las 603 personas de la membresía. Se veía
-   * solo entrando a la planilla de cuotas de cada cuerpo, uno por uno. Un dato
-   * que falta y que nadie ve es un dato que no se llena nunca (ver
-   * server/cuota-sin-monto.js).
-   *
-   * Va en el panel por lo mismo que las credenciales por vencer: es de lo poco
-   * que pide HACER algo, y no se nota por ningún otro lado.
-   *
-   * Solo para quien puede ver Cuerpos, como el resto de las cifras del panel:
-   * una línea que la persona no puede abrir en ninguna parte es una línea que
-   * no puede arreglar.
-   */
-  const cuerposSinCuota = can(req.user, 'cuerpos', 'view')
-    ? require('./cuota-sin-monto').losQueCobranSinMonto(db, req.user)
-    : [];
-
-  /*
    * Los cuerpos que no tienen quién los dirija, o están por quedarse sin.
    *
    * Medido antes de esto: los DIECISIETE cuerpos de la base estaban sin
@@ -607,25 +587,6 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     : [];
 
   /*
-   * Los cuerpos que dejaron de levantar actas.
-   *
-   * El libro de actas era una bodega: se guardaba mucho y no lo miraba nadie
-   * —ni el cumplimiento del cuerpo ni el panel—, y un cuerpo que llevaba dos
-   * años sin anotar una no aparecía en ninguna parte. Medido: de los diecisiete
-   * cuerpos de la base, tres tenían alguna acta.
-   *
-   * Va al panel y NO al cumplimiento, y es una decisión tomada: levantar actas
-   * es una práctica que se cuida, no un papel que se exige, así que esto avisa
-   * y no reprocha (ver server/cuerpo-que-no-levanta-actas.js).
-   *
-   * Pide ver Cuerpos y no ver Actas: lo que la línea abre es la ficha del
-   * cuerpo, que es donde se miran las suyas y desde donde se le registra una.
-   */
-  const cuerposSinActas = can(req.user, 'cuerpos', 'view')
-    ? require('./cuerpo-que-no-levanta-actas').losQueNoLevantanActas(db, req.user)
-    : [];
-
-  /*
    * Los documentos recibidos a los que se les está pasando el plazo.
    *
    * Es el único plazo del sistema que no pone la institución: lo pone quien
@@ -641,10 +602,19 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     ? require('./documento-sin-responder').losQueEsperanRespuesta(db, req.user)
     : [];
 
+  /*
+   * Dos avisos que el panel traía y ya no: «Cuotas sin monto definido» y
+   * «Cuerpos que no están levantando actas». La corporación pidió sacarlos de
+   * la pantalla en la v1.393.0, y con ellos se va el trabajo de calcularlos:
+   * un panel que arma dos listas que nadie va a mirar las arma igual en cada
+   * visita. Lo que la cuota sin monto significa se sigue diciendo donde se
+   * arregla —en el estado de cumplimiento del cuerpo, en su ficha, en su hoja
+   * impresa y al guardarlo—, que es donde de verdad se lee.
+   */
   res.json({
     counts, finanzas, cumpleanos, solicitudesRecientes,
-    credencialesPorVencer, credencialesSinTitular, cuerposSinCuota, cuerposSinDirectiva,
-    cuerposSinActas, documentosSinResponder,
+    credencialesPorVencer, credencialesSinTitular, cuerposSinDirectiva,
+    documentosSinResponder,
   });
 });
 

@@ -163,8 +163,6 @@ const CON_PERMISO = [
     'aritmética de calendario anclada en UTC: entra un día y sale otro, sin preguntarle la hora a nadie'],
   ['server/integrantes.js', 'Date.UTC',
     'lo mismo: el fin del período de prueba se cuenta en meses sobre una fecha dada'],
-  ['server/cuerpo-que-no-levanta-actas.js', 'T12:00:00Z',
-    'un año hacia atrás desde una fecha dada, anclado al mediodía universal para que ningún huso lo corra de día'],
   ['server/respaldo-automatico.js', 'mtime',
     'la hora en que el sistema de archivos dice que se escribió una copia: un instante, no una fecha anotada'],
   ['public/app.js', 'new Date(ms)',

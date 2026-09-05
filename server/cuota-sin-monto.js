@@ -37,7 +37,7 @@
  * cuando se reúne, no quien lo anota en el sistema. Este sistema ya aprendió
  * que un aviso que sale siempre no cuida el dato —enseña a apretar «Está bien»
  * sin leer (ver server/pastor-de-la-iglesia.js)—. El cuerpo recién creado
- * aparece igual en el panel y en su cumplimiento desde el primer día.
+ * aparece igual en su cumplimiento desde el primer día.
  *
  * Y NO SE PONE UN MONTO POR OMISIÓN. Sería inventar plata que nadie acordó, y
  * quedaría escrito como si alguien lo hubiera decidido.
@@ -94,49 +94,24 @@ function avisoSiCobraSinMonto(data, { existing, confirmado }) {
       + 'Mientras el monto esté vacío no se le puede registrar el pago a nadie: su planilla de cuotas '
       + 'queda a la vista pero no deja marcar nada, y todos sus integrantes figuran debiendo una cuota '
       + 'de monto desconocido. Si todavía no está acordado, confirme y póngalo después —va a aparecer '
-      + 'en el panel y en su estado de cumplimiento hasta que lo ponga—.',
+      + 'en su estado de cumplimiento hasta que lo ponga—.',
     confirmar: 'cobra_cuota_sin_monto',
   };
 }
 
-/**
- * Los cuerpos que cobran sin monto, con cuánta gente alcanza cada uno.
+/*
+ * ── LO QUE SE FUE DE ACÁ ──
  *
- * Lo pide el panel. Se acota a lo que quien pregunta tiene asignado, como
- * todo lo demás: el secretario de un cuerpo ve el suyo, no los de la
- * organización entera.
+ * Vivía también `losQueCobranSinMonto`: la lista que armaba la tarjeta
+ * «Cuotas sin monto definido» del panel de control. La corporación pidió sacar
+ * esa tarjeta en la v1.393.0 y la consulta se fue con ella —una lista que
+ * nadie mira se sigue armando en cada visita al panel—.
  *
- * La gente se cuenta con los que PERTENECEN HOY —activos y en prueba—, que es
- * la misma definición que usa la planilla de cuotas para saber a quién
- * cobrarle (ver server/integrantes.js). Contar también a los retirados diría
- * un número más grande y falso.
+ * Lo que la falta del monto significa se sigue diciendo en los tres lugares
+ * donde se puede hacer algo al respecto: el guardado pregunta antes de dejar un
+ * cuerpo cobrando sin decir cuánto (`avisoSiCobraSinMonto`), su estado de
+ * cumplimiento lo marca (`leFaltaElMonto`, desde server/modules/cuerpos.js) y
+ * su ficha y su hoja impresa dicen «sin monto definido».
  */
-function losQueCobranSinMonto(db, usuario) {
-  const { VIGENTES } = require('./integrantes');
-  const params = [];
-  const suyos = require('./alcance')
-    .condiciones(require('./registry').getModule('cuerpos'), usuario, params);
-  const marcas = VIGENTES.map(() => '?').join(',');
 
-  /*
-   * `cuerpos` es la ÚNICA tabla del FROM, y eso no es casual: el trozo de
-   * alcance viene con los nombres de columna a secas —«id IN (…)»,
-   * «iglesia_id IN (…)»— así que juntarla con `iglesias`, que también tiene
-   * una columna `id`, dejaría la consulta ambigua. El nombre de la iglesia se
-   * trae con una subconsulta, que no comparte el espacio de nombres.
-   */
-  return db
-    .prepare(
-      `SELECT id, nombre, tipo,
-              (SELECT i.nombre FROM iglesias i WHERE i.id = cuerpos.iglesia_id) AS iglesia,
-              (SELECT COUNT(*) FROM integrantes_cuerpo g
-                WHERE g.cuerpo_id = cuerpos.id AND g.estado IN (${marcas})) AS integrantes
-         FROM cuerpos
-        WHERE cobra_cuota = 1 AND COALESCE(cuota_mensual, 0) <= 0
-          ${suyos ? `AND ${suyos}` : ''}
-        ORDER BY integrantes DESC, nombre`
-    )
-    .all(...VIGENTES, ...params);
-}
-
-module.exports = { cobra, sinMonto, leFaltaElMonto, avisoSiCobraSinMonto, losQueCobranSinMonto };
+module.exports = { cobra, sinMonto, leFaltaElMonto, avisoSiCobraSinMonto };

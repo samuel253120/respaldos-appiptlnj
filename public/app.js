@@ -2071,46 +2071,6 @@ async function viewDashboard() {
     : '';
 
   /*
-   * Los cuerpos que cobran cuota mensual y no dicen de cuánto.
-   *
-   * Medido antes de esto: los dieciséis cuerpos de la base cobraban, ninguno
-   * tenía el monto escrito, y eso alcanzaba a las 603 personas de la
-   * membresía. Solo se veía entrando a la planilla de cuotas de cada cuerpo,
-   * uno por uno. Va acá porque es de lo poco que pide hacer algo, y cada línea
-   * abre la ficha donde se arregla.
-   *
-   * Va DEBAJO de las credenciales: aquéllas dicen algo falso hacia afuera —un
-   * QR que contesta «vigente» a quien lo escanea— y ésta es un dato que falta
-   * hacia adentro.
-   */
-  const sinCuota = d.cuerposSinCuota || [];
-  const gentePorCobrar = sinCuota.reduce((t, c) => t + (Number(c.integrantes) || 0), 0);
-  const avisoCuota = sinCuota.length
-    ? `
-      <div class="card aviso-credenciales">
-        <h3>💵 Cuotas sin monto definido</h3>
-        <p class="mut">
-          Hay <b>${sinCuota.length}</b> cuerpo${sinCuota.length === 1 ? '' : 's'} que cobra${sinCuota.length === 1 ? '' : 'n'}
-          cuota mensual y no dice${sinCuota.length === 1 ? '' : 'n'} de cuánto${gentePorCobrar
-            ? `, y alcanza${sinCuota.length === 1 ? '' : 'n'} a <b>${fmtNumero(gentePorCobrar)}</b> persona${gentePorCobrar === 1 ? '' : 's'}`
-            : ''}.
-          Mientras el monto esté vacío su planilla de cuotas no deja marcar ningún pago. El monto se
-          pone en la ficha del cuerpo.
-        </p>
-        <ul class="mini-list">
-          ${sinCuota.slice(0, CUANTAS_SE_MUESTRAN).map((c) => `
-            <li data-ir="#/m/cuerpos/ficha/${c.id}">
-              <span>${esc(c.nombre)}${c.iglesia ? ` <span class="mut">— ${esc(iglesiaDeTrabajo(c.iglesia) || c.iglesia)}</span>` : ''}</span>
-              <span class="badge yellow">${c.integrantes ? `${fmtNumero(c.integrantes)} integrante${c.integrantes === 1 ? '' : 's'}` : 'sin integrantes'}</span>
-            </li>`).join('')}
-          ${sinCuota.length > CUANTAS_SE_MUESTRAN
-            ? `<li class="mut" data-ir="#/m/cuerpos">y ${sinCuota.length - CUANTAS_SE_MUESTRAN} más — ver todos</li>`
-            : ''}
-        </ul>
-      </div>`
-    : '';
-
-  /*
    * Los cuerpos que se quedan sin quién los dirija.
    *
    * Medido antes de esto: los diecisiete cuerpos de la base estaban sin
@@ -2161,50 +2121,6 @@ async function viewDashboard() {
             </li>`).join('')}
           ${sinDirectiva.length > CUANTAS_SE_MUESTRAN
             ? `<li class="mut" data-ir="#/m/cuerpos">y ${sinDirectiva.length - CUANTAS_SE_MUESTRAN} más — ver todos</li>`
-            : ''}
-        </ul>
-      </div>`
-    : '';
-
-  /*
-   * Los cuerpos que dejaron de levantar actas.
-   *
-   * Es el único aviso del panel que NO habla de un incumplimiento, y el texto
-   * lo dice con todas sus letras: la corporación decidió que el libro de actas
-   * no pese en si un cuerpo está «Al día», así que esta tarjeta avisa para que
-   * alguien pregunte, no para que alguien quede mal. Sin esa frase, entre los
-   * otros tres avisos se lee como un reproche más.
-   */
-  const sinActas = d.cuerposSinActas || [];
-  const nunca = sinActas.filter((c) => c.nivel === 'nunca');
-  const avisoActas = sinActas.length
-    ? `
-      <div class="card aviso-credenciales">
-        <h3>📝 Cuerpos que no están levantando actas</h3>
-        <p class="mut">
-          ${nunca.length
-            ? `Hay <b>${nunca.length}</b> cuerpo${nunca.length === 1 ? '' : 's'} sin ninguna acta anotada.`
-            : ''}
-          ${sinActas.length - nunca.length
-            ? `${nunca.length ? 'Y otro' : 'Hay'}${sinActas.length - nunca.length === 1
-                ? `${nunca.length ? '' : ' <b>1</b> cuerpo'} que hace tiempo no anota una`
-                : `${nunca.length ? 's' : ''} <b>${sinActas.length - nunca.length}</b> ${nunca.length ? '' : 'cuerpos '}que hace tiempo no anotan una`}.`
-            : ''}
-          Esto <b>no cuenta para el estado de cumplimiento</b> del cuerpo: es para preguntar, no para
-          reprochar. El libro se lleva desde la ficha del cuerpo.
-        </p>
-        <ul class="mini-list">
-          ${sinActas.slice(0, CUANTAS_SE_MUESTRAN).map((c) => `
-            <li data-ir="#/m/cuerpos/ficha/${c.id}">
-              <span>${esc(c.nombre)}${c.iglesia ? ` <span class="mut">— ${esc(iglesiaDeTrabajo(c.iglesia) || c.iglesia)}</span>` : ''}
-                <span class="mut">· ${esc(c.situacion)}</span></span>
-              ${/* Amarillo el que nunca anotó, y la marca neutra para el atrasado: esto
-                    avisa, no reprocha, así que el rojo —que en este panel significa que
-                    algo está incumplido— no le corresponde a ninguno de los dos. */''}
-              <span class="badge ${c.nivel === 'nunca' ? 'yellow' : ''}">${c.nivel === 'nunca' ? 'sin actas' : 'sin anotar'}</span>
-            </li>`).join('')}
-          ${sinActas.length > CUANTAS_SE_MUESTRAN
-            ? `<li class="mut" data-ir="#/m/cuerpos">y ${sinActas.length - CUANTAS_SE_MUESTRAN} más — ver todos</li>`
             : ''}
         </ul>
       </div>`
@@ -2263,8 +2179,6 @@ async function viewDashboard() {
     ${avisoSinTitular}
     ${avisoCredenciales}
     ${avisoDirectivas}
-    ${avisoActas}
-    ${avisoCuota}
     <div class="stats">
       ${statDefs.map(([name, ic, lbl, num, alerta, adonde, nota]) => `
         <div class="stat${alerta ? ' urge' : ''}" data-ir="${esc(adonde || `#/m/${name}`)}">
