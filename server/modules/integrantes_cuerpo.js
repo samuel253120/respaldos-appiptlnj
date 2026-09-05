@@ -207,10 +207,51 @@ module.exports = {
         .get(personaId);
       if (!ficha) return `${deDonde.que} de esta ficha ya no está en el sistema.`;
 
-      // La gente del registro aparte es de una iglesia: no se presta entre iglesias
-      if (tipo === 'No miembro' && cuerpo && ficha.iglesia_id
+      /**
+       * CADA IGLESIA LLEVA LOS SUYOS, Y ESO VALE PARA LOS DOS REGISTROS.
+       *
+       * La regla estaba escrita y se aplicaba SOLO a la gente del registro
+       * aparte —«Esa persona está registrada en otra iglesia»—, que es el caso
+       * raro. Al miembro inscrito, que es el caso normal, no se le preguntaba
+       * nada. Medido en la v1.393.0, una persona de la Iglesia Norte a un
+       * cuerpo de la Iglesia Central:
+       *
+       *   no inscrita ... formulario 400 · planilla rechazada
+       *   miembro ....... formulario 201 · planilla «correctas: 1»
+       *
+       * Y la ficha quedaba diciendo que esa persona es de la iglesia del
+       * cuerpo, así que contaba como una más: aparecía en la lista del cuerpo y
+       * en su planilla de cuotas, o sea que la iglesia empezaba a cobrarle una
+       * cuota mensual a alguien que no es suyo. Con una consecuencia peor: la
+       * encargada de ese cuerpo NO puede abrir la ficha de esa persona —403,
+       * «está fuera de lo que tiene asignado»— y sin embargo veía su nombre y
+       * su RUT en la lista de su propio cuerpo.
+       *
+       * SOLO SE FRENA EL GUARDADO QUE LO PROVOCA, que es la regla del motor
+       * para todas las comprobaciones de este tipo: una ficha que ya venía
+       * cruzada —de una carga vieja, de un cuerpo que se mudó de iglesia— se
+       * tiene que poder seguir guardando para corregirle una fecha o una nota.
+       * Lo que se rechaza es crear la ficha, cambiarle la persona o mudarla a
+       * un cuerpo de otra iglesia.
+       *
+       * Y se compara contra LA FICHA GUARDADA y no contra lo que trajo el
+       * formulario: el propio gancho ya le escribió `persona_tipo` a `data`
+       * unas líneas más arriba, así que preguntarle a `data` qué venía habría
+       * dado siempre que sí, y una nota corregida en una ficha vieja se habría
+       * quedado sin guardar.
+       */
+      const seEstaArmando = !existing
+        || Number(personaId) !== Number(existing[deDonde.campo])
+        || tipo !== existing.persona_tipo
+        || Number(cuerpoId) !== Number(existing.cuerpo_id);
+      if (seEstaArmando && cuerpo && ficha.iglesia_id
           && Number(ficha.iglesia_id) !== Number(cuerpo.iglesia_id)) {
-        return 'Esa persona está registrada en otra iglesia. Cada iglesia lleva las suyas.';
+        const suya = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(ficha.iglesia_id);
+        const laDelCuerpo = db.prepare('SELECT nombre FROM iglesias WHERE id = ?').get(cuerpo.iglesia_id);
+        const quien = `${ficha.nombres || ''} ${ficha.apellidos || ''}`.trim() || 'Esa persona';
+        return `${quien} figura en «${suya ? suya.nombre : 'otra iglesia'}» y «${cuerpo.nombre}» es de `
+          + `«${laDelCuerpo ? laDelCuerpo.nombre : 'otra'}». Cada iglesia lleva los suyos: si la persona se `
+          + 'cambió de iglesia, corrija primero eso en su ficha.';
       }
 
       data[deDonde.campo] = personaId;

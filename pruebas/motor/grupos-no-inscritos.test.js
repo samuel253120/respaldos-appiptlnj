@@ -102,7 +102,15 @@ test('ni a un grupo de otra iglesia: cada iglesia lleva a los suyos', () => {
     cuerpo_id: grupo, persona_tipo: 'No miembro', no_miembro_id: ajena,
     estado: 'Activo', fecha_ingreso: '2026-03-01',
   });
-  assert.match(String(r.error), /otra iglesia/);
+  /*
+   * El aviso nombra las DOS iglesias desde la v1.394.0, cuando la regla pasó a
+   * valer también para el miembro inscrito: decir «otra iglesia» a secas no
+   * dejaba claro cuál era la de cada uno. Lo que esta prueba cuida es la regla,
+   * así que se mira que las nombre, no la frase con que lo decía antes.
+   */
+  assert.match(String(r.error), /Cada iglesia lleva los suyos/);
+  assert.match(String(r.error), /La de al lado/, 'la iglesia en que figura la persona');
+  assert.match(String(r.error), /De los grupos/, 'y la del grupo al que se la quiere sumar');
 });
 
 test('nadie tiene dos fichas en el mismo grupo', () => {
