@@ -122,6 +122,27 @@ function pedir(que, argumentos, aMano) {
   });
 }
 
+/**
+ * UNA HUELLA DE RELLENO, PARA GASTAR EL MISMO RATO CUANDO NO HAY CONTRA QUÉ
+ * COMPARAR.
+ *
+ * La entrada se cuida de contestar lo mismo exista o no la cuenta. Pero cuando
+ * el RUT no existe no hay contraseña que comprobar, así que la respuesta salía
+ * de inmediato, y cuando existe hay que gastar los 82 milisegundos de bcrypt.
+ * El aviso callaba y el cronómetro hablaba. MEDIDO en la v1.416.0, un intento
+ * por RUT con la misma clave equivocada: 81, 81, 83 ms los que tenían cuenta;
+ * 2, 2, 3 ms los que no.
+ *
+ * Con esto la entrada compara siempre contra algo —la huella de verdad si la
+ * hay, ésta si no— y el rato es el mismo. Se calcula una vez al arrancar: son
+ * los mismos 85 ms, pero en el arranque no le hacen esperar a nadie.
+ *
+ * El texto no es un secreto ni tiene por qué serlo: nadie va a poder entrar
+ * escribiéndolo, porque cuando se usa esta huella es justamente porque no hay
+ * cuenta con la que entrar.
+ */
+const HUELLA_DE_RELLENO = require('bcryptjs').hashSync('sin-cuenta-que-comparar', CUANTAS_VUELTAS);
+
 /** La huella de una contraseña, para guardarla. */
 function cifrar(texto) {
   const bcrypt = require('bcryptjs');
@@ -136,4 +157,4 @@ function coincide(texto, huella) {
     () => bcrypt.compareSync(String(texto), String(huella)));
 }
 
-module.exports = { cifrar, coincide, CUANTAS_VUELTAS };
+module.exports = { cifrar, coincide, CUANTAS_VUELTAS, HUELLA_DE_RELLENO };

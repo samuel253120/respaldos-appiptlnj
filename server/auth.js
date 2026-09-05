@@ -247,7 +247,19 @@ router.post('/login', atender(async (req, res) => {
     user = db.prepare('SELECT * FROM usuarios WHERE lower(email) = lower(?)').get(identificador);
   }
 
-  if (!user || !user.password || !(await cifrado.coincide(password, user.password))) {
+  /*
+   * SE COMPRUEBA SIEMPRE, HAYA CUENTA O NO.
+   *
+   * Acá se salía antes de comparar cuando el RUT no existía, y con eso el
+   * reloj decía lo que el aviso se cuidaba de callar: 82 ms cuando la cuenta
+   * existe, 2 ms cuando no (hallazgo AU-01). Comparando siempre —contra la
+   * huella de verdad si la hay, y contra una de relleno si no— el rato es el
+   * mismo por los dos caminos.
+   */
+  const huella = (user && user.password) || cifrado.HUELLA_DE_RELLENO;
+  const acierta = await cifrado.coincide(password, huella);
+
+  if (!user || !user.password || !acierta) {
     intentos.fallo(identificador, desde);
     // No se dice si el RUT existe o no: se responde igual en los dos casos.
     // Lo que sí se dice es cómo va con los intentos, para que quien de verdad

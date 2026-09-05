@@ -79,6 +79,20 @@ async function elSistemaAndando() {
    * enganchar como aparato la dirección de la propia máquina, y pedir el envío
    * cuarenta veces seguidas, no tenía cómo salir a la luz.
    */
+  /*
+   * Y la PUERTA DE ENTRADA, que tampoco estaba.
+   *
+   * Toda la revisión de Autenticación y claves se había podido escribir mirando
+   * el código o llamando a las funciones sueltas, pero no pidiendo «/auth/login»:
+   * acá contestaba 404. Que la entrada tarde 82 ms cuando la cuenta existe y 2
+   * cuando no —el hallazgo AU-01, que dice qué RUT tienen cuenta sin acertar
+   * ninguna contraseña— solo se destapa cronometrando la ruta de verdad.
+   *
+   * Es la cuarta vez que pasa lo mismo: los avisos en la v1.341.0, la
+   * importación en la v1.284.0, la configuración y esto en la v1.419.0 y la
+   * v1.420.0. Una ruta que el arnés no monta es una ruta que no se puede probar.
+   */
+  app.use('/api/auth', require('../../server/auth').router);
   app.use('/api', require('../../server/avisos/rutas'));
   app.use('/api', buildRouter());
   /*
