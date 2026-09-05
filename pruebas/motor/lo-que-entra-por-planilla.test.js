@@ -169,13 +169,20 @@ test('sin la llave del nivel general, por planilla tampoco se saca de la caja de
 
 test('la comprobación de NIVEL atrapa lo que ninguna referencia alcanza', () => {
   /*
-   * Una cuota de cuerpo lleva su cuerpo en una columna suelta —no en un campo
-   * de referencia— y su nivel es siempre «cuerpo». La comprobación de
-   * referencias no la mira: sin la de nivel, esta fila entraría.
+   * Una cuota de cuerpo NO TRAE su cuerpo: quien importa manda el integrante, y
+   * el cuerpo lo copia el módulo de su ficha. Su nivel es siempre «cuerpo».
+   *
+   * Por eso la comprobación de referencias no lo mira —solo mira lo que viene
+   * en la fila— y sin la de nivel esta fila entraría. Desde la v1.414.0 el
+   * campo SÍ es una referencia, para que el Registro de Cambios diga el nombre
+   * del cuerpo en vez de su número (hallazgo CU-06), y eso no cambió nada acá:
+   * lo que dejaba fuera del alcance de las referencias no era su tipo, era que
+   * no se manda. Es de solo lectura, así que aunque se mandara se descartaría.
    */
   const CUOTAS = getModule('cuotas_cuerpo');
   const deCuerpo = CUOTAS.fields.find((f) => f.name === 'cuerpo_id');
-  assert.notEqual(deCuerpo.type, 'ref', 'si algún día pasa a ser referencia, esta prueba deja de valer');
+  assert.ok(deCuerpo.readonly,
+    'si algún día se pudiera mandar, la comprobación de referencias lo alcanzaría y esta prueba deja de valer');
   assert.equal(require('../../server/tesorerias').LIBROS.cuotas_cuerpo.siempre, 'tesoreria_cuerpo');
 
   const ficha = db

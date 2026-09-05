@@ -510,7 +510,10 @@ function legible(campo, valor) {
   }
   if (campo.type === 'number') {
     const n = Number(valor);
-    return Number.isFinite(n) ? n.toLocaleString('es-CL') : String(valor);
+    if (!Number.isFinite(n)) return String(valor);
+    // Un año no es una cantidad: «2.026» no es un año (ver `sinMiles` en el
+    // campo `anio` de las cuotas). Lo que se cuenta sí lleva sus miles.
+    return campo.sinMiles ? String(n) : n.toLocaleString('es-CL');
   }
   /*
    * Una fecha, como se lee acá y no como la guarda la base.

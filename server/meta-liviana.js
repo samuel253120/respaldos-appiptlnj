@@ -79,6 +79,14 @@ const LO_QUE_VIAJA = [
   'default', 'porDefecto', 'accept', 'showIf', 'bloqueadoSi', 'optionsRoute',
   'readonly', 'soloAlCrear', 'calcula', 'mostrarEdad', 'mostrarDia', 'seccion', 'destacado', 'buscador',
   'ancho', 'recorte', 'recorta', 'min', 'max', 'entero', 'sensible',
+  /*
+   * `sinMiles`: este número no lleva separador de miles porque no es una
+   * cantidad. Es el año de una cuota, que salía «2.026». Viaja porque los tres
+   * sitios donde se escribe son de la pantalla —el listado, la ficha y la caja
+   * del formulario—; el cuarto, el Registro de Cambios, lo arma el servidor y
+   * lee el campo directamente.
+   */
+  'sinMiles',
   'reservado', 'futuro', 'placeholder', 'enElPapel',
 ];
 
@@ -130,7 +138,7 @@ function comoLoVeLaPantalla(campo, { salud = null, porcentajeVigente = () => und
     name, label, type, required, options, sugerencias, ref, help, default: def,
     porDefecto, accept, showIf, bloqueadoSi, optionsRoute, readonly, soloAlCrear, calcula,
     mostrarEdad, mostrarDia, seccion, destacado, buscador, ancho, recorte, recorta, min, max,
-    entero, sensible, reservado, futuro, placeholder, enElPapel,
+    entero, sinMiles, sensible, reservado, futuro, placeholder, enElPapel,
   } = campo;
   return {
     name, label, type, required: !!required, options: options || null,
@@ -141,6 +149,9 @@ function comoLoVeLaPantalla(campo, { salud = null, porcentajeVigente = () => und
     // Y si se cuenta en enteros: el teclado del teléfono se abre sin coma, y el
     // aviso sale mientras se escribe en vez de al guardar.
     entero: !!entero,
+    // Y si no lleva separador de miles porque no es una cantidad: el año de una
+    // cuota, que salía «2.026» en el listado, en la ficha y en el formulario.
+    sinMiles: !!sinMiles,
     // Si el campo admite fecha adelante, el calendario no le pone tope de hoy
     futuro: !!futuro,
     // Para que la pantalla sepa cuáles esconder cuando el servidor no se los

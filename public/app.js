@@ -4099,7 +4099,8 @@ function cellValue(f, row, col) {
     case 'money':
       return fmtMoney(v);
     case 'number':
-      return esc(fmtNumero(v));
+      // Un año no lleva separador de miles: no es una cantidad (ver `sinMiles`)
+      return esc(f.sinMiles ? String(v) : fmtNumero(v));
     case 'boolean':
       return v ? '<span class="badge green">Sí</span>' : '<span class="badge red">No</span>';
     case 'date': {
@@ -4371,7 +4372,7 @@ function valorFicha(f, row) {
     case 'money':
       return vacio ? '' : fmtMoney(v);
     case 'number':
-      return vacio ? '' : esc(fmtNumero(v));
+      return vacio ? '' : esc(f.sinMiles ? String(v) : fmtNumero(v));
     case 'date': {
       if (vacio) return '';
       const edad = f.mostrarEdad ? edadDeFecha(v) : '';
@@ -8596,7 +8597,8 @@ function fieldHtml(f, row, isNew, campos) {
       // Se escribe con los miles ya separados —113.130, no 113130— así que la
       // caja es de texto: la del navegador para números no deja ponerles
       // puntos. Al guardar se manda el número pelado.
-      const escrito = val === '' || val == null ? '' : conMiles(String(val).replace('.', ','));
+      const escrito = val === '' || val == null ? ''
+        : (f.sinMiles ? String(val) : conMiles(String(val).replace('.', ',')));
       // El teclado que se abre en el teléfono dice de qué campo se trata: con
       // coma donde caben decimales, sin ella donde se cuentan cosas enteras.
       const caja = `<input type="text" inputmode="${f.entero ? 'numeric' : 'decimal'}" class="numero" name="${f.name}"

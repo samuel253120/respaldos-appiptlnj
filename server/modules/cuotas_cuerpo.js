@@ -54,7 +54,13 @@ module.exports = {
       seccion: 'Quién paga',
     },
     {
-      name: 'anio', label: 'Año', type: 'number', required: true,
+      /*
+       * Un año no es una cantidad: salía «2.026», con separador de miles, en el
+       * listado, en el formulario y en el Registro de Cambios. `sinMiles` lo
+       * dice de una vez y los tres sitios lo respetan; se sigue guardando y
+       * revisando como número, que es lo que es.
+       */
+      name: 'anio', label: 'Año', type: 'number', sinMiles: true, required: true,
       seccion: 'Qué mes se paga',
     },
     { name: 'mes', label: 'Mes', type: 'select', required: true, options: OPCIONES_MES },
@@ -65,8 +71,26 @@ module.exports = {
       options: ['Efectivo', 'Transferencia', 'Cheque', 'Otro'],
     },
     { name: 'notas', label: 'Notas', type: 'text' },
-    // Se toman del integrante, para poder filtrar y para los permisos
-    { name: 'cuerpo_id', type: 'number', oculto: true, readonly: true },
+    /*
+     * Se toman del integrante, para poder filtrar y para los permisos.
+     *
+     * El cuerpo va declarado como ENLACE aunque no se elija: quien registra la
+     * cuota elige a la persona, y de su ficha sale el cuerpo. Estaba como
+     * número suelto, y el Registro de Cambios —que arma cada línea con los
+     * campos del listado— quedaba diciendo esto, medido en la v1.412.0:
+     *
+     *   Fecha del pago: 05-07-2026 · cuerpo_id: 1 · Quién pagó: C884812 Cuota
+     *   · Año: 2.026 · Mes: 03 · Monto pagado: $ 5.000
+     *
+     * El módulo gemelo lo hace bien y por eso se notaba: la línea de una cuota
+     * de deuda dice «Deuda: Sillas del templo», porque ahí el campo sí es un
+     * enlace. Un número suelto además no tiene ni etiqueta, así que salía el
+     * nombre de la columna. Siendo enlace, el libro dice el nombre del cuerpo
+     * —que es lo que se está buscando cuando se rastrea un movimiento— y el
+     * listado y los filtros siguen funcionando igual, porque el módulo lo
+     * escribe en su gancho como siempre.
+     */
+    { name: 'cuerpo_id', label: 'Cuerpo / Grupo', type: 'ref', ref: 'cuerpos', oculto: true, readonly: true },
     { name: 'miembro_id', type: 'number', oculto: true, readonly: true },
     /*
      * Quién pagó, escrito.

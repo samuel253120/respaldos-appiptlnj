@@ -159,7 +159,9 @@ test('y lo que la lista dice que viaja, viaja de verdad', () => {
     // «Y ponle el día de la semana delante de la fecha», desde la v1.392.0
     mostrarDia: true,
     seccion: 'S', destacado: true, buscador: false, ancho: 2, recorte: 'c',
-    recorta: 'r', min: 1, max: 9, entero: true, sensible: true,
+    recorta: 'r', min: 1, max: 9, entero: true,
+    // «Este número no lleva miles porque no es una cantidad», desde la v1.414.0
+    sinMiles: true, sensible: true,
     reservado: null, futuro: true, placeholder: 'p', enElPapel: false,
   };
   const sale = sinLoQueNoDiceNada(comoLoVeLaPantalla(deMentira, { salud: 'salud' }));
