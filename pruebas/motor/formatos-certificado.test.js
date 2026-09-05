@@ -68,6 +68,30 @@ test('correrla de nuevo no duplica los formatos', () => {
   assert.equal(losSembrados().length, 8, 'ocho, no dieciséis');
 });
 
+test('ni aunque la marca de aplicada todavía no esté puesta', () => {
+  /*
+   * Ese es el estado en que la encuentra el que llega segundo: la siembra ya
+   * ocurrió pero su marca todavía no está escrita. Mirar si la tabla está
+   * vacía y llenarla se hacía en dos actos, con la comprobación fuera de la
+   * transacción, así que los dos veían la tabla vacía y los dos sembraban; el
+   * segundo chocaba con el índice único del nombre.
+   *
+   * En el servidor no pasa —las migraciones corren una vez al arrancar—, pero
+   * en el motor sí: doce archivos llaman a esta siembra al cargarse, cada uno
+   * en su proceso y todos contra la misma base. Medido con doce procesos
+   * saliendo en el mismo instante: 3 de 12 se caían con
+   * SQLITE_CONSTRAINT_UNIQUE antes, 0 de 12 después, y los ocho formatos
+   * quedaban bien en los dos casos.
+   */
+  db.prepare("DELETE FROM migraciones WHERE nombre = 'formatos de certificado'").run();
+  try {
+    formatosDeCertificadoQueTraiaElSistema();
+  } finally {
+    db.prepare("INSERT OR IGNORE INTO migraciones (nombre) VALUES ('formatos de certificado')").run();
+  }
+  assert.equal(losSembrados().length, 8, 'ocho, no dieciséis');
+});
+
 /* ── Los números del diseño ────────────────────────────────────────── */
 
 const guardando = (datos) => {

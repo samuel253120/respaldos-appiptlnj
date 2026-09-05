@@ -2085,8 +2085,6 @@ function formatosDeCertificadoQueTraiaElSistema() {
     !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
   if (!hayTabla('formatos_certificado')) return;   // se crea al arrancar; se intentará de nuevo
 
-  if (db.prepare('SELECT COUNT(*) c FROM formatos_certificado').get().c) return marcarAplicada(NOMBRE);
-
   /* Los mismos textos que armaba el navegador, con los datos entre llaves. */
   const traidos = [
     ['Bautismo', 10,
@@ -2120,16 +2118,44 @@ function formatosDeCertificadoQueTraiaElSistema() {
              'Con serifa (Georgia)', 'Sin serifa', 34, 15, 18, 'Doble línea', 3)`
   );
 
+  /*
+   * MIRAR SI LA TABLA ESTÁ VACÍA Y LLENARLA ES UN SOLO ACTO.
+   *
+   * Estaba en dos: se preguntaba si había formatos ANTES de la transacción y
+   * se sembraba dentro. Entre una cosa y la otra cabe otro proceso: los dos
+   * ven la tabla vacía, los dos siembran, y el segundo choca con el índice
+   * único del nombre y se cae con SQLITE_CONSTRAINT_UNIQUE.
+   *
+   * En el servidor no se nota, porque las migraciones corren una vez al
+   * arrancar. En las pruebas del motor sí: doce archivos llaman a esta siembra
+   * al cargarse, cada uno en su proceso y todos contra la misma base. Se cayó
+   * en la batería de la v1.397.0 —«el certificado que cambia de tipo», que no
+   * tenía nada malo—, y medido después con doce procesos saliendo en el mismo
+   * instante: 3 de 12 se caían, y los ocho formatos quedaban bien igual. O sea
+   * que no era un dato en peligro: era una prueba en rojo por nada, que es la
+   * clase de ruido que enseña a mirar la batería sin leerla.
+   *
+   * La pregunta va DENTRO de la transacción, que se toma inmediata: ahí la
+   * base está bloqueada y la respuesta ya no se puede quedar vieja. El que
+   * llega segundo ve la tabla llena y no siembra. Y es la ÚNICA pregunta: la
+   * que estaba afuera se sacó a propósito, porque un atajo que contesta lo
+   * mismo casi siempre deja sin probar al que contesta bien.
+   */
+  let sembro = false;
   db.transaction(() => {
+    if (db.prepare('SELECT COUNT(*) c FROM formatos_certificado').get().c) return;
     for (const [nombre, orden, texto] of traidos) {
       nuevo.run(nombre, orden, texto, 'Venía con el sistema. Se puede editar o sacar de uso.');
     }
+    sembro = true;
   }).immediate();
 
-  console.log(
-    `📜 certificados: se crearon ${traidos.length} formato(s) con los textos que traía el sistema. ` +
-      'Ahora se editan desde «Formatos de Certificado».'
-  );
+  if (sembro) {
+    console.log(
+      `📜 certificados: se crearon ${traidos.length} formato(s) con los textos que traía el sistema. ` +
+        'Ahora se editan desde «Formatos de Certificado».'
+    );
+  }
   marcarAplicada(NOMBRE);
 }
 
