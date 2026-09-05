@@ -17117,6 +17117,13 @@ async function renderCuotasCuerpo(cuerpoId, caja, anio) {
   const MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const mesesDelAnio = MESES_CORTOS.map((n, i) => ({ n, valor: String(i + 1).padStart(2, '0') }));
 
+  /*
+   * El total es el de la caja, no el de las filas dibujadas: incluye las cuotas
+   * de quien ya no está en el cuerpo. Si no se dijera de dónde salen, el total
+   * cuadraría con la caja y no cuadraría con la tabla que se está mirando.
+   */
+  const idos = d.de_los_que_ya_no_estan || { cuotas: 0, personas: 0, total: 0 };
+
   caja.innerHTML = `
     <div class="card" style="margin-top:18px">
       <div class="toolbar">
@@ -17163,6 +17170,12 @@ async function renderCuotasCuerpo(cuerpoId, caja, anio) {
           </tbody>
         </table>
       </div>
+      ${idos.total ? `
+        <p class="cuotas-idos">
+          De lo recaudado, <b>${fmtMoney(idos.total)}</b> ${idos.cuotas === 1 ? 'es una cuota' : `son ${fmtNumero(idos.cuotas)} cuotas`}
+          de ${idos.personas === 1 ? 'una persona que ya no está' : `${fmtNumero(idos.personas)} personas que ya no están`}
+          en el cuerpo. La plata quedó en la caja; ${idos.personas === 1 ? 'su fila' : 'sus filas'} ya no ${idos.personas === 1 ? 'se dibuja' : 'se dibujan'} acá.
+        </p>` : ''}
     </div>`;
 
   caja.querySelector('#cuAntes').addEventListener('click', () => renderCuotasCuerpo(cuerpoId, caja, cual - 1));

@@ -953,12 +953,46 @@ module.exports = {
         };
       });
 
+      /*
+       * EL TOTAL ES EL TOTAL, NO LA SUMA DE LO QUE SE ALCANZA A VER.
+       *
+       * La planilla muestra a los integrantes VIGENTES —a quien se fue no se le
+       * cobra, así que su fila no tiene para qué estar— pero sumaba solo las
+       * filas que dibujaba. Si un retirado tiene cuotas de ese año —las suyas,
+       * de cuando estaba— esa plata está en la caja del cuerpo y no estaba en
+       * el total.
+       *
+       * MEDIDO sobre un cuerpo con tres integrantes que pagaron dos meses de
+       * $ 5.000 cada uno, y uno de ellos retirado después de pagarlos:
+       *
+       *   filas de la planilla .....   2   (de 3 personas que pagaron)
+       *   «recaudado» decía ........   $ 20.000
+       *   la caja de cuotas tenía ..   $ 30.000
+       *   las cuotas del año suman .   $ 30.000
+       *
+       * Es la única pantalla donde se miran las cuotas de un cuerpo: quien la
+       * abra veía un total que no era el de su caja, y desde ahí no tenía
+       * ninguna manera de saber de dónde salía la diferencia.
+       *
+       * Se suman TODAS las cuotas del año, que es lo que hay; y se dice aparte
+       * cuánto de eso es de gente que ya no está, para que la pantalla pueda
+       * explicar la diferencia en una línea en vez de dejarla en el aire. Sin
+       * ese segundo número el total cuadraría y seguiría sin entenderse.
+       */
+      const idsVisibles = new Set(filas.map((f) => Number(f.id)));
+      const deLosQueYaNoEstan = pagos.filter((p) => !idsVisibles.has(Number(p.integrante_id)));
+
       res.json({
         anio,
         cobra_cuota: !!cuerpo.cobra_cuota,
         cuota_mensual: cuerpo.cuota_mensual,
         filas,
-        total_recaudado: filas.reduce((t, f) => t + f.total, 0),
+        total_recaudado: pagos.reduce((t, p) => t + (Number(p.monto) || 0), 0),
+        de_los_que_ya_no_estan: {
+          cuotas: deLosQueYaNoEstan.length,
+          personas: new Set(deLosQueYaNoEstan.map((p) => Number(p.integrante_id))).size,
+          total: deLosQueYaNoEstan.reduce((t, p) => t + (Number(p.monto) || 0), 0),
+        },
         puede_cobrar: can(req.user, 'cuotas_cuerpo', 'create') && can(req.user, 'tesoreria_cuerpo', 'view'),
       });
     });

@@ -1998,6 +1998,12 @@ table.grid.cuotas td.exento { color: #cbd5e1; }
 table.grid.cuotas td.debe.se-puede { cursor: pointer; }
 table.grid.cuotas td.debe.se-puede:hover { background: #dbeafe; }
 table.grid.cuotas td.debe.se-puede:hover::after { content: "✓"; color: var(--accent); font-weight: 700; }
+/* La línea que explica por qué el total no es la suma de las filas de arriba */
+.cuotas-idos {
+  margin: 0; padding: 10px 16px 14px; font-size: 12.5px; line-height: 1.5; color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+.cuotas-idos b { color: var(--text); }
 
 /* Saldos por cuenta en el listado de Tesorería */
 .saldos-cuentas { grid-column: 1 / -1; background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
