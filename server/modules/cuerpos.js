@@ -806,6 +806,25 @@ module.exports = {
      * La gente del cuerpo, para el panel de su ficha: cada uno con su estado,
      * su período de prueba y si le corresponde pagar cuota. Vienen todos,
      * retirados incluidos, y la pantalla decide a quién muestra.
+     *
+     * ── EL RUT NO VA ──
+     *
+     * Iba, y sin preguntarle a la llave que lo reserva. El RUT es uno de los
+     * datos reservados del sistema —«RUT y fecha de nacimiento de las fichas»—
+     * y quien no tiene esa llave ve la ficha completa menos eso, no lo baja en
+     * la planilla y no puede buscar por él. Esta ruta lo mandaba igual. Medido
+     * en la v1.393.0, con una cuenta de consulta que tenía la llave cerrada:
+     *
+     *   el listado de Miembros ......... sin el RUT, como corresponde
+     *   la ficha de una persona ........ sin el RUT
+     *   esta lista, de un cuerpo de 50 . los CINCUENTA RUT, completos
+     *
+     * Y no lo usaba nadie: la pantalla de la ficha del cuerpo dibuja el nombre,
+     * las fechas y las marcas, y nunca tocó ese campo; la hoja impresa lo
+     * excluye a propósito y así está escrito desde la 1.255.0. Era un dato
+     * reservado viajando al navegador de quien no debía tenerlo, para no
+     * pintarse en ninguna parte. Se saca: lo que no se usa no se manda, y menos
+     * si está bajo llave.
      */
     router.get('/cuerpos/:id(\\d+)/integrantes', requirePerm('cuerpos', 'view'), VE_INTEGRANTES, (req, res) => {
       const cuerpo = cuerpoDelUsuario(req, res);
@@ -819,7 +838,6 @@ module.exports = {
         miembro_id: f.miembro_id || null,
         no_miembro_id: f.no_miembro_id || null,
         nombre: require('../nombres').paraMostrar(f.nombres, f.apellidos),
-        rut: f.rut || null,
         foto: f.foto || null,
         estado: f.estado,
         fecha_ingreso: f.fecha_ingreso,
