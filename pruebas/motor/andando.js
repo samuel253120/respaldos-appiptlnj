@@ -147,4 +147,16 @@ function cerrarElSistema() {
   puertoDelSistema = 0;
 }
 
-module.exports = { elSistemaAndando, comoOtroUsuario, cerrarElSistema };
+/**
+ * En qué puerto quedó escuchando, para lo que `pedir` no alcanza a contestar.
+ *
+ * `pedir` devuelve el estado, el texto y el JSON, que es lo que hace falta casi
+ * siempre. Pero hay cosas que viven en las CABECERAS —la galleta de sesión y
+ * cuánto dura, que es el hallazgo AU-05— y para mirarlas hay que pedir la ruta
+ * a mano. Con esto se puede, sin tener que levantar otro servidor.
+ */
+function elPuerto() {
+  return puertoDelSistema;
+}
+
+module.exports = { elSistemaAndando, comoOtroUsuario, cerrarElSistema, elPuerto };

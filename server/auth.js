@@ -50,9 +50,20 @@ if (!conLlavePropia) {
   );
 }
 
-/** Duración de la sesión, configurable desde la pantalla de configuración. */
+/**
+ * Duración de la sesión, configurable desde la pantalla de configuración.
+ *
+ * Un solo número, leído en un solo sitio, para el pase Y la galleta. Estaban
+ * separados: el pase respetaba el ajuste y la galleta llevaba doce horas
+ * escritas a mano. De fábrica los dos valen 12 y coincidían por casualidad;
+ * en cuanto la iglesia movía el número, se separaban (hallazgo AU-05).
+ */
+function horasDeSesion() {
+  return ajustes.numero('sesion_horas', 1, 720);
+}
+
 function duracionSesion() {
-  return `${ajustes.numero('sesion_horas', 1, 720)}h`;
+  return `${horasDeSesion()}h`;
 }
 
 /**
@@ -108,7 +119,23 @@ function ponerGalleta(req, res, token) {
     sameSite: 'lax',
     secure: !!req.secure,
     path: '/',
-    maxAge: 12 * 60 * 60 * 1000,
+    /*
+     * LO QUE DURA LA SESIÓN, NO DOCE HORAS ESCRITAS A MANO.
+     *
+     * Acá decía `12 * 60 * 60 * 1000` y no miraba el ajuste. De fábrica los dos
+     * valen 12 horas y coincidían por casualidad; medido en la v1.416.0, con
+     * `sesion_horas` en 720 el pase duraba 720 horas y la galleta 12, y con el
+     * ajuste en 2 la galleta sobrevivía diez horas al pase.
+     *
+     * Y la galleta no es un detalle: es la ÚNICA credencial de lo que pide el
+     * navegador por su cuenta, porque en un `<img src>` no hay dónde poner la
+     * cabecera. Comprobado: /uploads/… contesta 401 sin ella y pasa con ella, y
+     * /api/respaldo igual. Con la sesión configurada por encima de doce horas,
+     * a las doce horas la persona seguía adentro trabajando y de pronto ninguna
+     * foto cargaba, ningún adjunto abría y el respaldo no bajaba, sin un aviso
+     * que lo explicara. Parecía que se había roto el sistema.
+     */
+    maxAge: horasDeSesion() * 60 * 60 * 1000,
   });
 }
 
