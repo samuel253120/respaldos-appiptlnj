@@ -156,6 +156,40 @@ router.put('/', authRequired, (req, res) => {
    * de lo que quedó distinto, que es la única manera de que lo que se ve sea
    * lo que hay.
    */
+  /*
+   * UNA CONTRASEÑA QUE EL SISTEMA VA A REPARTIR PASA POR LA MISMA REGLA QUE
+   * CUALQUIER OTRA (hallazgo AU-03).
+   *
+   * La contraseña inicial era un ajuste de texto corriente y no se revisaba
+   * nada. Medido en la v1.416.0, la misma clave por las dos puertas:
+   *
+   *                  como contraseña propia          como inicial del sistema
+   *   "123456" ....  400 · al menos 8 caracteres     200 · guardada
+   *   "clave" .....  400 · al menos 8 caracteres     200 · guardada
+   *   "aaaaaaaa" ..  400 · un solo carácter repetido 200 · guardada
+   *   "a" .........  400 · al menos 8 caracteres     200 · guardada
+   *
+   * Y no es un ajuste cualquiera: es el único lugar donde nacen casi todas las
+   * contraseñas del sistema, y adivinarla no es entrar a mirar sino apoderarse
+   * de la cuenta, porque en el primer ingreso cambiarla no pide la actual.
+   *
+   * Se RECHAZA el guardado entero en vez de saltarse la opción en silencio, que
+   * es lo que se hace con una lista que trae un valor inventado: ahí el
+   * administrador escribió cualquier cosa por error, y acá creería que dejó
+   * puesta una clave que el sistema nunca guardó.
+   */
+  for (const [clave, valor] of Object.entries(cambios)) {
+    const opcion = POR_CLAVE[clave];
+    if (!opcion || !opcion.revisaComoClave) continue;
+    // Sin `quien`: no es la contraseña de una persona, así que su RUT y su
+    // nombre no vienen al caso. Lo demás —el largo, las de siempre, el nombre
+    // de la iglesia— vale igual o más acá que en cualquier otro sitio.
+    const problema = require('./claves').revisarClave(valor, null);
+    if (problema) {
+      return res.status(400).json({ error: `${opcion.label}: ${problema}` });
+    }
+  }
+
   const ajustados = [];
   const anotados = [];
   for (const [clave, valor] of Object.entries(cambios)) {

@@ -1628,7 +1628,7 @@ Todo cambio queda anotado en el **historial del miembro**, igual que si lo hubie
 
 ### La contraseña inicial
 
-En **Configuración → Acceso** el administrador define la **contraseña inicial** (*Iglesia2026* por defecto). Es la que reciben todas las cuentas nuevas: al crear un usuario **se deja el campo Contraseña vacío** y el sistema le entrega esa.
+En **Configuración → Acceso** el administrador define la **contraseña inicial** (*Primera.Entrada* por defecto). Pasa por las mismas reglas que cualquier otra contraseña: el largo mínimo, nada de las de siempre y nada que salga del nombre de la iglesia — por eso dejó de ser *Iglesia2026*, que no pasaba su propia regla. Es la que reciben todas las cuentas nuevas: al crear un usuario **se deja el campo Contraseña vacío** y el sistema le entrega esa.
 
 Sirve para entrar **una vez**: al hacerlo, el sistema exige cambiarla por una propia antes de dejar pasar a nada más. No es un aviso que se pueda saltar —el servidor cierra el resto del sistema hasta que se cambie—, porque una contraseña que otro conoce no es de quien la usa.
 

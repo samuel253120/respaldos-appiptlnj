@@ -271,10 +271,32 @@ const OPCIONES = [
     grupo: 'Acceso',
     items: [
       {
-        clave: 'password_inicial', label: 'Contraseña inicial', tipo: 'text', defecto: 'Iglesia2026',
+        /*
+         * LA CONTRASEÑA QUE EL SISTEMA ENTREGA PASA POR LA MISMA REGLA QUE LA
+         * QUE UNO ELIGE (hallazgo AU-03).
+         *
+         * Era un texto corriente, sin ninguna comprobación, y es el único lugar
+         * donde nacen casi todas las contraseñas del sistema: cada cuenta nueva
+         * y cada restablecimiento. Medido en la v1.416.0, la misma clave por
+         * las dos puertas: «123456», «clave», «aaaaaaaa» y hasta «a» se
+         * rechazaban como contraseña propia y se guardaban sin chistar como
+         * inicial de todo el sistema.
+         *
+         * Y el valor de fábrica cambió, porque el que había NO PASABA su propia
+         * regla: «Iglesia2026» lleva dentro «Iglesia», que son siete letras del
+         * nombre de la congregación, y es lo primero que probaría cualquiera
+         * que sepa de qué iglesia se trata. Las instalaciones que nunca lo
+         * tocaron pasan a entregar la nueva; la que esté escrita se respeta,
+         * porque el sistema no puede cambiarle en silencio al administrador una
+         * clave que ya repartió.
+         */
+        clave: 'password_inicial', label: 'Contraseña inicial', tipo: 'text', defecto: 'Primera.Entrada',
+        revisaComoClave: true,
         ayuda:
           'La que se le entrega a cada cuenta nueva y la que restablece el administrador cuando alguien ' +
-          'olvida la suya. Al entrar con ella, el sistema obliga a cambiarla por una propia.',
+          'olvida la suya. Al entrar con ella, el sistema obliga a cambiarla por una propia. Pasa por las ' +
+          'mismas reglas que una contraseña cualquiera: el largo mínimo, nada de las de siempre y nada ' +
+          'que salga del nombre de la iglesia.',
       },
       {
         clave: 'password_minimo', label: 'Largo mínimo de la contraseña', tipo: 'number', defecto: '8', min: 8, max: 40,

@@ -47,9 +47,22 @@ function minutosDeBloqueo() {
   return ajustes.numero('acceso_espera_minutos', 1, 120) * 4;
 }
 
-/** La contraseña inicial que definió el administrador. */
+/**
+ * La contraseña inicial que definió el administrador.
+ *
+ * El valor de reserva es el mismo que declara el ajuste, y desde la v1.419.0
+ * pasa la regla de `revisarClave`: el que había —«Iglesia2026»— no la pasaba,
+ * porque lleva dentro siete letras del nombre de la congregación (ver el
+ * comentario del ajuste en server/ajustes.js).
+ *
+ * Lo que esté escrito se respeta tal cual, aunque sea flojo: el sistema no
+ * puede cambiarle en silencio al administrador una clave que ya repartió. La
+ * regla se aplica al GUARDARLA, que es donde se puede avisar.
+ */
+const INICIAL_DE_RESERVA = 'Primera.Entrada';
+
 function inicial() {
-  return (ajustes.obtener('password_inicial') || 'Iglesia2026').trim() || 'Iglesia2026';
+  return (ajustes.obtener('password_inicial') || INICIAL_DE_RESERVA).trim() || INICIAL_DE_RESERVA;
 }
 
 /** Largo mínimo exigido a una contraseña propia. */
@@ -345,7 +358,7 @@ function desbloquearRecuperacion(usuarioId) {
 }
 
 module.exports = {
-  INTENTOS_MAXIMOS, minutosDeBloqueo, inicial, largoMinimo, revisarClave, revisarLargo, establecer, restablecer,
+  INTENTOS_MAXIMOS, minutosDeBloqueo, inicial, INICIAL_DE_RESERVA, largoMinimo, revisarClave, revisarLargo, establecer, restablecer,
   estado, estadoRecuperacion, guardarPregunta, quitarPregunta, respuestaCorrecta,
   desbloquearRecuperacion, normalizar,
 };

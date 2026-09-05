@@ -90,6 +90,15 @@ async function elSistemaAndando() {
    * y solo se puede comprobar teniendo los dos andando.
    */
   app.use('/api/importar', require('../../server/importar').router);
+  /*
+   * Y la configuración, por la misma razón y con el mismo hallazgo detrás.
+   * Desde la v1.419.0 hay ajustes que se REVISAN al guardarse —la contraseña
+   * inicial pasa por la regla de las contraseñas, que es el hallazgo AU-03— y
+   * eso solo se puede comprobar pidiendo la ruta. Sin montarla, una prueba que
+   * intentara guardar una clave floja recibía un 404 y parecía que el rechazo
+   * funcionaba.
+   */
+  app.use('/api/configuracion', require('../../server/configuracion').router);
   servidor = app.listen(0, '127.0.0.1');
   await new Promise((listo) => servidor.once('listening', listo));
   const puerto = servidor.address().port;
