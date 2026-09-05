@@ -65,6 +65,20 @@ const actividad = db.prepare(
   `INSERT INTO asistencias (fecha, tipo_reunion, nombre, iglesia_id, cuerpos) VALUES (?,?,?,?,?)`
 ).run('2026-04-12', TIPO, `Jornada PL ${marca}`, iglesia, JSON.stringify([cuerpo, cuerpoDelSur])).lastInsertRowid;
 
+/*
+ * Un motivo de ausencia PROPIO de esta corrida.
+ *
+ * Se usaba «Trabajo», que viene de fábrica, y eso ataba esta prueba a lo que
+ * hicieran las demás: los archivos del motor corren en paralelo sobre una sola
+ * base, y a un motivo de fábrica cualquiera lo puede apagar o borrar otra
+ * prueba mientras ésta corre. Cuando eso pasaba, la segunda pasada de lista se
+ * rechazaba con un 400 —«ya no está en Motivos de Ausencia»—, el estado quedaba
+ * como el de la primera, y lo que se veía era un fallo acá, donde no estaba el
+ * problema. Con uno propio, nadie más lo toca.
+ */
+const MOTIVO = `Trabajo PL ${marca}`;
+db.prepare('INSERT INTO motivos_ausencia (nombre, pide_detalle, activo) VALUES (?, 0, 1)').run(MOTIVO);
+
 /** Pasa la lista de verdad, que es la única puerta que queda. */
 const pasarLista = (api, cuales) => api('POST', `/asistencias/${actividad}/lista`, { marcas: cuales });
 
@@ -175,8 +189,12 @@ test('una sola marca por par persona-cuerpo, que es donde vive ahora esa regla',
     .prepare('SELECT COUNT(*) c FROM asistencia_detalle WHERE asistencia_id = ? AND miembro_id = ? AND cuerpo_id = ?')
     .get(actividad, miembro, deQueCuerpo).c;
 
-  await pasarLista(api, [{ miembro_id: deLaCentral, no_miembro_id: null, cuerpo_id: cuerpo, estado: 'Presente' }]);
-  await pasarLista(api, [{ miembro_id: deLaCentral, no_miembro_id: null, cuerpo_id: cuerpo, estado: 'Justificado', motivo: 'Trabajo' }]);
+  const primera = await pasarLista(api, [{ miembro_id: deLaCentral, no_miembro_id: null, cuerpo_id: cuerpo, estado: 'Presente' }]);
+  assert.equal(primera.estado, 200, primera.texto.slice(0, 200));
+  // Se mira que las DOS hayan entrado: si la segunda se rechaza, lo que queda
+  // escrito es la primera, y sin este assert eso se leía como «no pisó»
+  const segunda = await pasarLista(api, [{ miembro_id: deLaCentral, no_miembro_id: null, cuerpo_id: cuerpo, estado: 'Justificado', motivo: MOTIVO }]);
+  assert.equal(segunda.estado, 200, segunda.texto.slice(0, 200));
   assert.equal(cuantas(deLaCentral, cuerpo), 1, 'la segunda pisa a la primera, no se suma');
   assert.equal(laMarcaDe(deLaCentral).estado, 'Justificado', 'y queda la última');
 

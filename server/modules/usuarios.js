@@ -144,6 +144,28 @@ module.exports = {
       // Desde cuándo valen las sesiones de esta cuenta. Al cambiar la
       // contraseña se pone la hora de ese momento, y los pases que se
       // hubieran entregado antes dejan de servir (ver server/auth.js).
+      /*
+       * LA TANDA DE SESIONES QUE VALE HOY.
+       *
+       * Cambiar la contraseña cierra las sesiones abiertas, y eso se decidía
+       * comparando la fecha del pase con la del cambio. Las dos son SEGUNDOS
+       * ENTEROS —así viene la fecha de emisión en un pase—, así que dentro de un
+       * mismo segundo no se pueden ordenar: con «menor» sobrevivía el pase del
+       * mismo segundo del cambio (hallazgo AU-06), y con «menor o igual» moría
+       * el de quien acababa de entrar bien. Un reloj de segundos no da para más.
+       *
+       * Así que no se compara con un reloj sino con un CONTADOR: cada cambio de
+       * contraseña le suma uno, y cada pase lleva escrito con qué número nació.
+       * Sirve el que trae el número de ahora; no hay ventanas ni empates.
+       *
+       * Los pases de antes de la v1.423.0 no traen número, así que cuentan como
+       * cero: a quien nunca le han cambiado la contraseña le siguen sirviendo,
+       * y a quien sí, ya no. Es justo lo que se busca en los dos casos.
+       */
+      name: 'sesiones_gen', label: 'Tanda de sesiones', type: 'number', oculto: true, readonly: true,
+    },
+    {
+      // Cuándo se cortó, para poder mirarlo. Quien decide es `sesiones_gen`.
       name: 'sesiones_desde', label: 'Sesiones válidas desde', type: 'number', oculto: true,
     },
     { name: 'pregunta_secreta', label: 'Pregunta de recuperación', type: 'text', oculto: true },

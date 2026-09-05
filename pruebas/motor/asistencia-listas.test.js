@@ -78,13 +78,37 @@ test('sin ningún tipo en uso se dice, en vez de mostrar un desplegable vacío',
 // ------------------- los motivos que exigen explicación, del lado del servidor --
 
 test('la toma de lista exige explicación en los motivos que marcó la iglesia', () => {
-  db.prepare('DELETE FROM motivos_ausencia').run();
+  /*
+   * Con motivos PROPIOS de esta corrida, no vaciando la tabla.
+   *
+   * Antes empezaba con un «DELETE FROM motivos_ausencia» y comparaba la lista
+   * entera. Los archivos del motor corren en paralelo sobre UNA sola base, así
+   * que ese borrado le sacaba los motivos por debajo a los demás mientras
+   * corrían: la prueba de la toma de lista mandaba «Trabajo», el servidor
+   * contestaba —con razón— que ya no está en Motivos de Ausencia, y fallaba en
+   * un sitio que no tenía nada que ver. Se veía una vez cada tantas corridas,
+   * según qué archivo alcanzara a cruzarse con cuál.
+   *
+   * Lo que esta prueba mira no necesita la tabla vacía: necesita que la
+   * respuesta salga de la tabla y no de una lista escrita en el programa. Eso
+   * se comprueba igual de bien —y sin pisar a nadie— con dos motivos propios.
+   */
+  const mio = `PDE ${process.pid % 100000}`;
   const meter = db.prepare('INSERT INTO motivos_ausencia (nombre, pide_detalle, activo) VALUES (?, ?, 1)');
-  meter.run('Enfermedad', 0);
-  meter.run('Viaje', 1);
+  meter.run(`Sin detalle ${mio}`, 0);
+  meter.run(`Con detalle ${mio}`, 1);
+
   // El módulo lo lee en el momento, no al arrancar: un cambio vale en cuanto
   // se guarda
-  assert.deepEqual(detalle.motivosQuePidenDetalle(), ['Viaje']);
+  const piden = detalle.motivosQuePidenDetalle();
+  assert.ok(piden.includes(`Con detalle ${mio}`), 'el que la iglesia marcó, sí');
+  assert.ok(!piden.includes(`Sin detalle ${mio}`), 'y el que no marcó, no');
+
+  // Y apagarlo cuenta enseguida, que es lo mismo que se miraba antes
+  db.prepare('UPDATE motivos_ausencia SET pide_detalle = 0 WHERE nombre = ?').run(`Con detalle ${mio}`);
+  assert.ok(!detalle.motivosQuePidenDetalle().includes(`Con detalle ${mio}`), 'se pregunta cada vez');
+
+  db.prepare('DELETE FROM motivos_ausencia WHERE nombre IN (?, ?)').run(`Sin detalle ${mio}`, `Con detalle ${mio}`);
 });
 
 test('y no una lista escrita dentro del programa', () => {

@@ -44,9 +44,23 @@ let puertoDelSistema = 0;
 /** Una sesión abierta para una cuenta cualquiera, en el mismo sistema andando. */
 function comoOtroUsuario(usuarioId) {
   if (!puertoDelSistema) throw new Error('llame antes a elSistemaAndando()');
-  const fila = db.prepare('SELECT id, rol FROM usuarios WHERE id = ?').get(usuarioId);
+  const fila = db.prepare('SELECT id, rol, sesiones_gen FROM usuarios WHERE id = ?').get(usuarioId);
   if (!fila) throw new Error(`no hay ninguna cuenta con el id ${usuarioId}`);
-  const pase = jwt.sign({ id: fila.id, rol: fila.rol }, JWT_SECRET, { expiresIn: '1h' });
+  /*
+   * Con la TANDA de sesiones que tenga esa cuenta ahora mismo.
+   *
+   * Desde la v1.423.0 un pase lleva escrito con qué tanda nació, y el guardia
+   * deja fuera al que traiga otra: es así como cambiar la contraseña cierra las
+   * sesiones abiertas, sin depender de un reloj de segundos (hallazgo AU-06).
+   * Un pase de prueba firmado sin ella cuenta como tanda cero, así que sobre una
+   * cuenta a la que ya le cambiaron la contraseña recibía un 401 que no tenía
+   * nada que ver con lo que la prueba estaba mirando.
+   */
+  const pase = jwt.sign(
+    { id: fila.id, rol: fila.rol, gen: Number(fila.sesiones_gen || 0) },
+    JWT_SECRET,
+    { expiresIn: '1h' }
+  );
   return async (metodo, ruta, cuerpo) => {
     const r = await fetch(`http://127.0.0.1:${puertoDelSistema}/api${ruta}`, {
       method: metodo,

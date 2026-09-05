@@ -251,7 +251,8 @@ async function establecer(usuarioId, clave, origen, quien, porLaPregunta) {
   db.prepare(
     `UPDATE usuarios
         SET password = ?, password_origen = ?, debe_cambiar_password = ?,
-            password_cambiada_en = ?, sesiones_desde = ?, recuperacion_intentos = 0,
+            password_cambiada_en = ?, sesiones_desde = ?,
+            sesiones_gen = COALESCE(sesiones_gen, 0) + 1, recuperacion_intentos = 0,
             updated_at = datetime('now','localtime')
       WHERE id = ?`
   ).run(
@@ -303,8 +304,8 @@ async function establecer(usuarioId, clave, origen, quien, porLaPregunta) {
  */
 function laEscribioElMotor(usuarioId, origen, quien) {
   db.prepare(
-    `UPDATE usuarios SET sesiones_desde = ?, recuperacion_intentos = 0,
-            recuperacion_bloqueada_en = NULL WHERE id = ?`
+    `UPDATE usuarios SET sesiones_desde = ?, sesiones_gen = COALESCE(sesiones_gen, 0) + 1,
+            recuperacion_intentos = 0, recuperacion_bloqueada_en = NULL WHERE id = ?`
   ).run(Math.floor(Date.now() / 1000), usuarioId);
   dejarConstanciaDeLaClave(usuarioId, origen, quien);
 }
