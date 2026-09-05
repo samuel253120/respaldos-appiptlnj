@@ -16955,6 +16955,31 @@ async function renderIntegrantesCuerpo(cuerpoId, caja, filtro) {
   const chip = (clave, texto, n) =>
     `<button class="chip ${ver === clave ? 'on' : ''}" data-ver="${clave}">${texto} (${fmtNumero(n)})</button>`;
 
+  /*
+   * QUÉ SE DECIDIÓ SOBRE ESTA PERSONA, Y POR DÓNDE SE LEE ENTERO.
+   *
+   * El módulo de Evaluaciones guarda la decisión más importante que se toma
+   * sobre alguien en un cuerpo —si sigue o no sigue— y no estaba en el menú, ni
+   * tenía pestaña en la ficha de la persona ni en la del cuerpo: a su lista
+   * solo se llegaba escribiendo la dirección a mano. Se guardaba bien y no
+   * había por dónde volver a leerlo, cuando la cabecera del propio módulo dice
+   * que las evaluaciones quedan «de modo que el recorrido de cada integrante se
+   * pueda leer completo años después».
+   *
+   * Va acá, en la lista del cuerpo, porque es donde uno está cuando se hace la
+   * pregunta —y es donde ya está el botón «Evaluar»—. Se dice la última, que es
+   * lo que contesta «en qué quedó lo de esta persona», y se enlaza a las suyas,
+   * que es lo que contesta «cómo llegó hasta ahí».
+   */
+  const loQueSeDecidio = (g) => {
+    if (!g.evaluaciones || !MOD['evaluaciones_integrantes']) return '';
+    const u = g.ultima_evaluacion;
+    const cuantas = g.evaluaciones === 1 ? '1 evaluación' : `${fmtNumero(g.evaluaciones)} evaluaciones`;
+    return `<a class="mut evaluaciones-de" href="#/m/evaluaciones_integrantes?f_integrante_id=${g.id}"
+      title="Ver sus evaluaciones">📋 ${cuantas}${u && u.fecha
+        ? ` · última: ${esc(u.resultado || '')} el ${fechaCorta(u.fecha)}` : ''}</a>`;
+  };
+
   const aviso = d.resumen.prueba_vencida
     ? `<div class="aviso importante" style="margin:0 14px 12px">
          <b>⏰ Períodos de prueba vencidos</b>
@@ -17004,6 +17029,7 @@ async function renderIntegrantesCuerpo(cuerpoId, caja, filtro) {
               <div class="dt">
                 <b>${esc(g.nombre)}</b>
                 <span class="mut">${detalle}</span>
+                ${loQueSeDecidio(g)}
               </div>
               <div class="marcas">
                 ${g.lidera ? '<span class="badge blue">Lidera</span>' : ''}

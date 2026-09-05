@@ -1970,6 +1970,17 @@ ul.integrantes .av img { width: 100%; height: 100%; object-fit: cover; }
 ul.integrantes .dt { flex: 1 1 200px; min-width: 0; }
 ul.integrantes .dt b { display: block; font-size: 14px; color: var(--marca-azul); line-height: 1.3; }
 ul.integrantes .dt .mut { font-size: 12px; color: var(--muted); }
+/*
+ * Lo que se decidió sobre esa persona, en su propia línea: es un dato distinto
+ * del estado —el estado es dónde está hoy, esto es cómo llegó— y ponerlos en la
+ * misma línea los confunde. Se subraya solo al pasar por encima para que no
+ * compita con el nombre, que es lo que se lee primero.
+ */
+ul.integrantes .dt .evaluaciones-de {
+  display: block; font-size: 12px; color: var(--muted);
+  text-decoration: none; margin-top: 1px;
+}
+ul.integrantes .dt .evaluaciones-de:hover { text-decoration: underline; color: var(--marca-azul); }
 ul.integrantes .marcas { display: flex; gap: 5px; flex-wrap: wrap; }
 ul.integrantes .acciones { display: flex; gap: 5px; }
 

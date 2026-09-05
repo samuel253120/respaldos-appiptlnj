@@ -832,6 +832,38 @@ module.exports = {
       const { integrantesDe } = require('../integrantes');
       const hoy = require('../fechas').hoy();
 
+      /*
+       * LO QUE SE DECIDIÓ SOBRE CADA UNO, PARA PODER VOLVER A LEERLO.
+       *
+       * Las evaluaciones ya se contaban acá, una consulta por integrante, y la
+       * pantalla nunca las dibujó: era un dato que viajaba para no pintarse en
+       * ninguna parte. Y era el único camino que había: el módulo de
+       * Evaluaciones no está en el menú, no tiene pestaña en la ficha de la
+       * persona ni en la del cuerpo, y a su lista solo se llegaba escribiendo
+       * la dirección a mano. La cabecera del propio módulo dice que las
+       * evaluaciones quedan «de modo que el recorrido de cada integrante se
+       * pueda leer completo años después».
+       *
+       * Ahora viene además LA ÚLTIMA —su fecha y su resultado—, que es lo que
+       * contesta la pregunta con la que uno mira esta lista: en qué quedó lo de
+       * esta persona. Y viene en UNA sola consulta en vez de una por integrante:
+       * el cuerpo más grande de la base medida tiene 63, así que eran 63
+       * consultas por cada vez que se abre el panel.
+       */
+      const evaluaciones = new Map();
+      for (const fila of db.prepare(
+        `SELECT e.integrante_id, COUNT(*) AS cuantas,
+                (SELECT resultado FROM evaluaciones_integrantes u
+                  WHERE u.integrante_id = e.integrante_id
+                  ORDER BY u.fecha DESC, u.id DESC LIMIT 1) AS ultimo_resultado,
+                (SELECT fecha FROM evaluaciones_integrantes u
+                  WHERE u.integrante_id = e.integrante_id
+                  ORDER BY u.fecha DESC, u.id DESC LIMIT 1) AS ultima_fecha
+           FROM evaluaciones_integrantes e
+          WHERE e.cuerpo_id = ?
+          GROUP BY e.integrante_id`
+      ).all(cuerpo.id)) evaluaciones.set(fila.integrante_id, fila);
+
       const gente = integrantesDe(db, cuerpo.id, { conRetirados: true }).map((f) => ({
         id: f.id,
         persona_tipo: f.persona_tipo,
@@ -851,9 +883,13 @@ module.exports = {
           ? Number(cuerpo.lider_no_miembro_id) === Number(f.no_miembro_id)
           : Number(cuerpo.lider_id) === Number(f.miembro_id),
         prueba_vencida: f.estado === 'En prueba' && !!f.fecha_fin_prueba && f.fecha_fin_prueba < hoy,
-        evaluaciones: db
-          .prepare('SELECT COUNT(*) n FROM evaluaciones_integrantes WHERE integrante_id = ?')
-          .get(f.id).n,
+        evaluaciones: (evaluaciones.get(f.id) || {}).cuantas || 0,
+        ultima_evaluacion: evaluaciones.has(f.id)
+          ? {
+            fecha: evaluaciones.get(f.id).ultima_fecha,
+            resultado: evaluaciones.get(f.id).ultimo_resultado,
+          }
+          : null,
       }));
 
       res.json({
