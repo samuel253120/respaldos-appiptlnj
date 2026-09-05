@@ -363,6 +363,9 @@ app.get('/api/meta', authRequired, (req, res) => {
     ajustes: {
       imagen_lado_maximo: Math.min(4000, Math.max(600, Number(ajustes.obtener('imagen_lado_maximo')) || 1600)),
       imagen_calidad: Math.min(100, Math.max(40, Number(ajustes.obtener('imagen_calidad')) || 88)),
+      // Con qué símbolo muestra la plata la pantalla. Lo pone la institución
+      // en Configuración; el servidor usa el mismo (server/formato.js).
+      moneda_simbolo: ajustes.obtener('moneda_simbolo') || '$',
       // Para proponer el vencimiento al escribir la fecha de entrega de una credencial
       credencial_vigencia_anios: ajustes.numero('credencial_vigencia_anios', 1, 20),
       asistencia_marca_inicial: ajustes.obtener('asistencia_marca_inicial') || 'Sin marcar',

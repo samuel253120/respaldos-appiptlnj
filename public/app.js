@@ -17,7 +17,7 @@ const optionsCache = {}; // opciones {id,label} por módulo referenciado
 const listState = {}; // estado de cada listado (página, búsqueda, filtros…)
 let PERMISOS_CATALOGO = null; // módulos y acciones para el editor de permisos
 let ROLES = []; // roles disponibles, para mostrarlos por su nombre
-let AJUSTES = { imagen_lado_maximo: 1600, imagen_calidad: 88 }; // preferencias de la interfaz
+let AJUSTES = { imagen_lado_maximo: 1600, imagen_calidad: 88, moneda_simbolo: '$' }; // preferencias de la interfaz
 
 /**
  * ¿Tiene esta llave del sistema?
@@ -287,7 +287,10 @@ function fmtMoney(n) {
    * lee como un error de otra cosa.
    */
   const x = Number(n);
-  return '$ ' + (Number.isFinite(x) ? fmtNumero(Math.round(x)) : fmtNumero(n));
+  // El símbolo sale de Configuración, no está escrito acá: el ajuste existía y
+  // no lo leía nadie (hallazgo CO-04). El espacio es de los que no se cortan.
+  const simbolo = AJUSTES.moneda_simbolo || '$';
+  return `${simbolo}\u00a0` + (Number.isFinite(x) ? fmtNumero(Math.round(x)) : fmtNumero(n));
 }
 
 /**

@@ -39,7 +39,7 @@ const comoSeCompara = (t) =>
     .trim();
 
 /** Un monto como se lee acá. */
-const enPesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
+const enPesos = (n) => require('./formato').enPlata(n);
 
 /**
  * ¿Sigue siendo el mismo registro que ya estaba guardado?

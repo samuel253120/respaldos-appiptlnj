@@ -532,6 +532,14 @@ const OPCIONES = [
       },
     ],
   },
+  /*
+   * Acá vivía «Cuántas actas al año se esperan de un cuerpo». Se sacó en la
+   * v1.427.0 porque la tarjeta del panel de la que salía —la que decía qué
+   * cuerpos dejaron de anotar y desde cuándo— la quitó la corporación en la
+   * v1.393.0, y el ajuste se quedó solo, con su explicación entera describiendo
+   * un aviso que ya no existe. Nadie lo leía: cambiarlo no movía nada, y su
+   * ayuda hacía perder el tiempo a quien la leyera buscando por qué (CO-04).
+   */
   {
     grupo: 'Avisos',
     items: [
@@ -588,16 +596,6 @@ const OPCIONES = [
           + 'su período. Elegir una directiva toma semanas —hay que convocar, elegir y levantar el acta— '
           + 'así que conviene enterarse antes y no el día. Los cuerpos que YA se quedaron sin directiva '
           + 'salen en ese mismo aviso, no importa cuánto haga.',
-      },
-      {
-        clave: 'actas_esperadas_al_anio', label: 'Cuántas actas al año se esperan de un cuerpo',
-        tipo: 'number', defecto: '12', min: 1, max: 52,
-        ayuda:
-          'Cuántas actas de reunión se espera que levante un cuerpo en un año. Doce es una al mes. '
-          + 'De acá sale el aviso del panel que dice qué cuerpos dejaron de anotar y desde cuándo: se '
-          + 'avisa al DOBLE del intervalo esperado —con una al mes, a los dos meses de silencio—, '
-          + 'para que una reunión que se corrió o un mes de vacaciones no salten en el panel. '
-          + 'NO es un requisito de cumplimiento: un cuerpo no queda «Pendiente» por esto.',
       },
       {
         clave: 'mensajes_por_hora', label: 'Cuántos mensajes puede mandar una persona por hora',

@@ -506,7 +506,9 @@ function legible(campo, valor) {
   if (valor === null || valor === undefined || valor === '') return '(vacío)';
   if (campo.type === 'money') {
     const n = Number(valor);
-    return Number.isFinite(n) ? `$\u00a0${n.toLocaleString('es-CL')}` : String(valor);
+    // Pegado: esta cifra va en una tabla angosta y el símbolo no puede quedar
+    // en otra línea, separado de su número
+    return Number.isFinite(n) ? require('./formato').enPlata(n, { pegado: true }) : String(valor);
   }
   if (campo.type === 'number') {
     const n = Number(valor);
@@ -1172,7 +1174,7 @@ function cuandoEra(fecha) {
 /** « ($ 45.000)», o nada si no traía monto: cero no es un monto. */
 function enPesosSiHay(monto) {
   const n = Number(monto) || 0;
-  return n > 0 ? ` ($ ${Math.round(n).toLocaleString('es-CL')})` : '';
+  return n > 0 ? ` (${require('./formato').enPlata(n)})` : '';
 }
 
 /**

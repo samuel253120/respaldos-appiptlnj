@@ -96,9 +96,17 @@ test('y el movimiento guardado de verdad queda entero', () => {
  */
 
 test('la plata se muestra sin centavos, incluso la que ya estaba anotada', () => {
-  // Lo que se guardó antes de esta versión los sigue teniendo, y «$ 765.432,1»
-  // en un libro de caja se lee como un error de otra cosa
-  assert.match(app, /return '\$ ' \+ \(Number\.isFinite\(x\) \? fmtNumero\(Math\.round\(x\)\) : fmtNumero\(n\)\);/);
+  /*
+   * Lo que se guardó antes de esta versión los sigue teniendo, y «$ 765.432,1»
+   * en un libro de caja se lee como un error de otra cosa.
+   *
+   * Lo que se mira acá es el REDONDEO, que es de lo que va esta prueba. El
+   * símbolo dejó de estar escrito en la pantalla en la v1.427.0: sale del
+   * ajuste «Símbolo de moneda», que existía y no lo leía nadie (CO-04).
+   */
+  assert.match(app, /Number\.isFinite\(x\) \? fmtNumero\(Math\.round\(x\)\) : fmtNumero\(n\)/);
+  assert.match(app, /const simbolo = AJUSTES\.moneda_simbolo/,
+    'y el símbolo sale de Configuración, no de una línea escrita en la pantalla');
 });
 
 test('pero un número que no es plata mantiene sus decimales', () => {

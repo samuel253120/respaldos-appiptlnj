@@ -272,7 +272,7 @@ function avisoSiSeDeshaceLaEntrega({ data, existing, db, confirmado }) {
     ? db.prepare('SELECT monto FROM tesoreria WHERE id = ?').get(existing.movimiento_id)
     : null;
 
-  const enPesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
+  const enPesos = (n) => require('./formato').enPlata(n);
 
   return {
     error:

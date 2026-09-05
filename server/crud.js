@@ -1357,7 +1357,23 @@ function buildRouter() {
        */
       const TOPE_DE_PAGINA = 1000000;
       const page = Math.min(TOPE_DE_PAGINA, Math.max(1, parseInt(req.query.page, 10) || 1));
-      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 25));
+      /*
+       * CUÁNTAS FILAS TRAE UNA PÁGINA, de Configuración y no de un 25 escrito
+       * acá (hallazgo CO-04).
+       *
+       * El ajuste «Registros por página» existía, decía en su ayuda «cantidad
+       * de filas que muestran los listados (entre 10 y 200)», y no lo leía
+       * nadie: la pantalla nunca manda `limit`, así que siempre caía en este
+       * 25. Medido en la v1.423.0 con cuarenta miembros cargados: puesto en 10,
+       * en 100 y en 200, el listado devolvió 25 filas y 2 páginas las tres
+       * veces, mientras la pantalla mostraba el número nuevo.
+       *
+       * Se resuelve acá y no en la pantalla porque así vale para las dos
+       * puertas: la pantalla y quien pida la dirección a mano. Lo que venga en
+       * `limit` sigue mandando, con su tope de 200.
+       */
+      const porPagina = require('./ajustes').numero('registros_por_pagina', 10, 200);
+      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || porPagina));
       const offset = (page - 1) * limit;
 
       const total = db.prepare(`SELECT COUNT(*) AS c FROM "${def.name}" ${whereSql}`).get(...params).c;

@@ -28,4 +28,33 @@ function enLista(cosas) {
   return `${cosas.slice(0, -1).join(', ')} y ${cosas[cosas.length - 1]}`;
 }
 
-module.exports = { fechaLarga, enLista, MESES };
+/**
+ * Un monto, con el símbolo de moneda que la institución tenga configurado.
+ *
+ * El ajuste «Símbolo de moneda» existía desde hacía mucho y decía en su propia
+ * ayuda que se usa «al mostrar montos en tesorería, ayudas sociales e
+ * inventarios». No lo leía NADIE: el signo de peso estaba escrito a mano en
+ * siete lugares del servidor y en el formateador de la pantalla. Cambiarlo a
+ * «UF» lo guardaba, lo mostraba guardado, y no movía una sola cifra en todo el
+ * sistema (hallazgo CO-04).
+ *
+ * Ahora sale de acá, que es una sola línea para todos.
+ *
+ * Al peso, sin centavos: en pesos no existen. Lo que se anotó antes de que el
+ * sistema los redondeara al guardar los sigue teniendo, y «$ 765.432,1» en un
+ * libro de caja se lee como un error de otra cosa.
+ *
+ * Con `pegado` el espacio es de los que NO SE CORTAN, para que el símbolo no
+ * quede en otra línea separado de su cifra. Lo piden los sitios donde la cifra
+ * va dentro de una tabla angosta —el Registro de Cambios— y la pantalla. Los
+ * avisos que el sistema escribe en una frase llevan el espacio corriente, que
+ * es como se venían escribiendo. Lo que NO cambia según quién pregunte es el
+ * símbolo: ése es uno solo, y ése era el defecto.
+ */
+function enPlata(n, { pegado = false } = {}) {
+  const simbolo = require('./ajustes').obtener('moneda_simbolo') || '$';
+  const x = Math.round(Number(n) || 0);
+  return `${simbolo}${pegado ? '\u00a0' : ' '}${x.toLocaleString('es-CL')}`;
+}
+
+module.exports = { fechaLarga, enLista, enPlata, MESES };

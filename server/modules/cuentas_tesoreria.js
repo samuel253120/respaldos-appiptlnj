@@ -42,7 +42,7 @@ function movimientosDe(cuentaId, db) {
 }
 
 /** Un monto como se lee acá. */
-const enPesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
+const enPesos = (n) => require('../formato').enPlata(n);
 
 /** ¿Este guardado mueve el punto de partida, y a cuánto? */
 function seMueveElPuntoDePartida(data, existing) {

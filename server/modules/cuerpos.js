@@ -175,7 +175,7 @@ function evaluarCumplimiento(fila, db) {
       detalle: !fila.cobra_cuota
         ? 'No cobra cuota mensual'
         : Number(fila.cuota_mensual) > 0
-          ? `$ ${Number(fila.cuota_mensual).toLocaleString('es-CL')} al mes`
+          ? `${require('../formato').enPlata(fila.cuota_mensual)} al mes`
           : 'Cobra cuota mensual y no dice de cuánto: no se le puede registrar el pago a nadie',
     },
   ];

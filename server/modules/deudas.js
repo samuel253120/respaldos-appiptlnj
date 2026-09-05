@@ -90,7 +90,7 @@ const CERRADAS = [PAGADA, CONDONADA];
 const ESTADOS = [VIGENTE, ...CERRADAS];
 
 /** Un monto como se lee acá. */
-const enPesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-CL')}`;
+const enPesos = (n) => require('../formato').enPlata(n);
 
 /**
  * Con quién es esta deuda, en una línea.
