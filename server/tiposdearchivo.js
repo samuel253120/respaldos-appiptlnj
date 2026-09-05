@@ -134,4 +134,26 @@ function comoSeEntrega(nombre) {
   };
 }
 
-module.exports = { seAcepta, comoSeEntrega, extensionDe, PERMITIDOS, SE_ACEPTAN };
+/**
+ * ¿Este archivo es una IMAGEN, de verdad?
+ *
+ * Hace falta donde un ajuste dice guardar una imagen —el logo, el sello, la
+ * firma— porque ese ajuste es un texto libre y nada comprobaba lo que se le
+ * ponía. Medido en la v1.423.0: apuntando «iglesia_logo» al nombre de un
+ * documento subido a una ficha, «/api/configuracion/logo» —que no pide sesión,
+ * porque el logo tiene que verse en la pantalla de acceso— lo entregaba entero
+ * y sin sesión, mientras el mismo archivo contestaba 401 por «/uploads»
+ * (hallazgo CO-02).
+ *
+ * Se pregunta por las dos cosas, como al subir: que la extensión sea de las que
+ * se muestran como imagen, y que los primeros bytes lo confirmen. Con lo
+ * primero solo, llamarle «logo.png» a un PDF bastaría.
+ */
+function esUnaImagen(nombre, buffer) {
+  const extension = extensionDe(nombre);
+  const permitido = PERMITIDOS[extension];
+  if (!permitido || !/^image\//.test(permitido.tipo)) return false;
+  return contenidoCalza(extension, buffer);
+}
+
+module.exports = { seAcepta, comoSeEntrega, extensionDe, esUnaImagen, PERMITIDOS, SE_ACEPTAN };

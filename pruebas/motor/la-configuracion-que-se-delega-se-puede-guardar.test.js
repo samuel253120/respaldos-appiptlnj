@@ -59,16 +59,29 @@ const conLasDos = unaCuenta(
   { sistema_configuracion: ['view', 'edit'], sistema_mantenimiento: ['view'] }, 'Con las dos'
 );
 
-/** Todo lo que manda la pantalla al apretar Guardar: los setenta campos. */
+/**
+ * Todo lo que manda la pantalla al apretar Guardar: los setenta campos.
+ *
+ * Menos los tres de imagen —el logo, el sello y la firma—, y no por comodidad:
+ * esos tres son UNO SOLO para todo el sistema, no cuelgan de ninguna ficha, y
+ * hay varios archivos del motor que los cargan y los cambian con toda razón
+ * (sin ellos no se puede emitir una credencial). Reenviar acá el nombre que se
+ * acaba de leer hace que esta prueba dependa de que nadie lo cambie en el medio,
+ * y entonces se pone roja por algo que no tiene nada que ver con lo que mira,
+ * que es el permiso del mantenimiento. Lo que las imágenes tienen que cumplir
+ * lo vigila su propia prueba, «una-imagen-de-la-institucion-…».
+ */
 async function comoAprietaGuardar(api, cambios = {}) {
   const r = await api('GET', '/configuracion');
   assert.equal(r.estado, 200, r.texto.slice(0, 200));
   const cuerpo = {};
   for (const grupo of r.json.grupos) {
     for (const o of grupo.items) {
+      if (o.tipo === 'imagen') continue;
       cuerpo[o.clave] = o.tipo === 'boolean' ? String(o.valor) === '1' : (o.valor || '');
     }
   }
+  assert.ok(Object.keys(cuerpo).length > 60, 'siguen siendo casi todos los campos');
   return api('PUT', '/configuracion', { ...cuerpo, ...cambios });
 }
 

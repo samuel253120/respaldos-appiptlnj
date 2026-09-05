@@ -107,6 +107,21 @@ async function elSistemaAndando() {
    * v1.420.0. Una ruta que el arnés no monta es una ruta que no se puede probar.
    */
   app.use('/api/auth', require('../../server/auth').router);
+  /*
+   * Y la configuración, ANTES del motor. El orden es el de server/index.js.
+   *
+   * Acá estaba montada al final, después de `buildRouter()`, y eso hacía que el
+   * arnés no se pareciera al servidor en lo único que importaba: el motor toma
+   * «/api/…» entero y pide sesión, así que las rutas de la configuración que
+   * NO piden sesión —la del logo, que tiene que verse en la pantalla de acceso—
+   * contestaban 401 acá y 200 en producción. Una prueba de esa ruta no se podía
+   * escribir: medía el arnés y no el sistema.
+   *
+   * Desde la v1.419.0 hay ajustes que se revisan al guardarse (hallazgo AU-03) y
+   * desde la v1.425.0 el logo se comprueba al entregarse (hallazgo CO-02); las
+   * dos cosas solo se pueden mirar pidiendo la ruta, y con el mismo orden.
+   */
+  app.use('/api/configuracion', require('../../server/configuracion').router);
   app.use('/api', require('../../server/avisos/rutas'));
   app.use('/api', buildRouter());
   /*
@@ -118,15 +133,6 @@ async function elSistemaAndando() {
    * y solo se puede comprobar teniendo los dos andando.
    */
   app.use('/api/importar', require('../../server/importar').router);
-  /*
-   * Y la configuración, por la misma razón y con el mismo hallazgo detrás.
-   * Desde la v1.419.0 hay ajustes que se REVISAN al guardarse —la contraseña
-   * inicial pasa por la regla de las contraseñas, que es el hallazgo AU-03— y
-   * eso solo se puede comprobar pidiendo la ruta. Sin montarla, una prueba que
-   * intentara guardar una clave floja recibía un 404 y parecía que el rechazo
-   * funcionaba.
-   */
-  app.use('/api/configuracion', require('../../server/configuracion').router);
   servidor = app.listen(0, '127.0.0.1');
   await new Promise((listo) => servidor.once('listening', listo));
   const puerto = servidor.address().port;

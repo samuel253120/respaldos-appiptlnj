@@ -93,8 +93,17 @@ function unaCuentaAcotada(iglesias) {
  */
 function conLosRecursosCargados() {
   const ajustes = require('../../server/ajustes');
+  /*
+   * Se ponen SIEMPRE, no solo si están vacíos.
+   *
+   * Decía «si no hay ninguno, pon uno», y eso es depender de lo que haya dejado
+   * otro: los tres son UNO SOLO para todo el sistema —no cuelgan de ninguna
+   * ficha— y los archivos del motor corren en paralelo sobre una misma base.
+   * Bastaba con que otra prueba dejara el logo en blanco un instante para que
+   * acá no se pudiera emitir, y el fallo salía en esta prueba, que no va de eso.
+   */
   for (const cual of ['iglesia_logo', 'credencial_sello', 'credencial_firma']) {
-    if (!ajustes.obtener(cual)) ajustes.guardar(cual, `${cual}.png`);
+    ajustes.guardar(cual, `${cual}.png`);
   }
 }
 

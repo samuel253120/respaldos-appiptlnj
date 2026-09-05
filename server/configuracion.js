@@ -55,6 +55,57 @@ function comoQuedaria(opcion, valor) {
   return String(valor == null ? '' : valor);
 }
 
+/**
+ * ¿El nombre que se le quiere poner a un ajuste de imagen es una imagen?
+ *
+ * Un ajuste declarado `tipo: 'imagen'` guarda el NOMBRE de un archivo, y era un
+ * texto libre: nada comprobaba que apuntara a una imagen, ni siquiera que el
+ * archivo existiera. Medido en la v1.423.0, apuntando «iglesia_logo» al nombre
+ * de un documento subido a una ficha:
+ *
+ *   GET /uploads/…reservado.txt ............  401 · pide sesión
+ *   GET /api/configuracion/logo ............  200 · y su contenido entero
+ *
+ * La segunda no pide sesión a propósito —el logo tiene que verse en la pantalla
+ * de acceso, antes de que haya nadie identificado—, así que apuntarla a
+ * cualquier archivo subido lo publicaba a internet abierta. Hace falta la llave
+ * de la configuración para dejarlo puesto, pero es justo la clase de cosa que
+ * un permiso administrativo no debería alcanzar, y el único síntoma visible era
+ * que el logo se veía roto (hallazgo CO-02).
+ *
+ * Se pregunta con la MISMA cuenta que usa el sistema al subir un archivo
+ * (server/tiposdearchivo.js): la extensión y los primeros bytes. Dos maneras de
+ * decidir qué es una imagen habrían sido dos verdades.
+ *
+ * Devuelve el problema escrito, o null si se puede guardar. Vacío se puede
+ * siempre: es como se quita el sello, o como se vuelve al logo de fábrica.
+ */
+function problemaDeLaImagen(archivo) {
+  const nombre = String(archivo == null ? '' : archivo).trim();
+  if (!nombre) return null;
+  const ruta = path.join(UPLOADS_DIR, path.basename(nombre));
+  let primeros;
+  try {
+    const f = fs.openSync(ruta, 'r');
+    primeros = Buffer.alloc(16);
+    fs.readSync(f, primeros, 0, 16, 0);
+    fs.closeSync(f);
+  } catch (e) {
+    return 'ese archivo ya no está. Vuelva a cargar la imagen.';
+  }
+  if (!require('./tiposdearchivo').esUnaImagen(nombre, primeros)) {
+    return 'ese archivo no es una imagen. Cargue un PNG o un JPG.';
+  }
+  return null;
+}
+
+/** Lo mismo, al entregar: lo guardado pudo quedar puesto antes de esta versión. */
+function laImagenQueSePuedeEntregar(clave) {
+  const nombre = obtener(clave);
+  if (!nombre) return null;
+  return problemaDeLaImagen(nombre) ? null : path.join(UPLOADS_DIR, path.basename(nombre));
+}
+
 /** ¿Este guardado deja la opción distinta de como está? */
 function quedaDistinta(clave, valor) {
   const opcion = POR_CLAVE[clave];
@@ -99,11 +150,20 @@ const GUARDAR_LOGO = (req) => (req.query.v
 const IMG_DIR = path.join(__dirname, '..', 'public', 'img');
 
 router.get('/logo', (req, res) => {
-  const suyo = obtener('iglesia_logo');
-  const ruta = suyo ? path.join(UPLOADS_DIR, path.basename(suyo)) : null;
   res.setHeader('Cache-Control', GUARDAR_LOGO(req));
   res.setHeader('Vary', 'Accept');
-  if (ruta && fs.existsSync(ruta)) {
+  /*
+   * Se comprueba OTRA VEZ acá, y no solo al guardar.
+   *
+   * El valor pudo quedar puesto antes de que el guardado lo revisara, o el
+   * archivo pudo cambiar en el disco. Esta ruta no pide sesión, así que es la
+   * que tiene que estar segura de lo que entrega: si lo guardado no es una
+   * imagen que se pueda leer, se responde el logo de fábrica y no se entrega
+   * nada. Un logo de fábrica en la pantalla de acceso no le hace daño a nadie;
+   * publicar el carnet escaneado de alguien, sí.
+   */
+  const ruta = laImagenQueSePuedeEntregar('iglesia_logo');
+  if (ruta) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     return res.sendFile(ruta);
   }
@@ -139,9 +199,14 @@ router.get('/recurso/:cual', authRequired, (req, res) => {
   if (!clave) return res.status(404).json({ error: 'Ese recurso no existe' });
   const archivo = obtener(clave);
   if (!archivo) return res.status(404).json({ error: `Falta cargar el ${req.params.cual} en Configuración del Sistema` });
-  const ruta = path.join(UPLOADS_DIR, path.basename(archivo));
-  if (!fs.existsSync(ruta)) {
-    return res.status(404).json({ error: `El archivo del ${req.params.cual} ya no está en el disco` });
+  // Y por lo mismo que el logo: lo guardado pudo quedar puesto antes de que el
+  // guardado lo revisara
+  const ruta = laImagenQueSePuedeEntregar(clave);
+  if (!ruta) {
+    return res.status(404).json({
+      error: `El archivo del ${req.params.cual} ya no está en el disco, o no es una imagen. `
+        + 'Vuelva a cargarlo en Configuración del Sistema.',
+    });
   }
   res.setHeader('Cache-Control', 'private, max-age=300');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -260,6 +325,35 @@ router.put('/', authRequired, (req, res) => {
     }
   }
 
+  /*
+   * Y UNA IMAGEN TIENE QUE SER UNA IMAGEN (hallazgo CO-02).
+   *
+   * Se rechaza el guardado ENTERO, por la misma razón que la contraseña
+   * inicial: quien se equivocó de archivo tiene que enterarse, no quedarse
+   * creyendo que dejó puesto un logo que el sistema nunca guardó.
+   *
+   * SOLO LO QUE CAMBIA, que es la misma lección del hallazgo CO-01 unas líneas
+   * más arriba. La pantalla manda los setenta campos en cada guardado, así que
+   * el nombre del logo que ya está puesto viaja SIEMPRE. Si lo guardado es un
+   * archivo que se borró del disco —o un valor que quedó puesto antes de esta
+   * versión, cuando nada se comprobaba— revisarlo acá dejaría a la persona sin
+   * poder guardar NADA, y por algo que ella no hizo. Se probó al correr la
+   * batería, y era exactamente el defecto que se acababa de arreglar.
+   *
+   * Lo que ya está puesto y está malo lo ataja la otra puerta, la de entregar,
+   * que es la que importa: no se publica igual. Y en cuanto alguien cargue una
+   * imagen nueva, esta comprobación se le hace.
+   */
+  for (const [clave, valor] of Object.entries(cambios)) {
+    const opcion = POR_CLAVE[clave];
+    if (!opcion || opcion.tipo !== 'imagen') continue;
+    if (!quedaDistinta(clave, valor)) continue;
+    const problema = problemaDeLaImagen(valor);
+    if (problema) {
+      return res.status(400).json({ error: `${opcion.label}: ${problema}` });
+    }
+  }
+
   const ajustados = [];
   const anotados = [];
   for (const [clave, valor] of Object.entries(cambios)) {
@@ -359,4 +453,13 @@ router.get('/versiones', authRequired, (req, res) => {
   });
 });
 
-module.exports = { router };
+/*
+ * `problemaDeLaImagen` sale afuera para poder mirarlo desde una prueba.
+ *
+ * El caso «en blanco se puede siempre» —así se vuelve al logo de fábrica y así
+ * se quita el sello— no se puede comprobar pidiendo la ruta: el logo es uno
+ * solo para todo el sistema, y dejarlo en blanco el rato que dura una petición
+ * les rompe la prueba a los archivos que necesitan poder emitir una credencial.
+ * Se mira acá, que es donde vive la regla.
+ */
+module.exports = { router, problemaDeLaImagen };

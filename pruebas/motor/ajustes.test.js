@@ -165,10 +165,19 @@ test('la identidad de la institución lleva todo lo que se imprime', () => {
     'iglesia_direccion', 'iglesia_telefono', 'iglesia_email', 'iglesia_web']) {
     assert.ok(ajustes.POR_CLAVE[clave], `falta ${clave}`);
   }
-  // El logo es el único de tipo imagen, y arranca en blanco: mientras no se
+  // El logo es el único de tipo imagen, y NACE en blanco: mientras no se
   // suba ninguno se usa el que trae el sistema
   assert.equal(ajustes.POR_CLAVE.iglesia_logo.tipo, 'imagen');
-  assert.equal(ajustes.obtener('iglesia_logo'), '');
+  /*
+   * Se mira el valor DECLARADO y no el que hay guardado ahora mismo.
+   *
+   * Acá decía `ajustes.obtener('iglesia_logo')`, y eso es el valor vivo de una
+   * fila que comparten todos: el logo es uno solo para todo el sistema, y los
+   * archivos del motor corren en paralelo sobre una misma base. Cualquier otra
+   * prueba que cargue un logo —hay tres que lo hacen, con razón— dejaba ésta
+   * roja por algo que no tiene nada que ver con lo que mira.
+   */
+  assert.equal(ajustes.POR_CLAVE.iglesia_logo.defecto, '');
 });
 
 test('las opciones públicas son las justas', () => {
