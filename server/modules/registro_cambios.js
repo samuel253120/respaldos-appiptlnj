@@ -65,6 +65,10 @@ module.exports = {
       options: [
         'Creación', 'Cambio', 'Eliminación', 'Importación',
         'Corrección de lista',
+        // Poner, restablecer o recuperar una contraseña, desde la v1.422.0
+        // (hallazgo AU-07). Es la que se busca cuando la pregunta es «¿quién le
+        // cambió la clave a la tesorera, y cuándo?».
+        'Contraseña',
         'Emisión', 'Reemplazo', 'Revocación', 'Repetición', 'Impresión', 'Envío', 'Retiro',
       ],
     },

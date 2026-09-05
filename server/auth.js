@@ -348,7 +348,7 @@ router.post('/cambiar-password', authRequired, atender(async (req, res) => {
     return res.status(400).json({ error: 'La contraseña nueva tiene que ser distinta de la actual' });
   }
 
-  await claves.establecer(user.id, nueva, 'usuario');
+  await claves.establecer(user.id, nueva, 'usuario', req.user);
   const actualizado = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(user.id);
 
   // El cambio cerró todas las sesiones de la cuenta, incluida la de quien lo
@@ -516,8 +516,10 @@ router.post('/recuperar', atender(async (req, res) => {
     });
   }
 
-  // La eligió su dueño: no hay nada que cambiar en el primer ingreso
-  await claves.establecer(user.id, nueva, 'usuario');
+  // La eligió su dueño: no hay nada que cambiar en el primer ingreso. Queda
+  // anotado como recuperación, que es distinto de un cambio corriente: acá
+  // no hubo sesión, se llegó contestando la pregunta secreta.
+  await claves.establecer(user.id, nueva, 'usuario', user, true);
   /*
    * Recuperó bien: se le perdona lo suyo. Las preguntas que hizo para llegar
    * hasta acá se contaron SOLO por dirección —a propósito: contarlas contra el

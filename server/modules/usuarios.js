@@ -266,7 +266,7 @@ module.exports = {
       const usuario = cuentaSuya(req, res);
       if (!usuario) return;
       try {
-        const clave = await claves.restablecer(usuario.id);
+        const clave = await claves.restablecer(usuario.id, req.user);
         res.json({ ok: true, clave, nombre: usuario.nombre, rut: usuario.rut });
       } catch (e) {
         next(e);
@@ -627,7 +627,24 @@ module.exports = {
      * así que el RUT, el correo, el teléfono y la foto son los mismos en los
      * dos lados y da igual por dónde se cambien.
      */
-    afterSave(fila, { db }) {
+    afterSave(fila, { db, user, isNew, existing }) {
+      /*
+       * SI ACÁ SE ESCRIBIÓ UNA CONTRASEÑA, FALTA LO QUE `establecer` HACE
+       * ADEMÁS DE CIFRAR.
+       *
+       * Este módulo cifra la contraseña en su propio gancho de guardado, porque
+       * el motor está a punto de escribir la fila entera. Por eso no pasa por
+       * `claves.establecer`, y se saltaba las dos cosas que aquélla hace de
+       * postre: cerrar las sesiones abiertas de esa cuenta y dejar la
+       * constancia en el Registro de Cambios (hallazgo AU-07).
+       *
+       * Se mira comparando la huella con la que había, y no con una marca
+       * puesta al pasar: una marca en `data` viajaría hacia la base como si
+       * fuera una columna más.
+       */
+      if (!isNew && existing && fila.password && fila.password !== existing.password) {
+        require('../claves').laEscribioElMotor(fila.id, fila.password_origen || 'definida', user);
+      }
       if (!fila.miembro_id) return;
       const miembro = db.prepare('SELECT * FROM miembros WHERE id = ?').get(fila.miembro_id);
       if (!miembro) return;

@@ -187,7 +187,65 @@ const revisarLargo = revisarClave;
  * Lo lento es a propósito y no se toca: una contraseña que se cifra rápido se
  * adivina rápido. Lo que se arregla es que ese rato no lo pague el resto.
  */
-async function establecer(usuarioId, clave, origen) {
+/**
+ * TOCAR UNA CONTRASEÑA DEJA SU LÍNEA.
+ *
+ * La plata deja rastro —la v1.410.0 se ocupó de que hasta el cobro de una cuota
+ * por la planilla dejara el suyo— y las llaves no dejaban casi ninguno, porque
+ * las contraseñas se cambian con un UPDATE directo desde acá, que no pasa por
+ * el motor. MEDIDO en la v1.416.0, líneas en el Registro de Cambios:
+ *
+ *   el administrador restablece la contraseña de alguien ....  0
+ *   la persona cambia la suya ..............................  0
+ *   alguien la recupera con la pregunta secreta ............  0
+ *   el administrador escribe una contraseña en la ficha ....  1
+ *
+ * Esa única línea decía «Origen de la contraseña: inicial → definida», y
+ * apareció de refilón porque cambió esa columna: sobre una cuenta que ya
+ * tuviera origen «definida», no habría aparecido ninguna.
+ *
+ * Restablecerle la contraseña a otra persona es la manera limpia de apoderarse
+ * de su cuenta desde dentro, y era justamente la que no dejaba nada escrito. Si
+ * mañana hay que preguntar «¿quién le cambió la clave a la tesorera, y cuándo?»,
+ * el sistema tiene que poder contestar.
+ *
+ * NO SE ANOTA LA CONTRASEÑA, ni la vieja ni la nueva: se anota QUÉ pasó, QUIÉN
+ * lo hizo y SOBRE QUIÉN. Lo demás no se puede contar aunque se quisiera —el
+ * sistema guarda solo la huella— y no hace falta para responder la pregunta.
+ */
+function comoSeCuenta(origen, deSuDueno, porLaPregunta) {
+  if (porLaPregunta) return 'Recuperó su contraseña con su pregunta secreta';
+  if (origen === 'inicial') return 'Le restableció la contraseña a la inicial del sistema';
+  if (origen === 'definida') return 'Le escribió una contraseña nueva';
+  return deSuDueno ? 'Cambió su propia contraseña' : 'Le puso una contraseña nueva a esta cuenta';
+}
+
+function dejarConstanciaDeLaClave(usuarioId, origen, quien, porLaPregunta) {
+  try {
+    const bitacora = require('./bitacora');
+    const { getModule } = require('./registry');
+    const fila = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(usuarioId);
+    if (!fila) return;
+    const deSuDueno = !!quien && Number(quien.id) === Number(usuarioId);
+    bitacora.anotarCambio({
+      def: getModule('usuarios'),
+      accion: 'Contraseña',
+      fila,
+      detalle: comoSeCuenta(origen, deSuDueno, porLaPregunta),
+      usuario: quien || null,
+    });
+  } catch (e) {
+    // Que no se pueda anotar no puede impedir que alguien recupere su cuenta
+    console.error('No se pudo anotar el cambio de contraseña:', e.message);
+  }
+}
+
+/**
+ * `quien` es quien está haciendo el cambio —para poder anotarlo—, y
+ * `porLaPregunta` distingue la recuperación desde la pantalla de acceso, donde
+ * no hay sesión y quien lo hace es el propio dueño.
+ */
+async function establecer(usuarioId, clave, origen, quien, porLaPregunta) {
   const propia = origen === 'usuario';
   const cifrada = await cifrado.cifrar(clave);
   db.prepare(
@@ -220,12 +278,41 @@ async function establecer(usuarioId, clave, origen) {
     Math.floor(Date.now() / 1000),
     usuarioId
   );
+  dejarConstanciaDeLaClave(usuarioId, origen, quien, porLaPregunta);
+}
+
+/**
+ * LO QUE FALTA CUANDO LA CONTRASEÑA LA ESCRIBE EL MOTOR.
+ *
+ * Hay un tercer camino, además de `establecer` y `restablecer`: el
+ * administrador escribe una contraseña en la ficha del usuario. Ese lo cifra el
+ * propio módulo en su gancho de guardado, porque el motor está a punto de
+ * escribir la fila entera, así que no pasa por acá y se saltaba las dos cosas
+ * que `establecer` hace además de cifrar.
+ *
+ * MEDIDO en la v1.416.0, sobre una cuenta con la sesión abierta y esperando un
+ * segundo y medio para que el corte no quedara en el mismo segundo:
+ *
+ *   restablecer desde el botón .....  401  la sesión se cerró
+ *   escribirla en la ficha .........  200  la sesión siguió abierta
+ *
+ * Y la cabecera de este archivo dice, sobre cerrar las sesiones: «Vale para los
+ * tres orígenes, a propósito: que el administrador restablezca la contraseña de
+ * alguien es justamente el caso en que hay que echar de la sesión a quien esté
+ * usando la cuenta». Valía para dos de los tres.
+ */
+function laEscribioElMotor(usuarioId, origen, quien) {
+  db.prepare(
+    `UPDATE usuarios SET sesiones_desde = ?, recuperacion_intentos = 0,
+            recuperacion_bloqueada_en = NULL WHERE id = ?`
+  ).run(Math.floor(Date.now() / 1000), usuarioId);
+  dejarConstanciaDeLaClave(usuarioId, origen, quien);
 }
 
 /** Restablece la cuenta a la contraseña inicial y devuelve cuál es. */
-async function restablecer(usuarioId) {
+async function restablecer(usuarioId, quien) {
   const clave = inicial();
-  await establecer(usuarioId, clave, 'inicial');
+  await establecer(usuarioId, clave, 'inicial', quien);
   return clave;
 }
 
@@ -360,5 +447,5 @@ function desbloquearRecuperacion(usuarioId) {
 module.exports = {
   INTENTOS_MAXIMOS, minutosDeBloqueo, inicial, INICIAL_DE_RESERVA, largoMinimo, revisarClave, revisarLargo, establecer, restablecer,
   estado, estadoRecuperacion, guardarPregunta, quitarPregunta, respuestaCorrecta,
-  desbloquearRecuperacion, normalizar,
+  desbloquearRecuperacion, normalizar, comoSeCuenta, laEscribioElMotor,
 };
