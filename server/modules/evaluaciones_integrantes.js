@@ -48,7 +48,22 @@ module.exports = {
     },
     { name: 'fecha', label: 'Fecha de la evaluación', type: 'date', required: true },
     {
-      name: 'resultado', label: 'Resultado', type: 'select', required: true, default: 'Aprobado',
+      /*
+       * SIN VALOR DE FÁBRICA, y por dos razones que apuntan al mismo lado.
+       *
+       * La primera es de fondo: venía con «Aprobado» puesto, y esta es la
+       * decisión más importante que se toma sobre alguien en un cuerpo. Un
+       * período de prueba existe para que alguien la tome; traerla tomada
+       * invita a aprobar por descuido, que es justo lo contrario.
+       *
+       * La segunda es de lectura, y se midió: el listado escribe como texto
+       * suelto el valor que coincide con el de fábrica —«ciento setenta y nueve
+       * veces "Activo" en verde no informa nada»— y con «Aprobado» de fábrica
+       * el resultado bueno era el ÚNICO de los tres que no se distinguía.
+       * Aquí los tres son decisiones con peso propio y ninguno es «lo
+       * habitual» en el sentido que esa regla protege.
+       */
+      name: 'resultado', label: 'Resultado', type: 'select', required: true,
       options: RESULTADOS,
       help: 'Aprobado: pasa a integrante oficial. No aprobado: sigue en prueba, con un plazo nuevo.',
     },

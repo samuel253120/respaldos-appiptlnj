@@ -429,9 +429,45 @@ function nivelClase(nivel) {
 
 function badgeClass(value) {
   const v = String(value || '').toLowerCase();
-  if (/(activ|vigente|aprobad|firmad|emitido|entregad|bueno|completad|ingreso|sí)/.test(v)) return 'green';
-  if (/(inactiv|anulad|vencid|rechazad|fallecid|malo|de baja|suspendid|egreso|disciplina)/.test(v)) return 'red';
-  if (/(pendiente|borrador|revisi|solicitad|regular|reparaci)/.test(v)) return 'yellow';
+  /*
+   * UNA NEGACIÓN NO HEREDA EL COLOR DE LO QUE NIEGA.
+   *
+   * Los colores se deciden buscando trozos de palabra, y «no aprobado» contiene
+   * «aprobad». Medido en la v1.399.0, en la lista de evaluaciones: «No aprobado
+   * (se extiende la prueba)» salía con la píldora VERDE, que en el resto del
+   * sistema quiere decir que algo salió bien, y era el resultado de que a
+   * alguien no se le aprobara su período de prueba. Quien recorra la lista con
+   * la vista lee lo contrario de lo que dice.
+   *
+   * Hoy es el único valor negado así en los cuarenta y un módulos —se contaron
+   * los 356 valores distintos que tienen sus desplegables— pero la trampa no es
+   * de este módulo: es de la manera de decidir el color, y cualquier opción que
+   * mañana empiece por «No » caería en ella. Un valor negado no es bueno ni
+   * malo por sí solo, así que va al color neutro y se distingue igual.
+   *
+   * Y BUSCAR EL TROZO EN CUALQUIER PARTE DE LA PALABRA ERA LA MISMA TRAMPA,
+   * con dos casos peores que el que se vino a arreglar:
+   *
+   *   «Inactivo» / «Inactiva» ......  VERDE, porque contienen «activ». Un
+   *                                   cuerpo disuelto y una congregación
+   *                                   cerrada se veían con el color de lo que
+   *                                   está bien, en todo el sistema. La regla
+   *                                   que los pinta de rojo está escrita en la
+   *                                   línea de abajo y no llegaba a correr
+   *                                   nunca.
+   *   «Traslado de membresía» ......  VERDE, porque «membresía» contiene «sí».
+   *
+   * Comprobado en la pantalla, en el listado de Cuerpos: la píldora de
+   * «Inactivo» venía con el fondo verde (#DCFCE7).
+   *
+   * Ahora cada trozo se busca al COMIENZO de una palabra. «Inactivo» no empieza
+   * ninguna palabra con «activ», así que cae donde le toca. De los 356 valores
+   * del sistema cambian cuatro, y los cuatro se estaban pintando mal.
+   */
+  if (/^(no|sin|nunca)\b/.test(v)) return 'blue';
+  if (/\b(activ|vigente|aprobad|firmad|emitido|entregad|bueno|completad|ingreso|sí)/.test(v)) return 'green';
+  if (/\b(inactiv|anulad|vencid|rechazad|fallecid|malo|de baja|suspendid|egreso|disciplina)/.test(v)) return 'red';
+  if (/\b(pendiente|borrador|revisi|solicitad|regular|reparaci)/.test(v)) return 'yellow';
   return 'blue';
 }
 
