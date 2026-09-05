@@ -479,7 +479,13 @@ router.post('/recuperar', atender(async (req, res) => {
 
   // La eligió su dueño: no hay nada que cambiar en el primer ingreso
   await claves.establecer(user.id, nueva, 'usuario');
-  // Recuperó bien: se le perdonan las preguntas que hizo para llegar hasta acá
+  /*
+   * Recuperó bien: se le perdona lo suyo. Las preguntas que hizo para llegar
+   * hasta acá se contaron SOLO por dirección —a propósito: contarlas contra el
+   * RUT preguntado dejaría cerrada una cuenta ajena—, así que no hay a quién
+   * atribuírselas y se quedan contadas. Son una o dos, y el tope por dirección
+   * es ancho; perdonarlas costaba vaciar el contador de todos (hallazgo AU-04).
+   */
   intentos.acierto(rut, req.ip);
   res.json({ ok: true });
 }));

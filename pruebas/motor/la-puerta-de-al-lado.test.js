@@ -253,13 +253,42 @@ test('las dos rutas de recuperación pasan por el portero antes de mirar nada', 
     'cada pregunta tiene que contar, contra la dirección y no contra la cuenta');
 });
 
-test('y recuperar bien perdona las preguntas que costó llegar hasta ahí', () => {
+test('y recuperar bien le perdona a esa cuenta lo suyo', () => {
+  /*
+   * ESTO CAMBIÓ EN LA v1.418.0, a propósito.
+   *
+   * Esta prueba decía «perdona las preguntas que costó llegar hasta ahí», y era
+   * cierto: `acierto` borraba la llave de la cuenta Y la de la dirección. Pero
+   * borrar la de la dirección resultó ser el hallazgo AU-04 —una entrada
+   * legítima le limpiaba los errores a todos los demás intentos hechos desde
+   * ese mismo lugar, y con una cuenta propia cualquiera se apagaba el conteo
+   * por dirección a voluntad—.
+   *
+   * Ahora se perdona lo de ESA cuenta. Las preguntas se cuentan solo por
+   * dirección —a propósito: contarlas contra el RUT preguntado dejaría cerrada
+   * una cuenta ajena—, así que no hay a quién atribuírselas y se quedan
+   * contadas. Son una o dos, y el tope por dirección es ancho.
+   */
   const fs = require('fs');
   const path = require('path');
   const auth = fs.readFileSync(path.join(__dirname, '..', '..', 'server', 'auth.js'), 'utf8');
-  const desde = auth.indexOf("await claves.establecer(user.id, nueva, 'usuario');\n  // Recuperó bien");
-  assert.ok(desde > 0, 'al recuperar bien tiene que limpiarse el contador');
-  assert.match(auth.slice(desde, desde + 300), /intentos\.acierto\(rut, req\.ip\)/);
+  // La ruta de recuperar, no la de cambiar-password: las dos ponen una clave
+  // nueva con la misma línea, y solo una de ellas le habla al portero.
+  const laRuta = auth.slice(auth.indexOf("router.post('/recuperar',"));
+  assert.ok(laRuta.length > 400, 'se encontró la ruta de recuperación');
+  assert.match(laRuta, /intentos\.acierto\(rut, req\.ip\)/,
+    'al recuperar bien se le perdona a esa cuenta lo que erró');
+
+  // Y la conducta, que es lo que de verdad importa
+  const desde2 = `7.3.2.${process.pid % 250}`;
+  const suyo = unRutDePrueba();
+  for (let i = 0; i < 3; i++) intentos.fallo(suyo, desde2);   // erró su clave tres veces
+  intentos.fallo(null, desde2);                                // y preguntó una vez
+  intentos.acierto(suyo, desde2);
+  assert.equal(intentos.esperaQueLeFalta(suyo, desde2), 0, 'su cuenta queda limpia');
+  const base = require('../../server/ajustes').numero('acceso_intentos', 3, 20) * 4;
+  assert.equal(intentos.intentosQueLeQuedan(null, desde2), base - 1,
+    'y de la dirección se van sus tres errores; la pregunta anónima se queda contada');
 });
 
 test('y el aviso de «se agotaron» dice que la puerta se abre sola', () => {

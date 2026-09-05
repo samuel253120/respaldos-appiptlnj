@@ -180,9 +180,51 @@ function fallo(rut, ip) {
   }
 }
 
-/** Entró bien: se le borra la cuenta de errores. */
+/**
+ * ENTRÓ BIEN: SE LE PERDONA LO SUYO, NO LO DE LOS DEMÁS.
+ *
+ * Acá se borraban las DOS llaves —la de la cuenta y la de la dirección—, y con
+ * eso una entrada legítima limpiaba de un plumazo los errores que llevaban
+ * todos los demás intentos hechos desde ese mismo lugar. El conteo por
+ * dirección existe justamente para frenar «a quien va probando RUT tras RUT
+ * desde un mismo lugar», y era apagable a voluntad: al atacante le bastaba una
+ * cuenta propia cualquiera —de perfil «consulta», la de menos permisos— para
+ * vaciar el contador cuando quisiera. No necesitaba adivinar nada.
+ *
+ * MEDIDO en la v1.416.0, con el tope por dirección puesto en 12, errando
+ * siempre contra RUT distintos:
+ *
+ *   nadie entra bien ................  la puerta se cerró al error n.º 12
+ *   alguien entra bien cada 5 .......  nunca, en 40 errores seguidos
+ *
+ * Ahora la cuenta que acertó se borra entera —quien acertó es su dueño— y a la
+ * dirección se le DESCUENTAN solo los errores que puso esa misma cuenta. Es la
+ * cifra justa: esos fueron el despiste de alguien que acaba de demostrar quién
+ * es, y no tienen por qué seguir pesando sobre el wifi que comparte toda la
+ * iglesia. Los que pusieron otras cuentas se quedan donde están, que es lo
+ * único que hace que el barrido siga topando.
+ *
+ * Y si con el descuento la dirección baja del primer peldaño, se le levanta el
+ * cierre: lo que lo provocó ya no está contado.
+ */
 function acierto(rut, ip) {
-  for (const llave of llaves(rut, ip)) registro.delete(llave);
+  const suyas = llaves(rut, ip);
+  const deLaCuenta = suyas.find((l) => l.startsWith('rut:'));
+  const deLaDireccion = suyas.find((l) => l.startsWith('ip:'));
+
+  const suya = deLaCuenta ? registro.get(deLaCuenta) : null;
+  const losSuyos = suya ? suya.fallos : 0;
+  if (deLaCuenta) registro.delete(deLaCuenta);
+
+  const compartida = deLaDireccion ? registro.get(deLaDireccion) : null;
+  if (!compartida) return;
+  compartida.fallos = Math.max(0, compartida.fallos - losSuyos);
+  if (!compartida.fallos) {
+    registro.delete(deLaDireccion);
+    return;
+  }
+  const sigueTopando = escalaDe(deLaDireccion).some((e) => compartida.fallos >= e.fallos);
+  if (!sigueTopando) compartida.hasta = 0;
 }
 
 /** Cuántos le quedan antes de que se cierre, para poder avisarle. */
