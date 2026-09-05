@@ -105,6 +105,24 @@ module.exports = {
       // la plata (ver `avisoSiLaCuentaEstaCerrada` en server/cuotas.js). Solo
       // para las nuevas: una ya anotada se sigue corrigiendo.
       if (!id) {
+        /*
+         * Y A QUIEN NO LE TOCA PAGAR, NO SE LE COBRA POR NINGUNA DE LAS DOS
+         * PUERTAS.
+         *
+         * Son las tres reglas que el módulo anuncia en su primera línea —el
+         * cuerpo que no cobra, el integrante exento, y ahora también quien ya
+         * se fue— y hasta la v1.409.0 solo las aplicaba la planilla. La regla
+         * vive en server/cuotas.js, escrita una sola vez, y las dos puertas la
+         * piden: así no puede volver a pasar que una sepa lo que la otra no.
+         *
+         * Solo al COBRAR una cuota nueva, como las dos de abajo: una ya
+         * anotada se sigue corrigiendo, porque cuando se cobró correspondía y
+         * lo que hay que poder arreglar es el monto o la fecha, no la
+         * situación de la persona hoy.
+         */
+        const noLeToca = require('../cuotas').aQuienNoSeLeCobra(db, ficha);
+        if (noLeToca) return noLeToca;
+
         const sinDonde = require('../cuotas').avisoSiLaCuentaEstaCerrada(ficha.cuerpo_id, db);
         if (sinDonde) return sinDonde;
 

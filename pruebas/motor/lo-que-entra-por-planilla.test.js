@@ -44,7 +44,16 @@ const { prepararFila } = require('../../server/importar');
 const central = db.prepare("INSERT INTO iglesias (nombre, codigo, estado) VALUES ('Central de la Planilla','IG-PLA-C','Activa')").run().lastInsertRowid;
 const norte = db.prepare("INSERT INTO iglesias (nombre, codigo, estado) VALUES ('Norte de la Planilla','IG-PLA-N','Activa')").run().lastInsertRowid;
 
-const cuerpo = db.prepare("INSERT INTO cuerpos (nombre, tipo, iglesia_id, estado) VALUES ('Damas de la Planilla','Cuerpo',?,'Activo')").run(central).lastInsertRowid;
+/*
+ * Cobra cuota, y con su monto: desde la v1.409.0 no se le registra una cuota a
+ * un cuerpo que no la cobra por ninguna de las tres puertas —el formulario, la
+ * planilla del cuerpo y la importación—, así que sin esto la fila de cuota de
+ * más abajo se rechazaría por una razón que no es la que esa prueba mira.
+ */
+const cuerpo = db.prepare(
+  "INSERT INTO cuerpos (nombre, tipo, iglesia_id, estado, cobra_cuota, cuota_mensual) "
+  + "VALUES ('Damas de la Planilla','Cuerpo',?,'Activo',1,12000)"
+).run(central).lastInsertRowid;
 
 const cuenta = (nombre, iglesiaId, cuerpoId) => db
   .prepare(`INSERT INTO cuentas_tesoreria (nombre, ambito, tipo, iglesia_id, cuerpo_id, estado, saldo_inicial, fecha_apertura)

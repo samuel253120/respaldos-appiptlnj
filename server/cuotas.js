@@ -113,17 +113,63 @@ function sincronizarConLaTesoreria(fila, conexion) {
 }
 
 /**
+ * ¿A ESTA PERSONA LE CORRESPONDE PAGAR CUOTA? Devuelve el aviso, o null.
+ *
+ * Son tres reglas, y el módulo las anuncia en su primera línea: «Hay dos
+ * maneras de no deber cuota, y las dos se respetan solas: el cuerpo entero no
+ * cobra; un integrante está exento, con su motivo». La tercera es que quien se
+ * fue del cuerpo ya no debe nada.
+ *
+ * VIVEN ACÁ, EN UN SOLO SITIO, porque una cuota entra por DOS puertas —la
+ * planilla del cuerpo y la ficha suelta— y hasta la v1.409.0 solo la planilla
+ * las aplicaba. Medido en la v1.408.0, la misma cuota de julio por las dos:
+ *
+ *                                   por su ficha    por la planilla
+ *   alguien retirado del cuerpo ..  201             400 «ya no pertenece»
+ *   alguien exento de la cuota ...  201             400 «está exenta de pagar»
+ *   un cuerpo que no cobra .......  201             400 «no cobra cuota mensual»
+ *
+ * Y no se quedaba en la tabla de cuotas: sobre un cuerpo con su caja en cero,
+ * cobrar por la ficha la cuota de una persona retirada y la de una exenta la
+ * dejó en $ 12.000. La exención existe para que a alguien no se le cobre —«
+ * situación económica», dice el motivo— y por esa puerta se le cobraba igual.
+ *
+ * Cerrar una de las dos puertas es lo mismo que no cerrar ninguna, que es la
+ * lección que dejó esta misma planilla en la 1.249.0.
+ */
+function aQuienNoSeLeCobra(conexion, ficha) {
+  const quien = ficha.persona || 'Esa persona';
+  if (ficha.estado === 'Retirado') {
+    const { comoSeLee } = require('./fechas');
+    return `${quien} ya no pertenece a este cuerpo`
+      + `${ficha.fecha_retiro ? `: se retiró el ${comoSeLee(ficha.fecha_retiro)}` : ''}. `
+      + 'A quien se fue no se le cobra cuota. Si volvió, ábrale su ficha de integrante y '
+      + 'póngala en un estado vigente.';
+  }
+  if (ficha.exento_cuota) {
+    return `${quien} está exento(a) de pagar la cuota`
+      + `${ficha.exento_motivo ? ` (${ficha.exento_motivo})` : ''}. `
+      + 'Si eso ya no corresponde, quítele la exención en su ficha de integrante.';
+  }
+  const cuerpo = conexion.prepare('SELECT nombre, cobra_cuota FROM cuerpos WHERE id = ?').get(ficha.cuerpo_id);
+  if (!cuerpo || !cuerpo.cobra_cuota) {
+    return `${cuerpo ? `«${cuerpo.nombre}»` : 'Este cuerpo'} no cobra cuota mensual, así que no hay `
+      + 'cuota que registrar. Si empezó a cobrarla, márquelo en su ficha y dígale de cuánto es.';
+  }
+  return null;
+}
+
+/**
  * Anota que una persona pagó su cuota de un mes. Devuelve { error } cuando no
  * corresponde cobrarla, para poder decirlo en pantalla tal cual.
  */
 function registrarPago(conexion, { integranteId, anio, mes, monto, fecha, metodo, usuarioId }) {
   const ficha = conexion.prepare('SELECT * FROM integrantes_cuerpo WHERE id = ?').get(integranteId);
   if (!ficha) return { error: 'No encuentro la ficha de ese integrante.' };
-  if (ficha.estado === 'Retirado') return { error: 'Esa persona ya no pertenece al cuerpo.' };
-  if (ficha.exento_cuota) return { error: 'Esa persona está exenta de pagar la cuota.' };
+  const noLeToca = aQuienNoSeLeCobra(conexion, ficha);
+  if (noLeToca) return { error: noLeToca };
 
   const cuerpo = conexion.prepare('SELECT * FROM cuerpos WHERE id = ?').get(ficha.cuerpo_id);
-  if (!cuerpo || !cuerpo.cobra_cuota) return { error: 'Este cuerpo no cobra cuota mensual.' };
 
   /*
    * Y un cuerpo INACTIVO no cobra cuotas nuevas (ver
@@ -181,4 +227,5 @@ function borrarPago(conexion, cuotaId) {
 module.exports = {
   MESES, OPCIONES_MES, nombreDelMes, sincronizarConLaTesoreria,
   registrarPago, borrarPago, cuentaDeLasCuotas, avisoSiLaCuentaEstaCerrada,
+  aQuienNoSeLeCobra,
 };
