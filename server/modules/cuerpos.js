@@ -980,6 +980,7 @@ module.exports = {
         anio: req.body && req.body.anio,
         mes: req.body && req.body.mes,
         usuarioId: req.user && req.user.id,
+        usuario: req.user,
       });
       if (r.error) return res.status(400).json({ error: r.error });
       res.json(r.cuota);
@@ -992,7 +993,7 @@ module.exports = {
       const cuota = db.prepare('SELECT * FROM cuotas_cuerpo WHERE id = ? AND cuerpo_id = ?')
         .get(req.params.cuota, req.params.id);
       if (!cuota) return res.status(404).json({ error: 'Esa cuota no es de este cuerpo.' });
-      const r = borrarPago(db, cuota.id);
+      const r = borrarPago(db, cuota.id, req.user);
       if (r.error) return res.status(400).json({ error: r.error });
       res.json({ ok: true });
     });

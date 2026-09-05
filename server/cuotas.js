@@ -163,7 +163,7 @@ function aQuienNoSeLeCobra(conexion, ficha) {
  * Anota que una persona pagó su cuota de un mes. Devuelve { error } cuando no
  * corresponde cobrarla, para poder decirlo en pantalla tal cual.
  */
-function registrarPago(conexion, { integranteId, anio, mes, monto, fecha, metodo, usuarioId }) {
+function registrarPago(conexion, { integranteId, anio, mes, monto, fecha, metodo, usuarioId, usuario }) {
   const ficha = conexion.prepare('SELECT * FROM integrantes_cuerpo WHERE id = ?').get(integranteId);
   if (!ficha) return { error: 'No encuentro la ficha de ese integrante.' };
   const noLeToca = aQuienNoSeLeCobra(conexion, ficha);
@@ -201,26 +201,75 @@ function registrarPago(conexion, { integranteId, anio, mes, monto, fecha, metodo
   // El día de la iglesia, no el universal: una cuota pagada el domingo por
   // la noche quedaba con fecha del lunes (ver fechas.hoy)
   const cuando = fecha || require('./fechas').hoy();
+  /*
+   * QUIÉN PAGÓ VA ESCRITO, TAMBIÉN POR ACÁ.
+   *
+   * La ficha suelta lo copia de la ficha de integrante y esta puerta no lo
+   * hacía, y el sistema ya tenía escrito por qué importa, unas líneas más
+   * arriba: «Buscarlo por el número de miembro dejaba el movimiento diciendo
+   * "un integrante" cuando quien paga es alguien de un grupo que no está
+   * inscrito en la membresía: no tiene ese número». El arreglo estaba hecho y
+   * esta puerta no lo alimentaba.
+   *
+   * MEDIDO en la v1.409.0, la misma persona de un grupo, dos cuotas:
+   *
+   *   por la planilla ..  «Cuota de julio de 2026 — un integrante»
+   *   por su ficha .....  «Cuota de agosto de 2026 — Sin Inscribir»
+   *
+   * En el libro de la plata de ese grupo, el primero no dice de quién es. Y sin
+   * el nombre, la línea del Registro de Cambios tampoco lo decía.
+   */
   const info = conexion
     .prepare(
       `INSERT INTO cuotas_cuerpo (integrante_id, anio, mes, monto, fecha_pago, metodo,
-                                  cuerpo_id, miembro_id, iglesia_id, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                  cuerpo_id, miembro_id, persona, iglesia_id, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(ficha.id, elAnio, elMes, cuanto, cuando, metodo || 'Efectivo',
-         ficha.cuerpo_id, ficha.miembro_id, ficha.iglesia_id, usuarioId || null);
+         ficha.cuerpo_id, ficha.miembro_id, ficha.persona || null, ficha.iglesia_id, usuarioId || null);
 
   const fila = conexion.prepare('SELECT * FROM cuotas_cuerpo WHERE id = ?').get(info.lastInsertRowid);
   sincronizarConLaTesoreria(fila, conexion);
-  return { cuota: conexion.prepare('SELECT * FROM cuotas_cuerpo WHERE id = ?').get(fila.id) };
+  const guardada = conexion.prepare('SELECT * FROM cuotas_cuerpo WHERE id = ?').get(fila.id);
+  dejarConstancia({ isNew: true, fila: guardada, usuario });
+  return { cuota: guardada };
+}
+
+/**
+ * LA PLANILLA TAMBIÉN DEJA SU LÍNEA EN EL REGISTRO DE CAMBIOS.
+ *
+ * Las cuotas están en la lista de módulos vigilados desde hace versiones, y con
+ * razón: son dinero. Pero esa lista la mira el motor, y la planilla escribe el
+ * pago derecho —un INSERT y su movimiento— sin pasar por él. O sea que el libro
+ * anotaba la puerta que casi nadie usa y no la que se usa todos los días: la
+ * planilla se cobra con un clic por casilla, mes a mes, persona a persona.
+ *
+ * MEDIDO en la v1.408.0, contando las líneas nuevas de cada operación:
+ *
+ *   cobrar por la ficha ......  201 · 1 línea
+ *   cobrar por la planilla ...  200 · 0 líneas
+ *   borrar por la planilla ...  200 · 0 líneas
+ *   borrar por la ficha ......  200 · 1 línea
+ *
+ * Se anota desde acá y con las MISMAS funciones que usa el motor —no con una
+ * copia— para que las dos puertas dejen la misma clase de línea. Y con su
+ * `origen`, igual que la importación: la línea contesta sola de dónde salió.
+ */
+function dejarConstancia({ isNew, fila, usuario, alBorrar }) {
+  const bitacora = require('./bitacora');
+  const def = require('./registry').getModule('cuotas_cuerpo');
+  if (!def) return;
+  if (alBorrar) bitacora.registrarEliminado(def, fila, usuario);
+  else bitacora.registrarGuardado(def, { isNew, despues: fila, datos: fila, user: usuario, origen: 'Por la planilla' });
 }
 
 /** Deshace un pago: se va la cuota y el ingreso que dejó en tesorería. */
-function borrarPago(conexion, cuotaId) {
+function borrarPago(conexion, cuotaId, usuario) {
   const fila = conexion.prepare('SELECT * FROM cuotas_cuerpo WHERE id = ?').get(cuotaId);
   if (!fila) return { error: 'Esa cuota ya no está registrada.' };
   if (fila.movimiento_id) conexion.prepare('DELETE FROM tesoreria WHERE id = ?').run(fila.movimiento_id);
   conexion.prepare('DELETE FROM cuotas_cuerpo WHERE id = ?').run(fila.id);
+  dejarConstancia({ fila, usuario, alBorrar: true });
   return { borrada: true };
 }
 
