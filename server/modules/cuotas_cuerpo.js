@@ -116,36 +116,13 @@ module.exports = {
       data.iglesia_id = ficha.iglesia_id;
 
       /*
-       * Y EL MONTO SE MIRA CONTRA LA CUOTA DEL CUERPO.
-       *
-       * El cuerpo declara cuánto es su cuota —el sistema ya la usa para
-       * proponer el monto en la planilla— y al registrar un pago a mano ese
-       * número no se miraba. Medido en la v1.412.0, sobre un cuerpo cuya cuota
-       * es de $ 5.000: un pago de $ 99.000.000 se registró con un 201 y quedó
-       * en la caja del cuerpo, sin que nada hiciera ruido.
-       *
-       * Se PREGUNTA, no se rechaza: pagar varios meses juntos, o redondear
-       * hacia arriba, se hace. El tope son diez veces la cuota porque un cero
-       * de más es exactamente eso, diez veces; quien pague el año entero de una
-       * vez va a ver la pregunta y va a poder decir que sí.
-       *
-       * Si el cuerpo no tiene cuota declarada no hay con qué comparar, y no se
-       * inventa un tope: se deja pasar.
+       * Y el monto se mira contra la cuota del cuerpo. La regla vive en
+       * server/cuotas.js —escrita una sola vez— y las dos puertas la piden,
+       * como la de los meses adelantados y la de a quién no se le cobra.
        */
-      const CUANTAS_CUOTAS_YA_SON_MUCHAS = 10;
-      if ('monto' in data) {
-        const suCuerpo = db.prepare('SELECT nombre, cuota_mensual FROM cuerpos WHERE id = ?').get(ficha.cuerpo_id);
-        const mensual = Number(suCuerpo && suCuerpo.cuota_mensual) || 0;
-        const pagado = Number(data.monto);
-        if (mensual > 0 && pagado >= mensual * CUANTAS_CUOTAS_YA_SON_MUCHAS && !confirmado) {
-          const { enPesos } = require('../repetido');
-          return {
-            error: `Está anotando ${enPesos(pagado)} y la cuota de ${suCuerpo.nombre} es de `
-              + `${enPesos(mensual)} al mes: son ${Math.round(pagado / mensual)} cuotas. `
-              + 'Revise si se le fue un dígito; si de verdad pagó eso, confirme.',
-            confirmar: 'el_monto_no_calza_con_la_cuota',
-          };
-        }
+      if ('monto' in data && !confirmado) {
+        const caro = require('../cuotas').avisoSiElMontoNoCalza(db, ficha.cuerpo_id, data.monto);
+        if (caro) return caro;
       }
 
       const anio = Number(dato('anio'));

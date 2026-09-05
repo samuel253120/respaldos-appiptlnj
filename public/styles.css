@@ -2006,6 +2006,9 @@ table.grid.cuotas td.en-cero {
 table.grid.cuotas td.debe.se-puede { cursor: pointer; }
 table.grid.cuotas td.debe.se-puede:hover { background: #dbeafe; }
 table.grid.cuotas td.debe.se-puede:hover::after { content: "✓"; color: var(--accent); font-weight: 700; }
+/* Y la que ya está pagada se puede corregir desde acá, sin ir a su ficha */
+table.grid.cuotas td.pagado.se-corrige { cursor: pointer; }
+table.grid.cuotas td.pagado.se-corrige:hover { background: #dcfce7; }
 /* La línea que explica por qué el total no es la suma de las filas de arriba */
 .cuotas-idos {
   margin: 0; padding: 10px 16px 14px; font-size: 12.5px; line-height: 1.5; color: var(--muted);

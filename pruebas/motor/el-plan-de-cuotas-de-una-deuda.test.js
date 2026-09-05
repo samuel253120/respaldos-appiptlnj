@@ -477,6 +477,12 @@ test('y una cifra calculada sale de la cabecera con su rótulo y sus puntos', ()
 
 test('el pago desde la planilla sabe preguntar lo que el servidor pregunta', () => {
   const pantalla = fs.readFileSync(path.join(__dirname, '../../public/app.js'), 'utf8');
-  assert.match(pantalla, /async function guardarPreguntando\(ruta, cuerpo\)/);
+  /*
+   * Desde la v1.416.0 acepta también el método: nació para anotar pagos
+   * —siempre POST— y ahora la planilla de cuotas corrige un monto con un PUT
+   * (hallazgo CU-08). Por omisión sigue siendo POST, que es lo que este pago
+   * necesita, y por eso se exige el valor por omisión y no solo el nombre.
+   */
+  assert.match(pantalla, /async function guardarPreguntando\(ruta, cuerpo, metodo = 'POST'\)/);
   assert.match(pantalla, /igual_asi: true/);
 });

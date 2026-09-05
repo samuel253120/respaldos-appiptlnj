@@ -17191,7 +17191,17 @@ async function renderCuotasCuerpo(cuerpoId, caja, anio) {
                                 data-integrante="${f.id}" data-mes="${m.valor}">$0</td>`;
                   }
                   if (pago) {
-                    return `<td class="mes pagado" title="${esc(fmtMoney(pago.monto))} · ${esc(fechaCorta(pago.fecha))}"
+                    /*
+                     * Se puede corregir desde acá: quien pagó de más o de menos
+                     * —una cuota atrasada saldada con un abono, un aporte
+                     * voluntario mayor— tenía que irse a la ficha suelta a
+                     * anotarlo (hallazgo CU-08). Es la misma manera con que se
+                     * anota un pago en el plan de una deuda.
+                     */
+                    return `<td class="mes pagado${d.puede_cobrar ? ' se-corrige' : ''}"
+                                title="${esc(fmtMoney(pago.monto))} · ${esc(fechaCorta(pago.fecha))}${
+                                  d.puede_cobrar ? ' · Toque para corregir el monto' : ''}"
+                                data-cuota="${pago.id}" data-monto="${Number(pago.monto)}"
                                 data-integrante="${f.id}" data-mes="${m.valor}">✓</td>`;
                   }
                   return `<td class="mes debe${d.puede_cobrar && d.cuota_mensual ? ' se-puede' : ''}"
@@ -17231,6 +17241,30 @@ async function renderCuotasCuerpo(cuerpoId, caja, anio) {
       } catch (e) {
         celda.textContent = '';
         toast(e.message, true);
+      }
+    }));
+
+  /*
+   * Y corregirle el monto a una que ya está: se pregunta cuánto, como en el
+   * plan de una deuda. Va por la ficha de la cuota —un PUT del módulo— porque
+   * es una corrección y no un cobro, y así pasa por las mismas reglas y deja
+   * su línea en el Registro de Cambios.
+   */
+  caja.querySelectorAll('td.mes.pagado.se-corrige').forEach((celda) =>
+    celda.addEventListener('click', async () => {
+      const antes = Number(celda.dataset.monto);
+      const cuanto = prompt('¿Cuánto se pagó?', String(antes));
+      if (cuanto === null) return;
+      const monto = Number(String(cuanto).replace(/[^\d]/g, ''));
+      if (!monto || monto === antes) return;
+      try {
+        await guardarPreguntando(`/cuotas_cuerpo/${celda.dataset.cuota}`, { monto }, 'PUT');
+        toast('Monto corregido');
+        renderCuotasCuerpo(cuerpoId, caja, cual);
+        const tes = document.getElementById('cpTesoreria');
+        if (tes) renderTesoreriaCuerpo(cuerpoId, tes);
+      } catch (e) {
+        if (e !== SE_ARREPINTIO) toast(e.message, true);
       }
     }));
 }
@@ -17350,14 +17384,18 @@ async function renderPlanDeCuotas(deudaId, caja) {
 /**
  * Manda algo y, si el servidor contesta con una pregunta en vez de un error,
  * la pregunta. Es el mismo mecanismo de `borrarPreguntando`, del otro lado.
+ *
+ * El método se puede decir: nació para anotar pagos —siempre POST— y desde la
+ * v1.416.0 también se corrige el monto de una cuota desde la planilla, que es
+ * un PUT. Por omisión sigue siendo POST, así que quien ya la usaba no cambia.
  */
-async function guardarPreguntando(ruta, cuerpo) {
+async function guardarPreguntando(ruta, cuerpo, metodo = 'POST') {
   try {
-    return await api('POST', ruta, cuerpo);
+    return await api(metodo, ruta, cuerpo);
   } catch (err) {
     if (!(err.datos && err.datos.confirmar)) throw err;
     if (!confirm(`${err.message}\n\n¿Anotarlo igual?`)) throw SE_ARREPINTIO;
-    return api('POST', ruta, { ...cuerpo, igual_asi: true });
+    return api(metodo, ruta, { ...cuerpo, igual_asi: true });
   }
 }
 

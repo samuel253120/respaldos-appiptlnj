@@ -189,11 +189,45 @@ function avisoSiElMesEstaMuyAdelante(anio, mes) {
     + 'en el año.';
 }
 
+/*
+ * EL MONTO SE MIRA CONTRA LA CUOTA DEL CUERPO.
+ *
+ * El cuerpo declara cuánto es su cuota y al anotar un pago ese número no se
+ * miraba: medido en la v1.412.0, sobre un cuerpo cuya cuota es de $ 5.000, un
+ * pago de $ 99.000.000 se registró con un 201 y quedó en la caja.
+ *
+ * Se PREGUNTA, no se rechaza: pagar varios meses juntos, o redondear hacia
+ * arriba, se hace. El tope son diez veces la cuota porque un cero de más es
+ * exactamente eso; quien pague el año entero de una vez ve la pregunta y puede
+ * decir que sí. Si el cuerpo todavía no declaró su cuota no hay con qué
+ * comparar y no se inventa un tope.
+ *
+ * Vive acá desde la v1.416.0, y no en el módulo, porque desde esa versión la
+ * planilla también acepta un monto (hallazgo CU-08): es la misma lección de
+ * `aQuienNoSeLeCobra` y de `avisoSiElMesEstaMuyAdelante`, una regla escrita en
+ * una sola puerta es una regla que la otra no tiene.
+ */
+const CUANTAS_CUOTAS_YA_SON_MUCHAS = 10;
+
+function avisoSiElMontoNoCalza(conexion, cuerpoId, monto) {
+  const cuerpo = conexion.prepare('SELECT nombre, cuota_mensual FROM cuerpos WHERE id = ?').get(cuerpoId);
+  const mensual = Math.round(Number(cuerpo && cuerpo.cuota_mensual) || 0);
+  const pagado = Math.round(Number(monto) || 0);
+  if (!(mensual > 0) || pagado < mensual * CUANTAS_CUOTAS_YA_SON_MUCHAS) return null;
+  const { enPesos } = require('./repetido');
+  return {
+    error: `Está anotando ${enPesos(pagado)} y la cuota de ${cuerpo.nombre} es de `
+      + `${enPesos(mensual)} al mes: son ${Math.round(pagado / mensual)} cuotas. `
+      + 'Revise si se le fue un dígito; si de verdad pagó eso, confirme.',
+    confirmar: 'el_monto_no_calza_con_la_cuota',
+  };
+}
+
 /**
  * Anota que una persona pagó su cuota de un mes. Devuelve { error } cuando no
  * corresponde cobrarla, para poder decirlo en pantalla tal cual.
  */
-function registrarPago(conexion, { integranteId, anio, mes, monto, fecha, metodo, usuarioId, usuario }) {
+function registrarPago(conexion, { integranteId, anio, mes, monto, fecha, metodo, usuarioId, usuario, confirmado }) {
   const ficha = conexion.prepare('SELECT * FROM integrantes_cuerpo WHERE id = ?').get(integranteId);
   if (!ficha) return { error: 'No encuentro la ficha de ese integrante.' };
   const noLeToca = aQuienNoSeLeCobra(conexion, ficha);
@@ -224,8 +258,25 @@ function registrarPago(conexion, { integranteId, anio, mes, monto, fecha, metodo
     .get(ficha.id, elAnio, elMes);
   if (repetida) return { error: 'Esa cuota ya estaba registrada.' };
 
-  const cuanto = Number(monto) > 0 ? Number(monto) : Number(cuerpo.cuota_mensual) || 0;
+  /*
+   * EL MONTO QUE SE MANDE, SI SE MANDA.
+   *
+   * Esta línea siempre supo aceptar un monto y la ruta nunca se lo pasaba
+   * (hallazgo CU-08): un parámetro escrito que no llegaba nunca. Quien pagó de
+   * más o de menos —una cuota atrasada saldada con un abono, un aporte
+   * voluntario mayor— tenía que irse a la ficha suelta a anotarlo.
+   *
+   * Sin monto sigue mandando la cuota del cuerpo, que es lo que hace que
+   * cobrar sea un clic.
+   */
+  const cuanto = Number(monto) > 0 ? Math.round(Number(monto)) : Math.round(Number(cuerpo.cuota_mensual) || 0);
   if (!(cuanto > 0)) return { error: 'Este cuerpo todavía no tiene definido el monto de su cuota.' };
+
+  // Y con monto propio, la misma pregunta que por la otra puerta
+  if (!confirmado) {
+    const caro = avisoSiElMontoNoCalza(conexion, ficha.cuerpo_id, cuanto);
+    if (caro) return caro;
+  }
 
   const sinDonde = avisoSiLaCuentaEstaCerrada(ficha.cuerpo_id, conexion);
   if (sinDonde) return { error: sinDonde };
@@ -307,6 +358,7 @@ function borrarPago(conexion, cuotaId, usuario) {
 
 module.exports = {
   MESES, OPCIONES_MES, nombreDelMes, sincronizarConLaTesoreria, avisoSiElMesEstaMuyAdelante,
+  avisoSiElMontoNoCalza,
   registrarPago, borrarPago, cuentaDeLasCuotas, avisoSiLaCuentaEstaCerrada,
   aQuienNoSeLeCobra,
 };

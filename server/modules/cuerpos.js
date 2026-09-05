@@ -930,14 +930,20 @@ module.exports = {
       const anio = Number(req.query.anio) || new Date().getFullYear();
       const { integrantesDe } = require('../integrantes');
 
+      /*
+       * Va el `id` de cada cuota: la planilla deja corregirle el monto a una
+       * que ya está anotada sin ir a su ficha (hallazgo CU-08), y para eso
+       * tiene que saber cuál es. Sin él la casilla sabía cuánto decía y no
+       * sabía de qué cuota hablaba.
+       */
       const pagos = db
-        .prepare('SELECT integrante_id, mes, monto, fecha_pago FROM cuotas_cuerpo WHERE cuerpo_id = ? AND anio = ?')
+        .prepare('SELECT id, integrante_id, mes, monto, fecha_pago FROM cuotas_cuerpo WHERE cuerpo_id = ? AND anio = ?')
         .all(cuerpo.id, anio);
 
       const filas = integrantesDe(db, cuerpo.id).map((f) => {
         const suyos = pagos.filter((p) => Number(p.integrante_id) === Number(f.id));
         const meses = {};
-        for (const p of suyos) meses[p.mes] = { monto: p.monto, fecha: p.fecha_pago };
+        for (const p of suyos) meses[p.mes] = { id: p.id, monto: p.monto, fecha: p.fecha_pago };
         return {
           id: f.id,
           persona_tipo: f.persona_tipo,
@@ -1008,15 +1014,30 @@ module.exports = {
         .get(req.body && req.body.integrante_id, cuerpo.id);
       if (!suyo) return res.status(404).json({ error: 'Esa persona no es integrante de este cuerpo.' });
 
+      /*
+       * EL MONTO, LA FECHA Y LA FORMA DE PAGO SE PASAN SI VIENEN.
+       *
+       * `registrarPago` siempre supo recibirlos y esta ruta le mandaba solo el
+       * integrante y el mes: un parámetro escrito que no llegaba nunca
+       * (hallazgo CU-08). Quien pagó de más o de menos —una cuota atrasada
+       * saldada con un abono, un aporte voluntario mayor— solo podía anotarlo
+       * abriendo la ficha suelta. Sin ellos manda la cuota del cuerpo y el día
+       * de hoy, que es lo que hace que cobrar sea un clic.
+       */
+      const pedido = req.body || {};
       const { registrarPago } = require('../cuotas');
       const r = registrarPago(db, {
-        integranteId: req.body && req.body.integrante_id,
-        anio: req.body && req.body.anio,
-        mes: req.body && req.body.mes,
+        integranteId: pedido.integrante_id,
+        anio: pedido.anio,
+        mes: pedido.mes,
+        monto: pedido.monto,
+        fecha: pedido.fecha_pago,
+        metodo: pedido.metodo,
+        confirmado: pedido.igual_asi === true,
         usuarioId: req.user && req.user.id,
         usuario: req.user,
       });
-      if (r.error) return res.status(400).json({ error: r.error });
+      if (r.error) return res.status(400).json(r.confirmar ? { error: r.error, confirmar: r.confirmar } : { error: r.error });
       res.json(r.cuota);
     });
 

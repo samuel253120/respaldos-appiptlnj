@@ -157,9 +157,13 @@ test('la planilla del cuerpo dibuja distinto una cuota anotada en cero', () => {
 
   assert.match(hastaElResto, /!Number\(pago\.monto\)/, 'la mira por su monto, no por si existe');
   assert.match(hastaElResto, /class="mes en-cero"/);
-  assert.ok(hastaElResto.indexOf('en-cero') < hastaElResto.indexOf('class="mes pagado"'),
+  // La casilla pagada lleva una clase más desde la v1.416.0 —se puede corregir
+  // su monto desde acá, hallazgo CU-08— así que se la busca por su comienzo
+  const dondeElPagado = hastaElResto.indexOf('class="mes pagado');
+  assert.ok(dondeElPagado > 0, 'se encontró la casilla pagada');
+  assert.ok(hastaElResto.indexOf('en-cero') < dondeElPagado,
     'primero el cero: si el ✓ va antes, se lo lleva y la distinción no se ve nunca');
-  const marcaDelCero = hastaElResto.slice(hastaElResto.indexOf('en-cero'), hastaElResto.indexOf('class="mes pagado"'));
+  const marcaDelCero = hastaElResto.slice(hastaElResto.indexOf('en-cero'), dondeElPagado);
   assert.ok(!marcaDelCero.includes('✓'), 'y sobre todo: sin el ✓, que es lo que se mira');
   assert.ok(!marcaDelCero.includes('se-puede'),
     'ni se ofrece marcarla desde acá: ya hay una cuota de ese mes y se arregla en su ficha');
