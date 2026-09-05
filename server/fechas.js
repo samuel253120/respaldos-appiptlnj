@@ -170,8 +170,74 @@ function revisarCoherencia(def, datos, existing) {
     return f ? f.label : nombre;
   };
 
+  /*
+   * UNA FECHA QUE LA FICHA YA NO TIENE NO SE COMPARA CON NADA.
+   *
+   * Un campo puede existir solo en algunos casos —«Fecha de retiro» solo cuando
+   * el estado es «Retirado», «Fecha de cierre» solo cuando la cuenta está
+   * cerrada— y cuando su condición deja de cumplirse el módulo lo borra. Pero
+   * esta comprobación corre ANTES que el gancho del módulo, así que veía el
+   * valor viejo y lo comparaba igual.
+   *
+   * Eso dejaba callejones sin salida: la ficha se negaba a guardarse por una
+   * fecha QUE LA PANTALLA YA NO MUESTRA —al cambiar el estado, esa sección
+   * desaparece del formulario: no se ve, no se puede borrar y no se manda—, y
+   * entonces el aviso salía en rojo al pie sin nada que corregir arriba.
+   * Comprobado en el navegador y por la API en la v1.396.0, con dos módulos
+   * distintos:
+   *
+   *   vuelve al cuerpo quien se retiró ....  400  "Fecha de retiro" (30-06-2025)
+   *                                              no puede ser anterior a
+   *                                              "Fecha de ingreso" (01-03-2026)
+   *   se reabre una cuenta cerrada .......   400  "Fecha de cierre" (15-03-2022)
+   *                                              no puede ser anterior a
+   *                                              "Fecha de apertura" (01-06-2023)
+   *
+   * El primero era el peor, porque no había otra puerta: crearle una ficha
+   * nueva se rechaza —«ya tiene su ficha en este cuerpo. Ábrala en vez de crear
+   * otra», que es la manera correcta, y lo explica el propio sistema en
+   * server/directiva.js: la ficha se reusa para que su historial quede en un
+   * solo lugar—, y abrir la que estaba contestaba lo de arriba. Lo notable es
+   * que el sistema SÍ sabe devolver a alguien a un cuerpo: la regla de la
+   * directiva reabre la ficha por su cuenta, con un UPDATE que no pasa por acá.
+   * O sea que lo hacía solo y una persona no podía.
+   *
+   * No es un caso raro ni de un módulo: de los 23 pares con `noAntesDe`, 11
+   * comparan un campo condicionado, en seis módulos —cuentas de tesorería,
+   * cuerpos, deudas, integrantes de cuerpo, inventario y miembros—, y en dos de
+   * ellos el condicionado es aquel CONTRA el que se compara (la fecha de
+   * recepción del inventario), que es por lo que se miran los dos lados.
+   *
+   * Se salta la comparación cuando una de las dos fechas SE VA: tiene condición
+   * (`showIf`), la condición ya no se cumple —la misma regla `seAplica` con la
+   * que el motor decide no exigir un obligatorio que no viene al caso, en
+   * server/crud.js— y ADEMÁS no viene en este guardado, o sea que su único
+   * valor es el que quedó de antes y el módulo está por borrarlo.
+   *
+   * Las tres condiciones importan, y la última se aprendió rompiéndolo: sin
+   * ella, una fila que manda las dos fechas y NO manda el campo que las
+   * gobierna —una planilla de inventario sin la columna «Régimen»— se dejaba de
+   * revisar, porque no saber qué dice el que manda se parece a que diga que no.
+   * Una fecha que llega en el guardado se ve y se puede corregir: esa se
+   * compara siempre. La que se salta es la que nadie mandó y nadie puede tocar.
+   *
+   * No es un permiso para dejar fechas incoherentes: es que una fecha que la
+   * ficha va a dejar de tener no tiene con qué ser incoherente. Mientras las
+   * dos estén a la vista, se siguen exigiendo igual.
+   */
+  const { seAplica } = require('./crud');
+  const seVa = (nombre) => {
+    const f = def.fields.find((x) => x.name === nombre);
+    if (!f) return false;                           // un `noAntesDe` mal escrito no revienta
+    if (datos[nombre] !== undefined) return false;  // si la mandan, se compara
+    // Un campo sin `showIf` siempre aplica, así que esto da false: una fecha
+    // que la ficha lleva siempre no se va a ninguna parte.
+    return !seAplica(f, datos, existing, def.fields);
+  };
+
   for (const campo of def.fields) {
     if (campo.type !== 'date' || !campo.noAntesDe) continue;
+    if (seVa(campo.name) || seVa(campo.noAntesDe)) continue;
     const esta = normalizar(completo[campo.name]);
     const antes = normalizar(completo[campo.noAntesDe]);
     if (!esta || !antes) continue;
