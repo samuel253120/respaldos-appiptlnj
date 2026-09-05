@@ -1994,6 +1994,14 @@ table.grid.cuotas tr { cursor: default; }
 table.grid.cuotas td.pagado { color: var(--success); font-weight: 700; background: #f0fdf4; }
 table.grid.cuotas td.debe { background: #fff; }
 table.grid.cuotas td.exento { color: #cbd5e1; }
+/*
+ * Una cuota anotada en $ 0: se ve, y NO se ve como pagada. Es el hallazgo
+ * CU-04. Desde la v1.412.0 no se pueden registrar más, pero las que ya estaban
+ * siguen ahí y darlas por pagadas es lo que había que dejar de hacer.
+ */
+table.grid.cuotas td.en-cero {
+  color: var(--warning); background: #fffbeb; font-weight: 700; font-size: 12px;
+}
 /* La casilla que se puede marcar se ofrece: cambia al pasar por encima */
 table.grid.cuotas td.debe.se-puede { cursor: pointer; }
 table.grid.cuotas td.debe.se-puede:hover { background: #dbeafe; }

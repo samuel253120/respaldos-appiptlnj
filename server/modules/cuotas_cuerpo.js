@@ -96,6 +96,42 @@ module.exports = {
       if (!(anio > 1900 && anio < 2200)) return 'El año del pago no parece correcto';
       if (!/^(0[1-9]|1[0-2])$/.test(mes)) return 'Elija el mes que se está pagando';
 
+      /*
+       * UNA CUOTA DE $ 0 NO ES UN PAGO.
+       *
+       * El campo declaraba `min: 0`, así que el cero pasaba: quedaba una cuota
+       * registrada, sin movimiento en la caja —`sincronizarConLaTesoreria` ya
+       * exige `monto > 0` para anotar la plata— y con la MISMA marca que una
+       * pagada de verdad. Medido en la v1.411.0, dos personas del mismo cuerpo
+       * en la planilla de julio:
+       *
+       *                        casilla   pagado    en la caja
+       *   la que pagó ......   ✓         $ 5.000   $ 5.000
+       *   la de la cuota 0 .   ✓         $ 0       nada
+       *
+       * Ese ✓ es lo que se mira para saber si alguien está al día, y ahí «pagó»
+       * y «no pagó nada» se veían igual: quien revisara el año iba a dar por
+       * saldado un mes que no lo está.
+       *
+       * El aviso nombra las dos salidas de verdad, porque quien escribió un
+       * cero quería una de las dos: si no tiene que pagar, se marca exenta en
+       * su ficha —con su motivo, que es lo que hace entender por qué—; y si no
+       * ha pagado, el mes se deja sin registrar, que es justamente lo que la
+       * casilla vacía significa.
+       *
+       * Se mira `data.monto` y no el valor efectivo: lo que no se está tocando
+       * no se revisa, que es la misma línea del motor (ver `revisarLimites` en
+       * server/crud.js). Así una cuota vieja anotada en cero se puede seguir
+       * corrigiendo por partes, y lo único que no se acepta es volver a
+       * escribir el cero. Los negativos no llegan hasta acá: el `min: 0` del
+       * campo los para antes, con su propio aviso.
+       */
+      if ('monto' in data && !(Number(data.monto) > 0)) {
+        return 'Una cuota de $ 0 no es un pago: la casilla quedaría marcada como pagada '
+          + 'y no habría plata detrás. Si esta persona no tiene que pagar, márquela como '
+          + 'exenta en su ficha de integrante; si todavía no paga, deje el mes sin registrar.';
+      }
+
       const repetida = db
         .prepare('SELECT id FROM cuotas_cuerpo WHERE integrante_id = ? AND anio = ? AND mes = ? AND id != ?')
         .get(ficha.id, anio, mes, id || 0);

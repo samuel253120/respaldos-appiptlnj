@@ -17157,6 +17157,16 @@ async function renderCuotasCuerpo(cuerpoId, caja, anio) {
                 ${mesesDelAnio.map((m) => {
                   const pago = f.meses[m.valor];
                   if (f.exento) return '<td class="mes exento">—</td>';
+                  /*
+                   * Una cuota anotada en $ 0 no lleva el ✓: no hay plata detrás
+                   * y ese ✓ es lo que se mira para saber si alguien está al día.
+                   * Desde la v1.412.0 no se pueden registrar más, pero las que
+                   * ya estaban anotadas siguen ahí y hay que poder verlas.
+                   */
+                  if (pago && !Number(pago.monto)) {
+                    return `<td class="mes en-cero" title="Anotada en $ 0 el ${esc(fechaCorta(pago.fecha))}: no hay pago detrás. Se corrige en la ficha de la cuota."
+                                data-integrante="${f.id}" data-mes="${m.valor}">$0</td>`;
+                  }
                   if (pago) {
                     return `<td class="mes pagado" title="${esc(fmtMoney(pago.monto))} · ${esc(fechaCorta(pago.fecha))}"
                                 data-integrante="${f.id}" data-mes="${m.valor}">✓</td>`;
