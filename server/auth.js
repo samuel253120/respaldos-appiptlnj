@@ -69,18 +69,31 @@ function duracionSesion() {
 /**
  * Con el sistema en mantenimiento solo entra quien pueda sacarlo de ahí.
  *
- * Antes decía «solo si el rol es administrador». Ahora pasa quien tenga el
- * permiso de CAMBIAR la configuración, que es exactamente quien puede apagar
- * el mantenimiento: dejar entrar a alguien que después no puede desactivarlo
- * no ayuda a nadie, y dejar fuera a quien sí puede sería encerrarlo. De
- * fábrica es el mismo grupo de siempre —solo el administrador—, porque ese
- * permiso no lo tiene nadie más mientras no se conceda a propósito.
+ * Primero decía «solo si el rol es administrador». Después pasó a dejar entrar a
+ * quien pudiera CAMBIAR la configuración, con este motivo escrito al lado: «que
+ * es exactamente quien puede apagar el mantenimiento». Eso era verdad cuando se
+ * escribió y dejó de serlo en la v1.331.0, cuando el mantenimiento pasó a tener
+ * su propia llave: desde entonces quien lo apaga es quien tiene
+ * «sistema_mantenimiento» (hallazgo CO-08).
+ *
+ * Medido en la v1.423.0, con el sistema en mantenimiento y una cuenta que tenía
+ * la llave de la configuración y no la del mantenimiento: entraba con un 200 y,
+ * al intentar apagarlo, recibía un 403. O sea que se la dejaba pasar para algo
+ * que no podía hacer.
+ *
+ * Ahora se piden las DOS: la del mantenimiento, porque es la que lo apaga, y la
+ * de cambiar la configuración, porque el apagado se guarda por ahí. De fábrica
+ * es el mismo grupo de siempre —solo el administrador—, porque ninguna de las
+ * dos la tiene nadie más mientras no se conceda a propósito.
  *
  * Devuelve el aviso a mostrar, o null si el paso está permitido.
  */
 function bloqueoPorMantenimiento(usuario) {
   if (!ajustes.activo('mantenimiento_activo')) return null;
-  if (usuario && can(usuario, 'sistema_configuracion', 'edit')) return null;
+  const loPuedeApagar = usuario
+    && can(usuario, 'sistema_mantenimiento', 'view')
+    && can(usuario, 'sistema_configuracion', 'edit');
+  if (loPuedeApagar) return null;
   return ajustes.obtener('mantenimiento_mensaje') || 'El sistema está en mantenimiento.';
 }
 

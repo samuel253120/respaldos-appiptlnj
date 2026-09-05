@@ -312,6 +312,24 @@ const OPCIONES = [
          */
         clave: 'password_inicial', label: 'Contraseña inicial', tipo: 'text', defecto: 'Primera.Entrada',
         revisaComoClave: true,
+        /*
+         * ES SECRETA: no viaja a quien solo puede MIRAR (hallazgo CO-07).
+         *
+         * La pantalla de configuración devolvía las setenta opciones con su
+         * valor, y ésta es la contraseña con que nace cada cuenta nueva y con la
+         * que queda cada cuenta restablecida. Medido en la v1.423.0 con una
+         * cuenta que solo tenía permiso de VER la configuración: no podía
+         * guardarla (403), no podía restablecerle la contraseña a nadie (403), y
+         * leía «Primera.Entrada» en claro. Quien la sepa y vea que se creó una
+         * cuenta puede entrar antes que su dueño, y en esa primera entrada
+         * cambiar la contraseña no pide la anterior.
+         *
+         * Esta misma marca es la que hace que su valor tampoco se escriba en el
+         * Registro de Cambios: antes eran dos listas separadas —una acá y otra
+         * en server/configuracion.js— y acordarse de las dos el día que exista
+         * una segunda opción secreta era cuestión de suerte.
+         */
+        secreta: true,
         ayuda:
           'La que se le entrega a cada cuenta nueva y la que restablece el administrador cuando alguien ' +
           'olvida la suya. Al entrar con ella, el sistema obliga a cambiarla por una propia. Pasa por las ' +

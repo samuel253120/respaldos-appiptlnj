@@ -234,17 +234,32 @@ router.get('/', authRequired, (req, res) => {
   if (!can(req.user, 'sistema_configuracion', 'view')) {
     return res.status(403).json({ error: 'No tiene permiso para ver la configuración del sistema' });
   }
+  /*
+   * LO SECRETO NO VIAJA A QUIEN SOLO MIRA (hallazgo CO-07).
+   *
+   * Hay una sola opción marcada así, la contraseña inicial, y es la contraseña
+   * con que nace cada cuenta nueva. Quien la pueda CAMBIAR la ve —si no, no
+   * podría trabajar con ella—; a quien solo mira se le dice que hay una puesta
+   * y no cuál es. Se decide acá y no en la pantalla porque quien pide la
+   * dirección a mano no pasa por ninguna pantalla.
+   */
+  const laPuedeCambiar = can(req.user, 'sistema_configuracion', 'edit');
+  const seEsconde = (o) => o.secreta && !laPuedeCambiar;
   res.json({
     grupos: OPCIONES.map((g) => ({
       grupo: g.grupo,
       items: g.items.map((o) => ({
         clave: o.clave, label: o.label, tipo: o.tipo, ayuda: o.ayuda || null,
+        // Se dice que está escondida, para que la pantalla no muestre un campo
+        // vacío: vacío se leería como que no hay ninguna puesta
+        oculta: seEsconde(o) || undefined,
+        puesta: seEsconde(o) ? !!obtener(o.clave) : undefined,
         // Los límites viajan para que el formulario los muestre y avise antes
         // de mandar; el que manda igual se topa con la misma comprobación acá
         min: o.min === undefined ? null : o.min,
         max: o.max === undefined ? null : o.max,
         opciones: o.opciones || null,
-        valor: obtener(o.clave),
+        valor: seEsconde(o) ? '' : obtener(o.clave),
       })),
     })),
     // La hora que tiene el sistema AHORA, para poder comprobar de un vistazo
@@ -414,10 +429,26 @@ router.put('/', authRequired, (req, res) => {
     if (opcion.tipo === 'number' && Number(valor) !== Number(v)) {
       ajustados.push({ clave, label: opcion.label, pedido: Number(valor), quedo: Number(v) });
     }
+    /*
+     * SE ESCRIBE SOLO LO QUE QUEDÓ DISTINTO (hallazgo CO-09).
+     *
+     * Acá se llamaba a `guardar` con las setenta claves, cambiaran o no, porque
+     * la pantalla las manda todas. Y cada guardado escribe en la fila quién la
+     * tocó y cuándo, así que esas dos columnas dejaban de decir «quién cambió
+     * esta opción» para decir «quién apretó Guardar por última vez». Medido en
+     * la v1.423.0, apretando Guardar sin cambiar ni un valor: 72 filas
+     * reescritas, una sola persona anotada en todas y tres instantes distintos
+     * en toda la tabla.
+     *
+     * No se mostraba en ninguna pantalla, así que no engañaba a nadie todavía;
+     * pero están ahí, dicen algo que no es cierto, y algún día alguien las va a
+     * mirar para responder «¿quién puso esto en 60?». De paso son setenta
+     * escrituras menos por guardado.
+     */
+    const cambio = String(comoEstaba == null ? '' : comoEstaba) !== String(v);
+    if (!cambio) continue;
     guardar(clave, v, req.user.id);
-    if (String(comoEstaba == null ? '' : comoEstaba) !== String(v)) {
-      anotados.push({ opcion, antes: comoEstaba, ahora: v });
-    }
+    anotados.push({ opcion, antes: comoEstaba, ahora: v });
   }
 
   anotarLosCambios(anotados, req.user);
@@ -445,17 +476,22 @@ router.put('/', authRequired, (req, res) => {
  * acá pesa igual o más —el modo mantenimiento, el largo de las contraseñas, el
  * modo del código QR—.
  *
- * De las imágenes se anota el nombre del archivo, no la imagen. Y de la
- * contraseña inicial no se anota el valor: quedaría escrita en claro en un
- * registro que puede leer más gente de la que debería saberla.
+ * De las imágenes se anota el nombre del archivo, no la imagen. Y de lo que está
+ * marcado como SECRETO —hoy solo la contraseña inicial— no se anota el valor:
+ * quedaría escrito en claro en un registro que puede leer más gente de la que
+ * debería saberlo.
+ *
+ * La marca es la misma que hace que no viaje a quien solo mira la
+ * configuración: está en el propio ajuste (server/ajustes.js). Antes acá había
+ * una lista aparte, y acordarse de las dos el día que exista una segunda opción
+ * secreta era cuestión de suerte (hallazgo CO-07).
  */
-const NO_SE_ANOTA_EL_VALOR = ['password_inicial'];
 
 function anotarLosCambios(anotados, usuario) {
   if (!anotados.length) return;
   const bitacora = require('./bitacora');
   const comoSeLee = (opcion, valor) => {
-    if (NO_SE_ANOTA_EL_VALOR.includes(opcion.clave)) return '(no se anota)';
+    if (opcion.secreta) return '(no se anota)';
     if (valor === null || valor === undefined || valor === '') return '(vacío)';
     if (opcion.tipo === 'boolean') return valor === '1' ? 'sí' : 'no';
     if (opcion.tipo === 'select') {

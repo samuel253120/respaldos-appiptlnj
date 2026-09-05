@@ -13495,7 +13495,11 @@ async function viewConfiguracion() {
       : '';
     const control = o.tipo === 'textarea'
       ? `<textarea data-clave="${o.clave}" data-tipo="textarea"${bloqueado}>${esc(o.valor || '')}</textarea>`
-      : `<input type="${tipo}" data-clave="${o.clave}" data-tipo="${o.tipo}" value="${esc(o.valor || '')}"${limites}${bloqueado} />`;
+      : `<input type="${tipo}" data-clave="${o.clave}" data-tipo="${o.tipo}" value="${esc(o.valor || '')}"${limites}${bloqueado}${
+        // Lo secreto no viaja a quien solo mira la configuración: el campo llega
+        // vacío, y vacío se leería como que no hay ninguna puesta
+        o.oculta ? ` placeholder="${o.puesta ? 'Hay una puesta; no se muestra' : 'Sin definir'}"` : ''
+      } />`;
     return `<div class="fld${o.tipo === 'textarea' ? ' full' : ''}">
       <label>${esc(o.label)}${o.tipo === 'number' && o.min !== undefined ? ` <span class="mut">(${fmtNumero(o.min)} a ${fmtNumero(o.max)})</span>` : ''}</label>${control}
       ${o.ayuda ? `<div class="help">${esc(o.ayuda)}</div>` : ''}
