@@ -199,42 +199,82 @@ module.exports = {
       if (!ficha) return;
       const bitacora = require('../bitacora');
       const esUnHechoNuevo = isNew || !existing || existing.resultado !== fila.resultado;
+
+      /*
+       * LA QUE MANDA ES LA ÚLTIMA QUE OCURRIÓ, NO LA ÚLTIMA QUE SE ESCRIBIÓ.
+       *
+       * Este gancho movía la ficha con LO QUE SE ACABA DE GUARDAR, sin mirar si
+       * había otra evaluación posterior. Medido en la v1.399.0, sobre alguien
+       * aprobado el 20-05-2026:
+       *
+       *   se anota después una evaluación del 01-04-2026 que la retira
+       *   → 201, y la ficha queda:
+       *        estado  = Retirado
+       *        retiro  = 01-04-2026
+       *        oficial = 20-05-2026   ← de la aprobación que quedó deshecha
+       *
+       * O sea que anotar tarde una evaluación vieja deshacía una decisión
+       * posterior, y dejaba la ficha contradiciéndose sola. Lo mismo al
+       * corregirle el resultado a una ya guardada.
+       *
+       * Ahora, después de guardar, la ficha se rehace con LA ÚLTIMA evaluación
+       * de esa persona en ese cuerpo, que es como se lee un historial: por
+       * fecha, y a igual fecha la que se anotó después —el id—, porque dos
+       * evaluaciones del mismo día solo se pueden ordenar por cuándo se
+       * escribieron.
+       *
+       * Se rehace SIEMPRE, incluso cuando la que manda es la que se acaba de
+       * guardar: así hay un solo camino, y borrar la última —que también deja
+       * a otra al mando— entra por él sin escribirlo dos veces.
+       */
+      const manda = db.prepare(
+        `SELECT * FROM evaluaciones_integrantes
+          WHERE integrante_id = ?
+          ORDER BY fecha DESC, id DESC
+          LIMIT 1`
+      ).get(fila.integrante_id) || fila;
+
+      /*
+       * La bitácora, en cambio, anota EL HECHO y no el estado que quedó: que a
+       * alguien se le anotara tarde una evaluación vieja es algo que pasó, y su
+       * libro tiene que decirlo. Por eso sigue mirando la fila que se guardó.
+       */
       const anotar = (estado, hasta) => {
         if (!esUnHechoNuevo) return;
         bitacora.anotarPasoDeIntegrante(ficha.id, { estado, hasta, fecha: fila.fecha, usuario: user });
       };
 
-      if (fila.resultado === 'Aprobado') {
+      if (manda.resultado === 'Aprobado') {
         db.prepare(
           `UPDATE integrantes_cuerpo
               SET estado = 'Activo', fecha_oficial = ?, fecha_fin_prueba = NULL,
                   updated_at = datetime('now','localtime')
             WHERE id = ?`
-        ).run(fila.fecha, ficha.id);
+        ).run(manda.fecha, ficha.id);
         anotar('Activo');
         return;
       }
 
-      if (fila.resultado === 'Retirado del cuerpo') {
+      if (manda.resultado === 'Retirado del cuerpo') {
         db.prepare(
           `UPDATE integrantes_cuerpo
               SET estado = 'Retirado', fecha_retiro = ?,
                   motivo_retiro = COALESCE(motivo_retiro, 'No aprobó su período de prueba'),
                   updated_at = datetime('now','localtime')
             WHERE id = ?`
-        ).run(fila.fecha, ficha.id);
+        ).run(manda.fecha, ficha.id);
         // Después del UPDATE, para que el motivo que se anota sea el que quedó
         anotar('Retirado');
         return;
       }
 
       // No aprobado: sigue en prueba, con el plazo corriendo desde hoy
-      const meses = Number(fila.meses_extension) > 0
-        ? Number(fila.meses_extension)
+      const meses = Number(manda.meses_extension) > 0
+        ? Number(manda.meses_extension)
         : null;
       const nuevoPlazo = meses
-        ? sumarMeses(fila.fecha, meses)
-        : require('../integrantes').finDelPeriodoDePrueba(db, ficha.cuerpo_id, fila.fecha);
+        ? sumarMeses(manda.fecha, meses)
+        : require('../integrantes').finDelPeriodoDePrueba(db, ficha.cuerpo_id, manda.fecha);
       db.prepare(
         `UPDATE integrantes_cuerpo
             SET estado = 'En prueba', fecha_fin_prueba = ?, fecha_oficial = NULL,
