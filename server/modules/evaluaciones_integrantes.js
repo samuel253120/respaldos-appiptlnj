@@ -142,6 +142,44 @@ module.exports = {
     },
 
     /**
+     * BORRAR EL ACTA DE LA DECISIÓN NO DESHACE LA DECISIÓN.
+     *
+     * Una evaluación no es una anotación cualquiera: es lo que MOVIÓ la ficha
+     * del integrante. Borrarla no la devuelve —ni debería, porque la persona
+     * pasó a oficial o salió del cuerpo de verdad— así que lo que queda es un
+     * estado sin nada que lo explique.
+     *
+     * Medido en la v1.399.0: se aprueba una evaluación, la ficha queda «Activo»
+     * con su fecha de oficial, se borra la evaluación, contesta 200 sin
+     * preguntar, y la ficha sigue igual. La persona es integrante oficial y ya
+     * no existe ningún papel que diga por qué.
+     *
+     * Se PREGUNTA y no se prohíbe, por lo mismo que en las actas: una anotada
+     * por error —la persona equivocada, el cuerpo equivocado— tiene que poder
+     * sacarse. Lo que hace falta es que quien la borre sepa las dos cosas que
+     * no son evidentes: que el estado se queda como está, y por dónde se
+     * cambia si eso no era lo que quería.
+     */
+    beforeDelete(fila, { db, confirmado }) {
+      if (confirmado) return null;
+      const { comoSeLee } = require('../fechas');
+      const ficha = db.prepare('SELECT * FROM integrantes_cuerpo WHERE id = ?').get(fila.integrante_id);
+      const quien = (ficha && ficha.persona) || 'esa persona';
+      const queDijo = fila.resultado || 'lo que decía';
+      const enQue = ficha
+        ? `sigue «${ficha.estado}»${ficha.estado === 'Activo' && ficha.fecha_oficial
+            ? `, integrante oficial desde el ${comoSeLee(ficha.fecha_oficial)}` : ''}`
+        : 'no cambia';
+      return {
+        error: `Esta evaluación del ${comoSeLee(fila.fecha)} es la que dejó a ${quien} como está: `
+          + `«${queDijo}». Borrarla NO deshace eso —su ficha ${enQue}— y después no quedará `
+          + 'ningún registro de por qué. Si lo que hay que cambiar es su estado, hágalo en su '
+          + 'ficha de integrante; si la evaluación se anotó mal, corríjala en vez de borrarla.',
+        confirmar: 'evaluacion_que_se_borra',
+      };
+    },
+
+    /**
      * La evaluación mueve la ficha del integrante: aprobado pasa a oficial,
      * no aprobado sigue en prueba con un plazo nuevo, y retirado sale.
      *
