@@ -7933,6 +7933,22 @@ function preguntarSiIgualVa(err, seguir, dondeVa = 'formError') {
       seguir: 'Pagó eso, guardar',
     },
     /*
+     * Las dos caras de lo mismo: el plan de una deuda y lo que la deuda dice
+     * deber. Se ven desde los dos lados —al corregir una cuota del plan y al
+     * cambiarle el monto o el número de cuotas a la deuda—, así que cada una
+     * lleva su encabezado y sus botones.
+     */
+    el_plan_no_cuadra_con_la_deuda: {
+      titulo: '📆 El plan no cuadra con la deuda',
+      volver: 'Volver y corregir la cuota',
+      seguir: 'Se reajustó, guardar',
+    },
+    la_deuda_no_cuadra_con_su_plan: {
+      titulo: '📆 El plan no cuadra con la deuda',
+      volver: 'Volver y dejar el monto como estaba',
+      seguir: 'Guardar el monto nuevo',
+    },
+    /*
      * Las dos caras de lo mismo: la ficha de la iglesia y la del pastor
      * diciendo cosas distintas. Se ven desde los dos lados —al ponerle a una
      * iglesia el pastor de otra, y al trasladar a un pastor que su iglesia

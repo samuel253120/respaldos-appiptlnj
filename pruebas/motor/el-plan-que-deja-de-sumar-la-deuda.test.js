@@ -62,10 +62,20 @@ test('subirle el monto a una deuda con plan pregunta antes', async () => {
 
   const r = await api('PUT', `/deudas/${d.id}`, { ...d, monto: 900000 });
   assert.equal(r.estado, 400, `medido en la v1.355.0: contestaba 200 sin una palabra (${r.texto.slice(0, 160)})`);
-  assert.ok(r.json.confirmar);
-  assert.match(r.json.confirmar, /suman \$ 300\.000 y la deuda quedaría en \$ 900\.000/);
-  assert.match(r.json.confirmar, /\$ 600\.000 de menos en el plan/);
-  assert.match(r.json.confirmar, /no se rearma solo, a propósito/, 'y explica por qué no se rearma');
+  /*
+   * La explicación va en `error`, que es lo que se lee; `confirmar` es la LLAVE
+   * con que la pantalla busca el encabezado y los botones de la pregunta (ver
+   * COMO_SE_PREGUNTA en public/app.js).
+   *
+   * Estaba al revés hasta la v1.415.0, y esta prueba lo daba por bueno: el
+   * párrafo entero iba de llave, ninguna calzaba, así que salían los botones
+   * genéricos y la explicación no se veía nunca. Se destapó arreglando el otro
+   * lado de la misma cuenta —el plan por el lado de la cuota, hallazgo CU-07—.
+   */
+  assert.equal(r.json.confirmar, 'la_deuda_no_cuadra_con_su_plan', 'una llave, no un párrafo');
+  assert.match(r.json.error, /suman \$ 300\.000 y la deuda quedaría en \$ 900\.000/);
+  assert.match(r.json.error, /\$ 600\.000 de menos en el plan/);
+  assert.match(r.json.error, /no se rearma solo, a propósito/, 'y explica por qué no se rearma');
 });
 
 test('y al confirmar se guarda, con el plan quedando dicho', async () => {

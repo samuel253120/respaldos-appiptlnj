@@ -255,6 +255,33 @@ function elPactadoQueQuedara(db, deuda) {
 }
 
 /**
+ * CÓMO QUEDARÍA EL PLAN SI SE GUARDA ESTA CUOTA.
+ *
+ * Devuelve `{ cuantas, suma }` contando la cuota que se está guardando: si es
+ * nueva, se agrega; si ya está, se reemplaza por su monto nuevo.
+ *
+ * Existe porque el plan se descuadraba en silencio POR EL LADO DE LAS CUOTAS.
+ * La deuda ya preguntaba cuando su monto dejaba de calzar con el plan
+ * —`elPactadoQueQuedara`, más arriba— y la cuota, que es el otro lado de la
+ * misma cuenta, no preguntaba nada. Medido en la v1.414.0, sobre una deuda de
+ * $ 600.000 en seis cuotas de $ 100.000: ponerle $ 1 a la primera contestó 200
+ * y dejó el plan sumando $ 500.001; agregarle una séptima contestó 201 y dejó
+ * siete cuotas donde la ficha dice seis.
+ *
+ * Se miran las DOS cosas —cuánto suma y cuántas son— porque una cuota de $ 0
+ * agregada al final no mueve la suma y deja el plan con una cuota de más.
+ */
+function comoQuedariaElPlan(db, deudaId, { id, monto } = {}) {
+  const ya = lasDe(db, deudaId);
+  const nueva = Math.round(Number(monto) || 0);
+  const suyo = id ? ya.find((c) => Number(c.id) === Number(id)) : null;
+  const suma = ya.reduce((s, c) => s + Math.round(Number(c.monto) || 0), 0)
+    - (suyo ? Math.round(Number(suyo.monto) || 0) : 0)
+    + nueva;
+  return { cuantas: ya.length + (suyo ? 0 : 1), suma };
+}
+
+/**
  * Las cuotas que sobrarían de este guardado y no se pueden quitar, en orden.
  *
  * Bajar el número de cuotas saca las últimas, y nunca una que tenga pagos
@@ -278,5 +305,5 @@ function lasQueTienenPagos(db, deudaId) {
 module.exports = {
   MAXIMO_DE_CUOTAS, comoSeReparte, elMesSiguiente, lasDe, planDe,
   ponerLasQueFalten, loPagadoPorCuota, loAbonadoSinCuota, lasQueTienenPagos,
-  elPactadoQueQuedara, lasQueNoSePuedenQuitar,
+  elPactadoQueQuedara, lasQueNoSePuedenQuitar, comoQuedariaElPlan,
 };

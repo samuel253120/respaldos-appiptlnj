@@ -289,16 +289,29 @@ function elAvisoDeQueElPlanNoCuadra(data, { existing, db }) {
   const tocaElPlan = total !== antes || Number(como('cuotas')) !== Number(existing.cuotas);
   if (yaVeniaSinCuadrar && !tocaElPlan) return null;
 
+  /*
+   * LA EXPLICACIÓN VA EN `error`, QUE ES LO QUE SE LEE.
+   *
+   * Estaba al revés: el texto largo iba en `confirmar` y la frase corta en
+   * `error`. Pero `confirmar` es la LLAVE con que la pantalla busca el
+   * encabezado y los botones de la pregunta (ver COMO_SE_PREGUNTA en
+   * public/app.js), no un texto: ninguna llave calzaba con ese párrafo, así que
+   * salían los botones genéricos y la explicación entera no se veía. Quien
+   * abría la deuda leía «Las cuotas del plan no suman lo que dice la deuda» y
+   * dos botones que no decían qué se estaba decidiendo.
+   *
+   * Se descubrió arreglando su gemelo, el plan por el lado de la cuota
+   * (hallazgo CU-07).
+   */
   const dice = quedara > total ? 'más' : 'menos';
   return {
-    error: `Las cuotas del plan no suman lo que dice la deuda.`,
-    confirmar:
+    error:
       `Las cuotas del plan suman ${enPesos(quedara)} y la deuda quedaría en ${enPesos(total)}: `
       + `${enPesos(Math.abs(total - quedara))} de ${dice} en el plan. `
       + 'El plan no se rearma solo, a propósito: hay deudas con interés y créditos que se '
       + 'reajustan, y rearmarlo borraría lo que usted haya corregido cuota por cuota. '
-      + 'Guarde igual y ajuste las cuotas desde el plan, o deje el monto como estaba. '
-      + '¿Guardo el monto nuevo?',
+      + 'Guarde igual y ajuste las cuotas desde el plan, o deje el monto como estaba.',
+    confirmar: 'la_deuda_no_cuadra_con_su_plan',
   };
 }
 
