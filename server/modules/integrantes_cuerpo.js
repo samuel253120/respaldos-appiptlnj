@@ -131,7 +131,7 @@ module.exports = {
       name: 'fecha_oficial', label: 'Pasó a integrante oficial el', type: 'date', readonly: true,
       futuro: true, noAntesDe: 'fecha_ingreso',
       showIf: { field: 'estado', equals: 'Activo' },
-      help: 'La fecha en que se aprobó su informe. La pone la evaluación.',
+      help: 'La fecha en que se aprobó su informe. La pone la evaluación, y si el estado se pone en «Activo» a mano se anota ese día.',
     },
     {
       name: 'exento_cuota', label: 'Exento(a) de pagar la cuota mensual', type: 'boolean',
@@ -320,6 +320,65 @@ module.exports = {
       data.fecha_fin_prueba = dato('estado') === 'En prueba'
         ? finDelPeriodoDePrueba(db, cuerpoId, dato('fecha_ingreso'))
         : existing ? existing.fecha_fin_prueba : null;
+
+      /*
+       * QUIEN QUEDA «ACTIVO» DICE DESDE CUÁNDO LO ES.
+       *
+       * El camino que el sistema espera funciona bien: la ficha entra «En
+       * prueba», se evalúa, y al aprobar el informe pasa a «Activo» con la
+       * fecha del día en que se aprobó. Pero el estado es una lista de tres y
+       * nada impide elegir «Activo» a mano, que además es lo que uno hace al
+       * cargar por primera vez a los que ya estaban. Medido en la v1.396.0, los
+       * dos caminos hasta «Activo»:
+       *
+       *   por su evaluación, aprobada ....  pasó a oficial el 20-03-2026
+       *   escribiéndolo en la ficha ......  (vacío)
+       *
+       * La ficha quedaba diciendo que es integrante oficial sin decir desde
+       * cuándo, y eso es lo que muestra su hoja impresa en esa columna: quien
+       * la mire no sabe si falta el dato o faltó la evaluación.
+       *
+       * Ahora se anota sola, y con la fecha que corresponde a cada caso:
+       *
+       *   - FICHA NUEVA CREADA «ACTIVO»: la fecha de ingreso. La ficha está
+       *     diciendo que esa persona es integrante oficial desde que entró —no
+       *     hay prueba que contar—, así que esa es la fecha que afirma. Es lo
+       *     mismo que ya hace la regla de la directiva cuando mete a un líder
+       *     al cuerpo por su cargo: server/directiva.js inserta la ficha con
+       *     `fecha_ingreso` y `fecha_oficial` iguales.
+       *
+       *   - FICHA QUE PASA A «ACTIVO» HOY: el día de hoy, que es cuando se la
+       *     hizo oficial. Su fecha de ingreso es de cuando empezó la prueba, y
+       *     ponerla ahí adelantaría el hecho.
+       *
+       * No se toca la que ya tiene fecha —la que puso la evaluación manda—, ni
+       * se le inventa una a la ficha que ya estaba «Activo» y sigue igual: eso
+       * pasó antes de que el sistema preguntara, y estampar hoy una fecha vieja
+       * al corregir una nota sería escribir un hecho que no ocurrió.
+       *
+       * Y al VOLVER A LA PRUEBA se borra, igual que hace la evaluación cuando
+       * el informe no se aprueba (server/modules/evaluaciones_integrantes.js
+       * pone `fecha_oficial = NULL`). Al retirarse NO: ahí es historia, esa
+       * persona fue integrante oficial desde esa fecha y la ficha lo guarda.
+       */
+      if (dato('estado') === 'Activo') {
+        const eraActivo = !!existing && existing.estado === 'Activo';
+        if (!dato('fecha_oficial') && !eraActivo) {
+          data.fecha_oficial = existing ? require('../fechas').hoy() : dato('fecha_ingreso');
+        }
+        /*
+         * Y el plazo de la prueba se cierra, que es la otra mitad de lo mismo.
+         * La evaluación aprobada ya lo dejaba en blanco; poniendo «Activo» a
+         * mano se quedaba puesto, y entonces la ficha de alguien que ya es
+         * oficial seguía mostrando «Termina el período de prueba: 10-04-2026».
+         * No salía en ninguna lista —el ⏰ y el conteo de pruebas vencidas
+         * miran el estado— pero en su ficha se leía, y decía algo que ya no
+         * era.
+         */
+        data.fecha_fin_prueba = null;
+      } else if (dato('estado') === 'En prueba') {
+        data.fecha_oficial = null;
+      }
 
       if (dato('estado') !== 'Retirado') {
         data.fecha_retiro = null;
