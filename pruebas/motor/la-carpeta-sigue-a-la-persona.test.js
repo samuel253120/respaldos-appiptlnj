@@ -178,13 +178,27 @@ test('el módulo hereda la iglesia del miembro al crear, como antes', () => {
   assert.ok(nuevo.fecha, 'y la fecha de hoy si no se puso una');
 });
 
-test('a los otros tres módulos de documentos no les cambia nada', () => {
-  // El de una solicitud ya se veía donde se ve la solicitud. Los de una iglesia
-  // y los de un pastor cuelgan de fichas que no se trasladan, así que su
-  // columna propia es la correcta y se dejan como están.
-  assert.deepEqual(registry.getModule('documentos_solicitudes').alcance,
-    { comoSuPadre: { modulo: 'solicitudes', campo: 'solicitud_id' } });
-  for (const nombre of ['documentos_iglesias', 'documentos_pastores']) {
-    assert.ok(!registry.getModule(nombre).alcance, `${nombre} no debería tener alcance propio todavía`);
+test('las otras carpetas que cuelgan de una ficha preguntan por ella', () => {
+  /*
+   * Esta prueba decía, hasta la v1.430.0, que la carpeta de un pastor NO debía
+   * tener alcance propio, «porque cuelga de una ficha que no se traslada». Eso
+   * era falso: un pastor sí se traslada —el sistema hasta le anota la línea
+   * «Traslado de iglesia» en su historial— y por eso su carpeta se partía entre
+   * dos congregaciones. La afirmación equivocada estaba escrita como prueba, y
+   * mientras estuvo verde tapaba el defecto en vez de vigilarlo. Es el hallazgo
+   * SA-02, corregido en la v1.431.0.
+   *
+   * La de una IGLESIA sigue sin alcance propio, y ahí la razón sí se sostiene:
+   * su ficha padre ES la iglesia, así que preguntar por la ficha y mirar la
+   * columna dan siempre lo mismo. Una iglesia no se traslada a sí misma.
+   */
+  for (const [nombre, padre, campo] of [
+    ['documentos_solicitudes', 'solicitudes', 'solicitud_id'],
+    ['documentos_pastores', 'pastores', 'pastor_id'],
+  ]) {
+    assert.deepEqual(registry.getModule(nombre).alcance, { comoSuPadre: { modulo: padre, campo } },
+      `${nombre}: sin esto lo decide una columna que el traslado de su ficha no mueve`);
   }
+  assert.ok(!registry.getModule('documentos_iglesias').alcance,
+    'la carpeta de una iglesia no lo necesita: su ficha padre es la iglesia misma');
 });
