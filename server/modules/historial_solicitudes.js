@@ -59,15 +59,13 @@ module.exports = {
     },
     { name: 'registrado_por', label: 'Registrado por', type: 'text', readonly: true },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true, help: 'Se toma de la solicitud.' },
+    // Lo que decía antes una anotación que el sistema escribió y alguien
+    // corrigió. Los otros tres historiales ya los tenían; a éste le faltaban,
+    // que es por lo que su única respuesta posible era negarse (hallazgo SA-05).
+    ...require('../lo-que-decia-el-sistema').CAMPOS,
   ],
   hooks: {
     beforeSave(data, { user, isNew, existing, db }) {
-      // Lo que anotó el sistema tampoco se edita: si se pudiera corregir el
-      // texto de «pasó de Pendiente a Aprobada», el historial dejaría de ser
-      // constancia de nada.
-      if (!isNew && existing && existing.origen === 'Automático') {
-        return 'Esa anotación la dejó el sistema al ocurrir el hecho: no se modifica. Escriba una anotación nueva.';
-      }
       const solicitudId = data.solicitud_id !== undefined ? data.solicitud_id : existing ? existing.solicitud_id : null;
       if (solicitudId) {
         const s = db.prepare('SELECT iglesia_id FROM solicitudes WHERE id = ?').get(solicitudId);
@@ -81,14 +79,24 @@ module.exports = {
         data.registrado_por = user.nombre;
         if (!data.fecha) data.fecha = require('../fechas').hoy();
       }
+      /*
+       * Y si le están corrigiendo el texto a una que escribió el sistema, queda
+       * escrito lo que decía y quién la corrigió.
+       *
+       * Hasta la v1.433.0 este módulo era el único de los cuatro que se NEGABA a
+       * corregirlas, y los otros tres lo permitían guardando el original. Las
+       * dos posturas eran defendibles y la diferencia no estaba decidida en
+       * ninguna parte: dependía de en qué pestaña estuviera parado quien
+       * preguntara. La regla quedó una sola —se corrige dejando dicho lo que
+       * decía, y no se elimina— y vive entera en el archivo compartido, con las
+       * razones de las dos mitades.
+       */
+      require('../lo-que-decia-el-sistema').guardarLoQueDecia(data, { existing, user });
       return null;
     },
-    /** Lo que el sistema anotó no se corrige ni se borra: es la constancia. */
+    /** Y no se elimina: la regla entera está en server/lo-que-decia-el-sistema.js */
     beforeDelete(fila) {
-      if (fila.origen === 'Automático') {
-        return 'Esa anotación la dejó el sistema al ocurrir el hecho: es la constancia de lo que pasó y no se elimina.';
-      }
-      return null;
+      return require('../lo-que-decia-el-sistema').noSeElimina(fila);
     },
   },
 };

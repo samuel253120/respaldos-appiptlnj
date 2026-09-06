@@ -137,7 +137,18 @@ test('los cuatro historiales siguen usando la misma pestaña', () => {
     assert.match(mapa, new RegExp(`${quien}: \\{`), `falta el panel de ${quien}`);
   }
   assert.match(mapa, /ordenPor: 'id'/, 'el de una solicitud se sigue ordenando por orden de anotación');
-  assert.match(mapa, /automaticasFijas: true/, 'y sus automáticas se siguen sin poder tocar');
+  /*
+   * Hasta la v1.433.0 acá se exigía además `automaticasFijas: true` en el panel
+   * de una solicitud: era la única pestaña de las cuatro que escondía el lápiz
+   * sobre una anotación del sistema, porque su módulo era el único que se
+   * negaba a corregirlas. Desde la v1.434.0 la regla es una sola para las
+   * cuatro —se corrige dejando escrito lo que decía, y no se elimina— y la
+   * decide el ORIGEN de la fila, no en qué pestaña se está parado, así que la
+   * pestaña dejó de tener reglas propias (hallazgo SA-05). Lo que hoy se
+   * vigila está en lo-que-anoto-el-sistema-se-corrige-pero-no-se-borra.test.js.
+   */
+  assert.doesNotMatch(mapa, /automaticasFijas/,
+    'una pestaña no puede tener su propia regla sobre lo que anotó el sistema');
 });
 
 test('lo que se anotó y quién lo hizo se siguen mostrando', () => {

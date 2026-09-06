@@ -16252,13 +16252,16 @@ const PANEL_HISTORIAL = {
   // El historial de una solicitud es su seguimiento: se ordena de lo más
   // reciente a lo más antiguo por `id` y no por fecha, porque en un mismo día
   // pasan varias cosas y lo que importa es en qué orden pasaron.
-  // `automaticasFijas` dice que lo que anotó el sistema no se toca. En el
-  // seguimiento de una solicitud es así, y el servidor lo rechaza; ofrecer los
-  // botones sería ofrecer algo que no va a funcionar. Los otros historiales no
-  // lo declaran porque ahí sí se pueden corregir.
+  //
+  // Ya no declara reglas propias sobre lo que anotó el sistema. Hasta la
+  // v1.433.0 era la única de las cuatro pestañas que escondía el lápiz sobre
+  // una anotación automática, porque su módulo era el único que se negaba a
+  // corregirlas. Desde la v1.434.0 la regla es una sola para las cuatro —se
+  // corrige dejando escrito lo que decía, y no se elimina—, así que lo que se
+  // esconde es el mismo botón en todas: la papelera (hallazgo SA-05).
   solicitudes: {
     modulo: 'historial_solicitudes', campo: 'solicitud_id',
-    titulo: '🗒️ Seguimiento de la solicitud', ordenPor: 'id', automaticasFijas: true,
+    titulo: '🗒️ Seguimiento de la solicitud', ordenPor: 'id',
   },
 };
 
@@ -16647,8 +16650,15 @@ async function renderHistorial(panel, id, contenedor, estado) {
     // orden de anotación: en un mismo día pasan varias cosas y lo que importa
     // es en qué orden pasaron.
     const orden = panel.ordenPor || 'fecha';
-    /** ¿Esta anotación la dejó el sistema y no se puede corregir? */
-    const intocable = (r) => !!panel.automaticasFijas && r.origen === 'Automático';
+    /*
+     * ¿Esta anotación la dejó el sistema?
+     *
+     * Entonces se puede corregir —y queda escrito lo que decía— pero no se
+     * puede eliminar. Vale en los cuatro historiales por igual: el servidor
+     * rechaza el borrado, y ofrecer una papelera que no va a funcionar es peor
+     * que no ofrecerla.
+     */
+    const noSeBorra = (r) => r.origen === 'Automático';
     const acota = `${st.q ? `&q=${encodeURIComponent(st.q)}` : ''}${st.tipo ? `&f_tipo=${encodeURIComponent(st.tipo)}` : ''}`;
     const datos = await api(
       'GET', `/${panel.modulo}?f_${panel.campo}=${id}&limit=${st.cuantas}&sort=${orden}&dir=desc${acota}`
@@ -16728,9 +16738,10 @@ async function renderHistorial(panel, id, contenedor, estado) {
                   </details>` : ''}
                 </div>
                 <div class="ha">
-                  ${intocable(r) ? '<span class="ico mut" title="Lo anotó el sistema: es la constancia de lo que pasó">🔒</span>' : `
-                    ${modHist.perms.edit ? `<button class="ico" data-editar="${r.id}" title="Editar este registro">✏️</button>` : ''}
-                    ${modHist.perms.delete && tieneLlave('datos_borrar') ? `<button class="ico" data-borrar="${r.id}" title="Eliminar este registro">🗑️</button>` : ''}`}
+                  ${modHist.perms.edit ? `<button class="ico" data-editar="${r.id}" title="Editar este registro">✏️</button>` : ''}
+                  ${noSeBorra(r)
+                    ? '<span class="ico mut" title="Lo anotó el sistema: es la constancia de lo que pasó y no se elimina">🔒</span>'
+                    : `${modHist.perms.delete && tieneLlave('datos_borrar') ? `<button class="ico" data-borrar="${r.id}" title="Eliminar este registro">🗑️</button>` : ''}`}
                 </div>
               </li>`;
             }).join('')}

@@ -146,5 +146,9 @@ module.exports = {
       require('../lo-que-decia-el-sistema').guardarLoQueDecia(data, { existing, user });
       return null;
     },
+    /** Y no se elimina: la regla entera está en server/lo-que-decia-el-sistema.js */
+    beforeDelete(fila) {
+      return require('../lo-que-decia-el-sistema').noSeElimina(fila);
+    },
   },
 };
