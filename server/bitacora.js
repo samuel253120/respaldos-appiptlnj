@@ -1058,27 +1058,28 @@ function registrarEliminado(def, fila, user, arrastre) {
   anotarCambio({ def, accion: 'Eliminación', fila, usuario: user, detalle });
 
   /*
-   * Y si lo que se quitó fue un papel de una carpeta, en el historial de su
-   * dueño: de la persona, de la iglesia, del pastor o de la solicitud.
+   * Y si lo que se quitó colgaba de una ficha, la línea en el historial de esa
+   * ficha: de la persona, de la iglesia, del pastor o de la solicitud.
    *
    * El de arriba es el libro del sistema; este es el libro de cada ficha, y es
-   * el que sale impreso en su hoja. Adjuntar dejaba línea y quitar no dejaba
+   * el que sale impreso en su hoja. Poner dejaba línea y quitar no dejaba
    * ninguna, así que el historial quedaba diciendo que se adjuntó un carnet
-   * que hoy no está, sin nada que lo explicara. Medido, en las cuatro
-   * carpetas: al adjuntar sube una línea; al borrar, ninguna.
+   * que hoy no está —o que se sumó a alguien que ya no figura—, sin nada que
+   * lo explicara. Medido, en las cuatro carpetas: al adjuntar sube una línea;
+   * al borrar, ninguna. Y en la v1.434.0, para las personas de una solicitud:
+   * al sumarla 1 línea, al sacarla 0 (hallazgo SA-06).
    *
-   * La fecha es la de HOY y no la del documento, al revés que la de adjuntar:
-   * un carnet de 2020 se adjuntó en 2020, pero se quitó el día que alguien lo
-   * quitó. Y se dice de cuándo era el papel, porque una carpeta puede tener
-   * dos que se llamen igual —se pregunta, pero quien confirma pasa— y hay que
-   * saber cuál se fue.
+   * La fecha es la de HOY y no la del hecho, al revés que la de la alta: un
+   * carnet de 2020 se adjuntó en 2020, pero se quitó el día que alguien lo
+   * quitó.
    *
-   * Cada carpeta escribe con las comillas de su propio «se adjuntó», para que
-   * las dos líneas se lean como una sola historia: las de las fichas usan
-   * comillas rectas y el seguimiento de una solicitud, angulares.
+   * QUÉ dice cada línea lo pone la tabla, porque es lo único que cambia entre
+   * ellos: la regla —mirar de qué ficha colgaba y escribirle— es la misma para
+   * los cinco, y el día que aparezca un sexto satélite se agrega declarándolo
+   * y no escribiendo otra condición acá.
    *
-   * Cuando lo que se borra es la ficha entera, su carpeta se va con ella y acá
-   * no llega ninguna fila de documento: el motor anota el borrado de la ficha
+   * Cuando lo que se borra es la ficha entera, lo que colgaba se va con ella y
+   * acá no llega ninguna de esas filas: el motor anota el borrado de la ficha
    * con lo que se llevó consigo, y no una línea por papel. Aun así, ninguno de
    * estos escribe en el historial de una ficha que ya no existe.
    */
@@ -1104,17 +1105,13 @@ function registrarEliminado(def, fila, user, arrastre) {
     });
   }
 
-  const carpeta = LAS_CARPETAS[def.name];
-  if (carpeta && fila[carpeta.campo]) {
-    const { comoSeLee } = require('./fechas');
-    const cuando = fila.fecha ? `, del ${comoSeLee(String(fila.fecha).slice(0, 10))}` : '';
-    const [abre, cierra] = carpeta.comillas || ['"', '"'];
-    const cual = fila.nombre || fila.tipo || 'un documento';
-    carpeta.anota(fila[carpeta.campo], {
-      tipo: 'Documento',
+  const cuelgaDe = LA_BAJA_EN_LA_FICHA_DE_LA_QUE_CUELGA[def.name];
+  if (cuelgaDe && fila[cuelgaDe.campo]) {
+    cuelgaDe.anota(fila[cuelgaDe.campo], {
+      tipo: cuelgaDe.tipo || 'Documento',
       iglesiaId: fila.iglesia_id || null,
       usuario: user,
-      descripcion: `Se quitó ${abre}${cual}${cierra} (${fila.tipo || ''}${cuando}) de su carpeta.`,
+      descripcion: cuelgaDe.texto(fila),
     });
   }
 }
@@ -1137,9 +1134,10 @@ function registrarEliminado(def, fila, user, arrastre) {
  * la sostenía. Medido: tres líneas antes de borrar, tres después.
  *
  * Escrito como tabla y no como cuatro condiciones seguidas por lo mismo que
- * LAS_CARPETAS: lo que cambia entre ellos es el texto, no la regla.
+ * LA_BAJA_EN_LA_FICHA_DE_LA_QUE_CUELGA: lo que cambia entre ellos es el texto,
+ * no la regla.
  *
- * La carpeta de documentos no lleva `baja` acá: la suya vive en LAS_CARPETAS,
+ * La carpeta de documentos no lleva `baja` acá: la suya vive en esa otra tabla,
  * que sabe además escribirla en la iglesia, el pastor o la solicitud de la que
  * cuelgue. Ponerla en los dos lugares dejaría dos líneas por un solo hecho.
  */
@@ -1184,30 +1182,88 @@ function enPesosSiHay(monto) {
  * cambia entre ellas son tres datos, no la regla. La de una solicitud escribe
  * en su seguimiento, que es su historial y vive aparte (server/solicitudes).
  */
-const LAS_CARPETAS = {
+/**
+ * «Se quitó "X" (Tipo, del 10-05-2019) de su carpeta.»
+ *
+ * Cada carpeta escribe con las comillas de su propio «se adjuntó», para que las
+ * dos líneas se lean como una sola historia: las de las fichas usan comillas
+ * rectas y el seguimiento de una solicitud, angulares.
+ *
+ * Se dice de cuándo era el papel porque una carpeta puede tener dos que se
+ * llamen igual —se pregunta, pero quien confirma pasa— y hay que saber cuál se
+ * fue. La FECHA de la línea es la de hoy, al revés que la de adjuntar: un
+ * carnet de 2020 se adjuntó en 2020, pero se quitó el día que alguien lo quitó.
+ */
+function unPapelQueSeQuita(abre, cierra) {
+  return (fila) => {
+    const { comoSeLee } = require('./fechas');
+    const cuando = fila.fecha ? `, del ${comoSeLee(String(fila.fecha).slice(0, 10))}` : '';
+    const cual = fila.nombre || fila.tipo || 'un documento';
+    return `Se quitó ${abre}${cual}${cierra} (${fila.tipo || ''}${cuando}) de su carpeta.`;
+  };
+}
+
+/**
+ * En la tramitación de una solicitud, y solo si la solicitud sigue existiendo.
+ *
+ * Ese «solo si» es un candado DE MÁS, y conviene que quede dicho: hoy no se
+ * alcanza. Cuando se borra la solicitud entera, lo que cuelga de ella se va por
+ * el camino del arrastre (server/dependencias.js), que borra las filas
+ * directamente sin pasar por acá; y borrando una persona o un papel de a uno,
+ * su solicitud existe. Quitarlo no pone roja ninguna prueba. Se deja porque es
+ * lo que sostiene la regla si algún día el arrastre pasara por esta puerta, y
+ * se dice acá para que nadie lo lea como código vivo que alguien olvidó probar
+ * —es la misma situación que el `id IS NOT ?` de server/carpetas.js—.
+ */
+function enLaTramitacionDe(id, datos) {
+  if (!db.prepare('SELECT 1 FROM solicitudes WHERE id = ?').get(id)) return;
+  require('./solicitudes/seguimiento').anotar(db, id, {
+    tipo: datos.tipo, descripcion: datos.descripcion, user: datos.usuario,
+  });
+}
+
+const LA_BAJA_EN_LA_FICHA_DE_LA_QUE_CUELGA = {
   documentos_miembros: {
     campo: 'miembro_id',
+    texto: unPapelQueSeQuita('"', '"'),
     anota: (id, datos) => anotar({ miembroId: id, ...datos }),
   },
   documentos_iglesias: {
     campo: 'iglesia_id',
+    texto: unPapelQueSeQuita('"', '"'),
     anota: (id, datos) => anotarIglesia(id, datos),
   },
   documentos_pastores: {
     campo: 'pastor_id',
+    texto: unPapelQueSeQuita('"', '"'),
     anota: (id, datos) => anotarPastor(id, datos),
+  },
+  /*
+   * A quien se saca de una solicitud, en la tramitación de esa solicitud.
+   *
+   * Sumar a alguien dejaba su línea —«Se sumó a Ana Soto Lara (Grupo familiar)
+   * a la solicitud»— y sacarlo no dejaba ninguna, así que la tramitación seguía
+   * diciendo que se la sumó. MEDIDO en la v1.434.0: al sumarla, 1 línea; al
+   * sacarla, 0. Es exactamente la forma del defecto que corrigió la v1.209.0 en
+   * otros cuatro módulos, y éste no estaba en aquella lista (hallazgo SA-06).
+   *
+   * Importa poco y por eso el informe lo puso último: la persona desaparece de
+   * la pestaña, así que nadie va a creer que sigue ahí. Pero la tramitación de
+   * una solicitud existe para poder reconstruir después qué se hizo y en qué
+   * orden, y quedaba afirmando algo que dejó de ser cierto sin decir cuándo
+   * dejó de serlo.
+   */
+  personas_solicitud: {
+    campo: 'solicitud_id',
+    tipo: 'Gestión',
+    texto: (fila) => `Se sacó a ${fila.persona || 'una persona'}`
+      + `${fila.relacion ? ` (${fila.relacion})` : ''} de la solicitud.`,
+    anota: (id, datos) => enLaTramitacionDe(id, datos),
   },
   documentos_solicitudes: {
     campo: 'solicitud_id',
-    comillas: ['«', '»'],
-    anota: (id, datos) => {
-      // Solo si la solicitud sigue existiendo: si se borró entera, su
-      // seguimiento se fue con ella y esto crearía una línea huérfana.
-      if (!db.prepare('SELECT 1 FROM solicitudes WHERE id = ?').get(id)) return;
-      require('./solicitudes/seguimiento').anotar(db, id, {
-        tipo: datos.tipo, descripcion: datos.descripcion, user: datos.usuario,
-      });
-    },
+    texto: unPapelQueSeQuita('«', '»'),
+    anota: (id, datos) => enLaTramitacionDe(id, datos),
   },
 };
 
