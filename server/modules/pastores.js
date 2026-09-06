@@ -195,13 +195,12 @@ module.exports = {
   extraRoutes(router, { db, requirePerm }) {
 
     /**
-     * Los pastores, cada uno junto a su cónyuge: «Pastor Juan Pérez Soto y
-     * Pastora Ana Díaz Soto». Lo usa la ficha de la iglesia para elegir al
-     * pastor principal, porque de una iglesia responden los dos y al elegirlo
-     * conviene ver a la pareja completa.
+     * Los que se pueden ofrecer, y cómo se llaman junto a su cónyuge.
+     *
+     * De acá salen las DOS listas de abajo, que se diferencian en una sola cosa
+     * —si una pareja pastoral aparece una vez o dos— y en nada más.
      */
-    router.get('/pastores/con-conyuge', requirePerm('pastores', 'view'), (req, res) => {
-      const trato = require('../tratamiento');
+    const losQueSeOfrecen = (req) => {
       const ejercen = require('../pastor-que-ejerce');
       const params = [];
       const donde = require('../alcance').condiciones(module.exports, req.user, params);
@@ -218,13 +217,46 @@ module.exports = {
       const filas = db
         .prepare(`SELECT * FROM pastores WHERE ${suyos.join(' AND ')} ORDER BY apellidos, nombres`)
         .all(...params);
-      res.json(
-        filas.map((p) => {
-          const el = trato.conTratamientoDePastor(p, db);
-          const ella = p.conyuge_id ? db.prepare('SELECT * FROM miembros WHERE id = ?').get(p.conyuge_id) : null;
-          return { id: p.id, label: ella ? `${el} y ${trato.conTratamiento(ella, db)}` : el };
-        })
-      );
+      return { filas, ademas };
+    };
+
+    /** Cómo se lee cada uno: él, y su cónyuge cuando lo tiene. */
+    const conSuConyuge = (p) => {
+      const trato = require('../tratamiento');
+      const el = trato.conTratamientoDePastor(p, db);
+      const ella = p.conyuge_id ? db.prepare('SELECT * FROM miembros WHERE id = ?').get(p.conyuge_id) : null;
+      return { id: p.id, label: ella ? `${el} y ${trato.conTratamiento(ella, db)}` : el };
+    };
+
+    /**
+     * Los pastores, cada uno junto a su cónyuge: «Pastor Juan Pérez Soto y
+     * Pastora Ana Díaz Soto».
+     *
+     * Ésta es la lista de TODOS los campos que apuntan a un pastor: el titular
+     * de una credencial, su carpeta, su historial y la firma de un certificado.
+     * Todos ésos son de UNA persona, así que acá el pastor y la pastora salen
+     * los dos aunque estén casados entre sí: si se juntaran, la pastora se
+     * quedaría sin poder recibir su credencial. La ficha de la iglesia, que sí
+     * elige una pareja, usa la de más abajo.
+     */
+    router.get('/pastores/con-conyuge', requirePerm('pastores', 'view'), (req, res) => {
+      res.json(losQueSeOfrecen(req).filas.map(conSuConyuge));
+    });
+
+    /**
+     * La misma lista, pero con la pareja pastoral una sola vez.
+     *
+     * Es la que usa «Pastor principal» en la ficha de una iglesia, que no elige
+     * a una persona sino a la pareja que responde por la congregación. Con los
+     * dos cónyuges registrados —que es como corresponde tenerlos— salían dos
+     * renglones que nombran a la misma pareja en distinto orden. La regla de
+     * cuál de las dos fichas la representa está en
+     * server/el-conyuge-del-pastor.js, que es donde vive el matrimonio.
+     */
+    router.get('/pastores/pareja-a-cargo', requirePerm('pastores', 'view'), (req, res) => {
+      const { filas, ademas } = losQueSeOfrecen(req);
+      const unaVez = require('../el-conyuge-del-pastor').unaSolaVezPorPareja(db, filas, ademas);
+      res.json(unaVez.map(conSuConyuge));
     });
     /**
      * Crea la ficha de miembro de un pastor con sus mismos datos y las deja

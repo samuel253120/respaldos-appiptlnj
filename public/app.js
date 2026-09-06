@@ -733,7 +733,7 @@ function camposDeLaRuta(f) {
     .map((m) => m[1])
     /*
      * El PROPIO campo no es una dependencia. Una ruta como
-     * `/pastores/con-conyuge?ademas={pastor_id}` en el campo `pastor_id`
+     * `/pastores/pareja-a-cargo?ademas={pastor_id}` en el campo `pastor_id`
      * quiere decir «los que corresponden, y además el que esta ficha ya
      * tenía», y ese valor está vacío con toda razón en una ficha nueva. Sin
      * esta línea el desplegable se declara a la espera de otro campo y dice

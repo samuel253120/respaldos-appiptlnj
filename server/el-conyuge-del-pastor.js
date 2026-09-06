@@ -132,4 +132,83 @@ function anotarElVinculo(db, pastor, suFichaDeMiembro) {
   db.prepare('UPDATE miembros SET conyuge_id = ? WHERE id = ?').run(suFichaDeMiembro.id, conyugeId);
 }
 
-module.exports = { conQuienFiguraCasada, avisoSiYaEstaCasada, anotarElVinculo };
+/**
+ * La pareja pastoral se ofrece UNA vez, no dos.
+ *
+ * Cuando el pastor y la pastora de una congregación están los dos registrados
+ * en Pastores / Guías —que es como corresponde tenerlos— y casados entre sí, el
+ * desplegable de «Pastor principal» arma una opción por cada ficha, y las dos
+ * nombran a la misma pareja, solo que en distinto orden. MEDIDO en la Iglesia
+ * Matriz:
+ *
+ *   Pastora Marcela Contreras Saldias y Pastor Samuel Rodriguez Mora
+ *   Pastor Samuel Rodriguez Mora y Pastora Marcela Contreras Saldias
+ *
+ * Quien abre esa lista tiene que elegir entre dos renglones que dicen lo mismo
+ * sin saber en qué se diferencian, y se diferencian en algo que no está a la
+ * vista: cuál de las dos fichas queda anotada. Así que se ofrece una sola, con
+ * la pareja completa, y acá se decide cuál de las dos la representa.
+ *
+ * QUIÉN REPRESENTA A LA PAREJA, en este orden:
+ *
+ *   1. LA QUE LA IGLESIA YA TIENE ANOTADA. Es la primera y manda sobre las
+ *      demás: juntar los dos renglones no puede mover a otra ficha una relación
+ *      que ya estaba escrita. Abrir una iglesia y guardarla sin tocar nada tiene
+ *      que dejarla igual, que es la misma razón por la que este desplegable
+ *      arrastra el «además» de quien ya no ejerce.
+ *   2. EL CARGO MÁS ALTO de la escala del ministerio (server/tratamiento.js).
+ *      Es el criterio de la propia organización y no uno inventado acá; entre
+ *      Pastor Presidente y Pastora, queda el primero. La escala pone a la
+ *      Pastora enseguida del guía de obra y lo dice: es un cargo pastoral, no
+ *      una grada. Para esto alcanza —quien tiene grada ordenada representa a la
+ *      pareja— y en la práctica casi nunca decide, porque la regla 1 la resuelve
+ *      antes.
+ *   3. Y si los dos tienen el mismo cargo, el orden del propio listado:
+ *      apellidos, nombres. No es un criterio, es un desempate que no cambia
+ *      entre una vez y la siguiente.
+ *
+ * ESTO NO VALE PARA LAS OTRAS LISTAS DE PASTORES. Una credencial, una carpeta,
+ * una línea de historial y la firma de un certificado son de UNA persona, no de
+ * una pareja: ahí las dos fichas tienen que seguir ofreciéndose, o la pastora se
+ * quedaría sin poder recibir su credencial. Por eso esto vive en su propia ruta
+ * y no en la que comparten todos los campos que apuntan a un pastor.
+ */
+function unaSolaVezPorPareja(db, filas, ademas) {
+  const { CARGOS_MINISTERIO, fichaDeMiembro } = require('./tratamiento');
+
+  /** La ficha de miembro de cada pastor de la lista, que es por donde se casan. */
+  const suMiembro = (p) => Number(p.miembro_id || (fichaDeMiembro(p, db) || {}).id || 0);
+  const porMiembro = new Map();
+  for (const p of filas) {
+    const m = suMiembro(p);
+    if (m) porMiembro.set(m, p);
+  }
+
+  const grada = (p) => CARGOS_MINISTERIO.indexOf(p.cargo);
+  /** Cuál de los dos queda. Ver el orden de arriba. */
+  const representa = (a, b) => {
+    if (ademas && Number(ademas) === Number(a.id)) return a;
+    if (ademas && Number(ademas) === Number(b.id)) return b;
+    if (grada(a) !== grada(b)) return grada(a) > grada(b) ? a : b;
+    const orden = `${a.apellidos || ''} ${a.nombres || ''}`
+      .localeCompare(`${b.apellidos || ''} ${b.nombres || ''}`, 'es');
+    if (orden !== 0) return orden < 0 ? a : b;
+    return Number(a.id) < Number(b.id) ? a : b;
+  };
+
+  const fuera = new Set();
+  for (const p of filas) {
+    if (fuera.has(p.id) || !p.conyuge_id) continue;
+    const pareja = porMiembro.get(Number(p.conyuge_id));
+    /*
+     * Se mira UN solo lado del vínculo a propósito. El sistema lo escribe en
+     * las dos fichas, pero una base traída de antes puede tener solo una mitad
+     * puesta, y con media mitad el renglón repetido aparece igual.
+     */
+    if (!pareja || Number(pareja.id) === Number(p.id) || fuera.has(pareja.id)) continue;
+    fuera.add(Number(representa(p, pareja).id) === Number(p.id) ? pareja.id : p.id);
+  }
+  return filas.filter((p) => !fuera.has(p.id));
+}
+
+module.exports = { conQuienFiguraCasada, avisoSiYaEstaCasada, anotarElVinculo, unaSolaVezPorPareja };

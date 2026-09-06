@@ -183,9 +183,16 @@ module.exports = {
        * dos. Y solo se ofrecen los que ejercen, más el que esta ficha ya
        * tuviera: sin ese «además», abrir la iglesia de un pastor fallecido y
        * guardar le borraría el dato, porque el desplegable no lo traería.
+       *
+       * La ruta es la de la PAREJA y no la que usan los demás campos que
+       * apuntan a un pastor: acá no se elige a una persona sino a quienes
+       * responden por la congregación, así que un matrimonio pastoral —los dos
+       * registrados y casados entre sí— sale una sola vez. En una credencial o
+       * en una carpeta, que sí son de una persona, salen los dos.
        */
-      optionsRoute: '/pastores/con-conyuge?ademas={pastor_id}',
-      help: 'Al buscarlo aparece junto a su cónyuge, que es con quien está a cargo de la iglesia.',
+      optionsRoute: '/pastores/pareja-a-cargo?ademas={pastor_id}',
+      help: 'Al buscarlo aparece junto a su cónyuge, que es con quien está a cargo de la iglesia. '
+        + 'Un matrimonio pastoral aparece una sola vez, con los dos nombres.',
     },
     {
       name: 'estado', label: 'Estado', type: 'select', default: 'Activa',
