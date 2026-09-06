@@ -273,6 +273,86 @@ function frenoDelQueNoArrastra(db, def, fila) {
 }
 
 /**
+ * Qué se va a llevar consigo este borrado, en palabras, ANTES de hacerlo.
+ *
+ * El motor ya sabía contar esto: la línea del Registro de Cambios termina en
+ * «Se llevó consigo 11 registro(s): 8 en Historial de Pastores, 3 en Documentos
+ * de Pastores» desde la 1.59.0. Lo que faltaba era decirlo del otro lado del
+ * borrado, que es el único momento en que sirve para decidir.
+ *
+ * Devuelve `null` si no se lleva nada —y entonces no hay nada que preguntar—,
+ * o `{ cuantas, detalle, enPalabras }`. Sale del MISMO plan que después
+ * ejecuta el borrado, así que la pregunta de antes y la constancia de después
+ * no pueden decir cosas distintas: si un día se separan, es porque alguien
+ * cambió el plan, y las dos cambian juntas.
+ *
+ * No mira `freno`: si el borrado está frenado, quien decide es el freno y este
+ * texto no llega a usarse.
+ */
+function loQueSeLleva(db, def, fila) {
+  let plan;
+  try {
+    plan = planDe(db, def, fila);
+  } catch (e) {
+    return null; // ante la duda no se inventa un aviso: manda el camino de siempre
+  }
+  if (plan.freno || !plan.arrastrar || !plan.arrastrar.length) return null;
+
+  const juntos = new Map();
+  for (const { def: hijaDef } of plan.arrastrar) {
+    juntos.set(hijaDef.label, (juntos.get(hijaDef.label) || 0) + 1);
+  }
+  const detalle = [...juntos.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, n]) => `${n.toLocaleString('es-CL')} en ${label}`);
+
+  return {
+    cuantas: plan.arrastrar.length,
+    detalle,
+    enPalabras: detalle.length > 1
+      ? `${detalle.slice(0, -1).join(', ')} y ${detalle[detalle.length - 1]}`
+      : detalle[0],
+  };
+}
+
+/**
+ * La pregunta de antes de un borrado que se lleva cosas por delante.
+ *
+ * La escribe el motor y no cada módulo, que es el punto: el sistema tenía la
+ * regla escrita dos veces —«quien va a borrar una iglesia necesita ver el
+ * tamaño de lo que estaba por hacer» (server/iglesia-vacia.js) y «quien borra
+ * tiene que saber qué se lleva ANTES» (la 1.376.0, al hacérselo decir a una
+ * actividad de asistencia)— y la aplicaba módulo por módulo, a los que alguien
+ * se acordó de ir a escribírsela.
+ *
+ * MEDIDO en la v1.431.0, borrando sin confirmar por las tres puertas:
+ *
+ *   DELETE /miembros      (2 papeles, 3 líneas de bitácora)  ....  200, sin decir nada
+ *   DELETE /solicitudes   (2 papeles, 3 líneas de trámite)   ....  200, sin decir nada
+ *   DELETE /pastores      (3 papeles, 8 líneas de historial) ....  200, sin decir nada
+ *
+ * No es un papel cualquiera: es el carnet escaneado de una persona, su
+ * certificado de ordenación y el registro de su recorrido en la organización.
+ */
+function preguntaDeLoQueSeLleva(db, def, fila) {
+  const lleva = loQueSeLleva(db, def, fila);
+  if (!lleva) return null;
+  /*
+   * No se ofrece «márquela como inactiva» acá, aunque sea el consejo correcto
+   * para una iglesia y para un cuerpo: este texto lo usan los nueve módulos que
+   * arrastran algo, y una solicitud no se marca inactiva —se cierra— ni una
+   * actividad de asistencia tampoco. Un aviso que manda a una puerta que no
+   * existe es peor que no decir nada. El módulo que sí tiene otra salida la
+   * ofrece en su propio gancho, que es donde se sabe cuál es.
+   */
+  return (
+    `Al eliminar ${comoSeLlama(def, fila)} se van con esa ficha `
+    + `${lleva.cuantas.toLocaleString('es-CL')} registro(s) más: ${lleva.enPalabras}. `
+    + 'Eso no se recupera.'
+  );
+}
+
+/**
  * Arma el plan de un borrado, sin tocar nada.
  *
  * Devuelve `{ freno, arrastrar, soltar }`. Si `freno` viene con algo, el
@@ -498,6 +578,10 @@ function huerfanas(db) {
 
 module.exports = {
   resolver, planDe, huerfanas, referenciasHacia, FRENA, ARRASTRA, SUELTA,
+  // Lo que un borrado se lleva, dicho ANTES de hacerlo: lo usa el motor para
+  // preguntar, y el gancho de Pastores / Guías para meterlo en su propia
+  // pregunta, que habla de otra cosa y tiene que decir las dos.
+  loQueSeLleva, preguntaDeLoQueSeLleva,
   // Se exporta para que el gancho de borrado de Iglesias pregunte sobre
   // exactamente lo mismo que después mira el plan (ver server/iglesia-vacia.js)
   cuantasApuntan,

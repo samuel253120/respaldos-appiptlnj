@@ -158,9 +158,27 @@ function avisoSiBorrarloDejaSuIglesiaSinPastor(db, pastor, { confirmado } = {}) 
       `${comoSeLlama(pastor)} figura como pastor(a) principal de ${cuales}. Si elimina su ficha, `
       + `${huerfanas.length > 1 ? 'esas iglesias quedan' : 'esa iglesia queda'} sin pastor principal `
       + 'anotado y hay que designarle otro: de ese campo sale «A cargo de la iglesia», que es lo que '
-      + 'se lee para saber quién responde por esa congregación. Queda la constancia en su historial.',
+      + 'se lee para saber quién responde por esa congregación. Queda la constancia en su historial.'
+      /*
+       * Y lo que se lleva por delante, en el MISMO aviso.
+       *
+       * Son dos hechos distintos —su congregación se queda sin titular, y su
+       * carpeta y su historial desaparecen— pero un solo botón los confirma a
+       * los dos: `igual_asi` es uno para todo el borrado. Si esto no viniera
+       * acá, quien confirmara la primera pregunta nunca vería la segunda, y
+       * justamente el pastor con iglesia a cargo es el que más papeles tiene.
+       */
+      + suCarpeta(db, pastor),
     confirmar: 'borrarlo_deja_su_iglesia_sin_pastor',
   };
+}
+
+/** «Y se van con él sus 3 papeles y sus 8 líneas», si tiene. */
+function suCarpeta(db, pastor) {
+  const lleva = require('./dependencias').loQueSeLleva(db, require('./registry').getModule('pastores'), pastor);
+  if (!lleva) return '';
+  return ` Con su ficha se van además ${lleva.cuantas.toLocaleString('es-CL')} registro(s) suyos: `
+    + `${lleva.enPalabras}. Su carnet, su nombramiento y su recorrido no se recuperan.`;
 }
 
 /**

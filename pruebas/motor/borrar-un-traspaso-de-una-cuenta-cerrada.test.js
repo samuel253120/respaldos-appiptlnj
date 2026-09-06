@@ -135,12 +135,24 @@ test('el motor sabe que un gancho de borrado puede preguntar, no solo negarse', 
    * Antes solo podía devolver un texto, y eso obligaba a elegir entre dejar
    * pasar algo que merecía una advertencia o prohibir algo legítimo.
    */
+  /*
+   * Se mira la RUTA DE BORRADO entera y no los primeros dos mil caracteres a
+   * partir del gancho, que es como estaba: en la v1.432.0 la lectura de
+   * `igual_asi` se subió unas líneas —el motor la necesita también para su
+   * propia pregunta, la de lo que el borrado se lleva por delante— y esta
+   * prueba se puso roja sin que nada de lo que vigila hubiera dejado de ser
+   * cierto. Una ventana de caracteres mide dónde está escrito algo; lo que
+   * importa es que esté.
+   */
   const motor = fs.readFileSync(path.join(__dirname, '../../server/crud.js'), 'utf8');
-  const trozo = motor.slice(motor.indexOf('def.hooks.beforeDelete'));
-  assert.match(trozo.slice(0, 2200), /req\.query\.igual_asi === 'true' \|\| req\.query\.igual_asi === '1'/,
+  const desde = motor.indexOf('router.delete(`${base}/:id');
+  assert.ok(desde > 0, 'no se encontró la ruta de borrado del motor');
+  const trozo = motor.slice(desde, motor.indexOf('// ---- rutas extra', desde));
+  assert.ok(trozo.length > 500 && trozo.length < 20000, `la ruta de borrado midió ${trozo.length}`);
+  assert.match(trozo, /req\.query\.igual_asi === 'true' \|\| req\.query\.igual_asi === '1'/,
     'la respuesta de la persona llega por la dirección: un DELETE no lleva cuerpo');
-  assert.match(trozo.slice(0, 2200), /beforeDelete\(row, \{ user: req\.user, db, confirmado \}\)/);
-  assert.match(trozo.slice(0, 2200), /if \(err && err\.confirmar\) problema\.confirmar = err\.confirmar;/);
+  assert.match(trozo, /beforeDelete\(row, \{ user: req\.user, db, confirmado \}\)/);
+  assert.match(trozo, /if \(err && err\.confirmar\) problema\.confirmar = err\.confirmar;/);
   assert.match(motor, /error: e\.message, \.\.\.\(e\.confirmar \? \{ confirmar: e\.confirmar \} : \{\}\)/,
     'y la pregunta tiene que llegar hasta la pantalla, no quedarse en el camino');
 });

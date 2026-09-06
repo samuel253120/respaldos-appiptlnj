@@ -572,7 +572,14 @@ async function entrar(rut = RUT, clave = CLAVE) {
       const sigueAhi = async () =>
         (await fetch(`${URL}/uploads/${subidaPropia.filename}`, { headers: { Authorization: cabecera } })).status === 200;
       revisar('mientras la ficha existe, el archivo está', await sigueAhi());
-      await api('DELETE', `/api/miembros/${ficha.datos.id}`);
+      // Desde la v1.432.0 el borrado que se lleva otras fichas por delante lo
+      // dice antes: esta ficha tiene su línea de bitácora, así que pregunta.
+      const pregunta = await api('DELETE', `/api/miembros/${ficha.datos.id}`);
+      revisar('borrar la ficha avisa primero de lo que se lleva',
+        pregunta.estado === 400 && /Bitácora/.test(pregunta.datos.error || ''),
+        `respondió ${pregunta.estado}: ${(pregunta.datos && pregunta.datos.error) || ''}`);
+      revisar('y mientras no se confirme, el archivo sigue estando', await sigueAhi());
+      await api('DELETE', `/api/miembros/${ficha.datos.id}?igual_asi=true`);
       revisar('al borrar la ficha, su archivo se va con ella', !(await sigueAhi()),
         'el archivo quedó en el disco sin ficha desde donde llegar a él');
     } else {

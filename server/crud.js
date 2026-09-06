@@ -1956,6 +1956,7 @@ function buildRouter() {
       if (!alcance.alcanza(def, row, req.user)) {
         return res.status(403).json({ error: 'Ese registro está fuera de lo que tiene asignado' });
       }
+      const confirmado = req.query.igual_asi === 'true' || req.query.igual_asi === '1';
       try {
         db.transaction(() => {
           if (def.hooks && def.hooks.beforeDelete) {
@@ -1972,11 +1973,43 @@ function buildRouter() {
              * sistema se negaban a mover un peso de esa misma cuenta. Prohibirlo
              * habría sido peor —un traspaso mal anotado hay que poder borrarlo—.
              */
-            const confirmado = req.query.igual_asi === 'true' || req.query.igual_asi === '1';
             const err = def.hooks.beforeDelete(row, { user: req.user, db, confirmado });
             if (err) {
               const problema = new ErrorDeDatos(typeof err === 'string' ? err : err.error);
               if (err && err.confirmar) problema.confirmar = err.confirmar;
+              throw problema;
+            }
+          }
+
+          /*
+           * Y LA PREGUNTA QUE LE FALTABA AL SISTEMA ENTERO: si de esta ficha
+           * cuelgan otras que se van con ella, se dice cuántas son y de qué
+           * antes de llevárselas.
+           *
+           * La regla estaba escrita dos veces y aplicada a mano: la iglesia la
+           * tenía, el cuerpo la tenía, y una actividad de asistencia la ganó en
+           * la 1.376.0 —«quien borra tiene que saber qué se lleva ANTES»—. Los
+           * otros seis módulos que arrastran algo no la tenían, y entre ellos
+           * estaban los tres que se llevan papeles escaneados: un miembro, una
+           * solicitud y un pastor. Escrita acá vale para los nueve, y para el
+           * décimo que aparezca.
+           *
+           * Sale del mismo plan que dos líneas más abajo ejecuta el borrado, así
+           * que lo que se promete y lo que queda anotado no pueden separarse.
+           *
+           * Si el gancho del módulo ya preguntó, no se llega hasta acá: preguntar
+           * es lanzar, y lo lanzado sale del `try`. Así no hay nunca dos avisos
+           * seguidos para el mismo botón —que además serían inútiles, porque
+           * `igual_asi` es uno solo y contesta los dos—. El módulo que necesita
+           * decir las dos cosas se trae esta cuenta a su propio aviso: lo hace
+           * Pastores / Guías, que habla de la iglesia que queda sin titular Y de
+           * la carpeta que se va.
+           */
+          if (!confirmado) {
+            const aviso = dependencias.preguntaDeLoQueSeLleva(db, def, row);
+            if (aviso) {
+              const problema = new ErrorDeDatos(aviso);
+              problema.confirmar = 'se_lleva_lo_que_cuelga';
               throw problema;
             }
           }
