@@ -2,9 +2,15 @@
  * Lo que falta por llenar en las fichas.
  *
  * Una base traída de otro sistema llega siempre con huecos: gente sin
- * teléfono, sin fecha de nacimiento, sin correo. No es un error del programa
- * —esos datos nunca se cargaron— pero mientras nadie los vea, nadie los
- * llena, y el día que hay que avisarle a alguien no hay por dónde.
+ * teléfono, sin fecha de nacimiento, sin a quién llamar si algo pasa. No es un
+ * error del programa —esos datos nunca se cargaron— pero mientras nadie los
+ * vea, nadie los llena, y el día que hay que avisarle a alguien no hay por
+ * dónde.
+ *
+ * Lo que se pide acá es lo que se puede conseguir preguntando. Un dato que la
+ * congregación no tiene por cómo es —el correo de una membresía mayor— no es
+ * una tarea pendiente: es ruido que tapa las que sí lo son. Está dicho abajo,
+ * en la línea donde estaba.
  *
  * Esto los pone a la vista y, sobre todo, los deja **abrir**: cada línea
  * lleva al listado de Miembros filtrado justo por los que a quienes les falta
@@ -13,7 +19,7 @@
  *
  * Se cuenta sobre **todas** las fichas, sin distinguir por estado. La
  * tentación era contar solo los activos —a quien se trasladó no hay que
- * perseguirlo para pedirle el correo—, pero entonces el número no calzaría
+ * perseguirlo para pedirle el teléfono—, pero entonces el número no calzaría
  * con la lista que se abre al tocarlo, y un conteo que no se puede abrir es
  * justo lo que se quería evitar. Además, un dato que falta sigue faltando
  * aunque la persona ya no esté: el día que pida un certificado, no está.
@@ -36,7 +42,25 @@ const LO_QUE_IMPORTA = [
   { campo: 'telefono', label: 'Teléfono', para: 'Para poder ubicarlos y avisarles de las actividades.' },
   { campo: 'fecha_nacimiento', label: 'Fecha de nacimiento', para: 'Sin ella no aparecen en los cumpleaños ni se sabe su edad.' },
   { campo: 'direccion', label: 'Dirección', para: 'Para las visitas y para saber quién vive cerca de quién.' },
-  { campo: 'email', label: 'Correo electrónico', para: 'Para mandarles certificados y avisos sin tener que llamar uno por uno.' },
+  /*
+   * El CORREO ELECTRÓNICO no está, y no es un olvido.
+   *
+   * Esta lista existe para que alguien salga a pedir lo que falta. Un dato que
+   * la mayoría de la congregación no tiene ni va a tener no se pide: se
+   * arrastra. Medido en la Iglesia Matriz: de 179 fichas, 109 sin correo —el
+   * 61%—, y la razón no es que nadie lo haya cargado, es que buena parte de la
+   * membresía es gente mayor que no usa correo. Puesto acá, encabezaba la
+   * tarjeta con la cifra más alta y empujaba hacia abajo los que sí se pueden
+   * conseguir preguntando, como el teléfono y el contacto de emergencia.
+   *
+   * Peor todavía en el número de arriba: al contar para «tienen todos estos
+   * datos puestos», esas 109 fichas quedaban incompletas por lo único que no se
+   * les va a poder llenar, y el avance de las demás no se notaba nunca.
+   *
+   * El campo sigue en la ficha y se guarda igual; quien quiera ver a quiénes
+   * les falta, la dirección #/m/miembros?sin=email lo sigue contestando. Lo que
+   * deja de hacer es ocupar un renglón de una lista que es para salir a pedir.
+   */
   { campo: 'genero', label: 'Sexo', para: 'De ahí sale el trato con que el sistema se dirige a cada persona.' },
   { campo: 'fecha_ingreso', label: 'Fecha de ingreso a la iglesia', para: 'Para saber desde cuándo son parte y calcular antigüedad.' },
   { campo: 'emergencia_telefono', label: 'Contacto de emergencia', para: 'A quién llamar si algo pasa en una actividad.' },
@@ -101,8 +125,8 @@ function resumen(usuario) {
       .get(...params).c;
   }
 
-  // Cuántas fichas tienen los siete datos puestos: es el número que dice si
-  // esto va avanzando o sigue igual.
+  // Cuántas fichas tienen puestos todos los datos de la lista: es el número
+  // que dice si esto va avanzando o sigue igual.
   const puestos = LO_QUE_IMPORTA.filter((d) => campos.has(d.campo)).map(
     (d) => `"${d.campo}" IS NOT NULL AND TRIM("${d.campo}") <> ''`
   );
