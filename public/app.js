@@ -430,7 +430,24 @@ function nivelClase(nivel) {
   return '';
 }
 
-function badgeClass(value) {
+function badgeClass(value, campo) {
+  /*
+   * UNA LISTA QUE SALE DE LOS DATOS NO ES UN ESTADO, Y NO SE PINTA COMO TAL.
+   *
+   * Los colores de acá abajo se adivinan buscando trozos de palabra, y eso solo
+   * tiene sentido cuando el valor viene de una lista de opciones ESCRITA: ahí
+   * «Vigente» y «Anulado» son estados y el color ayuda a recorrer la lista con
+   * la vista.
+   *
+   * Un desplegable cuya lista sale de una ruta ofrece lo que hay en los datos
+   * —el nombre de un módulo, el nombre de una persona—, y ahí el color no dice
+   * nada y puede mentir: en el Registro de Cambios, «Quién» es el nombre de
+   * quien hizo el cambio, y a una tesorera de apellido BUENO le tocaría la
+   * píldora verde, la misma con que el sistema dice que algo salió bien. Es la
+   * trampa de la v1.399.0 en otro sitio, y por eso se corta acá arriba y no
+   * caso por caso: cualquier lista futura sacada de una ruta queda cubierta.
+   */
+  if (campo && campo.optionsRoute) return '';
   const v = String(value || '').toLowerCase();
   /*
    * UNA NEGACIÓN NO HEREDA EL COLOR DE LO QUE NIEGA.
@@ -4175,7 +4192,7 @@ function cellValue(f, row, col) {
       const esLoHabitual = f.default != null && String(v) === String(f.default);
       return esLoHabitual
         ? `<span class="valor-normal">${esc(selectLabel(f, v))}</span>`
-        : `<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`;
+        : `<span class="badge ${badgeClass(v, f)}">${esc(selectLabel(f, v))}</span>`;
     }
     default:
       return acortarEnLista(v);
@@ -4460,7 +4477,7 @@ function valorFicha(f, row) {
       // Ya viene limpio del servidor (server/textorico.js): solo formato
       return vacio ? '' : `<div class="dato-rico">${v}</div>`;
     case 'select':
-      return vacio ? '' : `<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`;
+      return vacio ? '' : `<span class="badge ${badgeClass(v, f)}">${esc(selectLabel(f, v))}</span>`;
     case 'persona':
       return vacio ? '' : row[f.name + '_id'] ? `<span class="persona-chip">${esc(v)}</span>` : esc(v);
     case 'permisos':
@@ -4520,7 +4537,7 @@ async function viewFicha(name, id, pestana) {
     if (!f) continue;
     const v = row[f.name];
     if (v == null || v === '') continue;
-    if (f.type === 'select') insignias.push(`<span class="badge ${badgeClass(v)}">${esc(selectLabel(f, v))}</span>`);
+    if (f.type === 'select') insignias.push(`<span class="badge ${badgeClass(v, f)}">${esc(selectLabel(f, v))}</span>`);
     /*
      * Una cifra suelta en la cabecera no dice nada: «303334» al lado del
      * nombre de un acreedor no se lee como «falta pagar $ 303.334». Así que un

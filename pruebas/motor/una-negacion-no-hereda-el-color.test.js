@@ -35,7 +35,13 @@ function badgeClassDeLaPantalla() {
   const i = app.indexOf('function badgeClass');
   assert.ok(i > 0, 'se encontró badgeClass en la pantalla');
   const trozo = app.slice(i, app.indexOf('\n}\n', i) + 3);
-  assert.ok(trozo.length < 3000, `el recorte mide ${trozo.length}: es una red por si el corte se corriera`);
+  /*
+   * La red es por si el corte se corriera y trajera media pantalla. Sube de
+   * 3.000 a 4.500 al entrar la regla de las listas sacadas de una ruta, que
+   * viene con su explicación escrita: sigue siendo una red —el archivo entero
+   * mide cientos de miles— y no un número que se agranda cada vez que estorba.
+   */
+  assert.ok(trozo.length < 4500, `el recorte mide ${trozo.length}: es una red por si el corte se corriera`);
   // eslint-disable-next-line no-eval
   return eval(`(${trozo.replace('function badgeClass', 'function')})`);
 }
@@ -126,6 +132,45 @@ test('de los 356 valores del sistema, solo cambian los cuatro que estaban mal', 
   assert.deepEqual(cambian.sort(), [
     'Inactiva', 'Inactivo', 'No aprobado (se extiende la prueba)', 'Traslado de membresía',
   ], `cambiaron: ${JSON.stringify(cambian)}`);
+});
+
+// ------------- una lista que sale de los datos no es un estado -------------
+
+test('un desplegable que saca su lista de una ruta no se pinta por estado', () => {
+  /*
+   * La misma trampa de arriba, en otro sitio: el color se adivina de las
+   * palabras, y eso solo tiene sentido cuando el valor sale de una lista de
+   * opciones ESCRITA, donde «Vigente» y «Anulado» son estados.
+   *
+   * Cuando la lista sale de una ruta, lo que ofrece son los datos: el nombre de
+   * un módulo, el nombre de una persona. Ahí el color no dice nada y puede
+   * mentir. MEDIDO con la función de la pantalla, sobre nombres que existen en
+   * Chile:
+   *
+   *   «Tesorero Bueno» .......  VERDE, la misma píldora de «Aprobado»
+   *   «Pastor Malo» ..........  ROJA, la de «Anulado»
+   *   «Ana Regular» ..........  AMARILLA, la de «Pendiente»
+   *
+   * Se destapó al hacer filtrable por «Quién» el Registro de Cambios: ese campo
+   * pasó a ser un desplegable, y un desplegable se dibuja como píldora.
+   */
+  const quien = { name: 'usuario', type: 'select', optionsRoute: '/registro_cambios/usuarios' };
+  for (const nombre of ['Tesorero Bueno', 'Pastor Malo', 'Ana Regular', 'Administrador General']) {
+    assert.equal(badgeClass(nombre, quien), '',
+      `«${nombre}» es el nombre de quien hizo un cambio, no un estado: va sin color`);
+  }
+  // Y sin el campo delante se sigue adivinando, que es lo que necesitan las
+  // pantallas escritas a mano que le pasan un estado suelto.
+  assert.equal(badgeClass('Tesorero Bueno'), 'green', 'la trampa que se está evitando existe');
+});
+
+test('un desplegable con su lista escrita sigue teniendo sus colores', () => {
+  // La regla nueva no puede llevarse por delante los estados de verdad, que son
+  // casi todos: la condición es que la lista salga de una RUTA.
+  const estado = { name: 'estado', type: 'select', options: ['Activo', 'Inactivo'] };
+  assert.equal(badgeClass('Activo', estado), 'green');
+  assert.equal(badgeClass('Inactivo', estado), 'red');
+  assert.equal(badgeClass('Pendiente', { type: 'select', options: ['Pendiente'] }), 'yellow');
 });
 
 test('el resultado de una evaluación no viene decidido de fábrica', () => {

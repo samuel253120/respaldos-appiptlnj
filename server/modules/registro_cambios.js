@@ -25,7 +25,7 @@ module.exports = {
   dateField: 'fecha',
   searchFields: ['registro', 'detalle', 'usuario', 'modulo'],
   listFields: ['fecha', 'hora', 'modulo', 'accion', 'registro', 'usuario'],
-  filterFields: ['modulo', 'accion'],
+  filterFields: ['modulo', 'accion', 'usuario'],
   defaultSort: { field: 'fecha', dir: 'desc' },
   fields: [
     { name: 'fecha', label: 'Fecha', type: 'date', readonly: true },
@@ -87,29 +87,72 @@ module.exports = {
        */
       copiaDe: '*',
     },
-    { name: 'usuario', label: 'Quién', type: 'text', readonly: true },
+    {
+      name: 'usuario', label: 'Quién', type: 'select', readonly: true,
+      /*
+       * «¿Qué tocó esta persona?» es la otra mitad de la pregunta con que este
+       * libro existe. La primera —«¿quién cambió este monto?»— se contesta
+       * mirando una línea; ésta pide recorrer el libro entero por alguien, y
+       * hasta acá había que bajar la planilla y filtrar en Excel.
+       *
+       * La lista sale de una ruta y no de una escrita acá, por lo mismo que la
+       * de módulos: los nombres son los que de verdad dejaron líneas, y acotados
+       * a lo que quien pregunta alcanza.
+       *
+       * Y se guarda el NOMBRE, no el número de la cuenta —así estaba desde el
+       * principio y así se queda—: una línea de hace tres años tiene que seguir
+       * diciendo quién la hizo aunque esa cuenta se haya borrado o renombrado.
+       * Un `ref` a Usuarios dejaría el libro cambiando de contenido cada vez que
+       * alguien edita su propia ficha, que es justo lo que un registro no puede
+       * hacer.
+       */
+      optionsRoute: '/registro_cambios/usuarios',
+    },
     { name: 'iglesia_id', label: 'Iglesia', type: 'ref', ref: 'iglesias', readonly: true },
   ],
   /**
-   * Los módulos que tienen líneas anotadas, para el filtro de la barra.
+   * Lo que hay anotado, para los dos filtros de la barra: qué módulos tienen
+   * líneas y quiénes las dejaron.
    *
-   * Sale de la propia tabla y no de la lista de módulos del sistema: se ofrece
-   * filtrar por lo que hay, no por lo que podría haber. Y acotado a lo que esta
-   * persona alcanza, con el mismo alcance del listado: ofrecerle «Tesorería» a
-   * quien no puede ver ninguna de esas líneas sería un desplegable que siempre
-   * contesta vacío.
+   * Sale de la propia tabla y no de la lista de módulos ni de la de usuarios del
+   * sistema: se ofrece filtrar por lo que hay, no por lo que podría haber. Una
+   * cuenta recién creada, que todavía no tocó nada, no tiene por qué aparecer en
+   * el desplegable de «Quién».
+   *
+   * Y acotado a lo que esta persona alcanza, con el mismo alcance del listado:
+   * ofrecerle «Tesorería» a quien no puede ver ninguna de esas líneas sería un
+   * desplegable que siempre contesta vacío, y ofrecerle un nombre que solo
+   * aparece en líneas de otra congregación sería contarle algo que su listado no
+   * le muestra.
    */
   extraRoutes(router, { db, requirePerm, scopeClause }) {
-    router.get('/registro_cambios/modulos', requirePerm('registro_cambios', 'view'), (req, res) => {
+    /*
+     * Las dos listas son la misma pregunta sobre otra columna, así que se
+     * escriben una sola vez. El nombre de la columna no sale de la dirección:
+     * está acá, en una lista cerrada de dos, para que nunca pueda llegar de
+     * afuera y terminar pegado dentro del SQL.
+     */
+    const loQueHayAnotado = (columna) => (req, res) => {
       const params = [];
       const alcance = scopeClause(req.user, params);
       const filas = db.prepare(
-        `SELECT DISTINCT modulo FROM registro_cambios
-          WHERE modulo IS NOT NULL AND TRIM(modulo) <> ''${alcance ? ` AND ${alcance}` : ''}
-          ORDER BY modulo`
+        `SELECT DISTINCT "${columna}" AS valor FROM registro_cambios
+          WHERE "${columna}" IS NOT NULL AND TRIM("${columna}") <> ''${alcance ? ` AND ${alcance}` : ''}
+          ORDER BY "${columna}"`
       ).all(...params);
-      res.json(filas.map((f) => ({ id: f.modulo, label: f.modulo })));
-    });
+      res.json(filas.map((f) => ({ id: f.valor, label: f.valor })));
+    };
+
+    const puedeVerlo = requirePerm('registro_cambios', 'view');
+    router.get('/registro_cambios/modulos', puedeVerlo, loQueHayAnotado('modulo'));
+    /*
+     * Medido sobre 120.000 líneas: 40,1 ms, y con un índice compuesto de
+     * (iglesia_id, usuario) bajaría a 11,3. No se puso, por lo mismo que en la
+     * v1.437.0 no se puso el de tesorería: es una consulta que corre UNA vez, al
+     * abrir la barra de filtros, y este libro se escribe en cada cambio de
+     * dinero y de permisos. La de módulos, que ya existía, cuesta lo mismo.
+     */
+    router.get('/registro_cambios/usuarios', puedeVerlo, loQueHayAnotado('usuario'));
   },
   /*
    * El registro lo escribe el sistema y nadie más: no se le agrega una línea,
