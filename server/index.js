@@ -420,11 +420,29 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     return db.prepare(`SELECT COUNT(*) AS c FROM "${table}" ${sql}`).get(...params).c;
   };
 
+  /*
+   * SOLO SE CUENTA LO QUE ESA PERSONA PUEDE ABRIR.
+   *
+   * Los seis números de arriba se contaban siempre, para todos. La pantalla no
+   * los dibujaba —filtra las tarjetas por los módulos que la persona tiene—
+   * pero el número ya había salido del servidor, y esa era la única guardia.
+   *
+   * MEDIDO en la v1.436.0, con una cuenta con Miembros, Solicitudes y
+   * Certificados cerrados: las tres puertas contestaron 403 y el panel le mandó
+   * «miembros 3 · solicitudes_pendientes 1 · certificados 0» (hallazgo PC-03).
+   *
+   * Lo que decide qué sale del servidor no puede ser la pantalla. Las seis
+   * piezas de más abajo ya lo hacían así —las finanzas, las ayudas, los cuatro
+   * avisos—; éstas eran las que faltaban.
+   */
+  const puede = (pieza) => require('./panel').puedeVerLaPieza(req.user, pieza);
+  const soloSiPuede = (pieza, contar) => (puede(pieza) ? contar() : undefined);
+
   const counts = {
-    iglesias: susIglesias.length || scoped('iglesias', false),
-    miembros: scoped('miembros'),
-    cuerpos: scoped('cuerpos'),
-    pastores: scoped('pastores'),
+    iglesias: soloSiPuede('counts.iglesias', () => susIglesias.length || scoped('iglesias', false)),
+    miembros: soloSiPuede('counts.miembros', () => scoped('miembros')),
+    cuerpos: soloSiPuede('counts.cuerpos', () => scoped('cuerpos')),
+    pastores: soloSiPuede('counts.pastores', () => scoped('pastores')),
     /*
      * TODO LO QUE SIGUE ABIERTO, no solo lo pendiente y lo en revisión.
      *
@@ -434,7 +452,7 @@ app.get('/api/dashboard', authRequired, (req, res) => {
      * propio módulo (CERRADOS), así que no puede volver a quedar corta cuando
      * se agregue o se cambie un estado.
      */
-    solicitudes_pendientes: (() => {
+    solicitudes_pendientes: !puede('counts.solicitudes_pendientes') ? undefined : (() => {
       const { sql, params } = filtro('solicitudes');
       const donde = sql ? `${sql} AND` : 'WHERE';
       const cerrados = require('./modules/solicitudes').CERRADOS;
@@ -447,7 +465,7 @@ app.get('/api/dashboard', authRequired, (req, res) => {
      * recordatorio y de la bandeja (ver server/avisos/vigia.js): el plazo que
      * se comprometió, o —sin él— el general de Configuración.
      */
-    solicitudes_vencidas: (() => {
+    solicitudes_vencidas: !puede('counts.solicitudes_vencidas') ? undefined : (() => {
       const { sql, params } = filtro('solicitudes');
       const donde = sql ? `${sql} AND` : 'WHERE';
       const cerrados = require('./modules/solicitudes').CERRADOS;
@@ -460,8 +478,11 @@ app.get('/api/dashboard', authRequired, (req, res) => {
                     ELSE fecha <= date('now','localtime', ?) END`
       ).get(...params, ...cerrados, `-${dias} days`).c;
     })(),
-    certificados: scoped('certificados'),
+    certificados: soloSiPuede('counts.certificados', () => scoped('certificados')),
   };
+  // Lo que no se contó no viaja en blanco: no viaja. Un cero se lee como «no
+  // hay ninguno», y eso es distinto de «esto no es suyo».
+  for (const k of Object.keys(counts)) if (counts[k] === undefined) delete counts[k];
 
   /*
    * LO ENTREGADO ESTE MES, y a cuánta gente.
@@ -475,7 +496,7 @@ app.get('/api/dashboard', authRequired, (req, res) => {
    * Solo para quien puede ver el módulo: una cifra en el panel que la persona
    * no puede abrir en ninguna parte es una cifra que no puede comprobar.
    */
-  if (can(req.user, 'ayudas_sociales', 'view')) {
+  if (puede('counts.ayudas_mes')) {
     const { sql, params } = filtro('ayudas_sociales');
     const suyas = require('./a-quien-se-ayudo').delMes(db, sql, params);
     counts.ayudas_mes = suyas.entregas;
@@ -493,7 +514,7 @@ app.get('/api/dashboard', authRequired, (req, res) => {
    * que se cerró en la cartola y en los saldos de las cuentas.
    */
   let finanzas = null;
-  if (can(req.user, 'tesoreria', 'view') && can(req.user, 'tesoreria_montos', 'view')) {
+  if (puede('finanzas')) {
     // YYYY-MM del mes de la iglesia: el último día del mes, de noche, el
     // universal ya es el mes siguiente y el panel mostraba ceros
     const mes = require('./fechas').hoy().slice(0, 7);
@@ -505,41 +526,111 @@ app.get('/api/dashboard', authRequired, (req, res) => {
     const w = `${susIglesias.length ? `AND iglesia_id IN (${marcas})` : ''}${porNivel ? ` AND ${porNivel}` : ''}`;
     const p = susIglesias;
     /**
-     * Las cuatro sumas salen de una sola pasada por la tabla.
+     * DOS PASADAS ENFOCADAS, NO UNA QUE HACE LOS DOS TRABAJOS.
      *
-     * Eran cuatro consultas, y cada una recorría los movimientos enteros: el
-     * mismo trabajo hecho cuatro veces para responder cuatro preguntas sobre
-     * las mismas filas. Preguntándolas todas juntas, la base pasa una vez.
+     * Antes eran cuatro consultas, después una sola con las cuatro sumas
+     * adentro, y eso pareció lo mejor: la base pasa una vez. Pero esa pasada
+     * tenía que recorrer la tabla ENTERA y, en cada una de las ciento veinte mil
+     * filas, calcular además el `substr(fecha,1,7)` del mes —trabajo que solo
+     * sirve para las treinta filas de este mes—.
      *
-     * Ojo con los totales «de siempre»: no tienen tope y crecen con cada
-     * movimiento que se registre, así que esta consulta se irá poniendo más
-     * lenta con los años aunque nadie toque el código.
+     * MEDIDO en la v1.436.0, sobre 120.000 movimientos:
+     *
+     *   las cuatro juntas, como estaba .............  26,5 ms
+     *   solo el mes, preguntado por rango de fechas    1,5 ms
+     *   solo los totales de siempre ................  13,2 ms
+     *
+     * Separadas suman 14,7 ms: la mitad. Y no es por hacer menos pasadas sino
+     * por hacerlas bien: preguntar el mes POR RANGO deja que la base use el
+     * índice de (iglesia, fecha) que ya existe y toque treinta filas en vez de
+     * ciento veinte mil. Se probó además un índice nuevo que cubriera los
+     * totales: bajaba de 13,2 a 12,7 ms, que no paga otro índice en la tabla
+     * más caliente del sistema.
+     *
+     * LO QUE SIGUE SIN TOPE, Y HAY QUE DECIRLO: los totales «de siempre» crecen
+     * derecho con los datos —3, 6, 13 y 26 ms para 15.000, 30.000, 60.000 y
+     * 120.000 movimientos—, así que medio millón serían unos 55 ms de esta
+     * mitad. Arreglarlo de verdad pide guardar el acumulado de los años
+     * cerrados, y eso hay que invalidarlo desde los DOCE sitios que escriben en
+     * esta tabla: es la clase de lista que un día queda incompleta, y el
+     * síntoma sería una cifra de plata equivocada en la primera pantalla. Si
+     * llega a molestar, la salida barata es preguntarle a la corporación si el
+     * balance histórico de verdad se mira acá (hallazgo PC-04).
      */
-    const sumas = db
+    const finDelMes = (() => {
+      const [a, m] = mes.split('-').map(Number);
+      return m === 12 ? `${a + 1}-01-01` : `${a}-${String(m + 1).padStart(2, '0')}-01`;
+    })();
+    const delMes = db
       .prepare(
-        `SELECT COALESCE(SUM(CASE WHEN tipo = 'Ingreso' AND substr(fecha,1,7) = ? THEN monto END), 0) AS ingresos_mes,
-                COALESCE(SUM(CASE WHEN tipo = 'Egreso'  AND substr(fecha,1,7) = ? THEN monto END), 0) AS egresos_mes,
-                COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto END), 0) AS ingresos_total,
+        `SELECT COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto END), 0) AS ingresos_mes,
+                COALESCE(SUM(CASE WHEN tipo = 'Egreso'  THEN monto END), 0) AS egresos_mes
+           FROM tesoreria WHERE fecha >= ? AND fecha < ? ${w}`
+      )
+      .get(`${mes}-01`, finDelMes, ...p);
+    const deSiempre = db
+      .prepare(
+        `SELECT COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto END), 0) AS ingresos_total,
                 COALESCE(SUM(CASE WHEN tipo = 'Egreso'  THEN monto END), 0) AS egresos_total
            FROM tesoreria WHERE 1 = 1 ${w}`
       )
-      .get(mes, mes, ...p);
-    finanzas = { mes, ...sumas };
+      .get(...p);
+    finanzas = { mes, ...delMes, ...deSiempre };
     finanzas.balance_total = finanzas.ingresos_total - finanzas.egresos_total;
   }
 
-  // Próximos cumpleaños: se calculan desde el mes y el día de nacimiento,
-  // tomando el próximo que venga (hoy cuenta como cumpleaños de hoy).
-  const cumpleanos = require('./cumpleanos').proximosCumpleanos(
-    susIglesias, susCuerpos, ajustes.numero('cumpleanos_cantidad', 1, 20));
+  /*
+   * Próximos cumpleaños: se calculan desde el mes y el día de nacimiento,
+   * tomando el próximo que venga (hoy cuenta como cumpleaños de hoy).
+   *
+   * PIDE DOS COSAS, Y LA SEGUNDA ES LA QUE FALTABA. Ver Miembros, porque es de
+   * ahí que salen; y la llave del RUT y la fecha de nacimiento, porque un
+   * cumpleaños ES la fecha de nacimiento dicha de otra manera: el día, el mes
+   * y la edad son exactamente el dato que esa llave reserva.
+   *
+   * MEDIDO en la v1.436.0, con una cuenta que tiene Miembros pero NO esa llave:
+   * la ficha le llegaba —bien— sin `rut` y sin `fecha_nacimiento`, y el panel
+   * le entregaba «Rosa Díaz Fuentes · 15/1 · cumple 42» de cada miembro. La
+   * llave funcionaba en la ficha, en el listado y en la planilla, y no en la
+   * primera pantalla (hallazgo PC-02). Es la misma forma del hallazgo RC-01: la
+   * misma fuga por otra puerta.
+   *
+   * NO SE RECORTA A MEDIAS —ni el nombre suelto, ni «cumple hoy»— porque no
+   * hay media medida que sirva: «en 3 días» y la fecha de hoy dan el día exacto,
+   * y «cumple hoy» lo da directamente. O se ve el cumpleaños o no se ve.
+   *
+   * En una instalación nueva esto no cambia nada: la llave viene abierta para
+   * todos. Solo pierde los cumpleaños la cuenta a la que alguien se la cerró a
+   * propósito, que es lo que cerrarla significaba.
+   */
+  const cumpleanos = puede('cumpleanos')
+    ? require('./cumpleanos').proximosCumpleanos(
+      susIglesias, susCuerpos, ajustes.numero('cumpleanos_cantidad', 1, 20))
+    : [];
 
-  // Solo las iglesias que alcanza quien está mirando
+  /*
+   * Las últimas cinco solicitudes, solo para quien puede abrirlas.
+   *
+   * Una solicitud lleva el nombre de quien la presentó y el asunto escrito por
+   * la oficina, y esta lista se armaba sin preguntar nada. MEDIDO en la
+   * v1.436.0, con una cuenta con Solicitudes cerrado: `GET /api/solicitudes`
+   * contestaba 403 y el panel le entregaba «Ayuda por la enfermedad de su hijo
+   * — Rosa Díaz Fuentes», que además la pantalla dibujaba (hallazgo PC-01).
+   *
+   * No es una cifra: es el nombre de una persona junto al motivo por el que
+   * pidió ayuda. Es la distinción que esta corporación ya resolvió al cerrarle
+   * Ayudas Sociales al rol de consulta —«ver un nombre de paso no es poder
+   * listar a las personas que la iglesia ayudó y leer por qué»—.
+   *
+   * El alcance por iglesia ya estaba y se queda: lo que faltaba era el permiso.
+   */
   const marcas2 = susIglesias.map(() => '?').join(',');
   const w2 = susIglesias.length ? `WHERE iglesia_id IN (${marcas2})` : '';
   const p2 = susIglesias;
-  const solicitudesRecientes = db
-    .prepare(`SELECT id, fecha, solicitante, asunto, estado FROM solicitudes ${w2} ORDER BY fecha DESC LIMIT 5`)
-    .all(...p2);
+  const solicitudesRecientes = puede('solicitudesRecientes')
+    ? db.prepare(`SELECT id, fecha, solicitante, asunto, estado FROM solicitudes ${w2} ORDER BY fecha DESC LIMIT 5`)
+      .all(...p2)
+    : [];
 
   /**
    * Las credenciales que hay que renovar (punto 10.4).
@@ -553,7 +644,7 @@ app.get('/api/dashboard', authRequired, (req, res) => {
    * Solo lo ve quien puede ver credenciales, y solo las de las iglesias que
    * tiene asignadas: el filtro es el mismo de la pantalla de credenciales.
    */
-  const credencialesPorVencer = can(req.user, 'credenciales', 'view')
+  const credencialesPorVencer = puede('credencialesPorVencer')
     ? getModule('credenciales').porVencer(req.user)
     : [];
 
@@ -566,7 +657,7 @@ app.get('/api/dashboard', authRequired, (req, res) => {
    * estamparía a todas la fecha de hoy y un motivo que nadie escribió. Se
    * ponen acá y las revoca una persona, que es de quien tiene que ser la firma.
    */
-  const credencialesSinTitular = can(req.user, 'credenciales', 'view')
+  const credencialesSinTitular = puede('credencialesSinTitular')
     ? getModule('credenciales').deQuienesYaNoEjercen(req.user)
     : [];
 
@@ -585,7 +676,7 @@ app.get('/api/dashboard', authRequired, (req, res) => {
    * Pide ver Cuerpos y no ver Directivas: lo que la línea abre es la ficha del
    * cuerpo, que es donde se mira y desde donde se le registra la suya.
    */
-  const cuerposSinDirectiva = can(req.user, 'cuerpos', 'view')
+  const cuerposSinDirectiva = puede('cuerposSinDirectiva')
     ? require('./cuerpo-sin-quien-lo-dirija').losQueSeQuedanSinDirectiva(db, req.user)
     : [];
 
@@ -601,7 +692,7 @@ app.get('/api/dashboard', authRequired, (req, res) => {
    * Pide ver la Oficina de Partes, y se acota a lo que esa persona alcanza: la
    * secretaria de una iglesia ve los oficios de su iglesia.
    */
-  const documentosSinResponder = can(req.user, 'documentos', 'view')
+  const documentosSinResponder = puede('documentosSinResponder')
     ? require('./documento-sin-responder').losQueEsperanRespuesta(db, req.user)
     : [];
 

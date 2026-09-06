@@ -331,6 +331,16 @@ test('el panel cuenta personas, no entregas, y no lo pinta como una alarma', () 
   assert.match(panel, /counts\.ayudas_personas_mes = suyas\.personas;/);
   assert.match(panel, /require\('\.\/a-quien-se-ayudo'\)\.delMes\(db, sql, params\)/,
     'con la misma regla que se prueba acá arriba, no con una copia');
-  assert.match(panel, /can\(req\.user, 'ayudas_sociales', 'view'\)/,
-    'y solo para quien puede abrir el módulo que la explica');
+  /*
+   * Y solo para quien puede abrir el módulo que la explica. Hasta la v1.437.0
+   * acá se exigía el `can(...)` escrito a mano en el panel; ahora esa decisión
+   * —y la de las otras dieciséis piezas— sale de una tabla, para que la que se
+   * agregue mañana no pueda quedar sin declarar (hallazgos PC-01 a PC-03). La
+   * regla que se vigila es la misma; cambió dónde está escrita.
+   */
+  assert.match(panel, /if \(puede\('counts\.ayudas_mes'\)\)/,
+    'la cifra tiene que seguir pidiendo permiso antes de calcularse');
+  const { LO_QUE_PIDE_CADA_PIEZA } = require('../../server/panel');
+  assert.deepEqual(LO_QUE_PIDE_CADA_PIEZA['counts.ayudas_personas_mes'].pide, ['ayudas_sociales'],
+    'y el permiso que pide tiene que ser el del módulo que la explica');
 });

@@ -237,11 +237,18 @@ const servidor = fs.readFileSync(path.join(__dirname, '../../server/index.js'), 
 const app = fs.readFileSync(path.join(__dirname, '../../public/app.js'), 'utf8');
 
 test('el panel pide las dos llaves: ver Tesorería y ver sus montos', () => {
-  assert.match(
-    servidor,
-    /if \(can\(req\.user, 'tesoreria', 'view'\) && can\(req\.user, 'tesoreria_montos', 'view'\)\)/,
-    'el panel abría con los ingresos del mes, los egresos y el balance histórico'
-  );
+  /*
+   * Hasta la v1.437.0 esto se comprobaba mirando el `can(...)` doble escrito a
+   * mano en el panel. Desde entonces la decisión de las diecisiete piezas del
+   * panel sale de una tabla —server/panel.js—, para que la que se agregue
+   * mañana no pueda quedar sin declarar (hallazgos PC-01 a PC-03). Se vigila lo
+   * mismo, que son DOS permisos y no uno; cambió dónde está escrito.
+   */
+  const { LO_QUE_PIDE_CADA_PIEZA } = require('../../server/panel');
+  assert.deepEqual(LO_QUE_PIDE_CADA_PIEZA.finanzas.pide, ['tesoreria', 'tesoreria_montos'],
+    'el panel abría con los ingresos del mes, los egresos y el balance histórico');
+  assert.match(servidor, /if \(puede\('finanzas'\)\)/,
+    'y el panel tiene que preguntarlo antes de calcular las sumas');
 });
 
 test('/api/meta le cuenta al navegador que un calculado es reservado', () => {

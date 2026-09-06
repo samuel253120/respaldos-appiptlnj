@@ -2064,7 +2064,21 @@ async function viewDashboard() {
             </li>`).join('')}
         </ul>
       </div>`
-    : `
+    /*
+     * Sin nadie que cumpla, la tarjeta lo dice. Pero solo cuando de verdad no
+     * hay nadie: desde la v1.437.0 el servidor manda la lista vacía también a
+     * quien no tiene la llave del RUT y la fecha de nacimiento, y ahí «todavía
+     * no hay miembros con fecha registrada» sería falso. Se dice lo que pasa,
+     * que es lo mismo que hacen las fichas con sus datos reservados.
+     */
+    : !tieneLlave('miembros_identidad')
+      ? `
+      <div class="card cumples">
+        <h3>🎂 Próximos cumpleaños</h3>
+        <ul class="mini-list"><li class="mut">Su cuenta no alcanza la fecha de nacimiento de las fichas,
+          así que esta lista no se le muestra. La ve quien tenga ese permiso.</li></ul>
+      </div>`
+      : `
       <div class="card cumples">
         <h3>🎂 Próximos cumpleaños</h3>
         <ul class="mini-list"><li class="mut">Todavía no hay miembros con fecha de nacimiento registrada</li></ul>
@@ -2260,6 +2274,7 @@ async function viewDashboard() {
     ${finHtml}
     <div class="dash-cols">
       ${MOD['miembros'] ? cumpleHtml : ''}
+      ${MOD['solicitudes'] ? `
       <div class="card">
         <h3>📨 Solicitudes recientes</h3>
         <ul class="mini-list">
@@ -2269,7 +2284,7 @@ async function viewDashboard() {
               <span class="badge ${badgeClass(s.estado)}">${esc(s.estado)}</span>
             </li>`).join('') : '<li class="mut">Sin registros aún</li>'}
         </ul>
-      </div>
+      </div>` : ''}
     </div>
     <div id="dashPendientes"></div>`;
 

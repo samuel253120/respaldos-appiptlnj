@@ -832,11 +832,14 @@ async function entrar(rut = RUT, clave = CLAVE) {
       `quedó en ${JSON.stringify(mentira.datos.cuerpo_id)}`);
 
     const conNivel = async (quita, nombre) => {
+      // `quita` puede ser un permiso o varios: el panel necesita cerrarle a
+      // alguien tres módulos de una vez (ver 4i, más abajo)
+      const quitados = Array.isArray(quita) ? quita : [quita];
       const c = String(12000000 + (Date.now() % 900000));
       const suRut = `${c}-${require('../server/rut').digitoVerificador(c)}`;
       const creado = await api('POST', '/api/usuarios', {
         rut: suRut, nombre, password: 'Manzanares82', rol: 'tesorero', activo: 1,
-        permisos: { [quita]: [] },
+        permisos: Object.fromEntries(quitados.map((q) => [q, []])),
       });
       if (creado.estado !== 201 && creado.estado !== 200) return null;
       const primera = await fetch(`${URL}/api/auth/login`, {
@@ -917,6 +920,54 @@ async function entrar(rut = RUT, clave = CLAVE) {
     } else {
       revisar('se pudieron crear las dos tesoreras de prueba', false);
     }
+
+    /* 4i · El panel no adelanta lo que la persona no puede abrir ------------- */
+    console.log('\n4i · El Panel de control y lo que no es suyo');
+    {
+      /*
+       * El panel es lo primero que ve todo el que entra, y era la única pantalla
+       * que armaba su resumen antes de saber quién estaba mirando. Medido en la
+       * v1.436.0: a una cuenta con Solicitudes cerrado —403 en el listado— le
+       * entregaba el nombre de quien la presentó y el asunto (hallazgos PC-01 a
+       * PC-03). Acá se comprueba contra el sistema andando, que es donde de
+       * verdad se ve.
+       */
+      const sinFichas = await conNivel(['miembros', 'solicitudes', 'certificados'], 'Prueba Panel Cerrado');
+      const sinLlave = await conNivel(['miembros_identidad'], 'Prueba Panel Sin Llave');
+      if (sinFichas && sinLlave) {
+        const lasPuertas = await Promise.all(['/api/miembros?limit=3', '/api/solicitudes?limit=3']
+          .map((r) => sinFichas.api('GET', r)));
+        revisar('las puertas de esos datos le contestan que no',
+          lasPuertas.every((r) => r.estado === 403),
+          `contestaron ${lasPuertas.map((r) => r.estado).join(' y ')}`);
+
+        const suPanel = (await sinFichas.api('GET', '/api/dashboard')).datos;
+        revisar('y el panel no le manda las solicitudes recientes',
+          (suPanel.solicitudesRecientes || []).length === 0,
+          `le mandó ${JSON.stringify(suPanel.solicitudesRecientes).slice(0, 160)}`);
+        revisar('ni los cumpleaños', (suPanel.cumpleanos || []).length === 0,
+          `le mandó ${JSON.stringify(suPanel.cumpleanos).slice(0, 160)}`);
+        for (const c of ['miembros', 'solicitudes_pendientes', 'certificados']) {
+          revisar(`ni el contador de ${c}`, !(c in (suPanel.counts || {})),
+            `le mandó ${c} = ${suPanel.counts && suPanel.counts[c]}`);
+        }
+        revisar('pero sí lo que sí es suyo', !!suPanel.finanzas && 'pastores' in (suPanel.counts || {}));
+
+        // Y la llave del RUT y la fecha de nacimiento vale también acá
+        const elOtro = (await sinLlave.api('GET', '/api/dashboard')).datos;
+        revisar('y quien no alcanza la fecha de nacimiento no recibe los cumpleaños',
+          (elOtro.cumpleanos || []).length === 0,
+          `le mandó ${JSON.stringify(elOtro.cumpleanos).slice(0, 160)}`);
+        revisar('aunque sí siga contando los miembros, que es otro permiso',
+          'miembros' in (elOtro.counts || {}));
+
+        await api('DELETE', `/api/usuarios/${sinFichas.id}?igual_asi=true`);
+        await api('DELETE', `/api/usuarios/${sinLlave.id}?igual_asi=true`);
+      } else {
+        revisar('se pudieron crear las cuentas de prueba del panel', false);
+      }
+    }
+
 
     for (const m of [movCuerpo, movIglesia, mentira]) {
       if (m.datos && m.datos.id) await api('DELETE', `/api/tesoreria/${m.datos.id}`);
