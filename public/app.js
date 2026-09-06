@@ -1515,6 +1515,19 @@ async function viewMiPerfil(precarga) {
       document.getElementById('tabDatos').hidden = b.dataset.tab !== 'datos';
       document.getElementById('tabAvisos').hidden = b.dataset.tab !== 'avisos';
       document.getElementById('tabSeguridad').hidden = b.dataset.tab !== 'seguridad';
+      /*
+       * Y la pestaña queda en la dirección. El panel ya enlazaba a
+       * «#/perfil?tab=avisos», así que la dirección sabía decirlo; lo que
+       * faltaba era que la escribiera quien cambia de pestaña. Sin eso,
+       * recargar o volver atrás devolvía siempre a «Mis datos» y el enlace que
+       * uno copiaba no llevaba a lo que estaba mirando (hallazgo MP-06).
+       *
+       * Se reemplaza la entrada del historial en vez de agregar una: cambiar de
+       * pestaña no es navegar, y si se apilaran, el botón de volver del
+       * teléfono habría que apretarlo tres veces para salir del perfil.
+       */
+      const donde = b.dataset.tab === 'datos' ? '#/perfil' : `#/perfil?tab=${b.dataset.tab}`;
+      if (location.hash !== donde) history.replaceState(null, '', donde);
     });
   });
 
@@ -1583,12 +1596,24 @@ async function renderMisDatos(zona) {
   });
   aplicarCondiciones();
 
+  /*
+   * Igual que en cualquier ficha: si el servidor devuelve una PREGUNTA —de las
+   * que se pueden contestar «igual va»— se muestra con dos botones y se
+   * reintenta. Antes esta pantalla no lo hacía, y como el servidor tampoco
+   * mandaba `confirmar` aparte, la persona leía «[object Object]» y no tenía
+   * cómo seguir (hallazgo MP-03).
+   */
+  let yaConfirmo = false;
+
   document.getElementById('recForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const err = document.getElementById('perfilError');
     err.textContent = '';
     try {
-      const r = await api('PUT', '/auth/perfil', collectForm({ fields: d.campos }));
+      const suyo = collectForm({ fields: d.campos });
+      if (yaConfirmo) suyo.igual_asi = true;
+      const r = await api('PUT', '/auth/perfil', suyo);
+      yaConfirmo = false;
       toast('Sus datos quedaron guardados');
       // El nombre y la foto pueden haber cambiado: la barra superior tiene
       // que reflejarlo sin obligar a recargar la página
@@ -1603,6 +1628,12 @@ async function renderMisDatos(zona) {
       }
       d.datos = r.perfil ? r.perfil.datos : d.datos;
     } catch (e2) {
+      if (e2.datos && e2.datos.confirmar) {
+        return preguntarSiIgualVa(e2, () => {
+          yaConfirmo = true;
+          document.getElementById('recForm').requestSubmit();
+        });
+      }
       err.textContent = e2.message;
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }

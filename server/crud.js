@@ -1255,6 +1255,358 @@ function consultaDeUnListado(def, req) {
   };
 }
 
+/**
+ * REVISAR LO QUE ENTRA A UNA FICHA, Y ESCRIBIRLA. Una sola vez, para las dos
+ * puertas por las que se guarda en este sistema.
+ *
+ * Estaba escrito dentro de la ruta de guardado del motor, y por eso la OTRA
+ * puerta —Mi perfil, donde cada persona mantiene sus propios datos— no lo
+ * ejecutaba: server/perfil.js armaba su propio UPDATE y lo corría. A lo largo
+ * de cientos de versiones de reglas nuevas, esa puerta se fue quedando atrás
+ * sin que nada se pusiera rojo.
+ *
+ * MEDIDO en la v1.435.0, la misma cosa por las dos puertas:
+ *
+ *   un nombre en blanco ................  Mi perfil 200 · la oficina 400
+ *   un nombre de puros espacios ........  Mi perfil 200 · la oficina 400
+ *   nacer en el año 2050 ...............  Mi perfil 200 · la oficina 400
+ *   nacer en 1820 ......................  Mi perfil 200 · la oficina 400
+ *   una fecha que no es una fecha ......  Mi perfil 200 · la oficina 400
+ *   un sexo que no está en la lista ....  Mi perfil 200 · la oficina 400
+ *   un estado civil inventado ..........  Mi perfil 200 · la oficina 400
+ *   una foto que no está en el disco ...  Mi perfil 200 · la oficina 400
+ *   casarse en el año 2200 .............  Mi perfil 200 · la oficina 400
+ *
+ * Diez de once (hallazgo MP-01). Y la fecha de nacimiento quedaba en la base
+ * como «el martes», que la oficina después leía igual y no podía corregir sola,
+ * porque el motor solo revisa lo que ESE guardado está cambiando.
+ *
+ * NO SE ARREGLÓ AGREGÁNDOLE UNA LISTA DE REVISIONES A LA OTRA PUERTA, que es
+ * como volvería a quedar desfasada: se sacó la lista de acá adentro para que
+ * las dos la llamen. Lo que este archivo aprenda mañana lo aprenden las dos.
+ *
+ * Con la lista vienen tres cosas que la otra puerta tampoco hacía, y que no son
+ * arreglos aparte sino la misma consecuencia: la marca de VERSIÓN sube en el
+ * mismo UPDATE —sin ella la oficina le pisaba el cambio a la persona sin
+ * avisar (MP-02)—, queda escrito QUIÉN guardó, y todo ocurre dentro de una
+ * TRANSACCIÓN (MP-04).
+ *
+ * Un rechazo se LANZA en vez de contestarse acá: quien llama decide si eso es
+ * un 400 de HTTP o un error de otra forma. Un `ErrorDeDatos` con `confirmar` es
+ * una pregunta y no un rechazo, y quien llama la convierte en dos botones
+ * (MP-03: la otra puerta la metía dentro de un texto, y la persona leía
+ * «[object Object]» sin manera de contestar).
+ *
+ * `comoLlego` es lo que LLEGÓ, antes de convertirlo: las revisiones de números lo
+ * necesitan para poder decir «"ocho" no es un número» en vez de mirar el nulo
+ * en que quedó convertido.
+ *
+ * Lo que NO está acá y se queda en la ruta, porque depende de quién pide y no
+ * de lo que se guarda: el alcance —qué iglesias y qué registros alcanza esta
+ * persona—, los campos trabados por el estado de la ficha, y el aviso de que
+ * otra persona la guardó mientras tanto. Mi perfil tiene sus propias respuestas
+ * a esas tres: la ficha es la suya, y por eso las hace a su manera.
+ */
+function revisarYEscribir(def, { isNew, id, existing, data, comoLlego, user, confirmado }) {
+      const aplica = (f) => seAplica(f, data, existing, def.fields);
+
+      // Validación de requeridos (los campos que no aplican no se exigen)
+      for (const f of def.fields) {
+        if (!f.required || !aplica(f)) continue;
+        const val = isNew ? data[f.name] : data[f.name] !== undefined ? data[f.name] : existing[f.name];
+        /*
+         * Puros espacios NO es un campo lleno. Se comprobaba `val === ''`, así
+         * que un «   » pasaba: medido sobre el período de una directiva, que
+         * entraba en blanco y dejaba el histórico con una fila sin nombre. No
+         * es de ese módulo —vale para todos los campos obligatorios de texto
+         * del sistema— y por eso se arregla acá y no allá.
+         */
+        const enBlanco = val === null || val === undefined
+          || (typeof val === 'string' && val.trim() === '');
+        if (enBlanco) {
+          if (f.type === 'password' && !isNew) continue; // contraseña solo obligatoria al crear
+          throw new ErrorDeDatos(`El campo "${f.label}" es obligatorio`);
+        }
+      }
+
+      /*
+       * Validación de los límites de los números y del dinero.
+       *
+       * SE MIRA LO QUE LLEGÓ, NO LO QUE QUEDÓ. `coerce` convierte un campo
+       * numérico con `Number(...)`, y lo que no es un número lo deja en
+       * nulo; mirando el valor ya convertido, esta revisión no llegaba a ver
+       * nunca un valor no numérico —su propio aviso, «tiene que ser un
+       * número», era inalcanzable para los campos de tipo número— y el dato
+       * se borraba con un 200 y sin una palabra.
+       *
+       * Medido en la v1.289.0 sobre los folios de un documento: mandando
+       * «ocho» y «2,7» el servidor contestaba 201 y el campo quedaba vacío.
+       * Vale para los 39 módulos, no solo para ése.
+       *
+       * La otra puerta de este sistema ya lo hacía bien: la importación por
+       * planilla contesta «"ocho" no es un número válido» y nombra la fila
+       * (ver server/importar.js). Era el formulario el que callaba.
+       *
+       * Vaciar a propósito sigue siendo vaciar: lo que llega en blanco —«»,
+       * nulo, o el campo que no viene— no se revisa ni se reclama.
+       */
+      for (const f of def.fields) {
+        if (f.type !== 'money' && f.type !== 'number') continue;
+        if (!(f.name in data)) continue; // no se está tocando (o es de solo lectura)
+        const crudo = comoLlego[f.name];
+        const llegoAlgo = crudo !== undefined && crudo !== null && String(crudo).trim() !== '';
+        const val = data[f.name] === null && llegoAlgo ? crudo : data[f.name];
+        if (val === undefined || val === null || val === '') continue;
+        const problema = revisarLimites(f, val);
+        if (problema) throw new ErrorDeDatos(problema);
+      }
+
+      /*
+       * Y que lo que se referencia exista de verdad: no se guarda un
+       * documento del cuerpo 88.888 (ver referenciasRotas, más arriba).
+       */
+      const rotas = referenciasRotas(def, data);
+      if (rotas.length) {
+        throw new ErrorDeDatos(rotas.length === 1
+          ? rotas[0]
+          : `Hay ${rotas.length} referencias a registros que no existen. ${rotas.join('. ')}`);
+      }
+
+      /**
+       * Y de las fechas: que sean fechas, que estén en un rango con sentido
+       * y que se lleven bien entre ellas (ver server/fechas.js).
+       *
+       * Solo se revisa lo que este guardado ESTÁ CAMBIANDO. Una ficha que ya
+       * traía una fecha imposible de antes —de una importación vieja, o de
+       * un descuido anterior a esta comprobación— se sigue pudiendo guardar
+       * para corregirle el teléfono: la comprobación frena el guardado que
+       * empeora las cosas, no el que simplemente no arregla algo que ya
+       * estaba. Lo que ya estaba se corrige cuando alguien toque esa fecha,
+       * que es cuando puede hacer algo al respecto.
+       */
+      const cambia = (nombre) => {
+        const val = data[nombre];
+        if (val === undefined) return false;
+        if (!existing) return true;
+        const antes = existing[nombre];
+        return String(antes == null ? '' : antes) !== String(val == null ? '' : val);
+      };
+
+      /*
+       * Y que un desplegable no admita lo que no ofrece.
+       *
+       * La pantalla ofrecía las opciones escritas y por la API entraba
+       * cualquier otra cosa: un tipo de ayuda «Lo que sea», el estado de un
+       * miembro «Cualquier cosa». Por qué se mira solo lo que este guardado
+       * está cambiando —y no la ficha entera— está en server/opciones.js: hay
+       * fichas que ya traen un valor fuera de su lista y no pueden quedar
+       * imposibles de guardar por algo que su dueño no eligió.
+       */
+      const fueraDeLista = opciones.loQueNoEstaEnLaLista(def, data, cambia);
+      if (fueraDeLista) throw new ErrorDeDatos(fueraDeLista);
+
+      /*
+       * Y lo mismo para los campos cuya lista NO está escrita en el módulo
+       * sino guardada en una tabla que mantiene la iglesia.
+       *
+       * Ésos quedaban fuera de la comprobación de arriba con un argumento que
+       * vale para una copia y no para una tabla: comparar contra la tabla no
+       * inventa ninguna segunda verdad, porque la tabla ES la verdad. Medido
+       * antes de esto: la categoría de un movimiento admitía «Categoría Que
+       * No Existe» con un 201. El detalle está en server/opciones.js.
+       */
+      const fueraDeSuTabla = opciones.loQueNoEstaEnSuTabla(db, def, data, cambia);
+      if (fueraDeSuTabla) throw new ErrorDeDatos(fueraDeSuTabla);
+
+      /*
+       * Y que el archivo que se adjunta esté de verdad en el disco.
+       *
+       * Un campo de archivo obligatorio se cumplía con cualquier texto: la
+       * comprobación miraba que viniera algo, no que ese algo existiera.
+       * Medido: se guarda un documento de un miembro con el nombre de un
+       * archivo inventado y contesta 201; queda en su carpeta, con su tipo y
+       * su fecha, prometiendo un carnet que no está, y su botón «Ver» da 404.
+       *
+       * Por la pantalla no se llega —el archivo sube al elegirlo y el campo
+       * queda con el nombre que devolvió el servidor—, pero cualquier cosa
+       * que hable con la API sí, y el resultado es el peor de los dos
+       * posibles: una carpeta que dice tener el papel.
+       *
+       * Se revisa con la misma regla que las fechas: solo lo que este
+       * guardado ESTÁ CAMBIANDO. Una ficha vieja que ya apunta a un archivo
+       * perdido se sigue pudiendo guardar para corregirle el nombre; lo que
+       * se frena es adjuntar hoy algo que no está.
+       */
+      for (const f of def.fields) {
+        if (f.type !== 'file' || !cambia(f.name)) continue;
+        const val = data[f.name];
+        if (val === null || val === '') continue;
+        if (!archivos.existe(val)) {
+          throw new ErrorDeDatos(
+            `El archivo de "${f.label}" no está en el servidor. Vuelva a elegirlo y guarde de nuevo.`);
+        }
+      }
+
+      for (const f of def.fields) {
+        if (f.type !== 'date' || !cambia(f.name)) continue;
+        const val = data[f.name];
+        if (val === null || val === '') continue;
+        const problema = fechas.revisar(f, val);
+        if (problema) throw new ErrorDeDatos(problema);
+      }
+      // La coherencia se mira solo si alguna de las dos fechas del par se
+      // está tocando; si no, es una contradicción que ya venía.
+      const tocaAlgunaFecha = def.fields.some((f) => f.type === 'date' && cambia(f.name));
+      if (tocaAlgunaFecha) {
+        const seContradicen = fechas.revisarCoherencia(def, data, existing);
+        if (seContradicen) throw new ErrorDeDatos(seContradicen);
+      }
+
+      /*
+       * Validación de RUT (dígito verificador) y de campos únicos.
+       *
+       * El RUT se mira SOLO SI VIENE, porque lo que no viene no cambia. Lo
+       * único NO se puede mirar así, y ahí estaba el error: un número puede
+       * ser único «dentro de» algo —el de un acta lo es dentro de su iglesia,
+       * el de un acta de reunión dentro de su cuerpo— y entonces lo que se
+       * mueve puede ser ESE ALGO, con el número quieto.
+       *
+       * Medido en la v1.282.0: mover un acta a una iglesia donde su número ya
+       * estaba usado, SIN mandar el número en la petición, contestaba 500 con
+       * un número de incidencia —lo frenaba el índice de la base— en vez del
+       * aviso que el sistema ya tenía escrito. Mandando el número, el mismo
+       * caso contestaba 400 y lo explicaba bien.
+       *
+       * Así que para un campo único se mira CÓMO VA A QUEDAR el registro: lo
+       * que llega si llega, y lo que ya tenía si no. Alcanza a los cuatro
+       * módulos con número acotado —Actas de Asambleas y Certificados por
+       * iglesia, Actas de Reuniones por cuerpo, y la Oficina de Partes por
+       * iglesia y flujo—. Cuesta una consulta por campo único y por guardado,
+       * contra un índice que ya existe.
+       */
+      for (const f of def.fields) {
+        const val = data[f.name];
+        const llega = val !== undefined && val !== null && val !== '';
+
+        if (f.type === 'rut' && llega && !rut.validar(val)) {
+          throw new ErrorDeDatos(`El ${f.label} ingresado no es válido: revise el número y su dígito verificador`);
+        }
+
+        if (f.unique) {
+          const queda = llega ? val : (existing ? existing[f.name] : undefined);
+          if (queda === undefined || queda === null || queda === '') continue;
+          const dup = buscarDuplicado(def, f, queda, id, data, existing);
+          if (dup) {
+            throw new ErrorDeDatos(avisoDeDuplicado(def, f, dondeEsUnico(def, f, data, existing)));
+          }
+        }
+      }
+
+      aplicarCalculos(def, data, existing);
+
+      // Todo el guardado ocurre de una sola vez: la ficha, lo que su módulo
+      // haga después (los movimientos de una ofrenda, las cuotas de un
+      // integrante) y el historial. Si algo falla a mitad de camino, no
+      // queda nada a medias: se deshace entero y los datos siguen como
+      // estaban. También es lo que mantiene coherente la base cuando dos
+      // personas guardan en el mismo momento.
+      const escribir = db.transaction(() => {
+        if (def.hooks && def.hooks.beforeSave) {
+          // `confirmado` dice que la persona ya vio un aviso de los que se pueden
+          // confirmar y respondió que sí. No es un dato de la ficha —no se
+          // guarda en ninguna columna—, es una instrucción de esta petición.
+          const err = def.hooks.beforeSave(data, { user, isNew, id, existing, db, confirmado });
+          /**
+           * Un hook puede devolver dos cosas distintas, y la diferencia
+           * importa: un texto es un rechazo —el dato no entra— y un objeto
+           * con `confirmar` es una pregunta —el dato puede entrar, pero
+           * alguien tiene que decir que sí—. La pantalla convierte lo
+           * segundo en dos botones en vez de en un aviso rojo.
+           *
+           * Y puede traer un tercero: `ir`, adónde llevar a quien contesta.
+           * «Abra la que ya existe» sin decir dónde está obliga a salir,
+           * buscarla a mano y volver, que es justo lo que nadie hace: la
+           * pregunta se contesta «seguir» porque es el único botón que hace
+           * algo. Con `ir` hay un botón que lleva.
+           */
+          if (err) {
+            const problema = new ErrorDeDatos(typeof err === 'string' ? err : err.error);
+            if (err && err.confirmar) problema.confirmar = err.confirmar;
+            if (err && err.ir) problema.ir = err.ir;
+            throw problema;
+          }
+        }
+
+        /*
+         * Una iglesia inactiva no recibe nada nuevo (ver
+         * server/iglesia-inactiva.js).
+         *
+         * Va DESPUÉS del gancho del módulo y no arriba, con las otras
+         * comprobaciones generales, porque hay módulos que no reciben la
+         * iglesia y la deducen ahí: un traspaso la toma de su cuenta de
+         * origen, una cuenta de cuerpo la toma de su cuerpo, un artículo de
+         * inventario también. Preguntando antes, esos entrarían igual.
+         */
+        const iglesiaCerrada = require('./iglesia-inactiva')
+          .avisoSiLaIglesiaEstaInactiva(db, def, { data, existing, isNew });
+        if (iglesiaCerrada) throw new ErrorDeDatos(iglesiaCerrada);
+
+        /*
+         * Y a un pastor que ya no ejerce no se le designa de nuevo (ver
+         * server/pastor-que-ejerce.js). Acá y no en cada módulo porque son
+         * varios los campos que apuntan a Pastores / Guías —el pastor
+         * principal de una iglesia, el titular de una credencial— y la regla
+         * es una sola: escrita módulo por módulo, se olvidaría en el que
+         * venga después.
+         */
+        const yaNoEjerce = require('./pastor-que-ejerce')
+          .avisoSiElPastorYaNoEjerce(db, def, { data, existing, isNew });
+        if (yaNoEjerce) throw new ErrorDeDatos(yaNoEjerce);
+
+        /*
+         * Y a un cuerpo inactivo no se le cuelga nada nuevo (ver
+         * server/cuerpo-inactivo.js). Tercera regla de la misma forma y por
+         * el mismo motivo que las dos de arriba: un estado que no hace
+         * cumplir nada promete una protección que no existe.
+         */
+        const cuerpoCerrado = require('./cuerpo-inactivo')
+          .avisoSiElCuerpoEstaInactivo(db, def, { data, existing, isNew });
+        if (cuerpoCerrado) throw new ErrorDeDatos(cuerpoCerrado);
+
+        const keys = Object.keys(data);
+        let row;
+        if (isNew) {
+          const sql = `INSERT INTO "${def.name}" (${keys.map((k) => `"${k}"`).join(',')}${keys.length ? ',' : ''} created_by)
+                       VALUES (${keys.map(() => '?').join(',')}${keys.length ? ',' : ''} ?)`;
+          const info = db.prepare(sql).run(...keys.map((k) => data[k]), user.id);
+          row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(info.lastInsertRowid);
+        } else {
+          if (keys.length) {
+            // La versión sube en el mismo UPDATE: así no hay manera de que
+            // un guardado quede escrito sin que la marca avance.
+            const sql = `UPDATE "${def.name}" SET ${keys.map((k) => `"${k}" = ?`).join(', ')},
+                           updated_at = datetime('now','localtime'), updated_by = ?,
+                           version = COALESCE(version, 1) + 1 WHERE id = ?`;
+            db.prepare(sql).run(...keys.map((k) => data[k]), user.id, id);
+          }
+          row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
+        }
+
+        if (def.hooks && def.hooks.afterSave) {
+          // `existing` va también: hay módulos que necesitan saber no solo
+          // cómo quedó la ficha, sino qué cambió. Una solicitud anota en su
+          // historial que el estado pasó de uno a otro, y eso no se puede
+          // deducir mirando únicamente cómo quedó.
+          def.hooks.afterSave(row, { user, isNew, existing, db });
+          row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(row.id);
+        }
+        bitacora.registrarGuardado(def, { isNew, antes: isNew ? {} : existing, despues: row, datos: data, user });
+        return row;
+      });
+
+  return escribir.immediate();
+}
+
 function buildRouter() {
   const router = express.Router();
   router.use(authRequired);
@@ -1554,307 +1906,10 @@ function buildRouter() {
         const avisoDeNivel = tesorerias.alGuardar(def, { ...(existing || {}), ...data }, req.user, db);
         if (avisoDeNivel) return res.status(403).json({ error: avisoDeNivel });
 
-        const aplica = (f) => seAplica(f, data, existing, def.fields);
-
-        // Validación de requeridos (los campos que no aplican no se exigen)
-        for (const f of def.fields) {
-          if (!f.required || !aplica(f)) continue;
-          const val = isNew ? data[f.name] : data[f.name] !== undefined ? data[f.name] : existing[f.name];
-          /*
-           * Puros espacios NO es un campo lleno. Se comprobaba `val === ''`, así
-           * que un «   » pasaba: medido sobre el período de una directiva, que
-           * entraba en blanco y dejaba el histórico con una fila sin nombre. No
-           * es de ese módulo —vale para todos los campos obligatorios de texto
-           * del sistema— y por eso se arregla acá y no allá.
-           */
-          const enBlanco = val === null || val === undefined
-            || (typeof val === 'string' && val.trim() === '');
-          if (enBlanco) {
-            if (f.type === 'password' && !isNew) continue; // contraseña solo obligatoria al crear
-            return res.status(400).json({ error: `El campo "${f.label}" es obligatorio` });
-          }
-        }
-
-        /*
-         * Validación de los límites de los números y del dinero.
-         *
-         * SE MIRA LO QUE LLEGÓ, NO LO QUE QUEDÓ. `coerce` convierte un campo
-         * numérico con `Number(...)`, y lo que no es un número lo deja en
-         * nulo; mirando el valor ya convertido, esta revisión no llegaba a ver
-         * nunca un valor no numérico —su propio aviso, «tiene que ser un
-         * número», era inalcanzable para los campos de tipo número— y el dato
-         * se borraba con un 200 y sin una palabra.
-         *
-         * Medido en la v1.289.0 sobre los folios de un documento: mandando
-         * «ocho» y «2,7» el servidor contestaba 201 y el campo quedaba vacío.
-         * Vale para los 39 módulos, no solo para ése.
-         *
-         * La otra puerta de este sistema ya lo hacía bien: la importación por
-         * planilla contesta «"ocho" no es un número válido» y nombra la fila
-         * (ver server/importar.js). Era el formulario el que callaba.
-         *
-         * Vaciar a propósito sigue siendo vaciar: lo que llega en blanco —«»,
-         * nulo, o el campo que no viene— no se revisa ni se reclama.
-         */
-        for (const f of def.fields) {
-          if (f.type !== 'money' && f.type !== 'number') continue;
-          if (!(f.name in data)) continue; // no se está tocando (o es de solo lectura)
-          const crudo = req.body[f.name];
-          const llegoAlgo = crudo !== undefined && crudo !== null && String(crudo).trim() !== '';
-          const val = data[f.name] === null && llegoAlgo ? crudo : data[f.name];
-          if (val === undefined || val === null || val === '') continue;
-          const problema = revisarLimites(f, val);
-          if (problema) return res.status(400).json({ error: problema });
-        }
-
-        /*
-         * Y que lo que se referencia exista de verdad: no se guarda un
-         * documento del cuerpo 88.888 (ver referenciasRotas, más arriba).
-         */
-        const rotas = referenciasRotas(def, data);
-        if (rotas.length) {
-          return res.status(400).json({
-            error: rotas.length === 1
-              ? rotas[0]
-              : `Hay ${rotas.length} referencias a registros que no existen. ${rotas.join('. ')}`,
-          });
-        }
-
-        /**
-         * Y de las fechas: que sean fechas, que estén en un rango con sentido
-         * y que se lleven bien entre ellas (ver server/fechas.js).
-         *
-         * Solo se revisa lo que este guardado ESTÁ CAMBIANDO. Una ficha que ya
-         * traía una fecha imposible de antes —de una importación vieja, o de
-         * un descuido anterior a esta comprobación— se sigue pudiendo guardar
-         * para corregirle el teléfono: la comprobación frena el guardado que
-         * empeora las cosas, no el que simplemente no arregla algo que ya
-         * estaba. Lo que ya estaba se corrige cuando alguien toque esa fecha,
-         * que es cuando puede hacer algo al respecto.
-         */
-        const cambia = (nombre) => {
-          const val = data[nombre];
-          if (val === undefined) return false;
-          if (!existing) return true;
-          const antes = existing[nombre];
-          return String(antes == null ? '' : antes) !== String(val == null ? '' : val);
-        };
-
-        /*
-         * Y que un desplegable no admita lo que no ofrece.
-         *
-         * La pantalla ofrecía las opciones escritas y por la API entraba
-         * cualquier otra cosa: un tipo de ayuda «Lo que sea», el estado de un
-         * miembro «Cualquier cosa». Por qué se mira solo lo que este guardado
-         * está cambiando —y no la ficha entera— está en server/opciones.js: hay
-         * fichas que ya traen un valor fuera de su lista y no pueden quedar
-         * imposibles de guardar por algo que su dueño no eligió.
-         */
-        const fueraDeLista = opciones.loQueNoEstaEnLaLista(def, data, cambia);
-        if (fueraDeLista) return res.status(400).json({ error: fueraDeLista });
-
-        /*
-         * Y lo mismo para los campos cuya lista NO está escrita en el módulo
-         * sino guardada en una tabla que mantiene la iglesia.
-         *
-         * Ésos quedaban fuera de la comprobación de arriba con un argumento que
-         * vale para una copia y no para una tabla: comparar contra la tabla no
-         * inventa ninguna segunda verdad, porque la tabla ES la verdad. Medido
-         * antes de esto: la categoría de un movimiento admitía «Categoría Que
-         * No Existe» con un 201. El detalle está en server/opciones.js.
-         */
-        const fueraDeSuTabla = opciones.loQueNoEstaEnSuTabla(db, def, data, cambia);
-        if (fueraDeSuTabla) return res.status(400).json({ error: fueraDeSuTabla });
-
-        /*
-         * Y que el archivo que se adjunta esté de verdad en el disco.
-         *
-         * Un campo de archivo obligatorio se cumplía con cualquier texto: la
-         * comprobación miraba que viniera algo, no que ese algo existiera.
-         * Medido: se guarda un documento de un miembro con el nombre de un
-         * archivo inventado y contesta 201; queda en su carpeta, con su tipo y
-         * su fecha, prometiendo un carnet que no está, y su botón «Ver» da 404.
-         *
-         * Por la pantalla no se llega —el archivo sube al elegirlo y el campo
-         * queda con el nombre que devolvió el servidor—, pero cualquier cosa
-         * que hable con la API sí, y el resultado es el peor de los dos
-         * posibles: una carpeta que dice tener el papel.
-         *
-         * Se revisa con la misma regla que las fechas: solo lo que este
-         * guardado ESTÁ CAMBIANDO. Una ficha vieja que ya apunta a un archivo
-         * perdido se sigue pudiendo guardar para corregirle el nombre; lo que
-         * se frena es adjuntar hoy algo que no está.
-         */
-        for (const f of def.fields) {
-          if (f.type !== 'file' || !cambia(f.name)) continue;
-          const val = data[f.name];
-          if (val === null || val === '') continue;
-          if (!archivos.existe(val)) {
-            return res.status(400).json({
-              error: `El archivo de "${f.label}" no está en el servidor. Vuelva a elegirlo y guarde de nuevo.`,
-            });
-          }
-        }
-
-        for (const f of def.fields) {
-          if (f.type !== 'date' || !cambia(f.name)) continue;
-          const val = data[f.name];
-          if (val === null || val === '') continue;
-          const problema = fechas.revisar(f, val);
-          if (problema) return res.status(400).json({ error: problema });
-        }
-        // La coherencia se mira solo si alguna de las dos fechas del par se
-        // está tocando; si no, es una contradicción que ya venía.
-        const tocaAlgunaFecha = def.fields.some((f) => f.type === 'date' && cambia(f.name));
-        if (tocaAlgunaFecha) {
-          const seContradicen = fechas.revisarCoherencia(def, data, existing);
-          if (seContradicen) return res.status(400).json({ error: seContradicen });
-        }
-
-        /*
-         * Validación de RUT (dígito verificador) y de campos únicos.
-         *
-         * El RUT se mira SOLO SI VIENE, porque lo que no viene no cambia. Lo
-         * único NO se puede mirar así, y ahí estaba el error: un número puede
-         * ser único «dentro de» algo —el de un acta lo es dentro de su iglesia,
-         * el de un acta de reunión dentro de su cuerpo— y entonces lo que se
-         * mueve puede ser ESE ALGO, con el número quieto.
-         *
-         * Medido en la v1.282.0: mover un acta a una iglesia donde su número ya
-         * estaba usado, SIN mandar el número en la petición, contestaba 500 con
-         * un número de incidencia —lo frenaba el índice de la base— en vez del
-         * aviso que el sistema ya tenía escrito. Mandando el número, el mismo
-         * caso contestaba 400 y lo explicaba bien.
-         *
-         * Así que para un campo único se mira CÓMO VA A QUEDAR el registro: lo
-         * que llega si llega, y lo que ya tenía si no. Alcanza a los cuatro
-         * módulos con número acotado —Actas de Asambleas y Certificados por
-         * iglesia, Actas de Reuniones por cuerpo, y la Oficina de Partes por
-         * iglesia y flujo—. Cuesta una consulta por campo único y por guardado,
-         * contra un índice que ya existe.
-         */
-        for (const f of def.fields) {
-          const val = data[f.name];
-          const llega = val !== undefined && val !== null && val !== '';
-
-          if (f.type === 'rut' && llega && !rut.validar(val)) {
-            return res.status(400).json({ error: `El ${f.label} ingresado no es válido: revise el número y su dígito verificador` });
-          }
-
-          if (f.unique) {
-            const queda = llega ? val : (existing ? existing[f.name] : undefined);
-            if (queda === undefined || queda === null || queda === '') continue;
-            const dup = buscarDuplicado(def, f, queda, id, data, existing);
-            if (dup) {
-              return res.status(400).json({ error: avisoDeDuplicado(def, f, dondeEsUnico(def, f, data, existing)) });
-            }
-          }
-        }
-
-        aplicarCalculos(def, data, existing);
-
-        // Todo el guardado ocurre de una sola vez: la ficha, lo que su módulo
-        // haga después (los movimientos de una ofrenda, las cuotas de un
-        // integrante) y el historial. Si algo falla a mitad de camino, no
-        // queda nada a medias: se deshace entero y los datos siguen como
-        // estaban. También es lo que mantiene coherente la base cuando dos
-        // personas guardan en el mismo momento.
-        const escribir = db.transaction(() => {
-          if (def.hooks && def.hooks.beforeSave) {
-            // `confirmado` dice que la persona ya vio un aviso de los que se pueden
-            // confirmar y respondió que sí. No es un dato de la ficha —no se
-            // guarda en ninguna columna—, es una instrucción de esta petición.
-            const confirmado = req.body.igual_asi === true || req.body.igual_asi === 'true';
-            const err = def.hooks.beforeSave(data, { user: req.user, isNew, id, existing, db, confirmado });
-            /**
-             * Un hook puede devolver dos cosas distintas, y la diferencia
-             * importa: un texto es un rechazo —el dato no entra— y un objeto
-             * con `confirmar` es una pregunta —el dato puede entrar, pero
-             * alguien tiene que decir que sí—. La pantalla convierte lo
-             * segundo en dos botones en vez de en un aviso rojo.
-             *
-             * Y puede traer un tercero: `ir`, adónde llevar a quien contesta.
-             * «Abra la que ya existe» sin decir dónde está obliga a salir,
-             * buscarla a mano y volver, que es justo lo que nadie hace: la
-             * pregunta se contesta «seguir» porque es el único botón que hace
-             * algo. Con `ir` hay un botón que lleva.
-             */
-            if (err) {
-              const problema = new ErrorDeDatos(typeof err === 'string' ? err : err.error);
-              if (err && err.confirmar) problema.confirmar = err.confirmar;
-              if (err && err.ir) problema.ir = err.ir;
-              throw problema;
-            }
-          }
-
-          /*
-           * Una iglesia inactiva no recibe nada nuevo (ver
-           * server/iglesia-inactiva.js).
-           *
-           * Va DESPUÉS del gancho del módulo y no arriba, con las otras
-           * comprobaciones generales, porque hay módulos que no reciben la
-           * iglesia y la deducen ahí: un traspaso la toma de su cuenta de
-           * origen, una cuenta de cuerpo la toma de su cuerpo, un artículo de
-           * inventario también. Preguntando antes, esos entrarían igual.
-           */
-          const iglesiaCerrada = require('./iglesia-inactiva')
-            .avisoSiLaIglesiaEstaInactiva(db, def, { data, existing, isNew });
-          if (iglesiaCerrada) throw new ErrorDeDatos(iglesiaCerrada);
-
-          /*
-           * Y a un pastor que ya no ejerce no se le designa de nuevo (ver
-           * server/pastor-que-ejerce.js). Acá y no en cada módulo porque son
-           * varios los campos que apuntan a Pastores / Guías —el pastor
-           * principal de una iglesia, el titular de una credencial— y la regla
-           * es una sola: escrita módulo por módulo, se olvidaría en el que
-           * venga después.
-           */
-          const yaNoEjerce = require('./pastor-que-ejerce')
-            .avisoSiElPastorYaNoEjerce(db, def, { data, existing, isNew });
-          if (yaNoEjerce) throw new ErrorDeDatos(yaNoEjerce);
-
-          /*
-           * Y a un cuerpo inactivo no se le cuelga nada nuevo (ver
-           * server/cuerpo-inactivo.js). Tercera regla de la misma forma y por
-           * el mismo motivo que las dos de arriba: un estado que no hace
-           * cumplir nada promete una protección que no existe.
-           */
-          const cuerpoCerrado = require('./cuerpo-inactivo')
-            .avisoSiElCuerpoEstaInactivo(db, def, { data, existing, isNew });
-          if (cuerpoCerrado) throw new ErrorDeDatos(cuerpoCerrado);
-
-          const keys = Object.keys(data);
-          let row;
-          if (isNew) {
-            const sql = `INSERT INTO "${def.name}" (${keys.map((k) => `"${k}"`).join(',')}${keys.length ? ',' : ''} created_by)
-                         VALUES (${keys.map(() => '?').join(',')}${keys.length ? ',' : ''} ?)`;
-            const info = db.prepare(sql).run(...keys.map((k) => data[k]), req.user.id);
-            row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(info.lastInsertRowid);
-          } else {
-            if (keys.length) {
-              // La versión sube en el mismo UPDATE: así no hay manera de que
-              // un guardado quede escrito sin que la marca avance.
-              const sql = `UPDATE "${def.name}" SET ${keys.map((k) => `"${k}" = ?`).join(', ')},
-                             updated_at = datetime('now','localtime'), updated_by = ?,
-                             version = COALESCE(version, 1) + 1 WHERE id = ?`;
-              db.prepare(sql).run(...keys.map((k) => data[k]), req.user.id, id);
-            }
-            row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(id);
-          }
-
-          if (def.hooks && def.hooks.afterSave) {
-            // `existing` va también: hay módulos que necesitan saber no solo
-            // cómo quedó la ficha, sino qué cambió. Una solicitud anota en su
-            // historial que el estado pasó de uno a otro, y eso no se puede
-            // deducir mirando únicamente cómo quedó.
-            def.hooks.afterSave(row, { user: req.user, isNew, existing, db });
-            row = db.prepare(`SELECT * FROM "${def.name}" WHERE id = ?`).get(row.id);
-          }
-          bitacora.registrarGuardado(def, { isNew, antes: isNew ? {} : existing, despues: row, datos: data, user: req.user });
-          return row;
+        const row = revisarYEscribir(def, {
+          isNew, id, existing, data, comoLlego: req.body, user: req.user,
+          confirmado: req.body.igual_asi === true || req.body.igual_asi === 'true',
         });
-
-        const row = escribir.immediate();
         return res.status(isNew ? 201 : 200).json(expandRow(def, row, req.user));
       } catch (e) {
         if (e instanceof ErrorDeDatos) {
@@ -2078,6 +2133,9 @@ module.exports = {
   // una vez que un dato reservado no sale por ninguna.
   expandRows,
   buildRouter, coerce, aplicarDefectos, sincronizarPersonas, aplicarCalculos, columnasPara,
+  // La lista de comprobaciones y la escritura, para las DOS puertas por las que
+  // se guarda una ficha: la ruta de acá arriba y Mi perfil (server/perfil.js).
+  revisarYEscribir,
   revisarLimites, buscarDuplicado, avisoDeDuplicado, dondeEsUnico, seAplica, estaBloqueado, TECHO,
   referenciasRotas, referenciasFueraDeAlcance,
   // Se exporta para que las pruebas puedan exigir que un dato mal escrito se

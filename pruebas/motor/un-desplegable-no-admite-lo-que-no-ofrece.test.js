@@ -185,7 +185,15 @@ test('una ficha que ya trae un valor fuera de su lista se sigue pudiendo guardar
 test('el guardado del motor la llama, con el mismo `cambia` de las fechas', () => {
   const src = fs.readFileSync(path.join(__dirname, '../../server/crud.js'), 'utf8');
   assert.match(src, /opciones\.loQueNoEstaEnLaLista\(def, data, cambia\)/);
-  assert.match(src, /if \(fueraDeLista\) return res\.status\(400\)/);
+  /*
+   * Y que el resultado FRENE el guardado. Hasta la v1.436.0 acá se exigía
+   * `return res.status(400)`: la lista de comprobaciones vivía dentro de la
+   * ruta y contestaba HTTP ella misma. Desde que la comparten las dos puertas
+   * —la de un módulo y Mi perfil— un rechazo se LANZA y quien llama decide qué
+   * cara ponerle. Lo que se vigila es lo mismo: que lo que no está en la lista
+   * no entre. Ver `revisarYEscribir` en server/crud.js (hallazgo MP-01).
+   */
+  assert.match(src, /if \(fueraDeLista\) throw new ErrorDeDatos\(fueraDeLista\)/);
 });
 
 test('el valor por omisión de cada desplegable está en su propia lista', () => {

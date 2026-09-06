@@ -433,7 +433,20 @@ router.get('/perfil', authRequired, (req, res) => {
 router.put('/perfil', authRequired, (req, res) => {
   const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.user.id);
   const resultado = require('./perfil').guardar(usuario, req.body || {});
-  if (resultado.error) return res.status(400).json({ error: resultado.error });
+  /*
+   * Un rechazo y una PREGUNTA no son lo mismo, y acá se perdía la diferencia:
+   * `resultado.error` podía traer el objeto entero de una pregunta y salía
+   * metido dentro del campo de texto, así que la pantalla mostraba
+   * «[object Object]» y no había manera de contestar (hallazgo MP-03). Ahora
+   * `confirmar` viaja aparte y la pantalla lo convierte en dos botones, igual
+   * que en cualquier otra ficha del sistema.
+   */
+  if (resultado.error) {
+    return res.status(400).json({
+      error: resultado.error,
+      ...(resultado.confirmar ? { confirmar: resultado.confirmar } : {}),
+    });
+  }
   res.json({ ...resultado, perfil: require('./perfil').leer(req.user.id) });
 });
 

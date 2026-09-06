@@ -84,7 +84,9 @@ test('el motor lo comprueba al guardar, en cualquier campo de archivo', () => {
   assert.match(laRegla, /if \(f\.type !== 'file' \|\| !cambia\(f\.name\)\) continue;/);
   assert.match(laRegla, /if \(!archivos\.existe\(val\)\) \{/,
     'con su guardia: la llamada suelta seguiría escrita aunque no decidiera nada');
-  assert.match(laRegla, /res\.status\(400\)/);
+  // Lanza en vez de contestar HTTP desde acá: la lista la comparten las dos
+  // puertas por las que se guarda una ficha desde la v1.436.0 (hallazgo MP-01).
+  assert.match(laRegla, /throw new ErrorDeDatos\(/);
   assert.match(laRegla, /no está en el servidor/, 'y se dice qué pasó y qué hacer');
 });
 
