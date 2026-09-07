@@ -14058,6 +14058,24 @@ async function renderTraspaso(contenedor, mostrarDespues) {
           </div>
         </div>
 
+        <!--
+          Fuera de los seis pasos a propósito: esto no es parte de traspasar,
+          es una reparación de después. La importación creó las entradas de los
+          documentos de cada miembro sin sus archivos —no venían en el volcado—
+          y las dejó esperando la carpeta de respaldos. Cuando esa carpeta no
+          va a llegar, lo que queda son entradas que prometen un papel que no
+          existe, y la carpeta se empieza de nuevo.
+        -->
+        <div class="tp" style="margin-top:14px;border-color:var(--danger,#b91c1c)">
+          <b>🗂️ Vaciar la carpeta de documentos de los miembros</b>
+          <span>
+            Saca <b>todas</b> las entradas de documentos de todos los miembros y sus archivos, para
+            empezar esa carpeta de cero. Las fichas de los miembros y todo lo demás quedan intactos.
+            Muestra primero qué hay.
+          </span>
+          <button class="btn secondary sm" id="tpVaciarDocs">🗂️ Ver qué hay en la carpeta</button>
+        </div>
+
         `}
       <div id="tpSalida"></div>
     </div>`;
@@ -14142,6 +14160,9 @@ async function renderTraspaso(contenedor, mostrarDespues) {
   document.getElementById('tpEnsayo').addEventListener('click', (e) => correr(e.currentTarget, true));
 
   document.getElementById('tpLimpiar').addEventListener('click', () => abrirLimpieza(contenedor));
+
+  const vaciarDocs = document.getElementById('tpVaciarDocs');
+  if (vaciarDocs) vaciarDocs.addEventListener('click', () => abrirVaciarLaCarpetaDeMiembros(contenedor));
 
   document.getElementById('tpImportar').addEventListener('click', (e) => {
     if (!confirm(
@@ -14335,6 +14356,124 @@ async function abrirLimpieza(contenedor) {
       fondo.querySelector('#limpError').textContent = e.message;
       boton.disabled = false;
       boton.textContent = '🧹 Vaciar la base';
+    }
+  });
+}
+
+/**
+ * Vaciar la carpeta de documentos de los miembros, y solo esa.
+ *
+ * La importación del sistema anterior creó cada entrada de documento con sus
+ * datos pero sin el archivo —no venían en el volcado— y las dejó esperando la
+ * carpeta de respaldos. Cuando esa carpeta no va a llegar, lo que queda son
+ * entradas que prometen un papel que no existe.
+ *
+ * Se muestra primero qué hay, con las tres cifras separadas, porque no es lo
+ * mismo perder una entrada vacía que una que sí tiene su escaneo. Y se dice con
+ * su número lo que NO se toca —las fichas de los miembros—, que es la pregunta
+ * que se hace cualquiera antes de apretar un botón así.
+ */
+async function abrirVaciarLaCarpetaDeMiembros(contenedor) {
+  let d;
+  try {
+    d = await api('GET', '/importacion/limpieza/documentos-miembros');
+  } catch (e) {
+    return toast(e.message, true);
+  }
+
+  const fondo = document.createElement('div');
+  fondo.className = 'modal-fondo';
+  fondo.innerHTML = `
+    <div class="modal" style="max-width:620px">
+      <div class="modal-head">
+        <h3>🗂️ Vaciar la carpeta de documentos de los miembros</h3>
+        <button class="cerrar" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body">
+        ${d.entradas === 0 ? `
+          <p class="modal-nota" style="margin-top:0">
+            No hay nada que sacar: ningún miembro tiene documentos en su carpeta.
+          </p>` : `
+          <p class="modal-nota" style="margin-top:0">
+            Esto es lo que hay hoy en las carpetas de los ${fmtNumero(d.personas)} miembro(s) que
+            tienen documentos. Lo que se saque <b>no se puede recuperar</b> si no tiene el respaldo
+            guardado.
+          </p>
+
+          <ul class="mini-list">
+            <li><span><b>Entradas de documento</b><br>
+              <span class="mut">Todas se van, de todos los miembros.</span></span>
+              <span class="badge red">${fmtNumero(d.entradas)}</span></li>
+            <li><span><b>Con su archivo en el servidor</b><br>
+              <span class="mut">Estas sí tienen el escaneo detrás: se borra también.</span></span>
+              <span class="badge ${d.conSuArchivo ? 'yellow' : ''}">${fmtNumero(d.conSuArchivo)}</span></li>
+            <li><span><b>Prometen un archivo que no está</b><br>
+              <span class="mut">Tienen nombre de archivo, pero el archivo no existe.</span></span>
+              <span class="badge">${fmtNumero(d.prometenUnoQueNoEsta)}</span></li>
+            <li><span><b>Sin archivo, esperando la carpeta</b><br>
+              <span class="mut">Las que dejó la importación del sistema anterior.</span></span>
+              <span class="badge">${fmtNumero(d.deLaMigracion)}</span></li>
+          </ul>
+
+          <p class="modal-nota">
+            <b>No se toca nada más.</b> Las ${fmtNumero(d.miembros)} fichas de miembro quedan
+            enteras, con su bitácora y sus datos. Tampoco se tocan los documentos de las iglesias,
+            de los pastores ni de las solicitudes.
+          </p>
+
+          ${d.mantenimiento ? '' : `
+            <p class="form-error" style="padding:0">
+              Active primero el <b>modo mantenimiento</b>, arriba en esta misma pantalla.
+            </p>`}
+
+          <div class="fld full">
+            <label>Para confirmar, escriba <b>VACIAR</b></label>
+            <input type="text" id="vacConfirma" autocomplete="off" placeholder="VACIAR" ${d.mantenimiento ? '' : 'disabled'} />
+          </div>
+          <div class="form-error" id="vacError" style="padding:0"></div>`}
+      </div>
+      <div class="modal-foot">
+        <button class="btn secondary" id="vacCancelar">${d.entradas === 0 ? 'Cerrar' : 'Mejor no'}</button>
+        ${d.entradas === 0 ? '' : '<button class="btn danger" id="vacBorrar" disabled>🗂️ Vaciar la carpeta</button>'}
+      </div>
+    </div>`;
+  document.body.appendChild(fondo);
+
+  const cerrar = () => fondo.remove();
+  fondo.querySelector('.cerrar').addEventListener('click', cerrar);
+  fondo.querySelector('#vacCancelar').addEventListener('click', cerrar);
+  fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(); });
+  if (d.entradas === 0) return;
+
+  const boton = fondo.querySelector('#vacBorrar');
+  const escrito = fondo.querySelector('#vacConfirma');
+  escrito.addEventListener('input', () => {
+    boton.disabled = escrito.value.trim().toUpperCase() !== 'VACIAR';
+  });
+
+  boton.addEventListener('click', async () => {
+    boton.disabled = true;
+    boton.textContent = 'Vaciando…';
+    try {
+      const r = await api('POST', '/importacion/limpieza/documentos-miembros', { confirmacion: escrito.value });
+      cerrar();
+      toast(`La carpeta quedó vacía: salieron ${r.entradas} entrada(s)`);
+      renderTraspaso(contenedor, {
+        titulo: '🗂️ La carpeta de documentos de los miembros quedó vacía',
+        clase: 'bien',
+        lineas: [
+          `   ${String(r.entradas).padStart(6)}  entradas de documento, de ${r.personas} persona(s)`,
+          `   ${String(r.borradosDelDisco).padStart(6)}  archivos borrados del servidor`,
+          `   ${String(r.pendientesSoltados).padStart(6)}  pendientes de la importación soltados`,
+          '',
+          `Las ${r.miembros} fichas de miembro quedaron intactas.`,
+          'Quedó anotado en el Registro de Cambios.',
+        ],
+      });
+    } catch (e) {
+      fondo.querySelector('#vacError').textContent = e.message;
+      boton.disabled = false;
+      boton.textContent = '🗂️ Vaciar la carpeta';
     }
   });
 }

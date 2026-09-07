@@ -367,6 +367,44 @@ router.post('/limpieza', (req, res) => {
 });
 
 /**
+ * VACIAR SOLO LA CARPETA DE DOCUMENTOS DE LOS MIEMBROS.
+ *
+ * La limpieza de más arriba deja la base como recién instalada. Ésta es lo
+ * contrario: toca UNA carpeta y no toca nada más. Está acá y no en otra
+ * pantalla porque el problema que viene a resolver lo dejó esta misma
+ * importación —entradas creadas esperando una carpeta de archivos que no llegó,
+ * y que ya no va a llegar— y porque acá ya está el respaldo para sacar antes.
+ *
+ * Qué arrastra y qué no está escrito en server/vaciar-la-carpeta-de-miembros.js.
+ */
+router.get('/limpieza/documentos-miembros', (req, res) => {
+  res.json({
+    ...require('../vaciar-la-carpeta-de-miembros').loQueHayEnLaCarpeta(db),
+    mantenimiento: ajustes.activo('mantenimiento_activo'),
+  });
+});
+
+/*
+ * Las mismas dos trabas que la limpieza total —modo mantenimiento y la palabra
+ * escrita a mano— porque esto tampoco se puede deshacer. La palabra es OTRA a
+ * propósito: quien ya escribió BORRAR una vez no puede vaciar la carpeta sin
+ * darse cuenta, ni al revés.
+ */
+router.post('/limpieza/documentos-miembros', (req, res) => {
+  if (!ajustes.activo('mantenimiento_activo')) {
+    return res.status(400).json({ error: 'Active primero el modo mantenimiento.' });
+  }
+  if (String(req.body.confirmacion || '').trim().toUpperCase() !== 'VACIAR') {
+    return res.status(400).json({ error: 'Para confirmar, escriba la palabra VACIAR.' });
+  }
+  try {
+    res.json({ ok: true, ...require('../vaciar-la-carpeta-de-miembros').vaciarLaCarpeta(db, { usuario: req.user }) });
+  } catch (e) {
+    res.status(500).json({ error: `No se pudo vaciar la carpeta: ${e.message}` });
+  }
+});
+
+/**
  * La base completa, para guardarla antes de importar. Se copia con el propio
  * motor de la base (no se lee el archivo en caliente), así el respaldo queda
  * íntegro aunque alguien esté usando el sistema en ese momento.
